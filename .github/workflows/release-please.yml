@@ -22,9 +22,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
       # Where the release PR stood before release-please rebuilds its branch, so the notes
-      # written there carry over.
+      # written there carry over. The branch is release-please--branches--main, plus
+      # --components--<name> when the package has one (ours is pigeon), so match both.
       - id: before
-        run: echo "head=$(git rev-parse -q --verify origin/release-please--branches--main || true)" >> "$GITHUB_OUTPUT"
+        run: |
+          head=$(git for-each-ref --count=1 --format='%(objectname)' \
+            refs/remotes/origin/release-please--branches--main \
+            'refs/remotes/origin/release-please--branches--main--*')
+          echo "head=$head" >> "$GITHUB_OUTPUT"
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
