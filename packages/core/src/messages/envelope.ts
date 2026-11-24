@@ -6,6 +6,7 @@ import { base32Decode, base32Encode, utf8Decode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
+import { isPairSecret } from '../pairing/pair-rooms.ts'
 import { err, ok, type Result } from '../result/result.ts'
 
 export const MAX_MESSAGE_BYTES = 64 * 1024
@@ -32,8 +33,15 @@ export type Body =
   | { readonly type: 'pair-offer'; readonly code: string; readonly handle: string }
   /** The invitee agrees, having seen the inviter's name and fingerprint. */
   | { readonly type: 'pair-confirm'; readonly code: string }
-  /** The inviter has added the invitee; both move to their pair room. */
-  | { readonly type: 'pair-accept'; readonly code: string }
+  /**
+   * The inviter has added the invitee; both move to their pair room, named from `secret`
+   * (decision 0026). A Pigeon from before 0026 sends no secret.
+   */
+  | { readonly type: 'pair-accept'; readonly code: string; readonly secret?: string }
+  /** Moving friends from before 0026: the lower id gives the secret, in the old room. */
+  | { readonly type: 'pair-secret'; readonly secret: string }
+  /** The other side has the secret too: both leave the old room. */
+  | { readonly type: 'pair-secret-ok' }
 
 export type BodyType = Body['type']
 
@@ -82,7 +90,10 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']),
   'pair-offer': (b) => isCode(b['code']) && isHandle(b['handle']),
   'pair-confirm': (b) => isCode(b['code']),
-  'pair-accept': (b) => isCode(b['code']),
+  'pair-accept': (b) =>
+    isCode(b['code']) && (b['secret'] === undefined || isPairSecret(b['secret'])),
+  'pair-secret': (b) => isPairSecret(b['secret']),
+  'pair-secret-ok': () => true,
 }
 
 function isBody(value: unknown): value is Body {

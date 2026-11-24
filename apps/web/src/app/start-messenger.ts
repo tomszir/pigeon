@@ -13,10 +13,13 @@ import {
   randomBytes,
   signerFor,
 } from '../platform/crypto/browser-crypto.ts'
+import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
 import { createBrowserTransport } from '../platform/transport/browser-transport.ts'
 
 export const IDENTITY = 'identity'
+/** Set once Pigeon has asked the browser to keep its storage, so it asks only once. */
+const ASKED_TO_KEEP = 'askedToKeepStorage'
 
 export type StartResult =
   | { readonly ok: true; readonly messenger: Messenger; readonly persistent: boolean }
@@ -25,6 +28,8 @@ export type StartResult =
 export async function startMessenger(
   events: MessengerEvents,
   { store, persistent }: { readonly store: Store; readonly persistent: boolean },
+  /** Relay-only is on, but the relay can't be reached (decision 0026). */
+  onNoRelay?: () => void,
 ): Promise<StartResult> {
   if (globalThis.crypto?.subtle === undefined || typeof RTCPeerConnection === 'undefined')
     return {
@@ -36,11 +41,16 @@ export async function startMessenger(
     identity = await generateIdentity()
     await store.set(IDENTITY, identity)
   }
+  // Asked when the identity is made, and once for identities made before Pigeon asked.
+  if (persistent && (await store.get(ASKED_TO_KEEP)) !== true) {
+    await store.set(ASKED_TO_KEEP, true)
+    void keepStorage()
+  }
   const messenger = await createMessenger({
     crypto: createBrowserCrypto(),
     signer: signerFor(identity as Parameters<typeof signerFor>[0]),
     store,
-    transport: createBrowserTransport(),
+    transport: createBrowserTransport(undefined, onNoRelay),
     clock: browserClock,
     random: randomBytes,
     inviteBase: `${location.origin}${location.pathname}`,

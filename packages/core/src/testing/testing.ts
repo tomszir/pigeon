@@ -3,7 +3,13 @@
 import { base32Encode, bytesEqual, concatBytes, utf8Encode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
-import type { ConnectionId, Room, RoomName, Transport } from '../transport/transport.ts'
+import type {
+  ConnectionId,
+  JoinOptions,
+  Room,
+  RoomName,
+  Transport,
+} from '../transport/transport.ts'
 
 /** A 32-byte FNV-1a spread, standing in for SHA-256. Deterministic, not cryptographic. */
 function fakeHash(data: Uint8Array): Uint8Array {
@@ -20,6 +26,7 @@ const fakeSignature = (id: PeerId, data: Uint8Array) => fakeHash(concatBytes(utf
 
 export const fakeCrypto: Crypto = {
   sha256: async (data) => fakeHash(data),
+  hmacSha256: async (key, data) => fakeHash(concatBytes(key, new Uint8Array([0xff]), data)),
   verify: async (signer, signature, data) => bytesEqual(signature, fakeSignature(signer, data)),
 }
 
@@ -43,21 +50,27 @@ interface Member {
 
 /**
  * Rooms shared by every transport made from one network. Delivery is asynchronous and in
- * order, like a data channel; `partition` cuts a transport off as if its network dropped.
+ * order, like a data channel; `disconnect` cuts a transport off as if its network dropped. A
+ * room's password works like Trystero's: peers with different passwords in a room of the same
+ * name never meet, though a relay still sees them all under that name.
  */
 export function createMemoryNetwork() {
-  const rooms = new Map<RoomName, Map<ConnectionId, Member>>()
+  /** Keyed by name and password. */
+  const rooms = new Map<string, Map<ConnectionId, Member>>()
+  /** Every join, as the relays would see it. */
+  const joins: { readonly name: RoomName; readonly options: JoinOptions }[] = []
+  const key = (name: RoomName, password: string | undefined) => `${name}\u0000${password ?? ''}`
   let nextConnection = 0
   const later = (run: () => void) => void Promise.resolve().then(run)
 
   function transport(): Transport & { disconnect(): void } {
-    const joined = new Map<RoomName, Member>()
+    const joined = new Map<string, Member>()
 
-    function leaveRoom(name: RoomName, member: Member) {
-      const members = rooms.get(name)
+    function leaveRoom(at: string, member: Member) {
+      const members = rooms.get(at)
       if (members?.get(member.connection) !== member) return
       members.delete(member.connection)
-      joined.delete(name)
+      joined.delete(at)
       for (const other of members.values())
         later(() => {
           for (const handler of other.leaves) handler(member.connection)
@@ -65,7 +78,9 @@ export function createMemoryNetwork() {
     }
 
     return {
-      async join(name: RoomName): Promise<Room> {
+      async join(name: RoomName, options: JoinOptions = {}): Promise<Room> {
+        joins.push({ name, options })
+        const at = key(name, options.password)
         nextConnection += 1
         const member: Member = {
           connection: `c${nextConnection}`,
@@ -73,8 +88,8 @@ export function createMemoryNetwork() {
           joins: new Set(),
           leaves: new Set(),
         }
-        const members = rooms.get(name) ?? new Map<ConnectionId, Member>()
-        rooms.set(name, members)
+        const members = rooms.get(at) ?? new Map<ConnectionId, Member>()
+        rooms.set(at, members)
         // Announce both ways a few turns on, once the awaiting caller has subscribed.
         const present = [...members.values()]
         void flush(5).then(() => {
@@ -85,7 +100,7 @@ export function createMemoryNetwork() {
           }
         })
         members.set(member.connection, member)
-        joined.set(name, member)
+        joined.set(at, member)
 
         const deliver = (to: Member, message: Uint8Array) =>
           later(() => {
@@ -112,14 +127,20 @@ export function createMemoryNetwork() {
           onMessage: subscribe(member.messages),
           onPeerJoin: subscribe(member.joins),
           onPeerLeave: subscribe(member.leaves),
-          leave: async () => leaveRoom(name, member),
+          leave: async () => leaveRoom(at, member),
         }
       },
       disconnect() {
-        for (const [name, member] of [...joined]) leaveRoom(name, member)
+        for (const [at, member] of [...joined]) leaveRoom(at, member)
       },
     }
   }
 
-  return { transport }
+  /** How many peers are in rooms called `name`, whatever their password: what a relay sees. */
+  const occupants = (name: RoomName): number =>
+    [...rooms.entries()]
+      .filter(([at]) => at.startsWith(`${name}\u0000`))
+      .reduce((sum, [, members]) => sum + members.size, 0)
+
+  return { transport, joins, occupants }
 }

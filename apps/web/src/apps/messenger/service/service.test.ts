@@ -1,4 +1,12 @@
-import { createMemoryNetwork, decodeInvite, fakeCrypto, fakeSigner, flush } from '@pigeon/core'
+import {
+  createMemoryNetwork,
+  decodeInvite,
+  fakeCrypto,
+  fakeSigner,
+  flush,
+  pairRoom,
+  pairRoomOn,
+} from '@pigeon/core'
 import { createRoot } from 'solid-js'
 import { describe, expect, it } from 'vitest'
 import type { Clock } from '../../../platform/clock/clock.ts'
@@ -7,8 +15,8 @@ import { createMessenger, type FriendView, type MessengerEvents, MUTED_FOREVER }
 
 const never = new Promise<void>(() => undefined)
 
-function fakeClock(): Clock & { tick(ms: number): Promise<void> } {
-  let time = 1_000_000
+function fakeClock(start = 1_000_000): Clock & { tick(ms: number): Promise<void> } {
+  let time = start
   let timers: { at: number; resolve: () => void }[] = []
   return {
     now: () => time,
@@ -52,8 +60,8 @@ async function pair(
   network: Network,
   events: { a?: MessengerEvents; b?: MessengerEvents } = {},
   by: 'link' | 'code' = 'link',
+  clock = fakeClock(),
 ) {
-  const clock = fakeClock()
   const a = await messenger(network, 'rook', { clock, ...(events.a ? { events: events.a } : {}) })
   const b = await messenger(network, 'mika', { clock, ...(events.b ? { events: events.b } : {}) })
   await a.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
@@ -146,7 +154,10 @@ describe('the Messenger service', () => {
     b.transport.disconnect()
     await flush()
     await a.messenger.remove(mikaId, { block: false })
-    expect(await a.store.get('farewells')).toEqual([mikaId])
+    // Kept with the secret, so the farewell finds them in their private room (decision 0026).
+    expect(await a.store.get('farewells')).toEqual([
+      { id: mikaId, secret: expect.any(String), moved: true },
+    ])
 
     const back = await messenger(network, 'mika', { store: b.store, clock })
     await flush()
@@ -286,5 +297,194 @@ describe('the Messenger service', () => {
     await clock.tick(31 * 60 * 1000)
     const again = await messenger(network, 'rook', { clock, store })
     expect(again.messenger.invite()).toBeUndefined()
+  })
+})
+
+const NOON = Date.parse('2026-11-24T12:00:00Z')
+const rookId = fakeSigner('rook').id
+const mikaId = fakeSigner('mika').id
+const legacy = () => pairRoom(fakeCrypto, rookId, mikaId)
+const HOUR = 60 * 60 * 1000
+
+/** The pair rooms a transport's joins named, other than invite rooms. */
+const pairJoins = (network: Network) =>
+  network.joins.filter((join) => join.name.startsWith('pair:'))
+
+/** Rook and Mika as friends from before 0026: no secret, meeting in the old room. */
+async function oldFriends(network: Network, clock = fakeClock(NOON)) {
+  const { a, b } = await pair(network, {}, 'link', clock)
+  await a.messenger.close()
+  await b.messenger.close()
+  for (const side of [a, b]) {
+    const friends = (await side.store.get('friends')) as Record<string, unknown>[]
+    await side.store.set(
+      'friends',
+      friends.map(({ secret: _secret, moved: _moved, ...rest }) => rest),
+    )
+  }
+  return { a: a.store, b: b.store, clock }
+}
+
+describe('private rooms (decision 0026)', () => {
+  it('pairs into a room named from a shared secret and locked with it', async () => {
+    const network = createMemoryNetwork()
+    const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
+    const rook = only(b.messenger.friends())
+    const mika = only(a.messenger.friends())
+    expect(mika.secret).toBeDefined()
+    expect(rook.secret).toBe(mika.secret)
+    expect(rook.moved && mika.moved).toBe(true)
+    expect(network.occupants(await legacy())).toBe(0)
+    const today = await pairRoomOn(fakeCrypto, mika.secret ?? '', '2026-11-24')
+    expect(network.occupants(today)).toBe(2)
+    expect(
+      network.joins.filter((join) => join.name === today).every((j) => j.options.password),
+    ).toBe(true)
+    await b.messenger.send(rook.id, 'hi from the new room')
+    await flush()
+    expect(a.messenger.friend(mika.id)?.log.entries.map((entry) => entry.text)).toEqual([
+      'hi from the new room',
+    ])
+  })
+
+  it('shows someone who knows both ids nothing: not when they meet, and no hello', async () => {
+    const network = createMemoryNetwork()
+    await pair(network, {}, 'link', fakeClock(NOON))
+    const name = await legacy()
+    // Eve computes the old room from both ids and waits there.
+    const eve = await network.transport().join(name)
+    const heard: Uint8Array[] = []
+    eve.onMessage((_from, message) => heard.push(message))
+    const met: string[] = []
+    eve.onPeerJoin((peer) => met.push(peer))
+    await flush()
+    expect(eve.peers()).toEqual([])
+    expect(met).toEqual([])
+    expect(heard).toEqual([])
+    // Every other pair room they joined was locked.
+    for (const join of pairJoins(network))
+      if (join.name !== name) expect(join.options.password).toBeDefined()
+    // Neither of them ever joined the old room: Eve is the only one who did.
+    expect(network.joins.filter((join) => join.name === name)).toHaveLength(1)
+  })
+
+  it('moves friends from before the secret the next time they meet', async () => {
+    const network = createMemoryNetwork()
+    const stores = await oldFriends(network)
+    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
+    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
+    await flush()
+    const mika = only(a.messenger.friends())
+    const rook = only(b.messenger.friends())
+    expect(mika.secret).toBeDefined()
+    expect(rook.secret).toBe(mika.secret)
+    expect(mika.moved && rook.moved).toBe(true)
+    // Both have left the old room, and the chat came along.
+    expect(network.occupants(await legacy())).toBe(0)
+    expect(a.messenger.friend(mika.id)?.online).toBe(true)
+    await a.messenger.send(mika.id, 'moved')
+    await flush()
+    expect(b.messenger.friend(rook.id)?.log.entries.map((entry) => entry.text)).toEqual(['moved'])
+
+    // It sticks: after a reload neither goes back to the old room.
+    await a.messenger.close()
+    await b.messenger.close()
+    const before = network.joins.length
+    await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
+    await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
+    await flush()
+    const name = await legacy()
+    expect(network.joins.slice(before).some((join) => join.name === name)).toBe(false)
+  })
+
+  it('keeps waiting in the old room for a friend who hasn’t come back', async () => {
+    const network = createMemoryNetwork()
+    const stores = await oldFriends(network)
+    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
+    await flush()
+    expect(only(a.messenger.friends()).moved).toBeUndefined()
+    expect(network.occupants(await legacy())).toBe(1)
+  })
+
+  it('moves a friend from before 0026 once they update, if they never got a secret', async () => {
+    // Mika paired with a Pigeon from before 0026 and has no secret; Rook made one when pairing.
+    const network = createMemoryNetwork()
+    const stores = await oldFriends(network)
+    const friends = (await stores.a.get('friends')) as Record<string, unknown>[]
+    const kept = 'a'.repeat(52)
+    await stores.a.set(
+      'friends',
+      friends.map((record) => ({ ...record, secret: kept })),
+    )
+    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
+    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
+    await flush()
+    const mika = only(a.messenger.friends())
+    const rook = only(b.messenger.friends())
+    expect(mika.moved && rook.moved).toBe(true)
+    expect(rook.secret).toBe(mika.secret)
+    expect(network.occupants(await legacy())).toBe(0)
+  })
+
+  it('renames the room each UTC day, in both rooms around midnight', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(Date.parse('2026-11-24T22:30:00Z'))
+    const { a, b } = await pair(network, {}, 'link', clock)
+    const secret = only(a.messenger.friends()).secret ?? ''
+    const day24 = await pairRoomOn(fakeCrypto, secret, '2026-11-24')
+    const day25 = await pairRoomOn(fakeCrypto, secret, '2026-11-25')
+    expect(network.occupants(day24)).toBe(2)
+    expect(network.occupants(day25)).toBe(0)
+
+    await clock.tick(HOUR) // 23:30: tomorrow's room too
+    expect(network.occupants(day24)).toBe(2)
+    expect(network.occupants(day25)).toBe(2)
+    await clock.tick(HOUR) // 00:30: still both
+    expect(network.occupants(day24)).toBe(2)
+    await clock.tick(HOUR) // 01:30: only today's
+    expect(network.occupants(day24)).toBe(0)
+    expect(network.occupants(day25)).toBe(2)
+
+    const mika = only(a.messenger.friends())
+    expect(mika.online).toBe(true)
+    await b.messenger.send(only(b.messenger.friends()).id, 'after midnight')
+    await flush()
+    expect(a.messenger.friend(mika.id)?.log.entries.map((entry) => entry.text)).toEqual([
+      'after midnight',
+    ])
+  })
+
+  it('meets across midnight when clocks are 40 minutes apart', async () => {
+    const network = createMemoryNetwork()
+    const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
+    await a.messenger.close()
+    await b.messenger.close()
+    // Rook's clock says 23:40 on the 24th, Mika's 00:20 on the 25th.
+    const rook = await messenger(network, 'rook', {
+      store: a.store,
+      clock: fakeClock(Date.parse('2026-11-24T23:40:00Z')),
+    })
+    await messenger(network, 'mika', {
+      store: b.store,
+      clock: fakeClock(Date.parse('2026-11-25T00:20:00Z')),
+    })
+    await flush()
+    expect(only(rook.messenger.friends()).online).toBe(true)
+  })
+
+  it('goes through the relay only when asked, and remembers it', async () => {
+    const network = createMemoryNetwork()
+    const { a } = await pair(network, {}, 'link', fakeClock(NOON))
+    expect(a.messenger.settings().relayOnly).toBe(false)
+    expect(network.joins.some((join) => join.options.relayOnly)).toBe(false)
+    const before = network.joins.length
+    await a.messenger.setRelayOnly(true)
+    await flush()
+    const after = network.joins.slice(before)
+    expect(after.length).toBeGreaterThan(0)
+    expect(after.every((join) => join.options.relayOnly === true)).toBe(true)
+    expect(only(a.messenger.friends()).online).toBe(true)
+    const again = await messenger(network, 'rook', { store: a.store })
+    expect(again.messenger.settings().relayOnly).toBe(true)
   })
 })

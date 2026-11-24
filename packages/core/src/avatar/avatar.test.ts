@@ -31,8 +31,8 @@ const subtle = (
 
 /** Real SHA-256, so the pinned birds below are the ones every Pigeon draws. */
 const realCrypto: Crypto = {
+  ...fakeCrypto,
   sha256: async (data) => new Uint8Array(await subtle.digest('SHA-256', data)),
-  verify: async () => false,
 }
 
 const digest = (seed: number) =>

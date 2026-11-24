@@ -1,4 +1,10 @@
-import { isPeerId, parsePeerId } from '@pigeon/core'
+import {
+  encodePairSecret,
+  isPeerId,
+  PAIR_SECRET_BYTES,
+  pairPassword,
+  parsePeerId,
+} from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
 import {
   createBrowserCrypto,
@@ -8,6 +14,8 @@ import {
 } from './browser-crypto.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
+const hex = (data: Uint8Array) =>
+  [...data].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 
 describe('browser crypto', () => {
   it('signs with a non-extractable key that verifies under its PeerId, and nothing else', async () => {
@@ -43,5 +51,31 @@ describe('browser crypto', () => {
     expect(parsePeerId(signer.id)).toMatchObject({ ok: true, value: { kind: 'p256' } })
     const signature = await signer.sign(bytes('coo'))
     expect(await createBrowserCrypto().verify(signer.id, signature, bytes('coo'))).toBe(true)
+  })
+
+  it('computes HMAC-SHA256 (RFC 4231, case 2)', async () => {
+    const mac = await createBrowserCrypto().hmacSha256(
+      new TextEncoder().encode('Jefe'),
+      new TextEncoder().encode('what do ya want for nothing?'),
+    )
+    expect(hex(mac)).toBe('5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843')
+  })
+
+  it('derives the pair password as WebCrypto’s own HKDF does', async () => {
+    const secret = new Uint8Array(PAIR_SECRET_BYTES).fill(9)
+    const ikm = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new Uint8Array(0),
+        info: new TextEncoder().encode('pigeon/pair/password'),
+      },
+      ikm,
+      256,
+    )
+    const ours = await pairPassword(createBrowserCrypto(), encodePairSecret(secret))
+    // The password is base32, like a secret: the same encoding of the 32 derived bytes.
+    expect(ours).toBe(encodePairSecret(new Uint8Array(bits)))
   })
 })

@@ -32,6 +32,8 @@ export interface BuddyListProps {
   /** What a friend's right-click menu offers; none for the sample. */
   menuFor?: ((id: string) => readonly MenuEntry[]) | undefined
   onBlockedPeople?: (() => void) | undefined
+  /** File, Always Go Through the Relay: turns relay-only connections on or off (0026). */
+  onRelayOnly?: ((on: boolean) => void) | undefined
   onCopyInvite: () => void
   onAbout: () => void
   onClose: () => void
@@ -152,6 +154,13 @@ export function BuddyList(props: BuddyListProps) {
             label: '&File',
             entries: [
               { label: 'Change my &name...', disabled: !named(), onSelect: () => setEditing(true) },
+              { kind: 'separator' },
+              {
+                label: 'Always Go Through the &Relay',
+                checked: live()?.settings().relayOnly === true,
+                disabled: live() === undefined || props.onRelayOnly === undefined,
+                onSelect: () => props.onRelayOnly?.(live()?.settings().relayOnly !== true),
+              },
               { kind: 'separator' },
               { label: 'C&lose', onSelect: props.onClose },
             ],

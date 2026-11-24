@@ -20,6 +20,16 @@ export interface Room {
   leave(): Promise<void>
 }
 
+export interface JoinOptions {
+  /**
+   * Locks the room: offers are encrypted with a key derived from it, so only peers that know
+   * it can read them or connect (decision 0026).
+   */
+  readonly password?: string
+  /** Connect through the TURN relay only, so the other peer never learns your IP address. */
+  readonly relayOnly?: boolean
+}
+
 export interface Transport {
-  join(name: RoomName): Promise<Room>
+  join(name: RoomName, options?: JoinOptions): Promise<Room>
 }

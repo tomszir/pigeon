@@ -18,6 +18,7 @@ import { SampleConversation } from '../apps/messenger/sample-conversation/sample
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
 import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
+import { HOME_SCREEN_TEXT } from '../apps/reader/home-screen/home-screen-text.ts'
 import { Reader } from '../apps/reader/reader/reader.tsx'
 import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
@@ -30,6 +31,8 @@ export interface Programs extends ShellProps {
   readonly openReadme: () => void
   /** Changelog.txt, the release notes (decision 0025). */
   readonly openChangelog: () => void
+  /** Add to Home Screen.txt, for iPhones in a Safari tab (decision 0026). */
+  readonly openHomeScreen: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
   readonly openAddFriend: (incoming?: Invite) => void
@@ -59,6 +62,8 @@ export function createPrograms(
   env: ShellEnv,
   host: MessengerHost,
   startWithSample: boolean,
+  /** An iPhone in a Safari tab, whose storage lasts 7 days: Add to Home Screen.txt is shown. */
+  needsHomeScreen = false,
 ): Programs {
   const [sample, setSample] = createSignal(startWithSample)
 
@@ -92,6 +97,22 @@ export function createPrograms(
         <Reader
           name="Changelog.txt"
           text={CHANGELOG_TEXT}
+          onClose={window.close}
+          onAbout={openAbout}
+        />
+      ),
+    })
+
+  const openHomeScreen = () =>
+    api.open('home-screen', {
+      title: 'Add to Home Screen.txt - Pigeon Reader',
+      icon: tangoIcon('text-x-generic', 16),
+      bounds: { x: 152, y: 64, width: 450, height: 480 },
+      resizable: true,
+      content: (window) => (
+        <Reader
+          name="Add to Home Screen.txt"
+          text={HOME_SCREEN_TEXT}
           onClose={window.close}
           onAbout={openAbout}
         />
@@ -369,6 +390,20 @@ export function createPrograms(
     },
   }
 
+  // File, Always Go Through the Relay (decision 0026): friends never see your address.
+  const setRelayOnly = async (on: boolean) => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    await messenger.setRelayOnly(on)
+    api.notify({
+      title: on ? 'Going through the relay' : 'Connecting directly',
+      icon: tangoIcon('network-transmit-receive', 16),
+      body: on
+        ? 'Friends no longer see your address. Connections are slower, and need the relay to be reachable.'
+        : 'Pigeon connects straight to friends where it can, which is faster. They can see your address.',
+    })
+  }
+
   const openMessenger = () =>
     api.open('messenger', {
       title: 'Pigeon',
@@ -388,6 +423,7 @@ export function createPrograms(
           onCopyInvite={() => void copyInvite()}
           menuFor={friendMenu}
           onBlockedPeople={openBlocked}
+          onRelayOnly={(on) => void setRelayOnly(on)}
           onAbout={openAbout}
           onClose={window.close}
         />
@@ -428,6 +464,15 @@ export function createPrograms(
     icon32: tangoIcon('text-x-generic', 32),
     onOpen: openChangelog,
   }
+  const homeScreen: Launcher = {
+    id: 'home-screen',
+    label: 'Add to Home Screen.txt',
+    icon16: tangoIcon('text-x-generic', 16),
+    icon22: tangoIcon('text-x-generic', 22),
+    icon32: tangoIcon('text-x-generic', 32),
+    onOpen: openHomeScreen,
+  }
+  const iphone = needsHomeScreen ? [homeScreen] : []
   const addFriend: Launcher = {
     id: 'add-friend',
     label: 'Add a Friend...',
@@ -534,10 +579,15 @@ export function createPrograms(
         return { label: 'Messenger', onPress: openMessenger }
       },
     },
+    connection: {
+      relayOnly: () => host.messenger()?.settings().relayOnly,
+      setRelayOnly: (on) => void setRelayOnly(on),
+    },
     desktopIcons: [
       messenger,
       { ...readme, label: 'Read Me.txt' },
       { ...changelog, label: 'Changelog.txt' },
+      ...iphone,
       letters,
       files,
       source,
@@ -547,11 +597,12 @@ export function createPrograms(
     menu: {
       programs: [messenger, explorer, readme, addFriend],
       places: [{ ...letters, label: 'My Letters' }, files, source],
-      tools: [settings, help, changelog],
+      tools: [settings, help, changelog, ...iphone],
       all: [about, explorer, messenger, readme, settings, changelog],
     },
     openReadme,
     openChangelog,
+    openHomeScreen,
     openMessenger,
     openConversation,
     openAddFriend,
