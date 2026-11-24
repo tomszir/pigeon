@@ -25,6 +25,7 @@ Bundled only ([0009](decisions/0009-bundled-fonts-only.md)): Wine's Tahoma clone
 - CRT effect, on by default and switchable in Display Properties: a live SVG filter on the screen (a slight barrel bend, colour fringing, brightness-aware scanlines and bloom) under the glass's reflection, rounded edges, rolling refresh band and flicker (the last two stopped under `prefers-reduced-motion`). It softens the pixels and costs rendering time ([0013](decisions/0013-crt-effect-as-a-live-svg-filter.md)).
 - Phone layout: one app full-screen with a bottom app switcher, 44px touch targets.
 - `prefers-reduced-motion`: buzz flashes the title bar instead of shaking the window.
+- Nothing selects by accident: the page is `user-select: none`, and only fields and elements marked `data-selectable` (the chat transcript, Read Me's text) can be selected and copied.
 
 ## Menu and taskbar
 

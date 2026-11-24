@@ -63,7 +63,7 @@ export function Transcript(props: { label: string; entries: readonly TranscriptE
         scroller = element
       }}
     >
-      <div role="log" aria-live="polite" class={styles.log}>
+      <div role="log" aria-live="polite" class={styles.log} data-selectable>
         <For each={groupTranscript(props.entries)}>
           {(block) => (
             <Switch>
