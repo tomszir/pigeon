@@ -4,6 +4,32 @@
      `---'       version, newest first
 ==============================================
 
+0.5.0, 25 November 2026
+----------------------------------------------
+  * Every friend has a pigeon of their own: a
+    little bird drawn from their key, the same
+    on every Pigeon, next to their name.
+  * Use Pigeon on your phone and your laptop
+    as the same you. On your first device,
+    choose File, Link a Device, and type the
+    code on the new one. Your friends come
+    along, and they still see one of you.
+  * Friends now meet in a private room only
+    the two of you can find, so nobody
+    watching can tell when you talk, or join
+    in. Friends you already had move there
+    the next time you're both online.
+  * File, Always Go Through the Relay keeps
+    your address from friends, at the cost of
+    a slower connection.
+  * On an iPhone, Pigeon shows how to add it
+    to the Home Screen, so Safari doesn't
+    forget you after 7 days away.
+  * After an update, Pigeon tells you once in
+    a balloon. Click it to see what changed.
+  * Changelog.txt on the desktop lists what's
+    new in each version, newest first.
+
 0.4.0, 24 November 2026
 ----------------------------------------------
   * Adding a friend shows each step as it
