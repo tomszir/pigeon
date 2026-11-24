@@ -9,7 +9,7 @@ export interface TurnServer {
 
 /** Re-asked after this, well inside the credential's 4 hours. */
 const FRESH_MS = 50 * 60 * 1000
-/** A slow or missing endpoint (the dev server has none) must not hold up joining. */
+/** A slow or missing endpoint (offline, or the dev server with PIGEON_TURN_FROM=off) must not hold up joining. */
 const TIMEOUT_MS = 3000
 
 const isServer = (value: unknown): value is TurnServer => {
