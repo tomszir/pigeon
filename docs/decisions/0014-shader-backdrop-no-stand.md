@@ -2,7 +2,7 @@
 
 The monitor floats with no stand in a black room lit by a WebGL backdrop shader. This replaces the stand and the desk from 0012.
 
-- Status: accepted
+- Status: accepted; the monitor's sizes are superseded by [0020](0020-a-slim-monitor-with-nothing-below.md)
 - Date: 2026-11-24
 
 ## Context

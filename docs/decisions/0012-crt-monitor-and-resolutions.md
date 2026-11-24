@@ -2,7 +2,7 @@
 
 The screen sits in a beige 2003 CRT monitor drawn in CSS, its resolution can be 800×600, 1024×768 or 1280×1024, and a CRT effect that never blurs a pixel is on by default. This supersedes part of 0008.
 
-- Status: accepted; the CRT effect is superseded by [0013](0013-crt-effect-as-a-live-svg-filter.md), the stand by [0014](0014-shader-backdrop-no-stand.md)
+- Status: accepted; the monitor's chin, controls and frame sizes are superseded by [0020](0020-a-slim-monitor-with-nothing-below.md); the CRT effect is superseded by [0013](0013-crt-effect-as-a-live-svg-filter.md), the stand by [0014](0014-shader-backdrop-no-stand.md)
 - Date: 2026-11-24
 
 ## Context

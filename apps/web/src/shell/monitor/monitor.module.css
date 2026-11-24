@@ -1,8 +1,8 @@
 /*
  * A beige 2003 CRT in CSS. Every length is a 1× length times --pg-scale, the screen's whole-number
- * scale, so the plastic stays in proportion: 28px sides and 26px top of plastic, a 4px moulded
- * slope into a 14px dark glass border, a 60px chin with the badge and controls (BEZEL in
- * stage-scale.ts). It floats in the dark room with no stand. Light comes from the upper left, as on the desktop's own bevels.
+ * scale, so the plastic stays in proportion: 14px of plastic all round, a 3px moulded slope into
+ * an 8px dark glass border (BEZEL in stage-scale.ts), and nothing below the screen. It floats in
+ * the dark room with no stand. Light comes from the upper left, as on the desktop's own bevels.
  */
 
 .monitor {
@@ -15,9 +15,8 @@
 
 .case {
   position: relative;
-  padding: calc(26px * var(--pg-scale)) calc(28px * var(--pg-scale)) 0;
-  border-radius: calc(18px * var(--pg-scale)) calc(18px * var(--pg-scale))
-    calc(12px * var(--pg-scale)) calc(12px * var(--pg-scale));
+  padding: calc(14px * var(--pg-scale));
+  border-radius: calc(16px * var(--pg-scale));
   background:
     /* a broad sheen from the upper left */
     radial-gradient(ellipse 120% 80% at 18% 0%, rgb(255 255 255 / 45%), rgb(255 255 255 / 0%) 60%),
@@ -44,8 +43,8 @@
 
 /* The plastic slopes down into the glass: in shadow at the top, catching the light at the bottom. */
 .bevel {
-  padding: calc(4px * var(--pg-scale));
-  border-radius: calc(28px * var(--pg-scale));
+  padding: calc(3px * var(--pg-scale));
+  border-radius: calc(13px * var(--pg-scale));
   background: linear-gradient(180deg, #b9b098 0%, #cfc6ad 30%, #e4dcc6 75%, #f3eddc 100%);
   box-shadow:
     inset 0 calc(1px * var(--pg-scale)) calc(2px * var(--pg-scale)) rgb(0 0 0 / 25%),
@@ -54,108 +53,20 @@
 
 /* The dark glass border between the plastic and the picture. */
 .recess {
-  padding: calc(14px * var(--pg-scale));
-  border-radius: calc(24px * var(--pg-scale));
+  padding: calc(8px * var(--pg-scale));
+  border-radius: calc(11px * var(--pg-scale));
   background: linear-gradient(180deg, #1a1b1d 0%, #121314 60%, #1a1b1d 100%);
   box-shadow:
     inset 0 calc(3px * var(--pg-scale)) calc(5px * var(--pg-scale)) rgb(0 0 0 / 75%),
     inset 0 calc(-1px * var(--pg-scale)) 0 rgb(255 255 255 / 8%);
 }
 
-/* The tube: its corners rounded the same whether the CRT effect is on, off, or the power is off. */
+/* The tube: its corners rounded the same whether the CRT effect is on or off. */
 .tube {
+  --pg-tube-radius: calc(10px * var(--pg-scale));
+
   position: relative;
   overflow: hidden;
-  border-radius: calc(16px * var(--pg-scale));
+  border-radius: var(--pg-tube-radius);
   background: #000000;
-}
-
-/* Powered off: a dark grey tube with a faint reflection. */
-.off {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgb(255 255 255 / 6%) 0%, rgb(255 255 255 / 0%) 40%), #1a1c1d;
-}
-
-.chin {
-  display: flex;
-  align-items: center;
-  height: calc(60px * var(--pg-scale));
-  padding: 0 calc(6px * var(--pg-scale));
-  gap: calc(14px * var(--pg-scale));
-  color: #8b836d;
-}
-
-.badge {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--pg-scale));
-  font: 700 calc(13px * var(--pg-scale)) / 1 var(--pg-font-ui);
-  letter-spacing: 0.22em;
-  color: #7d765f;
-  /* Embossed: light below, dark above. */
-  text-shadow:
-    0 calc(1px * var(--pg-scale)) 0 rgb(255 255 255 / 70%),
-    0 calc(-1px * var(--pg-scale)) 0 rgb(0 0 0 / 15%);
-}
-
-.model {
-  font: 700 calc(9px * var(--pg-scale)) / 1 var(--pg-font-ui);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #9a927b;
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--pg-scale));
-  margin-left: auto;
-}
-
-.knob {
-  width: calc(14px * var(--pg-scale));
-  height: calc(6px * var(--pg-scale));
-  border-radius: calc(3px * var(--pg-scale));
-  background: linear-gradient(180deg, #d8d0b9, #c3baa0);
-  box-shadow:
-    inset 0 calc(1px * var(--pg-scale)) 0 rgb(255 255 255 / 60%),
-    0 calc(1px * var(--pg-scale)) calc(1px * var(--pg-scale)) rgb(0 0 0 / 25%);
-}
-
-.led {
-  width: calc(5px * var(--pg-scale));
-  height: calc(5px * var(--pg-scale));
-  margin-left: calc(6px * var(--pg-scale));
-  border-radius: 50%;
-  background: #5ee05a;
-  box-shadow: 0 0 calc(4px * var(--pg-scale)) #5ee05a;
-}
-
-.ledOff {
-  background: #e09a2a;
-  box-shadow: 0 0 calc(3px * var(--pg-scale)) rgb(224 154 42 / 70%);
-}
-
-.power {
-  width: calc(22px * var(--pg-scale));
-  height: calc(22px * var(--pg-scale));
-  padding: 0;
-  border: calc(1px * var(--pg-scale)) solid #b3aa92;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #f3eedf, #cfc6ad 70%);
-  box-shadow:
-    0 calc(1px * var(--pg-scale)) calc(2px * var(--pg-scale)) rgb(0 0 0 / 30%),
-    inset 0 calc(1px * var(--pg-scale)) 0 rgb(255 255 255 / 80%);
-}
-
-.power:active,
-.power[aria-pressed="false"] {
-  background: radial-gradient(circle at 35% 30%, #e2dcc9, #c2b99f 70%);
-  box-shadow: inset 0 calc(1px * var(--pg-scale)) calc(2px * var(--pg-scale)) rgb(0 0 0 / 35%);
-}
-
-.power:focus-visible {
-  outline: calc(1px * var(--pg-scale)) dotted #5b5440;
-  outline-offset: calc(2px * var(--pg-scale));
 }
