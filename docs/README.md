@@ -8,7 +8,7 @@ Pigeon: a serverless peer-to-peer messenger and "Pigeonweb" inside an XP-era fak
 - Run: `mise run dev` (the web app on Vite's dev server). Add `?demo` to the address to see the Messenger's sample conversation.
 - Check: `mise run check` runs Biome, every package's typecheck and unit tests, the scripts' own tests (`node --test`), then `scripts/check-docs`. It must pass before work is done.
 - End to end: `mise run e2e` runs Playwright (`apps/web/e2e/`): two isolated Chromium contexts that pair and chat over the real public Nostr relays, and the phone layout on an emulated touch phone. It needs internet, so it isn't part of `check`; run it after touching pairing, sessions, the transport or the Messenger. Install the browser once with `pnpm --filter web exec playwright install chromium`.
-- Deploy: a push to `main` deploys through Cloudflare Workers Builds ([0017](decisions/0017-deploy-from-cloudflare-workers-builds.md)); the dashboard settings are in [stack.md](stack.md#hosting). By hand: `mise run deploy` after `pnpm --filter web exec wrangler login`.
+- Release and deploy: release-please keeps a release PR open on `main`; merging it tags the version, and Cloudflare Workers Builds deploys the `release` branch it moves ([0021](decisions/0021-releases-with-release-please.md); dashboard settings in [stack.md](stack.md#hosting)). By hand: `mise run deploy` after `pnpm --filter web exec wrangler login`.
 - Trying it by hand: open the dev server in two browser profiles (or a normal and a private window), choose a name in each, and type one's invite code (or paste its link) into the other.
 
 ## Index

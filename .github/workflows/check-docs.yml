@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   check-docs:
+    # A release PR only bumps the version; there's nothing to document.
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -2,7 +2,7 @@
 
 Cloudflare's Git integration builds and deploys main to pigeon.tomszir.com; merging to main is the author's decision to ship.
 
-- Status: accepted
+- Status: accepted; deploying on every push to main is superseded by [0021](0021-releases-with-release-please.md)
 - Date: 2026-11-24
 
 ## Context
