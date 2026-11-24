@@ -47,10 +47,13 @@
   background: radial-gradient(circle, #9a9a8c 1px, transparent 1.5px) 0 50% / 8px 8px repeat-x;
 }
 
-/* Out and back along the dots, bobbing a little on the air. */
+/*
+ * Out and back along the dots, its tip on them: the tip is the 7th of 11 pixel rows, 13px down
+ * at 2px a pixel, so 3px from the top. It lifts a pixel mid-flight, no more.
+ */
 .plane {
   position: absolute;
-  top: 4px;
+  top: 3px;
   left: 0;
   animation: pg-fly 2.4s ease-in-out infinite;
 }
@@ -62,11 +65,11 @@
   }
 
   25% {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
   }
 
   50% {
-    left: calc(100% - 20px);
+    left: calc(100% - 32px);
     transform: translateY(0) scaleX(1);
   }
 
@@ -75,7 +78,7 @@
   }
 
   75% {
-    transform: translateY(-5px) scaleX(-1);
+    transform: translateY(-2px) scaleX(-1);
   }
 
   100% {
@@ -193,7 +196,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .plane {
-    left: calc(50% - 10px);
+    left: calc(50% - 16px);
     animation: none;
   }
 }

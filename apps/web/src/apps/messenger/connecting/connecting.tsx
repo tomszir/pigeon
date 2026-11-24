@@ -29,18 +29,26 @@ export interface ConnectingProps {
   onCancel: () => void
 }
 
-/** A folded paper plane, nose to the right, drawn for Pigeon (decision 0007). */
+/**
+ * A paper plane in big pixels, nose to the right, drawn for Pigeon (decision 0007). Each pixel is
+ * one unit of the viewBox, so it stays crisp at any whole-number scale.
+ */
 function PaperPlane() {
   return (
-    <svg class={styles.plane} width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M1.5 9.5 18.5 2.5 12.5 17.5 9 12z" fill="#ffffff" />
-      <path d="M18.5 2.5 9 12v5l2.6-3.4z" fill="#c9d6ee" />
+    <svg
+      class={styles.plane}
+      width="32"
+      height="22"
+      viewBox="0 0 16 11"
+      shape-rendering="crispEdges"
+      aria-hidden="true"
+    >
+      <path fill="#ffffff" d="M1 1h1v1h-1zM2 2h2v1h-2zM2 3h5v1h-5zM3 4h7v1h-7zM3 5h10v1h-10z" />
+      <path fill="#c9d6ee" d="M4 7h7v1h-7zM3 8h4v1h-4zM3 9h1v1h-1z" />
+      <path fill="#7f97c9" d="M4 6h10v1h-10z" />
       <path
-        d="M1.5 9.5 18.5 2.5 12.5 17.5 9 12zM18.5 2.5 9 12v5l2.6-3.4"
-        fill="none"
-        stroke="#2c4f9e"
-        stroke-width="1.1"
-        stroke-linejoin="round"
+        fill="#24418f"
+        d="M0 0h2v1h-2zM0 1h1v1h-1zM2 1h2v1h-2zM1 2h1v1h-1zM4 2h3v1h-3zM1 3h1v1h-1zM7 3h3v1h-3zM2 4h1v1h-1zM10 4h3v1h-3zM2 5h1v1h-1zM13 5h2v1h-2zM3 6h1v1h-1zM14 6h2v1h-2zM3 7h1v1h-1zM11 7h3v1h-3zM2 8h1v1h-1zM7 8h3v1h-3zM2 9h1v1h-1zM4 9h3v1h-3zM2 10h2v1h-2z"
       />
     </svg>
   )
