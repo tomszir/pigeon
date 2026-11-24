@@ -1,8 +1,74 @@
-# Pigeon
+<div align="center">
+    <img src="apps/web/src/icons/brand/pigeon-128.png" title="Pigeon" alt="Pigeon logo" width="96" />
+    <h1>Pigeon</h1>
+    <p>
+        A messenger with nobody in the middle, inside an early-2000s desktop that never was.
+    </p>
+    <p>
+        <a href="https://github.com/tomszir/pigeon/actions/workflows/ci.yml"><img src="https://github.com/tomszir/pigeon/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+        <a href="https://github.com/tomszir/pigeon/releases/latest"><img src="https://img.shields.io/github/v/release/tomszir/pigeon?sort=semver&amp;label=release" alt="Latest release" /></a>
+        <a href="LICENSE"><img src="https://img.shields.io/github/license/tomszir/pigeon" alt="License: MIT" /></a>
+    </p>
+</div>
 
-A messenger with nobody in the middle: browser-to-browser chat, letters carried by friends, and a peer-hosted "Pigeonweb", all inside an early-2000s desktop that never was.
+<p align="center">
+    <img src="docs/screenshots/1-desktop.png" alt="The Pigeon desktop on a CRT monitor, with the Read Me, a conversation with Mika and the friends list open" width="840" />
+</p>
 
-Start with [docs/](docs/README.md).
+> [!NOTE]
+> Pigeon is in early development. Chat between two browsers works today; files, letters and the Pigeonweb are coming.
+> Try it at **[pigeon.tomszir.com](https://pigeon.tomszir.com)**.
+
+## What it does
+
+It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenger from that world: your browser talks straight to your friends' browsers, with no account, no server keeping your chats and no one reading over your shoulder.
+
+- **Add a friend with a code:** Add a Friend shows a short code like `K7RT-VP2B` to read out, a link and a QR code. Each code works once, for 30 minutes. Before a friend is added, Pigeon shows who answered and their fingerprint, so you can check it's really them.
+- **Chat like it's 2003:** messages, buzzes that shake the window, "is writing a message…", away and busy, and a note when a friend comes online or goes offline.
+- **Chats that catch up:** conversations are kept in your browser, signed by both sides, and fill in what you missed the next time you're both online.
+- **A whole desktop:** windows you can drag, a taskbar, a CRT monitor, and a 3D maze or pigeons in flight when you turn it off.
+- **The Kestrel Pocket on phones:** on a phone, Pigeon runs on a 2003 handheld with soft keys, an LCD screen and a buzz you can feel.
+
+<table>
+    <tr>
+        <td width="50%"><img src="docs/screenshots/2-pocket-today.png" alt="The Kestrel Pocket's Today screen" /></td>
+        <td width="50%"><img src="docs/screenshots/4-pocket-chat.png" alt="A conversation on the Kestrel Pocket" /></td>
+    </tr>
+    <tr>
+        <td><img src="docs/screenshots/3-add-a-friend.png" alt="Choosing the name friends will see" /></td>
+        <td><img src="docs/screenshots/5-maze.png" alt="The 3D maze screen saver" /></td>
+    </tr>
+</table>
+
+## Try it
+
+Open [pigeon.tomszir.com](https://pigeon.tomszir.com) in two browsers (or on your phone and your laptop), choose a name in each, and type one's invite code into the other. Add `?demo` to the address to see the sample conversation.
+
+## How it works
+
+Browsers connect directly over WebRTC. To find each other, they post small signed notes on public Nostr relays through [Trystero](https://github.com/dmotz/trystero), and the relays only ever see that two strangers want to meet. Everything after that, messages included, goes browser to browser, encrypted.
+
+Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. The protocol is in [docs/protocol.md](docs/protocol.md).
+
+Honest P2P has a cost: a friend has to be online for a message to arrive. Letters, sealed messages carried by mutual friends until the recipient is back, are the plan for that.
+
+## Privacy
+
+Pigeon has no backend. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. Clearing the site's data deletes your identity and chats for good.
+
+## Browser support
+
+Pigeon is tested in Chromium on the desktop and on emulated phones. It needs WebRTC, IndexedDB and WebCrypto, which every current browser has. Ed25519 keys are used where the browser supports them, with P-256 as the fallback.
+
+## Development
+
+```sh
+mise install && mise run setup   # tools, dependencies and git hooks
+mise run dev                     # the web app on Vite's dev server
+mise run check                   # lint, types, unit tests and docs
+```
+
+Start with [docs/README.md](docs/README.md), then see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and how releases work.
 
 ## Credits
 
@@ -13,3 +79,7 @@ Start with [docs/](docs/README.md).
 - Icons from the [Tango Desktop Project](http://tango.freedesktop.org/) (public domain).
 
 Not affiliated with or endorsed by Microsoft.
+
+## License
+
+The code is [MIT](LICENSE). The vendored fonts, icons, styling values and wallpaper above keep their own licences.
