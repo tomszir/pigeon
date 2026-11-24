@@ -1,0 +1,192 @@
+/* Connecting: the era's "copying files" box, with a pigeon instead of sheets of paper. */
+
+.connecting {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 14px;
+  padding: 14px 16px 10px;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* You, the route, your friend. */
+.scene {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.end {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  width: 84px;
+  margin: 0;
+}
+
+.end figcaption {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--pg-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  flex-grow: 1;
+  height: 32px;
+  background: radial-gradient(circle, #9a9a8c 1px, transparent 1.5px) 0 50% / 8px 8px repeat-x;
+}
+
+/* One way along the dots, tip on them, fading in at your end and out at your friend's. */
+.plane {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  opacity: 0;
+  animation: pg-fly 2.6s ease-in-out infinite;
+}
+
+@keyframes pg-fly {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    left: calc(100% - 24px);
+    opacity: 0;
+  }
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.mark {
+  position: relative;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+/* A green tick: the two strokes of a rotated corner. */
+.done .mark::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--pg-text-ok);
+  border-width: 0 2px 2px 0;
+  transform: rotate(40deg);
+}
+
+/* The step being worked on: an arrow, and bold. */
+.current {
+  font-weight: 700;
+}
+
+.current .mark::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  border: 4px solid transparent;
+  border-left: 6px solid var(--pg-frame-blue);
+}
+
+.pending {
+  color: var(--pg-text-disabled);
+}
+
+.pending .mark::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.countdown {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  line-height: 15px;
+}
+
+.hint img {
+  flex-shrink: 0;
+}
+
+.buttons {
+  display: flex;
+  justify-content: center;
+  margin-top: auto;
+}
+
+/* Phone: the same page, centred, with Cancel full width along the bottom. */
+.phone {
+  padding: 24px 12px 12px;
+}
+
+.phone .content {
+  margin: auto 0;
+  padding: 0 4px;
+}
+
+.phone .buttons {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wide {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plane {
+    left: calc(50% - 12px);
+    opacity: 1;
+    animation: none;
+  }
+}

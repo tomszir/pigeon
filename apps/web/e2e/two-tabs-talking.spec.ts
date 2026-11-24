@@ -89,7 +89,7 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   // Sam pairs with Rook by typing a fresh code instead, and is told to check the fingerprint.
   await chooseName(samAdd, 'Sam')
   // Rook's link is used up, so nobody answers; Sam gives up waiting.
-  await expect(samAdd).toContainText('Looking for whoever made this invite')
+  await expect(samAdd).toContainText('Looking for whoever made')
   await samAdd.getByRole('button', { name: 'Cancel' }).click()
   await rookChat.getByRole('button', { name: 'Close' }).click()
   await addFriend.getByRole('button', { name: 'Make a new invite' }).click()

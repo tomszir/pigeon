@@ -19,6 +19,7 @@ import {
   MAX_PERSONAL_MESSAGE_LENGTH,
   type NewFriend,
   type OpenResult,
+  type OpenStep,
   openInvite,
   type PairEvent,
   type PairSession,
@@ -352,7 +353,11 @@ export async function createMessenger(deps: MessengerDeps) {
      * Answers someone's invite and waits to hear who they are. Nothing is agreed until the
      * returned offer is confirmed, which adds the friend on both sides.
      */
-    async open(target: Invite, until: Promise<void>): Promise<OpenedInvite> {
+    async open(
+      target: Invite,
+      until: Promise<void>,
+      onStep?: (step: OpenStep) => void,
+    ): Promise<OpenedInvite> {
       if (target.code === invite()?.code || target.fingerprint === selfFingerprint)
         return { ok: false, error: 'own' }
       const result = await openInvite({
@@ -363,6 +368,7 @@ export async function createMessenger(deps: MessengerDeps) {
         now: clock.now,
         invite: target,
         until,
+        ...(onStep === undefined ? {} : { onStep }),
       })
       if (!result.ok) return result
       const { offer } = result

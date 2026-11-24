@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fingerprint } from '../identity/identity.ts'
 import { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from '../testing/testing.ts'
 import { INVITE_CODE_BYTES, inviteCode } from './invite.ts'
-import { hostInvite, type NewFriend, openInvite } from './pairing.ts'
+import { hostInvite, type NewFriend, type OpenStep, openInvite } from './pairing.ts'
 
 const rook = fakeSigner('rook')
 const mika = fakeSigner('mika')
@@ -34,6 +34,39 @@ async function host(network: ReturnType<typeof createMemoryNetwork>, signer = ro
 }
 
 describe('the invite handshake', () => {
+  it('says how far it has got: on the relays, then in touch with the inviter', async () => {
+    const network = createMemoryNetwork()
+    const steps: OpenStep[] = []
+    const alone = stopper()
+    const lonely = openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code },
+      until: alone.until,
+      onStep: (step) => steps.push(step),
+    })
+    await flush()
+    expect(steps).toEqual(['listening'])
+    alone.stop()
+    expect(await lonely).toEqual({ ok: false, error: 'stopped' })
+
+    await host(network)
+    steps.length = 0
+    const opened = await openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code },
+      until: never,
+      onStep: (step) => steps.push(step),
+    })
+    expect(opened.ok).toBe(true)
+    expect(steps).toEqual(['listening', 'reached'])
+  })
+
   it('shows who answered before anything is agreed, then pairs both ways', async () => {
     const network = createMemoryNetwork()
     const paired = await host(network)

@@ -45,6 +45,7 @@ export type {
   Offer,
   OpenInviteOptions,
   OpenResult,
+  OpenStep,
 } from './pairing/pairing.ts'
 export { hostInvite, openInvite } from './pairing/pairing.ts'
 export type { Err, Ok, Result } from './result/result.ts'

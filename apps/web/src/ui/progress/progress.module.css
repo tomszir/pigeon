@@ -16,11 +16,13 @@
   background: var(--pg-grad-progress);
 }
 
-/* Three blocks sliding left to right on a two-second loop. */
+/* Three blocks sliding left to right on a two-second loop, across however wide the bar is. */
 .slider {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: -30px;
   width: 28px;
-  height: 100%;
-  margin-left: 2px;
   border-radius: 2px;
   background: var(--pg-grad-progress);
   animation: pg-progress-slide 2s linear infinite;
@@ -28,16 +30,17 @@
 
 @keyframes pg-progress-slide {
   from {
-    transform: translateX(-30px);
+    left: -30px;
   }
 
   to {
-    transform: translateX(var(--pg-progress-width, 220px));
+    left: 100%;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .slider {
+    left: 2px;
     animation: none;
   }
 }
