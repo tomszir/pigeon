@@ -7,7 +7,7 @@ export interface TurnServer {
   credential?: string
 }
 
-/** Re-asked after this, well inside the credential's 24 hours. */
+/** Re-asked after this, well inside the credential's 4 hours. */
 const FRESH_MS = 50 * 60 * 1000
 /** A slow or missing endpoint (the dev server has none) must not hold up joining. */
 const TIMEOUT_MS = 3000

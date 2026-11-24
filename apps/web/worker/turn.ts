@@ -14,8 +14,31 @@ export interface IceServer {
   credential?: string
 }
 
-/** How long a credential lasts. A tab asks again each time it joins a room. */
-export const TURN_TTL_SECONDS = 24 * 60 * 60
+/**
+ * How long a credential lasts: short, so one that leaks can't be used for long. A tab asks again
+ * each time it joins a room; a room joined earlier keeps the credential it joined with.
+ */
+export const TURN_TTL_SECONDS = 4 * 60 * 60
+
+/**
+ * A tag for TURN analytics, so one visitor using a lot of relay stands out: the country and a
+ * keyed hash of the address. The hash can't be turned back into the address without the secret.
+ */
+export async function visitorTag(request: Request, secret: string): Promise<string> {
+  const address = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  const country = (request as { cf?: { country?: unknown } }).cf?.country
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(address)))
+  const hex = Array.from(mac.slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${typeof country === 'string' ? country : 'XX'}-${hex}`
+}
 
 /** Browsers stall on port 53 (DNS), so Cloudflare advises leaving those addresses out. */
 const usable = (url: string) => !/:53(\?|$)/.test(url)
@@ -41,17 +64,21 @@ export async function handleTurn(
   if (site !== null && site !== 'same-origin') return json({ error: 'forbidden' }, 403)
   if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json({ error: 'not configured' }, 503)
 
-  const upstream = await fetchImpl(
-    `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
-    {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
-        'content-type': 'application/json',
+  const token = env.TURN_KEY_API_TOKEN
+  const generate = (body: object) =>
+    fetchImpl(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify({ ttl: TURN_TTL_SECONDS }),
-    },
-  )
+    )
+  const customIdentifier = await visitorTag(request, token)
+  let upstream = await generate({ ttl: TURN_TTL_SECONDS, customIdentifier })
+  // Cloudflare documents the tag on its plain generate call; if this one refuses it, go untagged
+  // rather than leave the visitor without TURN.
+  if (upstream.status === 400) upstream = await generate({ ttl: TURN_TTL_SECONDS })
   if (!upstream.ok) return json({ error: 'upstream failed' }, 502)
   const { iceServers } = (await upstream.json()) as { iceServers?: IceServer[] }
   const servers = (iceServers ?? [])
