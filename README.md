@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> Pigeon is in early development. Chat between two browsers works today; files, letters and the Pigeonweb are coming.
+> Pigeon is in early development. Chatting with friends, on as many of your devices as you like, works today; files, letters and the Pigeonweb are coming.
 > Try it at **[pigeon.tomszir.com](https://pigeon.tomszir.com)**.
 
 ## What it does
@@ -26,6 +26,9 @@ It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenge
 - **Add a friend with a code:** Add a Friend shows a short code like `K7RT-VP2B` to read out, a link and a QR code. Each code works once, for 30 minutes. Before a friend is added, Pigeon shows who answered and their fingerprint, so you can check it's really them.
 - **Chat like it's 2003:** messages, buzzes that shake the window, "is writing a message…", away and busy, and a note when a friend comes online or goes offline.
 - **Chats that catch up:** conversations are kept in your browser, signed by both sides, and fill in what you missed the next time you're both online.
+- **A pigeon for everyone:** every friend gets a pixel bird drawn from their key, the same on every Pigeon, shown next to their fingerprint.
+- **Your phone and your laptop:** link a second device in person with a code and a 6-digit check, and it's you there too, with your friends. Your first device links and removes devices.
+- **What's new:** after an update, a balloon offers Changelog.txt, release notes written for people.
 - **A whole desktop:** windows you can drag, a taskbar, a CRT monitor, and a 3D maze or pigeons in flight when you turn it off.
 - **The Kestrel Pocket on phones:** on a phone, Pigeon runs on a 2003 handheld with soft keys, an LCD screen and a buzz you can feel.
 
@@ -48,13 +51,13 @@ Open [pigeon.tomszir.com](https://pigeon.tomszir.com) in two browsers (or on you
 
 Browsers connect directly over WebRTC. To find each other, they post small signed notes on public Nostr relays through [Trystero](https://github.com/dmotz/trystero), and the relays only ever see that two strangers want to meet. Everything after that, messages included, goes browser to browser, encrypted.
 
-Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. The protocol is in [docs/protocol.md](docs/protocol.md).
+Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. Friends meet in a room named and locked by a secret only the two of them hold, renamed every day, so knowing two people's ids says nothing about when they talk. Several devices are one person through a device log your first device signs. The protocol is in [docs/protocol.md](docs/protocol.md).
 
 Honest P2P has a cost: a friend has to be online for a message to arrive. Letters, sealed messages carried by mutual friends until the recipient is back, are the plan for that.
 
 ## Privacy
 
-Pigeon keeps nothing on a server. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. When two devices can't reach each other directly, as a phone on mobile data often can't, Cloudflare's TURN relay passes the encrypted packets along without being able to read them. Clearing the site's data deletes your identity and chats for good.
+Pigeon keeps nothing on a server. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. When two devices can't reach each other directly, as a phone on mobile data often can't, Cloudflare's TURN relay passes the encrypted packets along without being able to read them; Always Go Through the Relay uses it for everything, so friends never see your IP address. Clearing the site's data deletes your identity and chats for good.
 
 ## Browser support
 
