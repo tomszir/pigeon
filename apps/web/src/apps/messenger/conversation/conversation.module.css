@@ -1,5 +1,16 @@
 /* A conversation window. */
 
+.header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 4px;
+}
+
+.header > span {
+  margin: 3px 0;
+}
+
 .to {
   margin: 0;
   padding: 3px 5px;

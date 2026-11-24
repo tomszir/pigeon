@@ -2,6 +2,7 @@
 // It reads and writes storage, runs core's protocol over the transport, and exposes Solid state
 // the windows draw. Everything it touches comes in through platform interfaces.
 import {
+  avatarFor,
   type ChatLog,
   type Crypto,
   emptyLog,
@@ -549,6 +550,8 @@ export async function createMessenger(deps: MessengerDeps) {
       note(id, 'buzz-out')
     },
     fingerprintOf: (id: PeerId) => fingerprint(crypto, id),
+    /** The traits of someone's pixel pigeon (docs/design.md, Avatars). */
+    avatarOf: (id: PeerId) => avatarFor(crypto, id),
     markRead: (id: PeerId) => {
       if (state.friends[id]?.unread !== 0) setState('friends', id, 'unread', 0)
     },

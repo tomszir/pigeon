@@ -1,0 +1,16 @@
+.avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 2px;
+  border: 1px solid var(--pg-field-border);
+  background: #ffffff;
+  box-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
+}
+
+.avatar img {
+  display: block;
+  image-rendering: pixelated;
+}

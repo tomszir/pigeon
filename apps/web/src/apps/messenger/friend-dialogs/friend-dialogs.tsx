@@ -8,6 +8,7 @@ import { classes } from '../../../ui/classes/classes.ts'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
+import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import { clockTime } from '../live-conversation/live-conversation.tsx'
 import { type FriendView, type Messenger, MUTED_FOREVER } from '../service/service.ts'
 import styles from './friend-dialogs.module.css'
@@ -69,6 +70,12 @@ export function FriendProfile(props: FriendDialogProps & { onRename: () => void 
             </>
           }
         >
+          <FriendAvatar
+            messenger={props.messenger}
+            id={props.friend}
+            name={view().name}
+            size={64}
+          />
           <dl class={styles.facts}>
             <dt>Name</dt>
             <dd>

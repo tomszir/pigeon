@@ -5,6 +5,7 @@ import { createEffect, Show } from 'solid-js'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import { Conversation } from '../conversation/conversation.tsx'
+import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import type { FriendView, Messenger, Note } from '../service/service.ts'
 
 export interface LiveConversationProps {
@@ -102,6 +103,14 @@ export function LiveConversation(props: LiveConversationProps) {
         <Conversation
           name={current().name}
           fingerprint={formatFingerprint(current().fingerprint)}
+          avatar={
+            <FriendAvatar
+              messenger={props.messenger}
+              id={props.friend}
+              name={current().name}
+              size={32}
+            />
+          }
           route={current().online ? 'direct, encrypted' : 'offline'}
           connected={current().online}
           entries={transcriptFor(current(), props.messenger.self, props.messenger.profile().handle)}

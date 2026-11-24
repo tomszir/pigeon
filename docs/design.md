@@ -75,6 +75,8 @@ Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/ava
 
 That is about 90 billion birds. They're drawn at 32×32 by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, with a sentence for alt text ("A slate pigeon with a copper neck, wearing a flat cap and a scarf, on a wire").
 
+Where it shows: `ui/avatar` draws a bird in a white display-picture frame, and the Messenger works out the traits (`avatarOf`, `apps/messenger/friend-avatar/`). A conversation shows the friend's bird at 32px before its "To:" line, and their profile at 64px above the facts, its description as the alt text and tooltip. The buddy list and the pairing screen come next.
+
 The generated bird is the only avatar: nobody can wear someone else's face, and there is nothing to upload, store, sync or moderate. A bird is only about 32 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it.
 
 Birds stay put:
