@@ -44,3 +44,11 @@ run = [
   "node --test scripts/*.test.ts",
   "scripts/check-docs",
 ]
+
+[tasks.e2e]
+description = "Playwright end-to-end tests in real browsers over the public relays (needs internet)"
+run = "pnpm --filter web e2e"
+
+[tasks.deploy]
+description = "Build and deploy to pigeon.tomszir.com (the author runs this, never an agent; decision 0005)"
+run = "pnpm --filter web deploy"

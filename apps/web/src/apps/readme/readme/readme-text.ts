@@ -14,13 +14,13 @@ When a friend is offline, a mutual friend
 carries a sealed letter until they're back.
 
 WHAT WORKS TODAY
-  This is the desktop: windows, menus and
-  the taskbar. Talking to friends arrives in
-  the next version, so the Messenger is
-  empty for now. Its sample conversation
-  shows how it will look.
+  Chat with friends browser to browser:
+  messages, buzzes, "is writing..." and
+  away/busy. Chats are kept in this browser
+  and catch up when you're both online.
+  Files, letters and pages come later.
 
-HOW IT WILL WORK
+HOW IT WORKS
   1. Double-click "Pigeon Messenger"
   2. Click "Add a Friend", send the link
   3. Say hi. Buzz them if they're slow.

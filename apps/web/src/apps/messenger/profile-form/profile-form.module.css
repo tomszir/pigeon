@@ -1,0 +1,24 @@
+/* Name and personal message, stacked in a narrow window. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.intro {
+  margin: 0;
+  line-height: 14px;
+}
+
+.error {
+  margin: 0;
+  color: var(--pg-text-error);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}

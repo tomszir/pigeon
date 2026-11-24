@@ -1,9 +1,15 @@
+import { createSignal } from 'solid-js'
 import { render } from 'solid-js/web'
 import '../ui/tokens.css'
+import type { Messenger } from '../apps/messenger/service/service.ts'
+import { copyText } from '../platform/clipboard/browser-clipboard.ts'
+import { browserClock } from '../platform/clock/browser-clock.ts'
 import { createShell } from '../shell/shell/shell.tsx'
 import { tangoIcon } from '../ui/icons/icons.ts'
+import { takeInviteFromAddress } from './address-invite.ts'
 import { createBrowserEnv, loadFonts } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
+import { startMessenger } from './start-messenger.ts'
 
 const root = document.getElementById('root')
 if (root === null) throw new Error('index.html is missing #root')
@@ -13,19 +19,56 @@ await loadFonts()
 render(() => {
   const env = createBrowserEnv()
   const { api, Shell } = createShell(env)
+  const [messenger, setMessenger] = createSignal<Messenger | undefined>(undefined)
+  const [problem, setProblem] = createSignal<string | undefined>(undefined)
   // ?demo opens the Desktop board's sample conversation (docs/roadmap.md, M1).
   const sample = new URLSearchParams(window.location.search).has('demo')
-  const programs = createPrograms(api, env, sample)
+  const incoming = takeInviteFromAddress()
+  const programs = createPrograms(
+    api,
+    env,
+    { messenger, problem, copyText, sleep: browserClock.sleep },
+    sample,
+  )
 
-  programs.openReadme()
+  if (incoming === undefined) programs.openReadme()
   if (sample) {
     programs.openMessenger()
     programs.openConversation('mika')
   }
+
+  void startMessenger(programs.messengerEvents)
+    .then((started) => {
+      if (!started.ok) {
+        setProblem(started.problem)
+        return
+      }
+      setMessenger(started.messenger)
+      // pagehide fires for closing, reloading and navigating away, including on phones.
+      window.addEventListener('pagehide', () => started.messenger.goodbye())
+      if (!started.persistent)
+        api.notify({
+          title: 'Pigeon will forget you',
+          icon: tangoIcon('dialog-warning', 16),
+          body: 'This browser won’t let Pigeon store anything, so your name and friends last only until you close the tab.',
+        })
+      if (incoming !== undefined) {
+        programs.openMessenger()
+        programs.openAddFriend(incoming)
+      }
+    })
+    .catch((error: unknown) => {
+      setProblem('Pigeon couldn’t start in this browser.')
+      console.error(error)
+    })
+
   api.notify({
     title: 'Welcome to Pigeon',
     icon: tangoIcon('dialog-information', 16),
-    body: 'Have a look at Read Me.txt first. Pigeon works offline for now.',
+    body:
+      incoming === undefined
+        ? 'Have a look at Read Me.txt first, or open Pigeon Messenger to add a friend.'
+        : `${incoming.handle} sent you an invite. Choose Pair to become friends.`,
   })
 
   return <Shell {...programs} />

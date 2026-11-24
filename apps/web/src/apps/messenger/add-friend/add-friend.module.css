@@ -1,0 +1,48 @@
+/* Add a Friend: the invite to share above, a pasted link below. */
+
+.addFriend {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.share {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text {
+  margin: 0;
+  line-height: 14px;
+}
+
+.note {
+  color: var(--pg-text-ok);
+}
+
+.error {
+  color: var(--pg-text-error);
+}
+
+.fingerprint {
+  margin: 6px 0 0;
+  color: var(--pg-text-muted);
+}

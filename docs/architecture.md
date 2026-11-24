@@ -8,28 +8,43 @@ The pnpm monorepo, its layers, and the import rules Biome enforces.
 packages/
   core/         @pigeon/core: pure TypeScript, no browser or Node APIs. One folder
                 per feature under src/, each holding its files and their tests:
+      encoding/   UTF-8, base32, hex and canonical JSON.
+      identity/   PeerId, fingerprints, pair-room names, and the Crypto and Signer
+                  interfaces the platform implements.
       transport/  the Transport and Room interfaces (decision 0002).
+      messages/   signed envelopes: body types, shape checks, the 64 KB limit.
+      chat/       signed append-only chat logs and the pair session that syncs them.
+      pairing/    invite links and the invite handshake.
       windows/    window-manager state.
       result/     the Result type.
-                Protocol codecs, signed append-only logs, letter rules and
-                pigeon:// resolution arrive as their own folders.
+      testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
+                  in-memory network. Never used outside tests.
+                Letter rules and pigeon:// resolution arrive as their own folders.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse.
 apps/
   web/          The static site (Vite + Solid).
     src/
-      platform/ The only code that touches browser APIs: crypto, storage, transport,
-                clock, audio, files. Each is an interface plus a browser implementation.
+      platform/ The only code that touches browser APIs, one folder per concern:
+                crypto/ (WebCrypto keys behind core's Crypto and Signer), storage/
+                (a key-value Store over IndexedDB, plus a memory one), transport/
+                (Trystero), clock/, clipboard/. Each is an interface plus a
+                browser-*.ts implementation; audio and files come later.
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
                 and tokens.css, the only global stylesheet.
       shell/    Stage and scaling, desktop, taskbar, Pigeon menu, tray and balloons,
                 the window layer and the phone layout. createShell() returns the
                 ShellApi that app/ hands to programs.
       apps/     One folder per app (messenger, explorer, builder, letters, files), each
-                holding one folder per component: apps/<app>/<component>/.
+                holding one folder per component: apps/<app>/<component>/. The
+                Messenger's state lives in messenger/service/: it loads friends and
+                chats from the Store, runs a core pair session per friend, hosts and
+                answers invites, and exposes Solid state the windows draw.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
-                (app/programs.tsx).
+                (app/programs.tsx). start-messenger.ts makes or loads the identity
+                and builds the Messenger; address-invite.ts reads an invite link
+                from the address bar once and removes it.
   lighthouse/   The always-on Node peer: mirrors pages, carries letters, hosts the lobby.
                 Reuses @pigeon/core with Node implementations of the platform interfaces.
 ```

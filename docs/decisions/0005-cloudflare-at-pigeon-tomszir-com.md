@@ -2,7 +2,7 @@
 
 The web app is a static build served by Cloudflare Workers static assets on the `pigeon.tomszir.com` subdomain.
 
-- Status: accepted
+- Status: accepted; the manual deploy step is superseded by [0017](0017-deploy-from-cloudflare-workers-builds.md)
 - Date: 2026-11-24
 
 ## Context

@@ -1,0 +1,6 @@
+/* A QR code on a white quiet zone, framed like a sunken field. */
+
+.qrCode {
+  display: block;
+  border: 1px solid var(--pg-field-border);
+}

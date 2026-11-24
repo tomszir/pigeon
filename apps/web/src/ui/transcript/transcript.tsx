@@ -15,7 +15,8 @@ export type TranscriptEntry =
       readonly color?: string
     }
   | {
-      readonly kind: 'buzz' | 'letter' | 'system' | 'error'
+      /** `typing` is the live "is writing a message..." line, drawn last. */
+      readonly kind: 'buzz' | 'letter' | 'system' | 'error' | 'typing'
       readonly id: string
       readonly text: string
     }
