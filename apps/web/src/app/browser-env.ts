@@ -44,6 +44,20 @@ export function createBrowserEnv(): ShellEnv {
   }
 }
 
+/**
+ * An iPhone or iPad in a browser tab rather than opened from the Home Screen, where Safari clears
+ * a site's storage after 7 days without a visit, identity and all (decision 0026).
+ */
+export function needsHomeScreen(): boolean {
+  const ios =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const standalone =
+    (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches
+  return ios && !standalone
+}
+
 /** Waits for the bundled fonts so the first frame is drawn in them (decision 0009). */
 export async function loadFonts(): Promise<void> {
   await Promise.all([

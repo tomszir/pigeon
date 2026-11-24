@@ -2,7 +2,7 @@
 
 Friends meet in a room named, and locked, by a secret only the two of them hold, renamed every day, instead of one anyone can compute from their ids.
 
-- Status: proposed; accepted when M15 starts
+- Status: accepted
 - Date: 2026-11-24
 
 ## Context

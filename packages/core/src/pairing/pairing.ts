@@ -2,7 +2,8 @@
 // invite joins and sends a signed pair-request with the code and their name; the inviter answers
 // pair-offer with its own name. The invitee now sees who answered and their fingerprint, checked
 // against the link's when there is one. Only when they agree does pair-confirm go back, and the
-// inviter's pair-accept close it. A code pairs once.
+// inviter's pair-accept close it, carrying the pair secret their room is named from (decision
+// 0026). A code pairs once.
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { fingerprint, type PeerId } from '../identity/identity.ts'
 import { type Body, openEnvelope, sealEnvelope } from '../messages/envelope.ts'
@@ -26,7 +27,9 @@ export interface HostInviteOptions extends Common {
   readonly code: string
   /** Resolves after `ms`; the platform clock provides it. */
   readonly sleep: (ms: number) => Promise<void>
-  readonly onPaired: (friend: NewFriend) => void
+  /** A new pair secret (`encodePairSecret` of 32 random bytes), made when someone is added. */
+  readonly newSecret: () => string
+  readonly onPaired: (friend: NewFriend, secret: string) => void
   /** People this side has blocked: their requests go unanswered. */
   readonly refuse?: (id: PeerId) => boolean
 }
@@ -63,8 +66,9 @@ export async function hostInvite(options: HostInviteOptions): Promise<() => Prom
     const friend = asked.get(from)
     if (body.type !== 'pair-confirm' || friend?.id !== sender) return
     done = true
-    void send(from, { type: 'pair-accept', code }).then(() => {
-      options.onPaired(friend)
+    const secret = options.newSecret()
+    void send(from, { type: 'pair-accept', code, secret }).then(() => {
+      options.onPaired(friend, secret)
       // Give the accept a moment to leave before the room goes.
       void options.sleep(2000).then(stop)
     })
@@ -96,9 +100,16 @@ export interface Offer {
   readonly fingerprint: string
   /** The answer's fingerprint matched the link's. A typed code can't be checked this way. */
   readonly checked: boolean
-  /** Agrees to be friends; resolves once the inviter has added you, or `until` gives up. */
-  confirm(until: Promise<void>): Promise<boolean>
+  /**
+   * Agrees to be friends; resolves once the inviter has added you, with the pair secret they
+   * sent (none from a Pigeon before 0026), or `false` if `until` gives up first.
+   */
+  confirm(until: Promise<void>): Promise<Accepted | false>
   cancel(): Promise<void>
+}
+
+export interface Accepted {
+  readonly secret?: string | undefined
 }
 
 export type OpenResult =
@@ -124,7 +135,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
   }
 
   let impostor = false
-  let onAccept: ((sender: PeerId) => void) | undefined
+  let onAccept: ((sender: PeerId, secret: string | undefined) => void) | undefined
   let resolveOffer: ((result: OpenResult) => void) | undefined
   const offered = new Promise<OpenResult>((resolve) => {
     resolveOffer = resolve
@@ -133,7 +144,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
   const off = listen(options.crypto, room, (from, sender, body) => {
     if (sender === signer.id || !('code' in body) || body.code !== code) return
     if (body.type === 'pair-accept') {
-      onAccept?.(sender)
+      onAccept?.(sender, body.secret)
       return
     }
     if (body.type !== 'pair-offer') return
@@ -150,9 +161,9 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
           fingerprint: print,
           checked: invite.fingerprint !== undefined,
           async confirm(until) {
-            const accepted = await new Promise<boolean>((resolve) => {
-              onAccept = (who) => {
-                if (who === friend.id) resolve(true)
+            const accepted = await new Promise<Accepted | false>((resolve) => {
+              onAccept = (who, secret) => {
+                if (who === friend.id) resolve({ secret })
               }
               void until.then(() => resolve(false))
               void send(from, { type: 'pair-confirm', code })

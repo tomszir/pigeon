@@ -4,6 +4,8 @@ import type { PeerId } from './identity.ts'
 
 export interface Crypto {
   sha256(data: Uint8Array): Promise<Uint8Array>
+  /** HMAC-SHA256 of `data` under `key` (32 bytes). Pair rooms are named with it (0026). */
+  hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array>
   /** True when `signature` is `signer`'s signature over `data`. Never throws. */
   verify(signer: PeerId, signature: Uint8Array, data: Uint8Array): Promise<boolean>
 }

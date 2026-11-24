@@ -6,7 +6,6 @@ import {
   formatFingerprint,
   formatInviteCode,
   type Invite,
-  type Offer,
   type OpenStep,
   type PeerId,
 } from '@pigeon/core'
@@ -20,7 +19,7 @@ import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { Connecting, type StepState } from '../connecting/connecting.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger, FriendOffer as Offer } from '../service/service.ts'
 import styles from './add-friend.module.css'
 
 /** How long to wait for the inviter's Pigeon to answer, and then to confirm. */

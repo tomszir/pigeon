@@ -59,6 +59,7 @@ import { Wallpaper } from '../wallpaper/wallpaper.tsx'
 import { BUZZ_VIBRATION, buzzAlert } from './buzz.ts'
 import styles from './shell.module.css'
 import type {
+  ConnectionSetting,
   Launcher,
   MessageSpec,
   Notice,
@@ -90,6 +91,8 @@ export interface ShellProps {
   quickLaunch: readonly Launcher[]
   menu: PigeonMenuSpec
   phone: PhoneSpec
+  /** Shown in Settings as well as in the Messenger. */
+  connection?: ConnectionSetting | undefined
 }
 
 export interface CreatedShell {
@@ -103,6 +106,7 @@ export function createShell(env: ShellEnv): CreatedShell {
   const [specs, setSpecs] = createSignal<ReadonlyMap<WindowId, WindowSpec>>(new Map())
   const [alerts, setAlerts] = createSignal<ReadonlyMap<WindowId, WindowAlert>>(new Map())
   const [notice, setNotice] = createSignal<Notice | null>(null)
+  const [connection, setConnection] = createSignal<ConnectionSetting | undefined>(undefined)
   const [settings, storeSettings] = createSignal<Settings>({
     resolution: DEFAULT_RESOLUTION,
     crtEffect: true,
@@ -193,6 +197,7 @@ export function createShell(env: ShellEnv): CreatedShell {
           scale={scale()}
           layout={layout().kind}
           prefersReducedMotion={env.prefersReducedMotion()}
+          connection={connection()}
           onChange={setSettings}
           onClose={window.close}
         />
@@ -230,6 +235,7 @@ export function createShell(env: ShellEnv): CreatedShell {
   })
 
   function Shell(props: ShellProps) {
+    setConnection(() => props.connection)
     const [menuOpen, setMenuOpen] = createSignal(false)
     const [menuByKeyboard, setMenuByKeyboard] = createSignal(false)
     const [selectedIcon, setSelectedIcon] = createSignal<string | null>(null)

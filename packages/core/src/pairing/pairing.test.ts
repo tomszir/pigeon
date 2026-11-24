@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fingerprint } from '../identity/identity.ts'
 import { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from '../testing/testing.ts'
 import { INVITE_CODE_BYTES, inviteCode } from './invite.ts'
+import { encodePairSecret, PAIR_SECRET_BYTES } from './pair-rooms.ts'
 import { hostInvite, type NewFriend, type OpenStep, openInvite } from './pairing.ts'
 
 const rook = fakeSigner('rook')
@@ -10,6 +11,7 @@ const eve = fakeSigner('eve')
 const code = inviteCode(new Uint8Array(INVITE_CODE_BYTES).fill(1))
 const common = { crypto: fakeCrypto, now: () => 0 }
 const never = new Promise<void>(() => undefined)
+const SECRET = encodePairSecret(new Uint8Array(PAIR_SECRET_BYTES).fill(2))
 
 function stopper() {
   let stop: () => void = () => undefined
@@ -28,7 +30,11 @@ async function host(network: ReturnType<typeof createMemoryNetwork>, signer = ro
     handle: 'Rook',
     code,
     sleep: () => never,
-    onPaired: (friend) => paired.push(friend),
+    newSecret: () => SECRET,
+    onPaired: (friend, secret) => {
+      expect(secret).toBe(SECRET)
+      paired.push(friend)
+    },
   })
   return paired
 }
@@ -43,6 +49,7 @@ describe('the invite handshake', () => {
       handle: 'Rook',
       code,
       sleep: () => never,
+      newSecret: () => SECRET,
       onPaired: () => undefined,
       refuse: (id) => id === mika.id,
     })
@@ -109,7 +116,8 @@ describe('the invite handshake', () => {
     expect(opened.offer.checked).toBe(true)
     expect(paired).toEqual([])
 
-    expect(await opened.offer.confirm(never)).toBe(true)
+    // The accept carries the secret their room is named from (decision 0026).
+    expect(await opened.offer.confirm(never)).toEqual({ secret: SECRET })
     await flush()
     expect(paired).toEqual([{ id: mika.id, handle: 'Mika' }])
   })

@@ -9,12 +9,15 @@ packages/
   core/         @pigeon/core: pure TypeScript, no browser or Node APIs. One folder
                 per feature under src/, each holding its files and their tests:
       encoding/   UTF-8, base32, hex and canonical JSON.
-      identity/   PeerId, fingerprints, pair-room names, and the Crypto and Signer
-                  interfaces the platform implements.
-      transport/  the Transport and Room interfaces (decision 0002).
+      identity/   PeerId, fingerprints, the old pair-room name (now the chat's id),
+                  and the Crypto and Signer interfaces the platform implements.
+      transport/  the Transport and Room interfaces (decision 0002); a join can
+                  carry a room password and ask for relay-only connections.
       messages/   signed envelopes: body types, shape checks, the 64 KB limit.
-      chat/       signed append-only chat logs and the pair session that syncs them.
-      pairing/    invite codes and links, and the invite handshake.
+      chat/       signed append-only chat logs and the pair session that syncs them,
+                  across however many pair rooms the friend is in.
+      pairing/    invite codes and links, the invite handshake, and pair rooms named
+                  from the pair secret and the UTC day (decision 0026).
       windows/    window-manager state.
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an

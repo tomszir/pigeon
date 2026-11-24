@@ -17,6 +17,18 @@ function openDatabase(): Promise<IDBDatabase> {
   return done(request)
 }
 
+/**
+ * Asks the browser not to clear Pigeon's storage when space runs low (decision 0026), since
+ * losing it loses the identity. True when granted; some browsers ask the visitor first.
+ */
+export async function keepStorage(): Promise<boolean> {
+  try {
+    return (await navigator.storage?.persist?.()) === true
+  } catch {
+    return false
+  }
+}
+
 /** IndexedDB when the browser allows it; otherwise memory, and `persistent` says so. */
 export async function createBrowserStore(): Promise<{ store: Store; persistent: boolean }> {
   let database: IDBDatabase
