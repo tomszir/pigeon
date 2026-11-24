@@ -17,6 +17,7 @@ import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { Connecting, type StepState } from '../connecting/connecting.tsx'
+import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
 import type { Messenger, FriendOffer as Offer } from '../service/service.ts'
@@ -73,6 +74,15 @@ export function AddFriend(props: AddFriendProps) {
   const now = () => (props.now ?? Date.now)()
 
   const hasName = () => props.messenger.profile().handle !== ''
+  const yourBird = () => (
+    <FriendAvatar
+      messenger={props.messenger}
+      id={props.messenger.self}
+      name="You"
+      size={32}
+      decorative
+    />
+  )
   const wait = (ms: number) =>
     new Promise<void>((resolve) => {
       stopWaiting = resolve
@@ -271,6 +281,7 @@ export function AddFriend(props: AddFriendProps) {
             return (
               <Connecting
                 friend="Friend"
+                you={yourBird()}
                 startedAt={shown().startedAt}
                 timeoutMs={ANSWER_TIMEOUT_MS}
                 now={now}
@@ -308,6 +319,14 @@ export function AddFriend(props: AddFriendProps) {
             return (
               <MessageBox
                 kind={checked ? 'information' : 'warning'}
+                picture={
+                  <FriendAvatar
+                    messenger={props.messenger}
+                    id={friend.id}
+                    name={friend.handle}
+                    size={64}
+                  />
+                }
                 buttons={[
                   {
                     label: `&Add ${friend.handle}`,
@@ -340,9 +359,20 @@ export function AddFriend(props: AddFriendProps) {
         <Match when={current('adding')}>
           {(shown) => {
             const name = shown().offer.friend.handle
+            const friendId = shown().offer.friend.id
             return (
               <Connecting
                 friend={name}
+                you={yourBird()}
+                them={
+                  <FriendAvatar
+                    messenger={props.messenger}
+                    id={friendId}
+                    name={name}
+                    size={32}
+                    decorative
+                  />
+                }
                 startedAt={shown().startedAt}
                 timeoutMs={CONFIRM_TIMEOUT_MS}
                 now={now}

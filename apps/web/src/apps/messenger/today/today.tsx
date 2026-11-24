@@ -4,6 +4,7 @@ import { createSignal, For, onCleanup, Show } from 'solid-js'
 import { brand, tango } from '../../../ui/icons/icons.ts'
 import { Marquee } from '../../../ui/marquee/marquee.tsx'
 import wallpaper from '../../../wallpapers/hills-800x600.jpg'
+import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import type { Messenger } from '../service/service.ts'
 import styles from './today.module.css'
 
@@ -63,7 +64,18 @@ export function Today(props: TodayProps) {
         {(messenger) => (
           <div class={styles.rows}>
             <button type="button" class={styles.row} onClick={() => props.onOpenMessenger()}>
-              <img src={brand('pigeon-32')} alt="" width="32" height="32" />
+              <Show
+                when={name() !== ''}
+                fallback={<img src={brand('pigeon-32')} alt="" width="32" height="32" />}
+              >
+                <FriendAvatar
+                  messenger={messenger()}
+                  id={messenger().self}
+                  name="You"
+                  size={32}
+                  decorative
+                />
+              </Show>
               <Show
                 when={name() !== ''}
                 fallback={
@@ -114,7 +126,13 @@ export function Today(props: TodayProps) {
                   class={`${styles.row} ${styles.news}`}
                   onClick={() => props.onOpenConversation(friend.id)}
                 >
-                  <img src={brand('pigeon-32')} alt="" width="32" height="32" />
+                  <FriendAvatar
+                    messenger={messenger()}
+                    id={friend.id}
+                    name={friend.name}
+                    size={32}
+                    decorative
+                  />
                   <span class={styles.text}>
                     <strong>
                       {friend.unread} new from {friend.name}

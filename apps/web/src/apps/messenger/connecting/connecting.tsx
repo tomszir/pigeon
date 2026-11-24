@@ -2,6 +2,7 @@
 // done so far, a bar that keeps moving, and how long until it gives up. Each step is a real one
 // from the handshake (core's OpenStep), so a stuck step says where it is stuck.
 import { createSignal, For, type JSX, onCleanup, Show } from 'solid-js'
+import { Avatar } from '../../../ui/avatar/avatar.tsx'
 import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
 import { brand, tango } from '../../../ui/icons/icons.ts'
@@ -19,6 +20,9 @@ export interface ConnectingStep {
 export interface ConnectingProps {
   /** Who is at the far end, under the friend's icon. */
   friend: string
+  /** Your pixel pigeon at your end, and theirs once you know who they are; icons stand in. */
+  you?: JSX.Element
+  them?: JSX.Element
   steps: readonly ConnectingStep[]
   /** When this wait started and how long it lasts, for the countdown. */
   startedAt: number
@@ -44,14 +48,31 @@ export function Connecting(props: ConnectingProps) {
       <div class={styles.content}>
         <div class={styles.scene} aria-hidden="true">
           <figure class={styles.end}>
-            <img src={brand('pigeon-32')} alt="" width="32" height="32" />
+            {props.you ?? (
+              <Avatar
+                traits={undefined}
+                size={32}
+                name="You"
+                decorative
+                placeholder={<img src={brand('pigeon-32')} alt="" width="32" height="32" />}
+              />
+            )}
             <figcaption>You</figcaption>
           </figure>
           <div class={styles.track}>
             <img class={styles.plane} src={brand('paper-plane-24')} alt="" width="24" height="24" />
           </div>
           <figure class={styles.end}>
-            <img src={tango('contact-new', 32)} alt="" width="32" height="32" />
+            {/* Framed like a bird, so both ends are the same size and in the same place. */}
+            {props.them ?? (
+              <Avatar
+                traits={undefined}
+                size={32}
+                name={props.friend}
+                decorative
+                placeholder={<img src={tango('contact-new', 32)} alt="" width="32" height="32" />}
+              />
+            )}
             <figcaption>{props.friend}</figcaption>
           </figure>
         </div>

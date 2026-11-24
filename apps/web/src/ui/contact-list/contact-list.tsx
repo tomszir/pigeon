@@ -1,5 +1,7 @@
 // The buddy list: contacts in collapsible groups, each with a presence figure.
+import type { AvatarTraits } from '@pigeon/core'
 import { createSignal, For, Show } from 'solid-js'
+import { Avatar } from '../avatar/avatar.tsx'
 import { classes } from '../classes/classes.ts'
 import { brand, tango } from '../icons/icons.ts'
 import { useLayout } from '../layout/layout.ts'
@@ -13,6 +15,8 @@ export interface ContactRow {
   readonly presence: Presence
   /** Shown after the name in grey: "(Away)", "- 2 letters". */
   readonly note?: string
+  /** Their pixel pigeon, when the list shows pictures; undefined while it's worked out. */
+  readonly avatar?: AvatarTraits | undefined
 }
 
 export interface ContactGroup {
@@ -30,6 +34,15 @@ const figures: Record<Presence, () => string> = {
   bot: () => tango('face-smile', 16),
 }
 
+/** The dot a contact's bird carries in place of their figure. */
+const DOT: Record<Presence, 'online' | 'away' | 'offline'> = {
+  online: 'online',
+  away: 'away',
+  offline: 'offline',
+  peer: 'online',
+  bot: 'online',
+}
+
 export interface ContactListProps {
   label: string
   groups: readonly ContactGroup[]
@@ -43,6 +56,8 @@ export interface ContactListProps {
   onMenu?: ((id: string, at: { x: number; y: number }) => void) | undefined
   /** Shown when there are no contacts at all. */
   empty?: string | undefined
+  /** Each row shows the contact's pixel pigeon after their presence figure. */
+  pictures?: boolean | undefined
 }
 
 export function ContactList(props: ContactListProps) {
@@ -95,6 +110,7 @@ export function ContactList(props: ContactListProps) {
                           aria-pressed={props.selected === contact.id}
                           class={classes(
                             styles.row,
+                            props.pictures && styles.pictured,
                             props.selected === contact.id && styles.selected,
                             contact.presence === 'offline' && styles.offline,
                           )}
@@ -145,7 +161,25 @@ export function ContactList(props: ContactListProps) {
                             }
                           }}
                         >
-                          <img src={figures[contact.presence]()} alt="" width="16" height="16" />
+                          <Show
+                            when={props.pictures}
+                            fallback={
+                              <img
+                                src={figures[contact.presence]()}
+                                alt=""
+                                width="16"
+                                height="16"
+                              />
+                            }
+                          >
+                            <Avatar
+                              traits={contact.avatar}
+                              size={24}
+                              name={contact.name}
+                              decorative
+                              status={DOT[contact.presence]}
+                            />
+                          </Show>
                           <span>
                             {contact.name}
                             <Show when={contact.note}>

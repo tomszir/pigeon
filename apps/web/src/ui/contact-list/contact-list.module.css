@@ -46,6 +46,25 @@
   text-align: left;
 }
 
+/*
+ * A row with a picture grows to fit it, with room above and below. Its bird starts 6px in from
+ * the window, in line with your own above the list: 1px list border, 1px list padding, 1px row
+ * border and 3px here.
+ */
+.pictured {
+  height: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 3px;
+}
+
+/* A light wash under the pointer, as 2003's lists had; not on touch, where it would stick. */
+@media (hover: hover) {
+  .row:not(.selected):hover {
+    background: var(--pg-list-hover);
+  }
+}
+
 .row:focus {
   outline: none;
   border: 1px dotted var(--pg-text-faint);

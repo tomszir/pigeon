@@ -57,13 +57,14 @@
   text-decoration: underline;
 }
 
+/* Straight under your own band, which draws the line between them. */
 .list {
   position: relative;
   flex-grow: 1;
   min-height: 0;
-  margin-top: 4px;
   overflow: auto;
   border: 1px solid var(--pg-field-border);
+  border-top: 0;
   background: var(--pg-field);
 }
 
@@ -134,10 +135,4 @@
   gap: 10px;
   width: 100%;
   padding: 0 12px;
-}
-
-/* On a phone the list meets the band above it: no strip of window between them. */
-.flushList {
-  margin-top: 0;
-  border-top: 0;
 }

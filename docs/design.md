@@ -64,3 +64,25 @@ Never: the Windows logo, Bliss, Microsoft icons, sounds, cursors or fonts (inclu
 ## Custom icons
 
 Drawn the XP way: art 2px under size (46, 30, 22, 14), light from the upper left, outline in a darker shade of the object's colour, drop shadow black 75% at 135°, distance 2, size 2 (1 at 16px). Ship a PNG per size; hand-pixel the 16px. Masters live in `assets/brand/`.
+
+## Avatars
+
+Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/avatar/`), the same on every Pigeon, and nothing about it is sent. The SHA-256 of `pigeon/avatar/v1` and the id picks the traits:
+
+- The bird: plumage (12, all real pigeon colours), neck sheen (6), wing (4), head marking (6), eye (5), expression (4, bright on most birds) and beak (3).
+- What it wears, each slot apart: headwear (9, on half of birds), neckwear (3), eyewear (3) and something held in the beak (a letter or an olive twig, on one in eight).
+- Where it is: tile (12) and pattern (6), a scene behind it (a telephone wire, rooftops, a branch or hills) and something in the sky (a sun, which is a moon at night, a cloud, a paper plane or stars).
+
+That is about 90 billion birds. They're drawn at 32×32 by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, with a sentence for alt text ("A slate pigeon with a copper neck, wearing a flat cap and a scarf, on a wire").
+
+Where it shows: `ui/avatar` draws a bird in a white display-picture frame, and the Messenger works out the traits (`avatarOf`, `apps/messenger/friend-avatar/`). The buddy list shows each friend's bird at 24px before their name, in line with your own in the band straight above it (no gap between them), standing in for the presence figure: a lit dot in its corner says online (green), away (amber), busy (red) or offline (grey, with the bird greyed too). Yours, in the same frame and with your own dot, takes the logo's place at the top. The dot, 8px, sits on the frame's bottom-right corner, 2px past it. Every bird's frame has the same rounded corners (`--pg-radius-avatar`, 4px): the list, chats, profiles, the Pigeon menu and balloons. Rows take a light blue wash under the pointer, except on touch screens, where it would stick; a conversation shows the friend's before its "To:" line, with how they're reached on the line below; their profile shows it at 64px beside the facts, with its description as the alt text and tooltip; Blocked People shows each person's bird at 24px beside their name; the Pigeon menu's header greets you by name beside your bird, as XP's did ("Pigeon" and the logo until you choose a name); Add a Friend shows the bird of whoever answered at 64px, centred on top of everything (a message box's `picture`, at the top of the page on the Pocket), with the icon and their name and fingerprint centred below it, never instead of it; while it waits, both ends of the paper plane's path are framed alike, your bird and a placeholder for theirs, and the paper plane flies from your bird to theirs; on the Pocket, Today shows yours by your name and a friend's on their "new from" row; and every balloon about a friend (online, a message, removed you) carries their bird. A balloon keeps its icon on the left, with the title and, under it, the text beside the icon. At 32px and its multiples a bird is drawn sharp, every pixel square; at other sizes (the list's 24px) it's drawn smoothly, so pixels blend instead of jumping unevenly.
+
+The generated bird is the only avatar: nobody can wear someone else's face, and there is nothing to upload, store, sync or moderate. A bird is only about 32 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it.
+
+Birds stay put:
+
+- The traits an id gets are frozen per version: which digest byte each trait reads, how often it is worn, and every option list. New options make a version 2, with tables of their own; version 1 stays in the code. Tests pin the traits of twenty ids, so a change that would move somebody's bird fails.
+- How a trait is drawn may improve at any time: a better flat cap is still a flat cap.
+- `hello` carries the version a person's bird is drawn with (1 when left out), so a new version only reaches new people and those who ask for it. A version this Pigeon doesn't know yet is drawn as the newest one it does.
+
+The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own logo.

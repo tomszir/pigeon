@@ -4,6 +4,7 @@
 // rooms named from their pair secret, renamed each UTC day; friends from before the secret move
 // there the next time they meet (decision 0026).
 import {
+  avatarFor,
   type ChatLog,
   type Crypto,
   emptyLog,
@@ -742,6 +743,8 @@ export async function createMessenger(deps: MessengerDeps) {
       note(id, 'buzz-out')
     },
     fingerprintOf: (id: PeerId) => fingerprint(crypto, id),
+    /** The traits of someone's pixel pigeon (docs/design.md, Avatars). */
+    avatarOf: (id: PeerId) => avatarFor(crypto, id),
     markRead: (id: PeerId) => {
       if (state.friends[id]?.unread !== 0) setState('friends', id, 'unread', 0)
     },
