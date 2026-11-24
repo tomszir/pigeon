@@ -2,6 +2,7 @@
 // display picture. It draws traits it's given; working them out from an id is the Messenger's.
 import { type AvatarTraits, avatarSvg, describeAvatar, drawAvatar } from '@pigeon/core'
 import { createMemo, Show } from 'solid-js'
+import { classes } from '../classes/classes.ts'
 import type { Icon } from '../icons/icons.ts'
 import styles from './avatar.module.css'
 
@@ -26,6 +27,8 @@ export interface AvatarProps {
   decorative?: boolean
   /** Without its frame, for a place that draws its own. */
   bare?: boolean
+  /** A dot in the corner for how they are; an offline bird is greyed too. */
+  status?: 'online' | 'away' | 'busy' | 'offline' | undefined
 }
 
 export function Avatar(props: AvatarProps) {
@@ -37,7 +40,10 @@ export function Avatar(props: AvatarProps) {
   const outer = () => props.size + (props.bare ? 0 : 6)
   return (
     <span
-      class={props.bare ? styles.bare : styles.avatar}
+      class={classes(
+        props.bare ? styles.bare : styles.avatar,
+        props.status === 'offline' && styles.offline,
+      )}
       style={{ width: `${outer()}px`, height: `${outer()}px` }}
     >
       <Show when={src()}>
@@ -55,6 +61,9 @@ export function Avatar(props: AvatarProps) {
             height={props.size}
           />
         )}
+      </Show>
+      <Show when={props.status}>
+        {(status) => <span class={classes(styles.status, styles[status()])} aria-hidden="true" />}
       </Show>
     </span>
   )

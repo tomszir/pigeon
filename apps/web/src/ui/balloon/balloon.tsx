@@ -39,29 +39,41 @@ export function Balloon(props: BalloonProps) {
       class={classes(styles.balloon, props.onClick !== undefined && styles.clickable, props.class)}
       onClick={click}
     >
-      <div class={styles.head}>
+      <div class={styles.layout}>
         <Show when={props.icon}>
-          {(icon) => <img src={icon().src} alt="" width={icon().size} height={icon().size} />}
+          {(icon) => (
+            <img
+              class={styles.icon}
+              src={icon().src}
+              alt=""
+              width={icon().size}
+              height={icon().size}
+            />
+          )}
         </Show>
-        <strong class={styles.title}>{props.title}</strong>
-        <button
-          type="button"
-          class={styles.close}
-          aria-label="Close notification"
-          onClick={() => props.onClose()}
-        >
-          <svg width="7" height="7" viewBox="0 0 7 7" aria-hidden="true">
-            <path d="M1 1 L6 6 M6 1 L1 6" stroke="#444444" stroke-width="1.2" />
-          </svg>
-        </button>
+        <div class={styles.text}>
+          <div class={styles.head}>
+            <strong class={styles.title}>{props.title}</strong>
+            <button
+              type="button"
+              class={styles.close}
+              aria-label="Close notification"
+              onClick={() => props.onClose()}
+            >
+              <svg width="7" height="7" viewBox="0 0 7 7" aria-hidden="true">
+                <path d="M1 1 L6 6 M6 1 L1 6" stroke="#444444" stroke-width="1.2" />
+              </svg>
+            </button>
+          </div>
+          <p class={styles.body}>
+            <Show when={props.onClick} fallback={props.children}>
+              <button type="button" class={styles.action}>
+                {props.children}
+              </button>
+            </Show>
+          </p>
+        </div>
       </div>
-      <p class={styles.body}>
-        <Show when={props.onClick} fallback={props.children}>
-          <button type="button" class={styles.action}>
-            {props.children}
-          </button>
-        </Show>
-      </p>
     </div>
   )
 }

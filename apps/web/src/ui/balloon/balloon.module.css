@@ -11,6 +11,22 @@
   box-shadow: var(--pg-shadow-popup);
 }
 
+/* The icon on the left; the title, and under it the text, beside it. */
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
 .head {
   display: flex;
   align-items: center;
@@ -58,7 +74,7 @@
 }
 
 .body {
-  margin: 0 0 0 21px;
+  margin: 0;
   line-height: 13px;
 }
 

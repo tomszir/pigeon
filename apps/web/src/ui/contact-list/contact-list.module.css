@@ -49,8 +49,16 @@
 /* A row with a picture grows to fit it. */
 .pictured {
   height: auto;
+  padding-left: 12px;
   padding-top: 2px;
   padding-bottom: 2px;
+}
+
+/* A light wash under the pointer, as 2003's lists had; not on touch, where it would stick. */
+@media (hover: hover) {
+  .row:not(.selected):hover {
+    background: var(--pg-list-hover);
+  }
 }
 
 .row:focus {

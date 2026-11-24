@@ -34,6 +34,15 @@ const figures: Record<Presence, () => string> = {
   bot: () => tango('face-smile', 16),
 }
 
+/** The dot a contact's bird carries in place of their figure. */
+const DOT: Record<Presence, 'online' | 'away' | 'offline'> = {
+  online: 'online',
+  away: 'away',
+  offline: 'offline',
+  peer: 'online',
+  bot: 'online',
+}
+
 export interface ContactListProps {
   label: string
   groups: readonly ContactGroup[]
@@ -152,13 +161,23 @@ export function ContactList(props: ContactListProps) {
                             }
                           }}
                         >
-                          <img src={figures[contact.presence]()} alt="" width="16" height="16" />
-                          <Show when={props.pictures}>
+                          <Show
+                            when={props.pictures}
+                            fallback={
+                              <img
+                                src={figures[contact.presence]()}
+                                alt=""
+                                width="16"
+                                height="16"
+                              />
+                            }
+                          >
                             <Avatar
                               traits={contact.avatar}
                               size={32}
                               name={contact.name}
                               decorative
+                              status={DOT[contact.presence]}
                             />
                           </Show>
                           <span>

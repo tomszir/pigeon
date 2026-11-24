@@ -200,6 +200,7 @@ export function BuddyList(props: BuddyListProps) {
                 name="Your"
                 decorative
                 bare
+                status={live()?.profile().status}
               />
             }
           >
