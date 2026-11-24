@@ -2,7 +2,7 @@
 
 The site carries a version number, set by release-please from the Conventional Commits on main, and Cloudflare deploys only released commits, through a `release` branch.
 
-- Status: accepted
+- Status: accepted; its "no changelog file" is superseded by 0025
 - Date: 2026-11-24
 
 ## Context

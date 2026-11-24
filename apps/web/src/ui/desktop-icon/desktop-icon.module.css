@@ -18,7 +18,8 @@
 .label {
   display: -webkit-box;
   max-width: 100%;
-  padding: 0 2px;
+  /* 1px a side lets "Changelog.txt" (74px) sit on one line in the 76px cell. */
+  padding: 0 1px;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

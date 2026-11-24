@@ -17,7 +17,9 @@ import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample
 import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
-import { Readme } from '../apps/readme/readme/readme.tsx'
+import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
+import { Reader } from '../apps/reader/reader/reader.tsx'
+import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
@@ -25,6 +27,8 @@ import type { MenuEntry } from '../ui/menu/menu.tsx'
 
 export interface Programs extends ShellProps {
   readonly openReadme: () => void
+  /** Changelog.txt, the release notes (decision 0025). */
+  readonly openChangelog: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
   readonly openAddFriend: (incoming?: Invite) => void
@@ -72,7 +76,25 @@ export function createPrograms(
       icon: tangoIcon('text-x-generic', 16),
       bounds: { x: 92, y: 16, width: 450, height: 480 },
       resizable: true,
-      content: (window) => <Readme onClose={window.close} onAbout={openAbout} />,
+      content: (window) => (
+        <Reader name="Read Me.txt" text={README_TEXT} onClose={window.close} onAbout={openAbout} />
+      ),
+    })
+
+  const openChangelog = () =>
+    api.open('changelog', {
+      title: 'Changelog.txt - Pigeon Reader',
+      icon: tangoIcon('text-x-generic', 16),
+      bounds: { x: 132, y: 40, width: 450, height: 480 },
+      resizable: true,
+      content: (window) => (
+        <Reader
+          name="Changelog.txt"
+          text={CHANGELOG_TEXT}
+          onClose={window.close}
+          onAbout={openAbout}
+        />
+      ),
     })
 
   // Each new conversation opens 20px down and right of the last, like the era's cascade, and
@@ -389,6 +411,14 @@ export function createPrograms(
     icon32: tangoIcon('text-x-generic', 32),
     onOpen: openReadme,
   }
+  const changelog: Launcher = {
+    id: 'changelog',
+    label: "What's New",
+    icon16: tangoIcon('text-x-generic', 16),
+    icon22: tangoIcon('text-x-generic', 22),
+    icon32: tangoIcon('text-x-generic', 32),
+    onOpen: openChangelog,
+  }
   const addFriend: Launcher = {
     id: 'add-friend',
     label: 'Add a Friend...',
@@ -495,15 +525,24 @@ export function createPrograms(
         return { label: 'Messenger', onPress: openMessenger }
       },
     },
-    desktopIcons: [messenger, { ...readme, label: 'Read Me.txt' }, letters, files, source, trash],
+    desktopIcons: [
+      messenger,
+      { ...readme, label: 'Read Me.txt' },
+      { ...changelog, label: 'Changelog.txt' },
+      letters,
+      files,
+      source,
+      trash,
+    ],
     quickLaunch: [messenger, readme],
     menu: {
       programs: [messenger, explorer, readme, addFriend],
       places: [{ ...letters, label: 'My Letters' }, files, source],
-      tools: [settings, help],
-      all: [about, explorer, messenger, readme, settings],
+      tools: [settings, help, changelog],
+      all: [about, explorer, messenger, readme, settings, changelog],
     },
     openReadme,
+    openChangelog,
     openMessenger,
     openConversation,
     openAddFriend,

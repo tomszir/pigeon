@@ -39,16 +39,19 @@ apps/
                 Kestrel Pocket; Today itself comes from apps/messenger/today/).
                 createShell() returns the
                 ShellApi that app/ hands to programs.
-      apps/     One folder per app (messenger, explorer, builder, letters, files), each
+      apps/     One folder per app (messenger, reader, explorer, builder, letters, files), each
                 holding one folder per component: apps/<app>/<component>/. The
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
-                answers invites, and exposes Solid state the windows draw.
+                answers invites, and exposes Solid state the windows draw. reader/ is
+                Pigeon Reader with the texts it opens: readme/ and changelog/
+                (Changelog.txt, the release notes, decision 0025).
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
                 (app/programs.tsx). start-messenger.ts makes or loads the identity
                 and builds the Messenger; address-invite.ts reads an invite link
-                from the address bar once and removes it.
+                from the address bar once and removes it; whats-new.ts decides
+                whether this visit says Pigeon was updated.
   lighthouse/   The always-on Node peer: mirrors pages, carries letters, hosts the lobby.
                 Reuses @pigeon/core with Node implementations of the platform interfaces.
 ```

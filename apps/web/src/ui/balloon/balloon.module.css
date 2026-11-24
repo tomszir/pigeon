@@ -38,6 +38,25 @@
   border-color: var(--pg-hot);
 }
 
+.clickable {
+  cursor: pointer;
+}
+
+/* The body of a balloon that does something: plain text, but a button for the keyboard. */
+.action {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+
+.action:focus-visible {
+  outline: 1px dotted #000000;
+}
+
 .body {
   margin: 0 0 0 21px;
   line-height: 13px;

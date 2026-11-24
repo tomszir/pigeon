@@ -1,17 +1,19 @@
-// Pigeon Reader showing Read Me.txt.
+// Pigeon Reader: a plain-text window for Read Me.txt and Changelog.txt.
 import { createSignal } from 'solid-js'
 import { classes } from '../../../ui/classes/classes.ts'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { ScrollArea } from '../../../ui/scroll-area/scroll-area.tsx'
-import styles from './readme.module.css'
-import { README_TEXT } from './readme-text.ts'
+import styles from './reader.module.css'
 
-export interface ReadmeProps {
+export interface ReaderProps {
+  /** The file's name, "Read Me.txt". */
+  name: string
+  text: string
   onClose: () => void
   onAbout: () => void
 }
 
-export function Readme(props: ReadmeProps) {
+export function Reader(props: ReaderProps) {
   const [wrap, setWrap] = createSignal(false)
   let text: HTMLPreElement | undefined
 
@@ -41,9 +43,9 @@ export function Readme(props: ReadmeProps) {
           { label: '&Help', entries: [{ label: '&About Pigeon', onSelect: props.onAbout }] },
         ]}
       />
-      <ScrollArea class={styles.readme} label="Read Me.txt">
+      <ScrollArea class={styles.reader} label={props.name}>
         <pre ref={text} class={classes(styles.text, wrap() && styles.wrap)} data-selectable>
-          {README_TEXT}
+          {props.text}
         </pre>
       </ScrollArea>
     </>

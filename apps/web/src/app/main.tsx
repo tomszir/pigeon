@@ -5,12 +5,15 @@ import '../ui/tokens.css'
 import type { Messenger } from '../apps/messenger/service/service.ts'
 import { copyText } from '../platform/clipboard/browser-clipboard.ts'
 import { browserClock } from '../platform/clock/browser-clock.ts'
+import { createBrowserStore } from '../platform/storage/browser-storage.ts'
+import type { Store } from '../platform/storage/storage.ts'
 import { createShell } from '../shell/shell/shell.tsx'
-import { tangoIcon } from '../ui/icons/icons.ts'
+import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import { takeInviteFromAddress } from './address-invite.ts'
 import { createBrowserEnv, loadFonts } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { startMessenger } from './start-messenger.ts'
+import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
 
 const root = document.getElementById('root')
 if (root === null) throw new Error('index.html is missing #root')
@@ -46,7 +49,35 @@ render(() => {
     programs.openConversation('mika')
   }
 
-  void startMessenger(programs.messengerEvents)
+  const showInvite = (invite: Invite | undefined) => {
+    if (invite === undefined) return
+    programs.openMessenger()
+    programs.openAddFriend(invite)
+  }
+  // A link followed in a tab where Pigeon is already open only changes the hash. Listening from
+  // the start catches one followed while the Messenger is still starting: Add a Friend says so
+  // until it's ready.
+  window.addEventListener('hashchange', () => showInvite(takeInviteFromAddress()))
+
+  // After an update, a returning visitor is told once, in place of the welcome (decision 0025).
+  // It waits before the Messenger starts, which makes the identity a first visit lacks.
+  const tellWhatsNew = async (store: Store) => {
+    const version = __PIGEON_VERSION__
+    if (!(await updatedSinceLastVisit(store, version)) || incoming !== undefined) return
+    api.notify({
+      title: "What's new",
+      icon: brandIcon('pigeon-16'),
+      body: `Pigeon was updated to ${version}. See what's new?`,
+      onClick: programs.openChangelog,
+    })
+    await rememberVersion(store, version)
+  }
+
+  void createBrowserStore()
+    .then(async (storage) => {
+      await tellWhatsNew(storage.store).catch((error: unknown) => console.error(error))
+      return startMessenger(programs.messengerEvents, storage)
+    })
     .then((started) => {
       if (!started.ok) {
         setProblem(started.problem)
@@ -61,14 +92,7 @@ render(() => {
           icon: tangoIcon('dialog-warning', 16),
           body: 'This browser won’t let Pigeon store anything, so your name and friends last only until you close the tab.',
         })
-      const showInvite = (invite: Invite | undefined) => {
-        if (invite === undefined) return
-        programs.openMessenger()
-        programs.openAddFriend(invite)
-      }
       showInvite(incoming)
-      // A link followed in a tab where Pigeon is already open only changes the hash.
-      window.addEventListener('hashchange', () => showInvite(takeInviteFromAddress()))
     })
     .catch((error: unknown) => {
       setProblem('Pigeon couldn’t start in this browser.')

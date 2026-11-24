@@ -10,6 +10,8 @@ export interface BalloonProps {
   icon?: Icon | undefined
   children: JSX.Element
   onClose: () => void
+  /** Clicking the balloon does this and closes it, as the era's tray balloons did. */
+  onClick?: (() => void) | undefined
   /** Hides itself after this long; 10 seconds unless set. */
   timeoutMs?: number | undefined
   class?: string | undefined
@@ -23,8 +25,20 @@ export function Balloon(props: BalloonProps) {
   })
   onCleanup(() => clearTimeout(timer))
 
+  const click = (event: MouseEvent) => {
+    if (props.onClick === undefined) return
+    if (event.target instanceof Element && event.target.closest(`.${styles.close}`) !== null) return
+    props.onClick()
+    props.onClose()
+  }
+
   return (
-    <div role="status" class={classes(styles.balloon, props.class)}>
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the body's own button takes the keyboard.
+    <div
+      role="status"
+      class={classes(styles.balloon, props.onClick !== undefined && styles.clickable, props.class)}
+      onClick={click}
+    >
       <div class={styles.head}>
         <Show when={props.icon}>
           {(icon) => <img src={icon().src} alt="" width={icon().size} height={icon().size} />}
@@ -41,7 +55,13 @@ export function Balloon(props: BalloonProps) {
           </svg>
         </button>
       </div>
-      <p class={styles.body}>{props.children}</p>
+      <p class={styles.body}>
+        <Show when={props.onClick} fallback={props.children}>
+          <button type="button" class={styles.action}>
+            {props.children}
+          </button>
+        </Show>
+      </p>
     </div>
   )
 }
