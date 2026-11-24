@@ -1,7 +1,9 @@
 // End-to-end tests: real browsers, real Trystero over public Nostr relays (docs/README.md).
 import { defineConfig, devices } from '@playwright/test'
+import { e2ePort } from './ports.ts'
 
-const PORT = 5199
+/** This checkout's own (ports.ts), so reusing a running server only ever reuses ours. */
+const PORT = e2ePort
 
 export default defineConfig({
   testDir: 'e2e',
