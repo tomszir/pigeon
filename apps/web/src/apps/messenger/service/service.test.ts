@@ -1,5 +1,6 @@
 import {
   createMemoryNetwork,
+  decodeDeviceLink,
   decodeInvite,
   fakeCrypto,
   fakeSigner,
@@ -486,5 +487,193 @@ describe('private rooms (decision 0026)', () => {
     expect(only(a.messenger.friends()).online).toBe(true)
     const again = await messenger(network, 'rook', { store: a.store })
     expect(again.messenger.settings().relayOnly).toBe(true)
+  })
+})
+
+/** Links a fresh device called `name` to `from`'s identity, and starts it as that identity. */
+async function linkDevice(
+  network: Network,
+  from: Awaited<ReturnType<typeof messenger>>,
+  name: string,
+  clock: Clock,
+) {
+  const fresh = await messenger(network, name, { clock })
+  const linking = await from.messenger.startLink()
+  if (linking === undefined) throw new Error('could not start linking')
+  const target = decodeDeviceLink(linking.link)
+  if (!target.ok) throw new Error('bad link')
+  const joined = await fresh.messenger.joinIdentity(target.value, never)
+  if (!joined.ok) throw new Error(joined.error)
+  await flush()
+  const request = from.messenger.linking()?.request
+  expect(request?.check).toBe(joined.offer.check)
+  const confirmed = joined.offer.confirmed(never)
+  const status = await from.messenger.confirmLink(name)
+  expect(await confirmed).toBe(true)
+  await fresh.messenger.close()
+  await flush()
+  // Started again, this browser is the identity it was linked to.
+  const started = await messenger(network, name, { clock, store: fresh.store })
+  await flush()
+  return { device: started, status }
+}
+
+describe('your devices (decision 0024)', () => {
+  it('links a phone to a laptop: Mika sees one Toms, and the phone’s message reaches the laptop', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone, status } = await linkDevice(network, laptop, 'rook-phone', clock)
+    expect(status).toBe('linked')
+
+    // The phone is Rook: same identity, profile and friend, and Mika is online to it.
+    expect(phone.messenger.self).toBe(laptop.messenger.self)
+    expect(phone.messenger.device).not.toBe(laptop.messenger.device)
+    expect(phone.messenger.profile().handle).toBe('Rook')
+    const mikaOnPhone = only(phone.messenger.friends())
+    expect(mikaOnPhone.id).toBe(only(laptop.messenger.friends()).id)
+    expect(mikaOnPhone.online).toBe(true)
+
+    // Mika still has one Rook, who now has two devices.
+    const rook = only(mika.messenger.friends())
+    expect(rook.devices).toBe(2)
+
+    await phone.messenger.send(mikaOnPhone.id, 'sent from my phone')
+    await flush()
+    const texts = (view: FriendView | undefined) => view?.log.entries.map((entry) => entry.text)
+    expect(texts(mika.messenger.friend(rook.id))).toEqual(['sent from my phone'])
+    expect(texts(laptop.messenger.friend(mikaOnPhone.id))).toEqual(['sent from my phone'])
+    // On the laptop it's Rook's own message, not Mika's.
+    const entry = laptop.messenger.friend(mikaOnPhone.id)?.log.entries[0]
+    expect(laptop.messenger.isMine(entry?.author ?? '')).toBe(true)
+    expect(laptop.messenger.friend(mikaOnPhone.id)?.unread).toBe(0)
+
+    // And the other way, the laptop's message shows on the phone, even with Mika gone.
+    await mika.messenger.close()
+    await laptop.messenger.send(mikaOnPhone.id, 'and from my laptop')
+    await flush()
+    expect(texts(phone.messenger.friend(mikaOnPhone.id))).toEqual([
+      'sent from my phone',
+      'and from my laptop',
+    ])
+  })
+
+  it('links a third device from the first, and from nowhere else', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone, status } = await linkDevice(network, laptop, 'rook-phone', clock)
+    expect(status).toBe('linked')
+    // The phone can't link or remove anything (decision 0024).
+    expect(phone.messenger.isFirstDevice()).toBe(false)
+    expect(await phone.messenger.startLink()).toBeUndefined()
+    await phone.messenger.removeDevice(laptop.messenger.device)
+    expect(laptop.messenger.deviceStatus()).toBe('active')
+    // The laptop links a tablet straight on, and Mika takes it as Rook.
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock)
+    await flush()
+    expect(tablet.messenger.deviceStatus()).toBe('active')
+    expect(only(mika.messenger.friends()).devices).toBe(3)
+    expect(only(tablet.messenger.friends()).online).toBe(true)
+  })
+
+  it('removes a lost device: friends and your other devices stop taking it', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    let removed = 0
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    const phoneAgain = await messenger(network, 'rook-phone', {
+      clock,
+      store: phone.store,
+      events: { onDeviceRemoved: () => (removed += 1) },
+    })
+    await phone.messenger.close()
+    await flush()
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush()
+    expect(removed).toBe(1)
+    expect(phoneAgain.messenger.deviceStatus()).toBe('removed')
+    expect(only(mika.messenger.friends()).devices).toBe(1)
+    expect(laptop.messenger.devices().map((view) => view.here)).toEqual([true])
+  })
+
+  it('only links a device with no friends of its own', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const linking = await laptop.messenger.startLink()
+    const target = decodeDeviceLink(linking?.link ?? '')
+    if (!target.ok) throw new Error('bad link')
+    expect(await mika.messenger.joinIdentity(target.value, never)).toEqual({
+      ok: false,
+      error: 'has-friends',
+    })
+  })
+
+  it('leaves a stolen phone nothing once the first device removes it', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush()
+    expect(phone.messenger.deviceStatus()).toBe('removed')
+    expect(laptop.messenger.deviceStatus()).toBe('active')
+    expect(only(mika.messenger.friends()).devices).toBe(1)
+    // Whatever it sends now, nobody takes; the laptop still reaches Mika.
+    await phone.messenger.send(only(phone.messenger.friends()).id, 'it is me, Rook')
+    await laptop.messenger.send(only(laptop.messenger.friends()).id, 'still me')
+    await flush()
+    expect(only(mika.messenger.friends()).log.entries.map((entry) => entry.text)).toEqual([
+      'still me',
+    ])
+  })
+
+  it('keeps what a removed device wrote before, for a device linked after', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await phone.messenger.send(only(phone.messenger.friends()).id, 'from the old phone')
+    await flush()
+    await clock.tick(60_000)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await phone.messenger.close()
+    await flush()
+    // A new tablet catches up from Mika, old phone's message and all.
+    await laptop.messenger.close()
+    const back = await messenger(network, 'rook', { clock, store: laptop.store })
+    await flush()
+    const { device: tablet } = await linkDevice(network, back, 'rook-tablet', clock)
+    await back.messenger.close()
+    await flush()
+    expect(only(mika.messenger.friends()).online).toBe(true)
+    expect(only(tablet.messenger.friends()).log.entries.map((entry) => entry.text)).toEqual([
+      'from the old phone',
+    ])
+  })
+
+  it('refuses to link when everything wouldn’t fit, leaving the list as it was', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const store = createMemoryStore({
+      blocked: Array.from({ length: 900 }, (_, index) => ({
+        id: fakeSigner(`blocked-${index}`).id,
+        handle: `Blocked ${index}`,
+        at: 1,
+      })),
+    })
+    const laptop = await messenger(network, 'rook', { clock, store })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const fresh = await messenger(network, 'rook-phone', { clock })
+    const linking = await laptop.messenger.startLink()
+    const target = decodeDeviceLink(linking?.link ?? '')
+    if (!target.ok) throw new Error('bad link')
+    const joined = await fresh.messenger.joinIdentity(target.value, never)
+    if (!joined.ok) throw new Error(joined.error)
+    await flush()
+    expect(await laptop.messenger.confirmLink('Phone')).toBe('too-big')
+    expect(laptop.messenger.devices()).toHaveLength(1)
   })
 })

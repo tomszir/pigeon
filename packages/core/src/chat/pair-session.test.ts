@@ -66,7 +66,7 @@ describe('pair sessions', () => {
     const a = await open(network.transport(), rook, mika)
     await open(network.transport(), mika, rook, undefined, () => 2)
     await flush()
-    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 2 })
+    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 2, current: true })
   })
 
   it('sees each other come online, chat, type, buzz and go offline', async () => {
@@ -75,8 +75,8 @@ describe('pair sessions', () => {
     const mikaTransport = network.transport()
     const b = await open(mikaTransport, mika, rook)
     await flush()
-    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 1 })
-    expect(b.events[0]).toEqual({ type: 'online', handle: 'Rook', avatar: 1 })
+    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 1, current: true })
+    expect(b.events[0]).toEqual({ type: 'online', handle: 'Rook', avatar: 1, current: true })
     expect(a.session.online()).toBe(true)
 
     await a.session.send('hi Mika')
@@ -208,5 +208,93 @@ describe('several rooms', () => {
     await a.session.close()
     await flush()
     expect(presence(a)).toEqual(['online'])
+  })
+})
+
+describe('several devices (decision 0024)', () => {
+  const mikaPhone = fakeSigner('mika-phone')
+  const rookPhone = fakeSigner('rook-phone')
+
+  async function device(
+    transport: Transport,
+    self: Signer,
+    identity: Signer,
+    friend: Signer,
+    friendDevices: readonly string[],
+    ownDevices: readonly string[],
+  ) {
+    const name = await pairRoom(fakeCrypto, identity.id, friend.id)
+    const events: PairEvent[] = []
+    let current = emptyLog(name)
+    const logsSeen: unknown[] = []
+    const session = startPairSession({
+      crypto: fakeCrypto,
+      signer: self,
+      friend: friend.id,
+      chat: name,
+      rooms: [await transport.join(name)],
+      handle: () => (identity === rook ? 'Rook' : 'Mika'),
+      presence: () => ({ status: 'online', message: '' }),
+      log: current,
+      now: () => 1,
+      onEvent: (event) => {
+        events.push(event)
+        if (event.type === 'log') current = event.log
+      },
+      accepts: (id) =>
+        friendDevices.includes(id) ? 'friend' : ownDevices.includes(id) ? 'self' : undefined,
+      authors: () => new Set([...friendDevices, ...ownDevices, self.id]),
+      onDeviceLog: async (log) => void logsSeen.push(log),
+    })
+    return { session, events, log: () => current, logsSeen }
+  }
+
+  it('takes any of the friend’s devices as the friend, and catches your own devices up', async () => {
+    const network = createMemoryNetwork()
+    const rookLaptop = await device(
+      network.transport(),
+      rook,
+      rook,
+      mika,
+      [mika.id, mikaPhone.id],
+      [rookPhone.id],
+    )
+    const mikasPhone = await device(
+      network.transport(),
+      mikaPhone,
+      mika,
+      rook,
+      [rook.id, rookPhone.id],
+      [mika.id],
+    )
+    await flush()
+    expect(rookLaptop.events[0]).toMatchObject({ type: 'online', handle: 'Mika' })
+    await mikasPhone.session.send('from my phone')
+    await flush()
+    expect(texts(rookLaptop.log())).toEqual(['from my phone'])
+
+    // Rook's phone joins later and catches up from his laptop as well as from Mika.
+    const rooksPhone = await device(
+      network.transport(),
+      rookPhone,
+      rook,
+      mika,
+      [mika.id, mikaPhone.id],
+      [rook.id],
+    )
+    await flush()
+    expect(texts(rooksPhone.log())).toEqual(['from my phone'])
+    // His laptop isn't a friend to his phone: one online, from Mika's phone.
+    expect(presence(rooksPhone)).toEqual(['online'])
+  })
+
+  it('ignores a device that isn’t on the friend’s list', async () => {
+    const network = createMemoryNetwork()
+    const rookLaptop = await device(network.transport(), rook, rook, mika, [mika.id], [])
+    const stranger = await device(network.transport(), mikaPhone, mika, rook, [rook.id], [])
+    await flush()
+    await stranger.session.send('hi, it is Mika')
+    await flush()
+    expect(rookLaptop.events).toEqual([])
   })
 })

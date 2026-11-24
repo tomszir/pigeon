@@ -20,6 +20,28 @@ export {
 } from './chat/chat-log.ts'
 export type { PairEvent, PairSession, PairSessionOptions, Presence } from './chat/pair-session.ts'
 export { startPairSession } from './chat/pair-session.ts'
+export type {
+  AppendError,
+  DeviceEntry,
+  DeviceEntryKind,
+  DeviceInfo,
+  DeviceLog,
+  DeviceState,
+} from './devices/device-log.ts'
+export {
+  appendDeviceEntry,
+  deviceState,
+  emptyDeviceLog,
+  everDevices,
+  FIRST_DEVICE_NAME,
+  isDeviceLog,
+  MAX_DEVICE_NAME_LENGTH,
+  mergeDeviceLogs,
+  speakerIdentity,
+  verifyDeviceLog,
+} from './devices/device-log.ts'
+export type { Json } from './encoding/canonical.ts'
+export { canonicalBytes } from './encoding/canonical.ts'
 export type { Crypto, Signer } from './identity/crypto.ts'
 export type { KeyKind, PeerId, PublicKey } from './identity/identity.ts'
 export {
@@ -30,7 +52,14 @@ export {
   parsePeerId,
   peerIdFromPublicKey,
 } from './identity/identity.ts'
-export type { Body, BodyType, DecodeError, Envelope, Status } from './messages/envelope.ts'
+export type {
+  Body,
+  BodyType,
+  DecodeError,
+  Envelope,
+  Speaker,
+  Status,
+} from './messages/envelope.ts'
 export {
   MAX_HANDLE_LENGTH,
   MAX_MESSAGE_BYTES,
@@ -40,7 +69,9 @@ export {
 } from './messages/envelope.ts'
 export type { Invite } from './pairing/invite.ts'
 export {
+  decodeDeviceLink,
   decodeInvite,
+  encodeDeviceLink,
   encodeInviteLink,
   formatInviteCode,
   INVITE_CODE_BYTES,
@@ -49,6 +80,14 @@ export {
   inviteCode,
   inviteRoom,
 } from './pairing/invite.ts'
+export type {
+  HostLinkOptions,
+  LinkOffer,
+  LinkRequest,
+  OpenLinkOptions,
+  OpenLinkResult,
+} from './pairing/link.ts'
+export { hostLink, linkCheck, linkRoom, openLink } from './pairing/link.ts'
 export type { PairPlace, PairRoomSpec } from './pairing/pair-rooms.ts'
 export {
   encodePairSecret,
@@ -58,6 +97,7 @@ export {
   pairPassword,
   pairRoomOn,
   pairRoomsAt,
+  selfRoomsAt,
   untilPairDaysChange,
   utcDay,
 } from './pairing/pair-rooms.ts'

@@ -7,28 +7,40 @@ import {
   avatarFor,
   type ChatLog,
   type Crypto,
+  canonicalBytes,
+  type DeviceLog,
+  deviceState,
   emptyLog,
+  encodeDeviceLink,
   encodeInviteLink,
   encodePairSecret,
   fingerprint,
   formatInviteCode,
   hostInvite,
+  hostLink,
   INVITE_CODE_BYTES,
   INVITE_LIFETIME_MS,
   type Invite,
   inviteCode,
+  isDeviceLog,
+  isPairSecret,
   isPeerId,
+  type Json,
+  type LinkRequest,
   type LogEntry,
   MAX_HANDLE_LENGTH,
+  MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
   type NewFriend,
   type Offer,
   type OpenResult,
   type OpenStep,
   openInvite,
+  openLink,
   PAIR_SECRET_BYTES,
   type PairEvent,
   type PairPlace,
+  type PairRoomSpec,
   type PairSession,
   type PeerId,
   type Presence,
@@ -37,14 +49,17 @@ import {
   type RoomName,
   type Signer,
   type Status,
+  selfRoomsAt,
   startPairSession,
   type Transport,
   untilPairDaysChange,
+  verifyDeviceLog,
 } from '@pigeon/core'
 import { batch, createSignal } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
+import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
 import {
   isBlockedRecords,
   isChatLog,
@@ -105,6 +120,13 @@ export interface BlockedRecord {
 export const MUTED_FOREVER = -1
 
 export interface FriendView extends FriendRecord {
+  /** How many devices they have on their list (decision 0024). */
+  readonly devices: number
+  /**
+   * Their Pigeon accepts messages from this device. False when this isn't your first device and
+   * theirs is from before device logs: they hear your first device only, until they update.
+   */
+  readonly seesThisDevice: boolean
   /** The petname if you gave one, else their handle: what every screen shows. */
   readonly name: string
   readonly fingerprint: string
@@ -127,6 +149,8 @@ export interface Note {
 
 export interface MessengerEvents {
   readonly onPaired?: (friend: FriendView) => void
+  /** Another of your devices took this one off your list. */
+  readonly onDeviceRemoved?: () => void
   readonly onMessage?: (friend: FriendView, entry: LogEntry) => void
   readonly onBuzz?: (friend: FriendView) => void
   readonly onOnline?: (friend: FriendView) => void
@@ -142,6 +166,8 @@ export interface MessengerDeps {
   readonly random: (length: number) => Uint8Array
   /** The page address invite links start with: "https://pigeon.tomszir.com/". */
   readonly inviteBase: string
+  /** What to call this device in My Devices when it's linked: "Firefox on Linux". */
+  readonly deviceName?: string
   readonly events?: MessengerEvents
 }
 
@@ -162,6 +188,30 @@ const DEFAULT_PROFILE: Profile = { handle: '', status: 'online', message: '' }
 
 export const inviteLink = (base: string, code: string, fingerprint: string): string =>
   `${base}#${encodeInviteLink(code, fingerprint)}`
+
+/** Linking a device from this one: the code it shows, and who asked, once someone has. */
+export interface LinkingState {
+  readonly code: string
+  readonly link: string
+  readonly expiresAt: number
+  readonly request?: { readonly device: PeerId; readonly check: string; readonly name: string }
+}
+
+/** Linking this device to another's identity: who answered, and the check to compare. */
+export interface DeviceOffer {
+  readonly handle: string
+  readonly check: string
+  /** Resolves true once confirmed on the other device and this one has taken it all in. */
+  confirmed(until: Promise<void>): Promise<boolean>
+  cancel(): Promise<void>
+}
+
+export type JoinedIdentity =
+  | { readonly ok: true; readonly offer: DeviceOffer }
+  | { readonly ok: false; readonly error: 'stopped' | 'impostor' | 'has-friends' | 'own' }
+
+/** How long a link code is shown before it lapses. */
+export const LINK_LIFETIME_MS = 10 * 60 * 1000
 
 /** The invite this tab is hosting. */
 export interface HostedInvite {
@@ -185,6 +235,9 @@ export type OpenedInvite =
 export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, clock } = deps
   const events = deps.events ?? {}
+  const devices = await loadDevices({ crypto, signer, store, clock })
+  /** The identity you are: your first device's key, on every device (decision 0024). */
+  const self = devices.self
 
   const storedSettings = await store.get(KEYS.settings)
   const [settings, setSettings] = createSignal<MessengerSettings>(
@@ -201,7 +254,7 @@ export async function createMessenger(deps: MessengerDeps) {
   const [profile, setProfileSignal] = createSignal<Profile>(
     isProfile(storedProfile) ? storedProfile : DEFAULT_PROFILE,
   )
-  const selfFingerprint = await fingerprint(crypto, signer.id)
+  const selfFingerprint = await fingerprint(crypto, self)
 
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
   type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -257,15 +310,15 @@ export async function createMessenger(deps: MessengerDeps) {
 
   // Where each friend is met (decision 0026): the old room from both ids until you've moved,
   // the secret's rooms once you have one. The old room's name is also the chat's id.
-  const legacyRoom = (id: PeerId) => pairRoom(crypto, signer.id, id)
-  const places = new Map<PairSession, () => Promise<PairPlace>>()
+  const legacyRoom = (id: PeerId) => pairRoom(crypto, self, id)
+  const places = new Map<PairSession, () => Promise<readonly PairRoomSpec[]>>()
   const syncing = new Map<PairSession, Promise<void>>()
   /** Joins the rooms `session` should be in now and leaves the rest, one change at a time. */
   function syncRooms(session: PairSession): Promise<void> {
     const place = places.get(session)
     if (place === undefined) return Promise.resolve()
     const next = (syncing.get(session) ?? Promise.resolve()).then(async () => {
-      const wanted = await pairRoomsAt(crypto, await place(), clock.now())
+      const wanted = await place()
       const have = session.rooms()
       // New rooms first, so a friend moving between them is never dropped.
       for (const spec of wanted)
@@ -300,6 +353,7 @@ export async function createMessenger(deps: MessengerDeps) {
         online: true,
         handle: event.handle,
         name: nameOf(event.handle, current?.petname),
+        seesThisDevice: event.current || signer.id === self,
       })
       note(id, 'online')
       if (changed) void saveFriends()
@@ -344,7 +398,7 @@ export async function createMessenger(deps: MessengerDeps) {
         return
       }
       // In the old room, the lower id gives the secret (decision 0026).
-      if (signer.id > id) return
+      if (self > id) return
       const secret = view.secret ?? newSecret()
       void (async () => {
         if (view.secret === undefined) {
@@ -370,8 +424,9 @@ export async function createMessenger(deps: MessengerDeps) {
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
       const seen = new Set(before.map((entry) => entry.sig))
+      // Theirs, from whichever of their devices: anything not by one of yours.
       const arrived = event.log.entries.filter(
-        (entry) => entry.author === id && !seen.has(entry.sig),
+        (entry) => !devices.isMine(entry.author) && !seen.has(entry.sig),
       )
       batch(() => {
         setState('friends', id, 'log', event.log)
@@ -414,11 +469,27 @@ export async function createMessenger(deps: MessengerDeps) {
     ])
   }
 
+  /** Session options about devices: who's who, and device logs both ways (decision 0024). */
+  const deviceOptions = (id: PeerId) => ({
+    accepts: (device: PeerId) => devices.classify(id, device),
+    authors: () => devices.authors(id),
+    deviceLog: devices.own,
+    onDeviceLog: async (log: DeviceLog) => {
+      if (log.identity === self) await takeOwnLog(log)
+      else if (log.identity === id && (await devices.takeFriend(id, log)))
+        setState('friends', id, 'devices', devices.friendDeviceCount(id))
+    },
+  })
+
   async function startSession(id: PeerId) {
     if (sessions.has(id) || profile().handle === '') return
     const view = friend(id)
     if (view === undefined || view.removedYouAt !== undefined) return
+    await devices.loadFriend(id)
+    if (sessions.has(id)) return
+    setState('friends', id, 'devices', devices.friendDeviceCount(id))
     const session = startPairSession({
+      ...deviceOptions(id),
       crypto,
       signer,
       friend: id,
@@ -432,13 +503,14 @@ export async function createMessenger(deps: MessengerDeps) {
         (handlers[event.type] as (id: PeerId, event: PairEvent) => void)(id, event),
     })
     sessions.set(id, session)
-    places.set(session, async () => {
+    places.set(session, () => {
       const current = state.friends[id]
-      return {
+      const place: PairPlace = {
         legacy: view.log.id as `pair:${string}`,
         secret: current?.secret,
         moved: current?.moved,
       }
+      return pairRoomsAt(crypto, place, clock.now())
     })
     await syncRooms(session)
   }
@@ -457,9 +529,11 @@ export async function createMessenger(deps: MessengerDeps) {
       })
       return existing
     }
-    const room = await pairRoom(crypto, signer.id, record.id)
+    const room = await pairRoom(crypto, self, record.id)
     setState('friends', record.id, {
       ...record,
+      devices: 1,
+      seesThisDevice: true,
       name: nameOf(record.handle, record.petname),
       fingerprint: await fingerprint(crypto, record.id),
       online: false,
@@ -500,6 +574,7 @@ export async function createMessenger(deps: MessengerDeps) {
       sleep: clock.sleep,
       code: hosted.code,
       newSecret,
+      speaker: devices.speaker,
       onPaired: (paired, secret) => void welcome(paired, secret),
       refuse: isBlocked,
     })
@@ -515,14 +590,21 @@ export async function createMessenger(deps: MessengerDeps) {
     // Straight to the secret's rooms, never the old one: offers there can be read by anyone who
     // knows both ids (decision 0026). An invitee whose tab predates 0026 ignored the secret and
     // will need to pair again.
-    const view = await addFriend({ ...paired, addedAt: clock.now(), secret, moved: true })
+    const view = await addFriend({
+      id: paired.id,
+      handle: paired.handle,
+      addedAt: clock.now(),
+      secret,
+      moved: true,
+    })
+    if (paired.devices !== undefined) await devices.takeFriend(paired.id, paired.devices)
     await saveFriends()
     await startSession(paired.id)
     events.onPaired?.(view)
   }
 
   async function newInvite(): Promise<HostedInvite | undefined> {
-    if (profile().handle === '') return undefined
+    if (profile().handle === '' || devices.status() !== 'active') return undefined
     const hosted = {
       code: inviteCode(deps.random(INVITE_CODE_BYTES)),
       expiresAt: clock.now() + INVITE_LIFETIME_MS,
@@ -535,7 +617,7 @@ export async function createMessenger(deps: MessengerDeps) {
   // Load what's stored, then connect.
   const records = await store.get(KEYS.friends)
   for (const record of isFriendRecords(records) ? records : []) {
-    const room = await pairRoom(crypto, signer.id, record.id)
+    const room = await pairRoom(crypto, self, record.id)
     const log = await store.get(KEYS.log(record.id))
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
   }
@@ -544,7 +626,9 @@ export async function createMessenger(deps: MessengerDeps) {
     const { id } = record
     if (farewellSessions.has(id)) return
     const legacy = await legacyRoom(id)
+    await devices.loadFriend(id)
     const session: PairSession = startPairSession({
+      ...deviceOptions(id),
       crypto,
       signer,
       friend: id,
@@ -566,7 +650,9 @@ export async function createMessenger(deps: MessengerDeps) {
       },
     })
     farewellSessions.set(id, session)
-    places.set(session, async () => ({ legacy, secret: record.secret, moved: record.moved }))
+    places.set(session, () =>
+      pairRoomsAt(crypto, { legacy, secret: record.secret, moved: record.moved }, clock.now()),
+    )
     await syncRooms(session)
   }
 
@@ -585,6 +671,7 @@ export async function createMessenger(deps: MessengerDeps) {
     })
     await saveFriends()
     await store.delete(KEYS.log(id))
+    await devices.forgetFriend(id)
     if (options.block && !isBlocked(id)) {
       setBlocked([...blocked(), { id, handle: view.handle, at: clock.now() }])
       await store.set(KEYS.blocked, blocked())
@@ -602,7 +689,63 @@ export async function createMessenger(deps: MessengerDeps) {
     }
   }
 
+  // Your devices (decision 0024). They meet in a self room named from the self secret, where
+  // device logs travel, so an approval or a removal on one reaches the rest.
+  let selfSession: PairSession | undefined
+  const selfChat = `self:${self}`
+  async function startSelfSession() {
+    const secret = devices.selfSecret()
+    if (selfSession !== undefined || secret === undefined) return
+    const session = startPairSession({
+      crypto,
+      signer,
+      friend: self,
+      chat: selfChat,
+      rooms: [],
+      handle: () => profile().handle || 'Me',
+      presence: () => ({ status: profile().status, message: profile().message }),
+      log: emptyLog(selfChat),
+      now: clock.now,
+      onEvent: () => undefined,
+      accepts: (device) => (devices.isOwnOther(device) ? 'friend' : undefined),
+      authors: () => new Set(),
+      deviceLog: devices.own,
+      onDeviceLog: async (log) => {
+        if (log.identity === self) await takeOwnLog(log)
+      },
+    })
+    selfSession = session
+    places.set(session, () => selfRoomsAt(crypto, secret, clock.now()))
+    await syncRooms(session)
+  }
+
+  /** Your device log arrived from another of your devices. */
+  async function takeOwnLog(log: DeviceLog) {
+    if (await devices.takeOwn(log)) await ownChanged()
+  }
+
+  let lastStatus = devices.status()
+  /** Tells everyone about a change to your device log, and acts on what it means here. */
+  async function ownChanged() {
+    for (const session of [...sessions.values(), ...farewellSessions.values()]) {
+      session.recheck()
+      session.shareDevices()
+    }
+    selfSession?.recheck()
+    selfSession?.shareDevices()
+    const status = devices.status()
+    const was = lastStatus
+    lastStatus = status
+    // A removed device stops talking: nobody takes anything from it any more (decision 0024).
+    if (status === 'removed' && was !== 'removed') {
+      await disconnect()
+      events.onDeviceRemoved?.()
+    }
+  }
+
   async function connect() {
+    await startSelfSession()
+    if (devices.status() === 'removed') return
     await Promise.all(friendList().map((view) => startSession(view.id)))
     if (profile().handle !== '') await Promise.all(farewells.map((record) => sayFarewell(record)))
     const stored = await store.get(KEYS.invite)
@@ -620,6 +763,186 @@ export async function createMessenger(deps: MessengerDeps) {
     await Promise.all(all.map((session) => session.close()))
   }
 
+  // Linking a new device from this one: one code at a time, for 10 minutes.
+  const [linking, setLinking] = createSignal<LinkingState | undefined>(undefined)
+  let stopLinkHost: (() => Promise<void>) | undefined
+  let linkRequest: LinkRequest | undefined
+
+  async function cancelLink() {
+    await stopLinkHost?.()
+    stopLinkHost = undefined
+    linkRequest = undefined
+    setLinking(undefined)
+  }
+
+  async function startLink(): Promise<LinkingState | undefined> {
+    // Only the first device puts devices on the list (decision 0024).
+    if (profile().handle === '' || !devices.isFirst()) return undefined
+    await cancelLink()
+    const code = inviteCode(deps.random(INVITE_CODE_BYTES))
+    const expiresAt = clock.now() + LINK_LIFETIME_MS
+    setLinking({
+      code,
+      link: `${deps.inviteBase}#${encodeDeviceLink(code, selfFingerprint)}`,
+      expiresAt,
+    })
+    stopLinkHost = await hostLink({
+      crypto,
+      signer,
+      transport,
+      code,
+      handle: profile().handle,
+      now: clock.now,
+      sleep: clock.sleep,
+      speaker: devices.speaker,
+      onRequest: (request) => {
+        const current = linking()
+        if (current?.code !== code) return
+        linkRequest = request
+        setLinking({
+          ...current,
+          request: {
+            device: request.device,
+            check: request.check,
+            name: deps.deviceName ?? 'Device',
+          },
+        })
+      },
+    })
+    void clock.sleep(LINK_LIFETIME_MS).then(() => {
+      if (linking()?.code === code && linking()?.request === undefined) void cancelLink()
+    })
+    return linking()
+  }
+
+  /** What a new device needs to be you: who you are, your devices, friends and settings. */
+  const bundle = (): Json =>
+    ({
+      self,
+      deviceLog: devices.own(),
+      selfSecret: devices.selfSecret() ?? '',
+      profile: profile(),
+      friends: friendList().map(({ id, handle, addedAt, petname, mutedUntil, secret, moved }) => ({
+        id,
+        handle,
+        addedAt,
+        ...(petname === undefined ? {} : { petname }),
+        ...(mutedUntil === undefined ? {} : { mutedUntil }),
+        ...(secret === undefined ? {} : { secret }),
+        ...(moved === true ? { moved } : {}),
+      })),
+      blocked: blocked(),
+      friendDevices: Object.fromEntries(
+        friendList()
+          .map((view) => [view.id, devices.friendLog(view.id)] as const)
+          .filter(([, log]) => log.entries.length > 0),
+      ),
+    }) as unknown as Json
+
+  /** Puts the device that asked on your list under `name` and hands it everything. */
+  async function confirmLink(name: string): Promise<'linked' | 'failed' | 'too-big'> {
+    const request = linkRequest
+    if (request === undefined) return 'failed'
+    if (devices.selfSecret() === undefined) await devices.setSelfSecret(newSecret())
+    // The first time, this device gets a name too, so My Devices can tell them apart.
+    if (devices.own().entries.length === 0)
+      await devices.change('name', signer.id, deps.deviceName ?? 'First device')
+    // Everything has to fit one envelope, with room for the add about to be signed; checked
+    // first, so a link that can't finish never puts a device on the list.
+    if (canonicalBytes(bundle()).length > MAX_MESSAGE_BYTES - 8 * 1024) return 'too-big'
+    if (!(await devices.change('add', request.device, name.trim() || 'Device'))) return 'failed'
+    try {
+      await request.accept(bundle())
+    } catch {
+      return 'failed'
+    }
+    linkRequest = undefined
+    stopLinkHost = undefined
+    setLinking(undefined)
+    await startSelfSession()
+    await ownChanged()
+    return 'linked'
+  }
+
+  /** Checks and keeps a bundle from the device that linked this one. False if it doesn't hold. */
+  async function takeBundle(value: Json, expected: PeerId): Promise<boolean> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+    const fields = value as Record<string, unknown>
+    const log = fields['deviceLog']
+    const identity = fields['self']
+    // The identity whose fingerprint was checked, and nobody else's.
+    if (identity !== expected || !isDeviceLog(log) || log.identity !== identity) return false
+    if (!(await verifyDeviceLog(crypto, log))) return false
+    const state = deviceState(log)
+    if (!state.active.has(signer.id)) return false
+    const secret = fields['selfSecret']
+    const friends = fields['friends']
+    const blockedList = fields['blocked']
+    const profileValue = fields['profile']
+    const friendDevices = fields['friendDevices']
+    if (!isPairSecret(secret) || !isFriendRecords(friends) || !isBlockedRecords(blockedList))
+      return false
+    if (!isProfile(profileValue)) return false
+    const logs =
+      typeof friendDevices === 'object' && friendDevices !== null
+        ? Object.entries(friendDevices)
+        : []
+    await store.set(KEYS.profile, profileValue)
+    await store.set(KEYS.friends, friends)
+    await store.set(KEYS.blocked, blockedList)
+    for (const [id, friendLog] of logs)
+      if (
+        isDeviceLog(friendLog) &&
+        friendLog.identity === id &&
+        (await verifyDeviceLog(crypto, friendLog))
+      )
+        await store.set(DEVICE_KEYS.friendDevices(id), friendLog)
+    await store.set(DEVICE_KEYS.deviceLog, log)
+    await store.set(DEVICE_KEYS.selfSecret, secret)
+    // Last: with `self` set, this browser is that identity from its next start.
+    await store.set(DEVICE_KEYS.self, identity)
+    return true
+  }
+
+  /**
+   * Links this device to the identity whose device showed `target`. Only a device with no
+   * friends of its own can be linked, since it takes on the other's. Once confirmed, the
+   * Messenger has to be started again to be that identity.
+   */
+  async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
+    if (self !== signer.id || devices.own().entries.length > 0) return { ok: false, error: 'own' }
+    if (friendList().length > 0) return { ok: false, error: 'has-friends' }
+    if (target.code === linking()?.code) return { ok: false, error: 'own' }
+    const result = await openLink({
+      crypto,
+      signer,
+      transport,
+      now: clock.now,
+      code: target.code,
+      fingerprint: target.fingerprint,
+      until,
+    })
+    if (!result.ok) return result
+    const { offer } = result
+    if (offer.identity === self) {
+      await offer.cancel()
+      return { ok: false, error: 'own' }
+    }
+    return {
+      ok: true,
+      offer: {
+        handle: offer.handle,
+        check: offer.check,
+        cancel: offer.cancel,
+        async confirmed(confirmUntil) {
+          const sent = await offer.accepted(confirmUntil)
+          if (sent === false) return false
+          return takeBundle(sent, offer.identity)
+        },
+      },
+    }
+  }
+
   // Rooms are renamed each UTC day, with both joined around midnight.
   let closed = false
   void (async () => {
@@ -633,7 +956,31 @@ export async function createMessenger(deps: MessengerDeps) {
   })()
 
   return {
-    self: signer.id,
+    /** Your identity, the same on all your devices: what friends and birds know you by. */
+    self,
+    /** This device's own key. */
+    device: signer.id,
+    /** Whether a chat entry is yours, from any of your devices. */
+    isMine: devices.isMine,
+    deviceStatus: devices.status,
+    devices: devices.devices,
+    /** A first device with nobody on it: it can be linked to another identity. */
+    canJoin: () =>
+      self === signer.id && devices.own().entries.length === 0 && friendList().length === 0,
+    linking,
+    startLink,
+    confirmLink,
+    cancelLink,
+    joinIdentity,
+    /** This is the first device, the only one that links and removes devices. */
+    isFirstDevice: devices.isFirst,
+    /** Takes a device off your list, from the first device. */
+    async removeDevice(id: PeerId) {
+      if (await devices.change('remove', id)) await ownChanged()
+    },
+    async renameDevice(id: PeerId, name: string) {
+      if (name.trim() !== '' && (await devices.change('name', id, name))) await ownChanged()
+    },
     selfFingerprint,
     profile,
     async setProfile(next: Profile) {
@@ -683,11 +1030,12 @@ export async function createMessenger(deps: MessengerDeps) {
         now: clock.now,
         invite: target,
         until,
+        speaker: devices.speaker,
         ...(onStep === undefined ? {} : { onStep }),
       })
       if (!result.ok) return result
       const { offer } = result
-      if (offer.friend.id === signer.id) {
+      if (offer.friend.id === self) {
         await offer.cancel()
         return { ok: false, error: 'own' }
       }
@@ -705,10 +1053,13 @@ export async function createMessenger(deps: MessengerDeps) {
             // The inviter made the secret, so they hold it: meet only in its rooms. An inviter
             // from before 0026 sends none, and you move later.
             await addFriend({
-              ...offer.friend,
+              id: offer.friend.id,
+              handle: offer.friend.handle,
               addedAt: clock.now(),
               ...(accepted.secret === undefined ? {} : { secret: accepted.secret, moved: true }),
             })
+            if (offer.friend.devices !== undefined)
+              await devices.takeFriend(offer.friend.id, offer.friend.devices)
             await saveFriends()
             await startSession(offer.friend.id)
             return true
@@ -718,7 +1069,7 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     async send(id: PeerId, text: string) {
       const trimmed = text.trim()
-      if (trimmed === '') return
+      if (trimmed === '' || devices.status() !== 'active') return
       lastTypingSent.delete(id)
       await sessions.get(id)?.send(trimmed)
     },
@@ -789,7 +1140,14 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     async close() {
       closed = true
+      await cancelLink()
       await disconnect()
+      const leaving = selfSession
+      selfSession = undefined
+      if (leaving !== undefined) {
+        forget(leaving)
+        await leaving.close()
+      }
     },
   }
 }

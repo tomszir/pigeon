@@ -30,6 +30,8 @@ export async function startMessenger(
   { store, persistent }: { readonly store: Store; readonly persistent: boolean },
   /** Relay-only is on, but the relay can't be reached (decision 0026). */
   onNoRelay?: () => void,
+  /** What My Devices calls this device: "Firefox on Linux" (decision 0024). */
+  deviceName?: string,
 ): Promise<StartResult> {
   if (globalThis.crypto?.subtle === undefined || typeof RTCPeerConnection === 'undefined')
     return {
@@ -54,6 +56,7 @@ export async function startMessenger(
     clock: browserClock,
     random: randomBytes,
     inviteBase: `${location.origin}${location.pathname}`,
+    ...(deviceName === undefined ? {} : { deviceName }),
     events,
   })
   return { ok: true, messenger, persistent }

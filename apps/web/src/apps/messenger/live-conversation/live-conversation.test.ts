@@ -19,6 +19,8 @@ describe('transcriptFor', () => {
       name: 'Mika',
       addedAt: at,
       fingerprint: '0'.repeat(16),
+      devices: 1,
+      seesThisDevice: true,
       online: true,
       presence: { status: 'online', message: '' },
       typing: false,

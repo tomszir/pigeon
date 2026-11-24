@@ -14,6 +14,8 @@ const friend = (over: Partial<FriendView>): FriendView => ({
   log: emptyLog('pair:x'),
   unread: 0,
   notes: [],
+  devices: 1,
+  seesThisDevice: true,
   ...over,
   name: over.name ?? over.handle ?? 'X',
 })

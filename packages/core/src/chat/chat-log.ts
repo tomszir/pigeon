@@ -108,20 +108,22 @@ export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry):
 }
 
 /**
- * Adds entries that verify, are by one of `authors`, and aren't already held. A second,
- * different entry for a seq already held is dropped: first seen wins.
+ * Adds entries that verify, are by one of `authors` (or that `authors` takes), and aren't
+ * already held. A second, different entry for a seq already held is dropped: first seen wins.
  */
 export async function mergeEntries(
   crypto: Crypto,
   log: ChatLog,
   incoming: readonly LogEntry[],
-  authors: ReadonlySet<PeerId>,
+  authors: ReadonlySet<PeerId> | ((entry: LogEntry) => boolean),
 ): Promise<ChatLog> {
+  const takes =
+    typeof authors === 'function' ? authors : (entry: LogEntry) => authors.has(entry.author)
   const held = new Set(log.entries.map((entry) => `${entry.author}/${entry.seq}`))
   const added: LogEntry[] = []
   for (const entry of incoming) {
     const key = `${entry.author}/${entry.seq}`
-    if (held.has(key) || !authors.has(entry.author)) continue
+    if (held.has(key) || !takes(entry)) continue
     if (!(await verifyEntry(crypto, log.id, entry))) continue
     held.add(key)
     added.push(entry)
