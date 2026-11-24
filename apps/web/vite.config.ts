@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
+import { devPort } from './ports.ts'
 
 /** The version release-please keeps in the root package.json (decision 0021). */
 const { version } = JSON.parse(
@@ -18,7 +19,11 @@ const turnFrom = process.env['PIGEON_TURN_FROM'] ?? 'https://pigeon.tomszir.com'
 export default defineConfig({
   plugins: [solid()],
   build: { target: 'es2023' },
+  // A port of this checkout's own (ports.ts). Strict, so a clash fails loudly instead of moving
+  // to another origin, which would be a different dev identity.
   server: {
+    port: devPort,
+    strictPort: true,
     proxy:
       turnFrom === 'off'
         ? {}
