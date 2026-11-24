@@ -53,12 +53,13 @@ import {
 } from '../stage/stage-scale.ts'
 import { Taskbar } from '../taskbar/taskbar.tsx'
 import { Wallpaper } from '../wallpaper/wallpaper.tsx'
-import { buzzAlert } from './buzz.ts'
+import { BUZZ_VIBRATION, buzzAlert } from './buzz.ts'
 import styles from './shell.module.css'
 import type {
   Launcher,
   MessageSpec,
   Notice,
+  PhoneSpec,
   PigeonMenuSpec,
   Settings,
   ShellApi,
@@ -85,6 +86,7 @@ export interface ShellProps {
   desktopIcons: readonly Launcher[]
   quickLaunch: readonly Launcher[]
   menu: PigeonMenuSpec
+  phone: PhoneSpec
 }
 
 export interface CreatedShell {
@@ -103,6 +105,7 @@ export function createShell(env: ShellEnv): CreatedShell {
     crtEffect: true,
     pixelMode: false,
     shakeOnBuzz: true,
+    lcdEffect: true,
   })
   const [running, setRunning] = createSignal(true)
   let messages = 0
@@ -140,6 +143,8 @@ export function createShell(env: ShellEnv): CreatedShell {
     })
 
   const buzz = (id: WindowId) => {
+    // A phone buzzes in the hand when it can; otherwise its screen shakes or flashes.
+    if (layout().kind === 'phone' && settings().shakeOnBuzz && env.vibrate(BUZZ_VIBRATION)) return
     const kind = buzzAlert(env.prefersReducedMotion(), settings().shakeOnBuzz)
     const key = (alerts().get(id)?.key ?? 0) + 1
     setAlerts(new Map(alerts()).set(id, { kind, key }))
@@ -171,7 +176,8 @@ export function createShell(env: ShellEnv): CreatedShell {
 
   const openDisplayProperties = () =>
     open(DISPLAY_PROPERTIES, {
-      title: 'Display Properties',
+      // A phone has no monitor or resolution to set, only the Pocket's own screen.
+      title: layout().kind === 'phone' ? 'Settings' : 'Display Properties',
       icon: tangoIcon('preferences-system', 16),
       bounds: { x: 322, y: 140, width: 380, height: 380 },
       content: (window) => (
@@ -377,8 +383,16 @@ export function createShell(env: ShellEnv): CreatedShell {
             <PhoneShell
               specs={specs()}
               desktop={desktop()}
-              launchers={props.menu.all}
-              onSwitch={(id) => update((d) => focusWindow(d, id))}
+              menu={props.menu}
+              phone={props.phone}
+              notice={notice()}
+              onCloseNotice={() => setNotice(null)}
+              now={env.now}
+              touch={env.coarsePointer()}
+              lcd={settings().lcdEffect}
+              alerts={alerts()}
+              visible={env.visible()}
+              onShutDown={shutDown}
               handle={handle}
             />
           }

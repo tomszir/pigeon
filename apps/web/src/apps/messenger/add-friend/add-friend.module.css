@@ -57,3 +57,69 @@
 .warning {
   color: var(--pg-text-error);
 }
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * Phone: everything in one column. The code and its picture sit centred, the buttons share the
+ * width two to a row, and the field takes its label above it.
+ */
+.phone {
+  gap: 12px;
+  padding: 12px;
+}
+
+.phone fieldset {
+  min-width: 0;
+}
+
+.phone .share {
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.phone .column {
+  align-self: stretch;
+  gap: 10px;
+}
+
+.phone .text,
+.phone .code,
+.phone .note,
+.phone .fingerprint {
+  text-align: center;
+}
+
+.phone .code {
+  font-size: 28px;
+  line-height: 32px;
+}
+
+.phone .actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.phone .actions > button {
+  width: 100%;
+  min-width: 0;
+}
+
+/* A lone button (Open, New invite) spans the row. */
+.phone .actions > button:last-of-type:nth-of-type(odd) {
+  grid-column: 1 / -1;
+}
+
+.phone .error:empty {
+  display: none;
+}
+
+.phone .actions > .error {
+  grid-column: 1 / -1;
+}

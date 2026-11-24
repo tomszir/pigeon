@@ -7,14 +7,37 @@ export function createBrowserEnv(): ShellEnv {
   const [viewport, setViewport] = createSignal(size())
   window.addEventListener('resize', () => setViewport(size()))
 
+  // The visual viewport shrinks when a phone's keyboard opens, where the layout viewport may not.
+  const visibleNow = () => ({
+    height: window.visualViewport?.height ?? window.innerHeight,
+    top: window.visualViewport?.offsetTop ?? 0,
+  })
+  const [visible, setVisible] = createSignal(visibleNow())
+  window.visualViewport?.addEventListener('resize', () => setVisible(visibleNow()))
+  window.visualViewport?.addEventListener('scroll', () => setVisible(visibleNow()))
+  window.addEventListener('resize', () => setVisible(visibleNow()))
+
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
   const [reduced, setReduced] = createSignal(motion.matches)
   motion.addEventListener('change', () => setReduced(motion.matches))
 
+  const coarse = window.matchMedia('(pointer: coarse)')
+  const [coarsePointer, setCoarsePointer] = createSignal(coarse.matches)
+  coarse.addEventListener('change', () => setCoarsePointer(coarse.matches))
+
   return {
     viewport,
+    coarsePointer,
+    visible,
     prefersReducedMotion: reduced,
     now: () => new Date(),
+    vibrate: (pattern) => {
+      try {
+        return typeof navigator.vibrate === 'function' && navigator.vibrate([...pattern])
+      } catch {
+        return false
+      }
+    },
     openLink: (url) => {
       window.open(url, '_blank', 'noopener')
     },

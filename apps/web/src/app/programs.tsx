@@ -9,6 +9,7 @@ import { LiveConversation } from '../apps/messenger/live-conversation/live-conve
 import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample.ts'
 import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
+import { Today } from '../apps/messenger/today/today.tsx'
 import { Readme } from '../apps/readme/readme/readme.tsx'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
@@ -306,7 +307,36 @@ export function createPrograms(
     onOpen: openAbout,
   }
 
+  /** The windows the Messenger key stands for on the phone. */
+  const messengerWindow = (id: string) =>
+    id === 'messenger' ||
+    id === 'add-friend' ||
+    id.startsWith('conversation:') ||
+    id.startsWith('sample:')
+
   return {
+    phone: {
+      home: () => (
+        <Today
+          messenger={host.messenger()}
+          problem={host.problem()}
+          now={env.now}
+          onOpenMessenger={openMessenger}
+          onOpenConversation={(id) => {
+            setSample(false)
+            openFriendConversation(id)
+          }}
+          onAddFriend={() => openAddFriend()}
+        />
+      ),
+      // The left soft key does the obvious next thing for what's on screen.
+      leftSoftKey: (front) => {
+        if (front === 'messenger') return { label: 'Add Friend', onPress: () => openAddFriend() }
+        if (front !== undefined && messengerWindow(front))
+          return { label: 'Friends', onPress: openMessenger }
+        return { label: 'Messenger', onPress: openMessenger }
+      },
+    },
     desktopIcons: [messenger, { ...readme, label: 'Read Me.txt' }, letters, files, source, trash],
     quickLaunch: [messenger, readme],
     menu: {

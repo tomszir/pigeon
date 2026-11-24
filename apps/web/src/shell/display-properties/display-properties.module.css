@@ -29,3 +29,13 @@
   gap: 6px;
   margin-top: auto;
 }
+
+/* On the Pocket: room around each group, and a full-width OK inset like the rest. */
+.pocket {
+  gap: 12px;
+  padding: 12px;
+}
+
+.wide {
+  width: 100%;
+}

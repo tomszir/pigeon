@@ -33,7 +33,9 @@ apps/
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
                 and tokens.css, the only global stylesheet.
       shell/    Stage and scaling, desktop, taskbar, Pigeon menu, tray and balloons,
-                the window layer and the phone layout. createShell() returns the
+                the window layer and the phone layout (shell/phone-shell/, the
+                Kestrel Pocket; Today itself comes from apps/messenger/today/).
+                createShell() returns the
                 ShellApi that app/ hands to programs.
       apps/     One folder per app (messenger, explorer, builder, letters, files), each
                 holding one folder per component: apps/<app>/<component>/. The

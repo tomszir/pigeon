@@ -258,6 +258,10 @@
   --pg-radius-tooltip: 7px;
   --pg-radius-group: 4px;
   --pg-desktop-icon-cell: 76px;
+  /* Minimum height of anything tapped. Nothing on the desktop; 44px in the phone layout. */
+  --pg-touch-target: 0px;
+  /* Side padding of a menu bar's items; wider in the phone layout. */
+  --pg-menubar-item-inline: 6px;
 }
 
 html,

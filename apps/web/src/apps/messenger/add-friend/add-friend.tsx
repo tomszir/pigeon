@@ -4,7 +4,9 @@
 import { decodeInvite, formatFingerprint, type Invite, type Offer, type PeerId } from '@pigeon/core'
 import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
+import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
+import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
@@ -46,6 +48,7 @@ const FAILURES: Record<Failure, string> = {
 }
 
 export function AddFriend(props: AddFriendProps) {
+  const phone = useLayout() === 'phone'
   const [view, setView] = createSignal<View>({ kind: 'share' })
   const [typed, setTyped] = createSignal('')
   const [typedError, setTypedError] = createSignal('')
@@ -142,7 +145,7 @@ export function AddFriend(props: AddFriendProps) {
   }
 
   return (
-    <div class={styles.addFriend}>
+    <div class={classes(styles.addFriend, phone && styles.phone)}>
       <Switch>
         <Match when={!hasName()}>
           <ProfileForm handle="" message="" first onSave={saveName} />
@@ -176,11 +179,11 @@ export function AddFriend(props: AddFriendProps) {
                     <p class={styles.code} data-selectable data-invite-code>
                       {code()}
                     </p>
-                    <div class={styles.row}>
+                    <div class={styles.actions}>
                       <Button label="Copy &code" isDefault onClick={() => void copy('code')} />
                       <Button label="Copy &link" onClick={() => void copy('link')} />
                       <Button
-                        label="&New"
+                        label={phone ? '&New invite' : '&New'}
                         onClick={() => {
                           setCopied('')
                           void props.messenger.newInvite()
@@ -209,13 +212,14 @@ export function AddFriend(props: AddFriendProps) {
             >
               <TextField
                 label="&Type a code or paste a link:"
+                stacked={phone}
                 value={typed()}
                 onInput={(text) => {
                   setTyped(text)
                   setTypedError('')
                 }}
               />
-              <div class={styles.row}>
+              <div class={styles.actions}>
                 <Button label="&Open" type="submit" disabled={typed().trim() === ''} />
                 <span class={styles.error} role="alert">
                   {typedError()}

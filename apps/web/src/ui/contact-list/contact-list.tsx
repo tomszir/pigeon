@@ -2,6 +2,7 @@
 import { createSignal, For, Show } from 'solid-js'
 import { classes } from '../classes/classes.ts'
 import { brand, tango } from '../icons/icons.ts'
+import { useLayout } from '../layout/layout.ts'
 import styles from './contact-list.module.css'
 
 export type Presence = 'online' | 'away' | 'offline' | 'peer' | 'bot'
@@ -46,10 +47,15 @@ export function ContactList(props: ContactListProps) {
     if (!next.delete(id)) next.add(id)
     setCollapsed(next)
   }
+  /** The last press was a finger or pen rather than a mouse. */
+  let tapped = false
   const total = () => props.groups.reduce((sum, group) => sum + group.contacts.length, 0)
 
   return (
-    <section class={styles.contactList} aria-label={props.label}>
+    <section
+      class={classes(styles.contactList, useLayout() === 'phone' && styles.phone)}
+      aria-label={props.label}
+    >
       <Show when={total() > 0} fallback={<p class={styles.empty}>{props.empty}</p>}>
         <For each={props.groups}>
           {(group) => {
@@ -79,7 +85,15 @@ export function ContactList(props: ContactListProps) {
                             props.selected === contact.id && styles.selected,
                             contact.presence === 'offline' && styles.offline,
                           )}
-                          onClick={() => props.onSelect?.(contact.id)}
+                          onPointerDown={(event) => {
+                            tapped = event.pointerType === 'touch' || event.pointerType === 'pen'
+                          }}
+                          onClick={() => {
+                            props.onSelect?.(contact.id)
+                            // A finger has no double-click: one tap opens, as on a phone.
+                            if (tapped) props.onOpen?.(contact.id)
+                            tapped = false
+                          }}
                           onDblClick={() => props.onOpen?.(contact.id)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter') props.onOpen?.(contact.id)

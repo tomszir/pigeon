@@ -24,6 +24,22 @@ describe('ContactList', () => {
     expect(screen.queryByRole('button', { name: /Mika/ })).toBeNull()
   })
 
+  it('opens on one tap of a finger, and only selects on a mouse click', () => {
+    const onOpen = vi.fn()
+    const onSelect = vi.fn()
+    render(() => (
+      <ContactList label="Friends" groups={groups} onOpen={onOpen} onSelect={onSelect} />
+    ))
+    const mika = screen.getByRole('button', { name: /Mika/ })
+    fireEvent.pointerDown(mika, { pointerType: 'mouse' })
+    fireEvent.click(mika)
+    expect(onSelect).toHaveBeenCalledWith('mika')
+    expect(onOpen).not.toHaveBeenCalled()
+    fireEvent.pointerDown(mika, { pointerType: 'touch' })
+    fireEvent.click(mika)
+    expect(onOpen).toHaveBeenCalledWith('mika')
+  })
+
   it('says so when there is nobody', () => {
     render(() => <ContactList label="Friends" groups={[]} empty="No friends yet." />)
     expect(screen.getByText('No friends yet.')).toBeTruthy()

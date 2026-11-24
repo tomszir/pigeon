@@ -28,3 +28,28 @@
   gap: 6px;
   margin-top: auto;
 }
+
+/* Phone: a page of its own, read in the middle and confirmed with a thumb at the bottom. */
+.phone {
+  padding: 24px 12px 12px;
+}
+
+.phone .content {
+  flex-direction: column;
+  align-items: center;
+  margin: auto 0;
+  padding: 0 4px;
+  text-align: center;
+}
+
+/* The buttons fill the width along the bottom, inset like everything else on the screen. */
+.phone .buttons {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.wide {
+  width: 100%;
+}
