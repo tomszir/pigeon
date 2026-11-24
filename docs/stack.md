@@ -35,7 +35,7 @@ Static build deployed to Cloudflare Workers static assets at `pigeon.tomszir.com
 | Git repository | `tomszir/pigeon`, production branch `main`     |
 | Root directory | `apps/web`                                     |
 | Build command  | `pnpm install --frozen-lockfile && pnpm build` |
-| Deploy command | `pnpm exec wrangler deploy`                    |
+| Deploy command | `npx wrangler deploy`                          |
 | Variables      | `NODE_VERSION` = `24`                          |
 
 `apps/web/wrangler.jsonc` is the Worker: static assets from `dist`, no Worker code, and the custom domain route. `mise run deploy` does the same from the author's machine. Merging to main, and so deploying, is the author's call, never an agent's. WebRTC and WebCrypto need a secure page, which the HTTPS site and `localhost` both are.
