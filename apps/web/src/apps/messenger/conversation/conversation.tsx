@@ -1,7 +1,7 @@
 // A conversation window's insides: menus, toolbar, the "To:" line, the transcript (ending in
 // the "is writing" line while the friend types) and the compose box. It draws what it is given; sample-conversation and live-conversation
 // decide what that is.
-import { createSignal } from 'solid-js'
+import { createSignal, type JSX } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { brandIcon, tangoIcon } from '../../../ui/icons/icons.ts'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
@@ -16,6 +16,8 @@ export interface ConversationProps {
   name: string
   /** Shown in angle brackets after the name. */
   fingerprint: string
+  /** The friend's pixel pigeon, before the "To:" line. */
+  avatar?: JSX.Element
   /** How the friend is reached: "direct, encrypted", "offline". */
   route: string
   /** Whether the route is up, which colours it. */
@@ -94,10 +96,15 @@ export function Conversation(props: ConversationProps) {
         <ToolbarButton icon={tangoIcon('internet-mail', 22)} label="Le&tters" disabled />
         <ToolbarButton icon={tangoIcon('internet-web-browser', 22)} label="&Homepage" disabled />
       </Toolbar>
-      <p class={styles.to}>
-        To: <strong>{props.name}</strong> &lt;{props.fingerprint}&gt; ·{' '}
-        <span class={props.connected ? styles.route : styles.offline}>{props.route}</span>
-      </p>
+      <div class={styles.header}>
+        {props.avatar}
+        <div class={styles.lines}>
+          <p class={styles.to}>
+            To: <strong>{props.name}</strong> &lt;{props.fingerprint}&gt;
+          </p>
+          <p class={props.connected ? styles.route : styles.offline}>{props.route}</p>
+        </div>
+      </div>
       <div class={styles.transcript}>
         <Transcript label={`Conversation with ${props.name}`} entries={withTyping()} />
       </div>

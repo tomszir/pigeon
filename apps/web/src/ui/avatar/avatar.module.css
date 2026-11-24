@@ -1,0 +1,60 @@
+.avatar {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 2px;
+  border: 1px solid var(--pg-field-border);
+  border-radius: var(--pg-radius-avatar);
+  background: #ffffff;
+  box-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
+}
+
+.bare {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.avatar img,
+.bare img {
+  display: block;
+  border-radius: calc(var(--pg-radius-avatar) - 2px);
+}
+
+/* How they are, as a lit dot in the corner, the way 2003 lit a status. */
+/* On the frame's bottom-right corner, over the border, just past it, but not so far it gets clipped. */
+.status {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.online {
+  background: radial-gradient(circle at 35% 35%, #b8f5a8, #3fae2f 60%, #237a1a);
+}
+
+.away {
+  background: radial-gradient(circle at 35% 35%, #ffe7a3, #f0a92a 60%, #b8730d);
+}
+
+.busy {
+  background: radial-gradient(circle at 35% 35%, #ffb3a8, #d9392b 60%, #9c1f14);
+}
+
+.offline .status {
+  background: radial-gradient(circle at 35% 35%, #f2f2f2, #a3a7ad 60%, #6f7379);
+}
+
+.offline img {
+  filter: grayscale(0.85);
+  opacity: 0.7;
+}

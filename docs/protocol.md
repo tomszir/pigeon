@@ -8,6 +8,7 @@ How peers identify themselves, find each other, and exchange messages, letters a
 - The keypair is made on the first visit and kept in IndexedDB; the private key is non-extractable, so not even the page can read it. Clearing site data is a new identity.
 - A `PeerId` is 52 base32 characters for an Ed25519 key (32 bytes) or 104 for a raw P-256 point (65 bytes); the length says which. Core never holds keys: it signs through a `Signer` and verifies and hashes through `Crypto`, which the platform implements.
 - Handles are self-chosen, not unique, at most 32 characters; petnames are what you call a contact. Pairing shows a 16-hex-character fingerprint (the first 8 bytes of the id's SHA-256, spelled in fours) to compare.
+- Everyone's picture is a pixel pigeon drawn from their id ([design.md](design.md#avatars)). `hello` says which version of the drawing to use, so a newer version never changes the bird of someone who already has one.
 - The sealing (ECDH) keypair is made and announced in `hello` from M7, when async invites need it; letters use it too.
 
 ## Rooms
@@ -26,19 +27,19 @@ Inside a room the transport names connections (`ConnectionId`); those are not id
 
 Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical JSON (keys sorted), at most 64 KB (files are chunked). `sig` is `from`'s base32 signature over the envelope without `sig`, so naming the room stops an envelope being replayed into another one. In pair rooms `room` is the chat's id (the old pair room's name) whichever daily room carried it, so a friend in two rooms at once sends the same envelope to both; `buzz`, `unfriend`, `pair-secret` and `pair-secret-ok` are taken once. Unsigned, oversized, malformed, wrong-room or blocked-sender messages are dropped, as is anything in a pair room from a key other than the friend's.
 
-| Type                                                        | Room        | Purpose                                                                                                |
-| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| `hello`                                                     | any         | handle (sealing key and capabilities from M7)                                                          |
-| `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement; `pair-accept` carries the secret   |
-| `pair-secret`, `pair-secret-ok`                             | old pair    | moves friends from before 0026: the lower id gives the secret, the other confirms                      |
-| `presence`                                                  | pair, lobby | status and personal message                                                                            |
-| `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md))                   |
-| `typing`, `buzz`                                            | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s                               |
-| `bye`                                                       | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides                    |
-| `unfriend`                                                  | pair        | you removed them; resent until it's delivered ([0023](decisions/0023-removing-a-friend-tells-them.md)) |
-| `file-offer`, `file-chunk`, `file-ack`                      | pair        | chunked transfer with back-pressure                                                                    |
-| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair        | store and forward                                                                                      |
-| `page-request`, `page-snapshot`                             | page        | fetch the newest signed snapshot                                                                       |
+| Type                                                        | Room        | Purpose                                                                                                           |
+| ----------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `hello`                                                     | any         | handle, and the version your bird is drawn with (`avatar`, 1 when left out); sealing key and capabilities from M7 |
+| `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement; `pair-accept` carries the secret              |
+| `pair-secret`, `pair-secret-ok`                             | old pair    | moves friends from before 0026: the lower id gives the secret, the other confirms                                 |
+| `presence`                                                  | pair, lobby | status and personal message                                                                                       |
+| `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md))                              |
+| `typing`, `buzz`                                            | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s                                          |
+| `bye`                                                       | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides                               |
+| `unfriend`                                                  | pair        | you removed them; resent until it's delivered ([0023](decisions/0023-removing-a-friend-tells-them.md))            |
+| `file-offer`, `file-chunk`, `file-ack`                      | pair        | chunked transfer with back-pressure                                                                               |
+| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair        | store and forward                                                                                                 |
+| `page-request`, `page-snapshot`                             | page        | fetch the newest signed snapshot                                                                                  |
 
 ## Pairing
 

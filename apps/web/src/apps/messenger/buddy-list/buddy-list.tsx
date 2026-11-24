@@ -1,14 +1,15 @@
 // The Pigeon Messenger main window: you, your friends, and the ways to add one. Shows the
 // Desktop board's sample instead when asked, and says so.
-import type { Status } from '@pigeon/core'
-import { createSignal, Match, Show, Switch } from 'solid-js'
+import type { AvatarTraits, Status } from '@pigeon/core'
+import { createEffect, createSignal, Match, Show, Switch } from 'solid-js'
+import { Avatar } from '../../../ui/avatar/avatar.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
 import {
   type ContactGroup,
   ContactList,
   type ContactRow,
 } from '../../../ui/contact-list/contact-list.tsx'
-import { brand, tango } from '../../../ui/icons/icons.ts'
+import { tango } from '../../../ui/icons/icons.ts'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { Menu, type MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
@@ -40,7 +41,7 @@ export interface BuddyListProps {
 
 const STATUS_LABEL: Record<Status, string> = { online: 'Online', away: 'Away', busy: 'Busy' }
 
-export function friendRow(view: FriendView, muted = false): ContactRow {
+export function friendRow(view: FriendView, muted = false, avatar?: AvatarTraits): ContactRow {
   const notes = [
     view.online && view.presence.status !== 'online'
       ? `(${STATUS_LABEL[view.presence.status]})`
@@ -54,16 +55,18 @@ export function friendRow(view: FriendView, muted = false): ContactRow {
     name: view.name,
     presence: !view.online ? 'offline' : view.presence.status === 'online' ? 'online' : 'away',
     ...(notes.length > 0 ? { note: notes.join(' ') } : {}),
+    ...(avatar === undefined ? {} : { avatar }),
   }
 }
 
 export function friendGroups(
   friends: readonly FriendView[],
   muted: (view: FriendView) => boolean = () => false,
+  avatars: ReadonlyMap<string, AvatarTraits> = new Map(),
 ): readonly ContactGroup[] {
   const online = friends.filter((view) => view.online)
   const offline = friends.filter((view) => !view.online)
-  const row = (view: FriendView) => friendRow(view, muted(view))
+  const row = (view: FriendView) => friendRow(view, muted(view), avatars.get(view.id))
   return [
     { id: 'online', label: 'Online', contacts: online.map(row) },
     { id: 'offline', label: 'Offline', contacts: offline.map(row) },
@@ -104,6 +107,18 @@ export function BuddyList(props: BuddyListProps) {
     })
   }
   const live = () => (props.sample ? undefined : props.messenger)
+  // Everyone's pixel pigeon, yours included, worked out once per id.
+  const [avatars, setAvatars] = createSignal<ReadonlyMap<string, AvatarTraits>>(new Map())
+  createEffect(() => {
+    const messenger = live()
+    if (messenger === undefined) return
+    for (const id of [messenger.self, ...messenger.friends().map((view) => view.id)]) {
+      if (avatars().has(id)) continue
+      void messenger
+        .avatarOf(id)
+        .then((traits) => setAvatars((known) => new Map(known).set(id, traits)))
+    }
+  })
   const named = () => (live()?.profile().handle ?? '') !== ''
 
   const open = (id: string) => {
@@ -184,14 +199,22 @@ export function BuddyList(props: BuddyListProps) {
         ]}
       />
       <div class={styles.me}>
-        <div class={styles.avatar} aria-hidden="true">
-          <Show
-            when={props.sample}
-            fallback={<img src={brand('pigeon-32')} alt="" width="32" height="32" />}
-          >
+        <Show
+          when={props.sample}
+          fallback={
+            <Avatar
+              traits={avatars().get(live()?.self ?? '')}
+              size={32}
+              name="Your"
+              decorative
+              status={live()?.profile().status}
+            />
+          }
+        >
+          <div class={styles.avatar} aria-hidden="true">
             <span class={styles.initial}>R</span>
-          </Show>
-        </div>
+          </div>
+        </Show>
         <div class={styles.who}>
           <Switch>
             <Match when={props.sample}>
@@ -225,7 +248,7 @@ export function BuddyList(props: BuddyListProps) {
           </Switch>
         </div>
       </div>
-      <div ref={listBox} class={classes(styles.list, useLayout() === 'phone' && styles.flushList)}>
+      <div ref={listBox} class={styles.list}>
         <Switch
           fallback={
             <ContactList
@@ -233,8 +256,13 @@ export function BuddyList(props: BuddyListProps) {
               groups={
                 props.sample
                   ? SAMPLE_GROUPS
-                  : friendGroups(live()?.friends() ?? [], (view) => live()?.muted(view.id) === true)
+                  : friendGroups(
+                      live()?.friends() ?? [],
+                      (view) => live()?.muted(view.id) === true,
+                      avatars(),
+                    )
               }
+              pictures={!props.sample}
               selected={selected()}
               onSelect={setSelected}
               onOpen={open}

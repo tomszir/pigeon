@@ -16,7 +16,13 @@ interface Side {
   log: () => ChatLog
 }
 
-async function open(transport: Transport, self: Signer, friend: Signer, log?: ChatLog) {
+async function open(
+  transport: Transport,
+  self: Signer,
+  friend: Signer,
+  log?: ChatLog,
+  avatar?: () => number,
+) {
   const name = await pairRoom(fakeCrypto, self.id, friend.id)
   const events: PairEvent[] = []
   let current = log ?? emptyLog(name)
@@ -28,6 +34,7 @@ async function open(transport: Transport, self: Signer, friend: Signer, log?: Ch
     rooms: [await transport.join(name)],
     handle: () => (self === rook ? 'Rook' : 'Mika'),
     presence: () => ({ status: 'online', message: '' }),
+    ...(avatar === undefined ? {} : { avatar }),
     log: current,
     now: () => 1,
     onEvent: (event) => {
@@ -54,14 +61,22 @@ describe('pair sessions', () => {
     expect(kinds(b)).toContain('unfriended')
   })
 
+  it('tells the friend which version your bird is drawn with', async () => {
+    const network = createMemoryNetwork()
+    const a = await open(network.transport(), rook, mika)
+    await open(network.transport(), mika, rook, undefined, () => 2)
+    await flush()
+    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 2 })
+  })
+
   it('sees each other come online, chat, type, buzz and go offline', async () => {
     const network = createMemoryNetwork()
     const a = await open(network.transport(), rook, mika)
     const mikaTransport = network.transport()
     const b = await open(mikaTransport, mika, rook)
     await flush()
-    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika' })
-    expect(b.events[0]).toEqual({ type: 'online', handle: 'Rook' })
+    expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 1 })
+    expect(b.events[0]).toEqual({ type: 'online', handle: 'Rook', avatar: 1 })
     expect(a.session.online()).toBe(true)
 
     await a.session.send('hi Mika')

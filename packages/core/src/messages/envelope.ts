@@ -16,7 +16,8 @@ export const MAX_PERSONAL_MESSAGE_LENGTH = 120
 export type Status = 'online' | 'away' | 'busy'
 
 export type Body =
-  | { readonly type: 'hello'; readonly handle: string }
+  /** `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. */
+  | { readonly type: 'hello'; readonly handle: string; readonly avatar?: number }
   | { readonly type: 'presence'; readonly status: Status; readonly message: string }
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
@@ -71,7 +72,12 @@ function isSummary(value: unknown): boolean {
 
 /** One shape check per body type: content lives in a table, not a switch. */
 const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
-  hello: (b) => isHandle(b['handle']),
+  hello: (b) =>
+    isHandle(b['handle']) &&
+    (b['avatar'] === undefined ||
+      (Number.isSafeInteger(b['avatar']) &&
+        (b['avatar'] as number) >= 1 &&
+        (b['avatar'] as number) <= 255)),
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&
     isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']),

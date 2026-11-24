@@ -124,6 +124,11 @@ export interface PigeonMenuSpec {
   readonly tools: readonly Launcher[]
   /** Everything, for All Programs. */
   readonly all: readonly Launcher[]
+  /**
+   * Who the header greets, as XP's did: your name and your picture. Without it, or before you
+   * have a name, the header says Pigeon with its logo.
+   */
+  readonly user?: () => { readonly name: string; readonly picture: Icon | undefined }
 }
 
 /** The left soft key's word and what it does, for whatever is on the Pocket's screen. */

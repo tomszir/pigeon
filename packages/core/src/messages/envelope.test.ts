@@ -10,6 +10,7 @@ describe('envelopes', () => {
   it('round-trips each body type', async () => {
     const bodies = [
       { type: 'hello', handle: 'Rook' },
+      { type: 'hello', handle: 'Rook', avatar: 2 },
       { type: 'presence', status: 'away', message: 'brb' },
       { type: 'typing', active: true },
       { type: 'buzz' },
@@ -57,6 +58,8 @@ describe('envelopes', () => {
     for (const bytes of [
       await sealed({ type: 'teleport' }),
       await sealed({ type: 'hello', handle: '' }),
+      await sealed({ type: 'hello', handle: 'Rook', avatar: 0 }),
+      await sealed({ type: 'hello', handle: 'Rook', avatar: 1.5 }),
       await sealed({ type: 'presence', status: 'asleep', message: '' }),
       await sealed({ type: 'buzz' }, 2),
       utf8Encode('not json'),

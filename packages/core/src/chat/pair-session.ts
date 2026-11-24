@@ -3,6 +3,7 @@
 // yesterday's around midnight, or the old room while moving; decision 0026), so a session spans
 // rooms that come and go. Pure protocol over Rooms; the app stores the log and draws the events.
 
+import { AVATAR_VERSION } from '../avatar/avatar.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
@@ -31,7 +32,8 @@ export interface Presence {
 }
 
 export type PairEvent =
-  | { readonly type: 'online'; readonly handle: string }
+  /** `avatar`: the version the friend's bird is drawn with. */
+  | { readonly type: 'online'; readonly handle: string; readonly avatar: number }
   | { readonly type: 'offline' }
   | { readonly type: 'presence'; readonly presence: Presence }
   | { readonly type: 'typing'; readonly active: boolean }
@@ -55,6 +57,8 @@ export interface PairSessionOptions {
   readonly rooms: readonly Room[]
   readonly handle: () => string
   readonly presence: () => Presence
+  /** The version your bird is drawn with; the newest unless you've kept an older one. */
+  readonly avatar?: () => number
   /** The chat as stored. The session keeps its own copy and reports every change. */
   readonly log: ChatLog
   readonly now: () => number
@@ -94,6 +98,11 @@ const link = (room: RoomName, connection: ConnectionId): Link => `${room}\n${con
 
 export function startPairSession(options: PairSessionOptions): PairSession {
   const { crypto, signer, friend, chat } = options
+  const hello = (): Body => ({
+    type: 'hello',
+    handle: options.handle(),
+    avatar: options.avatar?.() ?? AVATAR_VERSION,
+  })
   let log = options.log
   const rooms = new Map<RoomName, { room: Room; off: () => void }>()
   /** Connections that have proved, by a signed envelope, to be the friend. */
@@ -125,7 +134,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   prepareBye()
 
   const greet = (to: Link) => {
-    sendTo(to, { type: 'hello', handle: options.handle() })
+    sendTo(to, hello())
     sendTo(to, { type: 'presence', ...options.presence() })
     sendTo(to, { type: 'log-sync', have: summarize(log) })
   }
@@ -151,7 +160,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       const room = from.slice(0, from.indexOf('\n')) as RoomName
       const firstHere = ![...friendConnections].some((id) => id.startsWith(`${room}\n`))
       friendConnections.add(from)
-      if (first) options.onEvent({ type: 'online', handle: body.handle })
+      if (first) options.onEvent({ type: 'online', handle: body.handle, avatar: body.avatar ?? 1 })
       if (firstHere) options.onEvent({ type: 'met', room })
     },
     presence: (_from, body) =>
@@ -253,7 +262,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       prepareBye()
     },
     announce() {
-      sendTo('all', { type: 'hello', handle: options.handle() })
+      sendTo('all', hello())
       sendTo('all', { type: 'presence', ...options.presence() })
     },
     async unfriend() {
