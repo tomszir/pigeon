@@ -130,7 +130,7 @@ export function createPrograms(
     api.open('add-friend', {
       title: 'Add a Friend',
       icon: tangoIcon('contact-new', 16),
-      bounds: { x: 262, y: 150, width: 500, height: 330 },
+      bounds: { x: 232, y: 90, width: 560, height: 440 },
       controls: { maximize: false },
       content: (window) => (
         <Show

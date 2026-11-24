@@ -73,6 +73,14 @@ test('two people pair by invite link and chat', async ({ browser }) => {
     'nope. your browser is talking straight to mine',
   )
 
+  // A link followed in a tab where Pigeon is already open changes only the hash, and still opens.
+  const samContext = await browser.newContext()
+  const sam = await fresh(samContext)
+  await expect(sam.getByRole('dialog', { name: 'Read Me.txt - Pigeon Reader' })).toBeVisible()
+  await sam.goto(`/${link.slice(link.indexOf('#'))}`)
+  await expect(sam.getByRole('dialog', { name: 'Add a Friend' })).toBeVisible()
+
+  await samContext.close()
   await rookContext.close()
   await mikaContext.close()
 })

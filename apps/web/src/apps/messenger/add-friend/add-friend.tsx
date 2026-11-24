@@ -133,7 +133,7 @@ export function AddFriend(props: AddFriendProps) {
               >
                 {(link) => (
                   <>
-                    <QrCode text={link()} label="Invite link as a QR code" />
+                    <QrCode text={link()} label="Invite link as a QR code" scale={4} />
                     <div class={styles.column}>
                       <p class={styles.text}>
                         Send this link to one friend, or let them scan the code. It works once,

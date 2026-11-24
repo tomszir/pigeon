@@ -1,3 +1,4 @@
+import type { Invite } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import { render } from 'solid-js/web'
 import '../ui/tokens.css'
@@ -52,10 +53,14 @@ render(() => {
           icon: tangoIcon('dialog-warning', 16),
           body: 'This browser won’t let Pigeon store anything, so your name and friends last only until you close the tab.',
         })
-      if (incoming !== undefined) {
+      const showInvite = (invite: Invite | undefined) => {
+        if (invite === undefined) return
         programs.openMessenger()
-        programs.openAddFriend(incoming)
+        programs.openAddFriend(invite)
       }
+      showInvite(incoming)
+      // A link followed in a tab where Pigeon is already open only changes the hash.
+      window.addEventListener('hashchange', () => showInvite(takeInviteFromAddress()))
     })
     .catch((error: unknown) => {
       setProblem('Pigeon couldn’t start in this browser.')
