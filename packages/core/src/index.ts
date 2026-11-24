@@ -31,18 +31,22 @@ export {
 export type { Invite } from './pairing/invite.ts'
 export {
   decodeInvite,
-  encodeInvite,
-  INVITE_TOKEN_BYTES,
+  encodeInviteLink,
+  formatInviteCode,
+  INVITE_CODE_BYTES,
+  INVITE_CODE_LENGTH,
+  INVITE_LIFETIME_MS,
+  inviteCode,
   inviteRoom,
-  inviteToken,
 } from './pairing/invite.ts'
 export type {
-  AcceptInviteOptions,
-  AcceptResult,
   HostInviteOptions,
   NewFriend,
+  Offer,
+  OpenInviteOptions,
+  OpenResult,
 } from './pairing/pairing.ts'
-export { acceptInvite, hostInvite } from './pairing/pairing.ts'
+export { hostInvite, openInvite } from './pairing/pairing.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
 export { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from './testing/testing.ts'

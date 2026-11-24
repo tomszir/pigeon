@@ -4,7 +4,7 @@ import { decodeInvite, type Invite } from '@pigeon/core'
 
 export function takeInviteFromAddress(): Invite | undefined {
   const hash = location.hash.slice(1)
-  if (!hash.startsWith('invite/')) return undefined
+  if (!hash.startsWith('i/')) return undefined
   history.replaceState(null, '', `${location.pathname}${location.search}`)
   const invite = decodeInvite(hash)
   return invite.ok ? invite.value : undefined

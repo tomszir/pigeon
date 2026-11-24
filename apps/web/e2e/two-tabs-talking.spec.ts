@@ -19,7 +19,9 @@ async function fresh(context: BrowserContext, url = '/') {
 }
 
 test('two people pair by invite link and chat', async ({ browser }) => {
-  const rookContext = await browser.newContext()
+  const rookContext = await browser.newContext({
+    permissions: ['clipboard-read', 'clipboard-write'],
+  })
   const mikaContext = await browser.newContext()
   const rook = await fresh(rookContext)
 
@@ -27,16 +29,19 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await chooseName(rookMessenger, 'Rook')
   await rookMessenger.getByRole('button', { name: 'Add a Friend' }).click()
   const addFriend = rook.getByRole('dialog', { name: 'Add a Friend' })
-  const link = await addFriend.getByRole('textbox', { name: 'Invite link' }).inputValue()
-  expect(link).toContain('#invite/')
+  await expect(addFriend.locator('[data-invite-code]')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)
   await expect(addFriend.getByRole('img', { name: 'Invite link as a QR code' })).toBeVisible()
+  await addFriend.getByRole('button', { name: 'Copy link' }).click()
+  const link = String(await rook.evaluate('navigator.clipboard.readText()'))
+  expect(link).toMatch(/#i\/[a-z2-7]{21}$/)
 
-  // Mika opens the link in a browser of her own.
+  // Mika opens the link in a browser of her own; the link vouches for Rook's fingerprint.
   const mika = await fresh(mikaContext, link.slice(link.indexOf('/#') + 1))
   const mikaAdd = mika.getByRole('dialog', { name: 'Add a Friend' })
   await chooseName(mikaAdd, 'Mika')
-  await expect(mikaAdd).toContainText('Rook invited you to be friends.')
-  await mikaAdd.getByRole('button', { name: 'Pair' }).click()
+  await expect(mikaAdd).toContainText('Rook wants to be your friend.')
+  await expect(mikaAdd).toContainText('It matches the link')
+  await mikaAdd.getByRole('button', { name: 'Add Rook' }).click()
   await expect(mikaAdd).toContainText('You and Rook are now friends.')
   await mikaAdd.getByRole('button', { name: 'Say hello' }).click()
 
@@ -78,7 +83,26 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   const sam = await fresh(samContext)
   await expect(sam.getByRole('dialog', { name: 'Read Me.txt - Pigeon Reader' })).toBeVisible()
   await sam.goto(`/${link.slice(link.indexOf('#'))}`)
-  await expect(sam.getByRole('dialog', { name: 'Add a Friend' })).toBeVisible()
+  const samAdd = sam.getByRole('dialog', { name: 'Add a Friend' })
+  await expect(samAdd).toBeVisible()
+
+  // Sam pairs with Rook by typing a fresh code instead, and is told to check the fingerprint.
+  await chooseName(samAdd, 'Sam')
+  // Rook's link is used up, so nobody answers; Sam gives up waiting.
+  await expect(samAdd).toContainText('Looking for whoever made this invite')
+  await samAdd.getByRole('button', { name: 'Cancel' }).click()
+  await rookChat.getByRole('button', { name: 'Close' }).click()
+  await addFriend.getByRole('button', { name: 'Make a new invite' }).click()
+  const code = (await addFriend.locator('[data-invite-code]').textContent()) ?? ''
+  await samAdd
+    .getByRole('textbox', { name: 'Type a code or paste a link:' })
+    .fill(code.toLowerCase())
+  await samAdd.getByRole('button', { name: 'Open' }).click()
+  await expect(samAdd).toContainText('Rook wants to be your friend.')
+  await expect(samAdd).toContainText('Check it before you add them')
+  await samAdd.getByRole('button', { name: 'Add Rook' }).click()
+  await expect(samAdd).toContainText('You and Rook are now friends.')
+  await expect(rookMessenger.getByRole('button', { name: /Sam/ })).toBeVisible()
 
   await samContext.close()
   await rookContext.close()

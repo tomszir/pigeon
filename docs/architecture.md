@@ -14,7 +14,7 @@ packages/
       transport/  the Transport and Room interfaces (decision 0002).
       messages/   signed envelopes: body types, shape checks, the 64 KB limit.
       chat/       signed append-only chat logs and the pair session that syncs them.
-      pairing/    invite links and the invite handshake.
+      pairing/    invite codes and links, and the invite handshake.
       windows/    window-manager state.
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
