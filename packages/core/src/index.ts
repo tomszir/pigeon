@@ -1,7 +1,13 @@
-export type { Err, Ok, Result } from './result.ts'
-export { err, ok } from './result.ts'
-export type { PeerId, Room, RoomName, Transport } from './transport.ts'
-export type { Bounds, Desktop, ManagedWindow, WindowId, Workspace } from './window-manager.ts'
+export type { Err, Ok, Result } from './result/result.ts'
+export { err, ok } from './result/result.ts'
+export type { PeerId, Room, RoomName, Transport } from './transport/transport.ts'
+export type {
+  Bounds,
+  Desktop,
+  ManagedWindow,
+  WindowId,
+  Workspace,
+} from './windows/window-manager.ts'
 export {
   blurAll,
   closeWindow,
@@ -18,4 +24,4 @@ export {
   resizeWindow,
   toggleFromTaskbar,
   toggleMaximize,
-} from './window-manager.ts'
+} from './windows/window-manager.ts'
