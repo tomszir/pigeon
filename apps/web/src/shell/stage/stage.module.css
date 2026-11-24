@@ -41,7 +41,14 @@
   border-radius: inherit;
 }
 
+/*
+ * The glass overhangs the screen's rounded clip by 2px. Clipped to the same curve, the picture and
+ * the black border would both be partly transparent in the corner pixels, and the picture would
+ * show through as a light arc; overhanging, the border covers those pixels completely.
+ */
 .crtLayer {
+  inset: calc(-2px * var(--pg-scale));
+  border-radius: calc(18px * var(--pg-scale));
   background:
     radial-gradient(
       ellipse 130% 55% at 35% -12%,
@@ -52,8 +59,8 @@
   box-shadow:
     /* The black border round a CRT picture. It covers the corners the bend pulls in and the
        coloured seams the fringing leaves at the edges, so the picture ends in one clean curve. */
-    inset 0 0 0 calc(3px * var(--pg-scale)) #000000,
-    inset 0 0 calc(2px * var(--pg-scale)) calc(3px * var(--pg-scale)) rgb(0 0 0 / 90%),
+    inset 0 0 0 calc(5px * var(--pg-scale)) #000000,
+    inset 0 0 calc(2px * var(--pg-scale)) calc(5px * var(--pg-scale)) rgb(0 0 0 / 90%),
     inset 0 0 calc(24px * var(--pg-scale)) rgb(0 0 0 / 45%),
     inset 0 0 calc(3px * var(--pg-scale)) rgb(140 210 255 / 20%);
   animation: pg-flicker 6s steps(1) infinite;
