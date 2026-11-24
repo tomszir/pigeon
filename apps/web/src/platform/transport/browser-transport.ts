@@ -23,12 +23,24 @@ const toBytes = (data: unknown): Uint8Array | undefined => {
   return undefined
 }
 
+/** Some TURN server among `servers`: a `turn:` or `turns:` URL. */
+const hasRelay = (servers: readonly TurnServer[]) =>
+  servers.some((server) =>
+    (Array.isArray(server.urls) ? server.urls : [server.urls]).some((url) => /^turns?:/i.test(url)),
+  )
+
 export function createBrowserTransport(
   getTurnServers: () => Promise<TurnServer[]> = turnServers(),
+  /**
+   * Told when a relay-only room is joined with no relay to go through. Pigeon still doesn't
+   * connect directly (the visitor asked it not to), so nobody will answer until the relay is back.
+   */
+  onNoRelay: () => void = () => undefined,
 ): Transport {
   return {
     async join(name: RoomName, options: JoinOptions = {}): Promise<Room> {
       const turnConfig = await getTurnServers()
+      if (options.relayOnly === true && !hasRelay(turnConfig)) onNoRelay()
       const room = joinRoom(
         {
           appId: APP_ID,

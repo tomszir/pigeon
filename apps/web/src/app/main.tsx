@@ -88,12 +88,25 @@ render(() => {
     await store.set(HINTED, true)
   }
 
+  // Relay-only fails closed: no relay means no connections, and the visitor is told why. A
+  // reconnect joins many rooms, so it's said once a minute at most.
+  let saidNoRelay = 0
+  const sayNoRelay = () => {
+    if (Date.now() - saidNoRelay < 60_000) return
+    saidNoRelay = Date.now()
+    api.notify({
+      title: 'The relay can’t be reached',
+      icon: tangoIcon('dialog-warning', 16),
+      body: 'Always go through the relay is on, so Pigeon won’t connect to friends directly. Turn it off in Settings, Connection, to connect without it.',
+    })
+  }
+
   void createBrowserStore()
     .then(async (storage) => {
       await tellWhatsNew(storage.store).catch((error: unknown) => console.error(error))
       if (storage.persistent)
         await hintHomeScreen(storage.store).catch((error: unknown) => console.error(error))
-      return startMessenger(programs.messengerEvents, storage)
+      return startMessenger(programs.messengerEvents, storage, sayNoRelay)
     })
     .then((started) => {
       if (!started.ok) {

@@ -364,9 +364,8 @@ describe('private rooms (decision 0026)', () => {
     // Every other pair room they joined was locked.
     for (const join of pairJoins(network))
       if (join.name !== name) expect(join.options.password).toBeDefined()
-    // The old room was joined twice: by Eve just now, and by the inviter while pairing, until it
-    // met Mika in the new room seconds later (in case Mika's Pigeon was from before 0026).
-    expect(network.joins.filter((join) => join.name === name)).toHaveLength(2)
+    // Neither of them ever joined the old room: Eve is the only one who did.
+    expect(network.joins.filter((join) => join.name === name)).toHaveLength(1)
   })
 
   it('moves friends from before the secret the next time they meet', async () => {

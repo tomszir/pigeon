@@ -511,9 +511,10 @@ export async function createMessenger(deps: MessengerDeps) {
     stopHosting = undefined
     setInvite(undefined)
     await store.delete(KEYS.invite)
-    // Not moved yet: until they're seen in the secret's room, they may be a Pigeon from before
-    // 0026 that only knows the old one.
-    const view = await addFriend({ ...paired, addedAt: clock.now(), secret })
+    // Straight to the secret's rooms, never the old one: offers there can be read by anyone who
+    // knows both ids (decision 0026). An invitee whose tab predates 0026 ignored the secret and
+    // will need to pair again.
+    const view = await addFriend({ ...paired, addedAt: clock.now(), secret, moved: true })
     await saveFriends()
     await startSession(paired.id)
     events.onPaired?.(view)
