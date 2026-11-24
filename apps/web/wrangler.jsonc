@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Static assets only: no Worker code, nothing on Cloudflare sees user data (decision 0005).
+  "name": "pigeon",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "drop-trailing-slash"
+  },
+  "routes": [{ "pattern": "pigeon.tomszir.com", "custom_domain": true }]
+}

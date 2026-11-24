@@ -61,6 +61,9 @@ export interface Settings {
 export interface ShellApi {
   readonly open: (id: WindowId, spec: WindowSpec) => void
   readonly close: (id: WindowId) => void
+  readonly isOpen: (id: WindowId) => boolean
+  /** True while the window has focus. */
+  readonly isActive: (id: WindowId) => boolean
   readonly buzz: (id: WindowId) => void
   readonly notify: (notice: Notice) => void
   readonly message: (message: MessageSpec) => void

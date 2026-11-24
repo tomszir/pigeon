@@ -197,6 +197,8 @@ export function createShell(env: ShellEnv): CreatedShell {
   const api: ShellApi = {
     open,
     close,
+    isOpen: (id) => specs().has(id),
+    isActive: (id) => desktop().active === id,
     buzz,
     notify: setNotice,
     message,

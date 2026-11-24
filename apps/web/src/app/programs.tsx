@@ -1,10 +1,14 @@
 // What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
 // shell draws it and the apps fill the windows.
-import { type Accessor, createSignal } from 'solid-js'
+import type { Invite, PeerId } from '@pigeon/core'
+import { type Accessor, createSignal, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
+import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
-import { Conversation } from '../apps/messenger/conversation/conversation.tsx'
+import { LiveConversation } from '../apps/messenger/live-conversation/live-conversation.tsx'
 import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample.ts'
+import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
+import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
 import { Readme } from '../apps/readme/readme/readme.tsx'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
@@ -14,7 +18,19 @@ export interface Programs extends ShellProps {
   readonly openReadme: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
+  readonly openAddFriend: (incoming?: Invite) => void
   readonly sample: Accessor<boolean>
+  /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
+  readonly messengerEvents: MessengerEvents
+}
+
+/** What the Messenger needs from the composition root. */
+export interface MessengerHost {
+  readonly messenger: Accessor<Messenger | undefined>
+  /** Why Pigeon can't run here, when it can't. */
+  readonly problem: Accessor<string | undefined>
+  readonly copyText: (text: string) => Promise<boolean>
+  readonly sleep: (ms: number) => Promise<void>
 }
 
 /** Things that come in later milestones say so, in the world's own voice. */
@@ -24,7 +40,12 @@ const LATER = {
   explorer: ['Pigeon Explorer is still being built.', 'Browsing pigeon:// pages arrives soon.'],
 } as const
 
-export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: boolean): Programs {
+export function createPrograms(
+  api: ShellApi,
+  env: ShellEnv,
+  host: MessengerHost,
+  startWithSample: boolean,
+): Programs {
   const [sample, setSample] = createSignal(startWithSample)
 
   const openAbout = () =>
@@ -48,18 +69,24 @@ export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: bo
   // Each new conversation opens 20px down and right of the last, like the era's cascade, and
   // the first lands where the Desktop board draws it.
   let conversations = 0
-  const openConversation = (contactId: string) => {
-    const conversation = sampleConversation(contactId)
-    if (conversation === undefined) return
+  const cascade = () => {
     const step = conversations % 5
     conversations += 1
-    api.open(`conversation:${contactId}`, {
-      title: `${conversation.name} - Conversation`,
+    return { x: 318 + step * 20, y: 116 + step * 20, width: 490, height: 540 }
+  }
+  const conversationWindow = (contactId: string) => `conversation:${contactId}`
+
+  const openSampleConversation = (contactId: string) => {
+    const conversation = sampleConversation(contactId)
+    if (conversation === undefined) return
+    api.open(`sample:${contactId}`, {
+      title: `${conversation.name} - Conversation (sample)`,
+      taskTitle: `${conversation.name} (sample)`,
       icon: brandIcon('pigeon-16'),
-      bounds: { x: 318 + step * 20, y: 116 + step * 20, width: 490, height: 540 },
+      bounds: cascade(),
       resizable: true,
       content: (window) => (
-        <Conversation
+        <SampleConversation
           conversation={conversation}
           self={SAMPLE_SELF.name}
           onBuzz={window.buzz}
@@ -68,6 +95,104 @@ export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: bo
         />
       ),
     })
+  }
+
+  const openFriendConversation = (id: PeerId) => {
+    const messenger = host.messenger()
+    const friend = messenger?.friend(id)
+    if (messenger === undefined || friend === undefined) return
+    const windowId = conversationWindow(id)
+    api.open(windowId, {
+      title: `${friend.handle} - Conversation`,
+      taskTitle: friend.handle,
+      icon: brandIcon('pigeon-16'),
+      bounds: cascade(),
+      resizable: true,
+      content: (window) => (
+        <LiveConversation
+          messenger={messenger}
+          friend={id}
+          isActive={window.isActive}
+          onBuzz={window.buzz}
+          onClose={window.close}
+          onAbout={openAbout}
+        />
+      ),
+    })
+  }
+
+  const openConversation = (contactId: string) =>
+    sample() ? openSampleConversation(contactId) : openFriendConversation(contactId)
+
+  const openAddFriend = (incoming?: Invite) => {
+    // A link from the address bar replaces whatever the window was showing.
+    if (incoming !== undefined) api.close('add-friend')
+    api.open('add-friend', {
+      title: 'Add a Friend',
+      icon: tangoIcon('contact-new', 16),
+      bounds: { x: 262, y: 150, width: 500, height: 330 },
+      controls: { maximize: false },
+      content: (window) => (
+        <Show
+          when={host.messenger()}
+          fallback={<p>{host.problem() ?? 'Pigeon is still starting...'}</p>}
+        >
+          {(messenger) => (
+            <AddFriend
+              messenger={messenger()}
+              incoming={incoming}
+              copyText={host.copyText}
+              sleep={host.sleep}
+              onOpenConversation={(id) => {
+                setSample(false)
+                openFriendConversation(id)
+              }}
+              onClose={window.close}
+            />
+          )}
+        </Show>
+      ),
+    })
+  }
+
+  const copyInvite = async () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    if (messenger.invite() === undefined) await messenger.newInvite()
+    const link = messenger.inviteLink()
+    if (link === undefined) return
+    const copied = await host.copyText(link)
+    api.notify({
+      title: copied ? 'Invite link copied' : 'Copy your invite link',
+      icon: tangoIcon('contact-new', 16),
+      body: copied
+        ? 'Paste it to one friend. It works once, while Pigeon is open here.'
+        : 'Your browser kept the clipboard to itself. Open Add a Friend and copy the link there.',
+    })
+  }
+
+  const friendIcon = brandIcon('pigeon-16')
+  const messengerEvents: MessengerEvents = {
+    onPaired: (friend: FriendView) =>
+      api.notify({
+        title: `${friend.handle} is now your friend`,
+        icon: friendIcon,
+        body: `${friend.handle} answered your invite link.`,
+      }),
+    onOnline: (friend) =>
+      api.notify({ title: friend.handle, icon: friendIcon, body: 'has just come online.' }),
+    onMessage: (friend, entry) => {
+      if (api.isActive(conversationWindow(friend.id))) return
+      api.notify({
+        title: `${friend.handle} says:`,
+        icon: friendIcon,
+        body: entry.text.slice(0, 120),
+      })
+    },
+    onBuzz: (friend) => {
+      if (!sample()) openFriendConversation(friend.id)
+      api.buzz(conversationWindow(friend.id))
+    },
   }
 
   const openMessenger = () =>
@@ -80,8 +205,13 @@ export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: bo
       content: (window) => (
         <BuddyList
           sample={sample()}
+          messenger={host.messenger()}
+          problem={host.problem()}
           onShowSample={() => setSample(true)}
+          onHideSample={() => setSample(false)}
           onOpenConversation={openConversation}
+          onAddFriend={() => openAddFriend()}
+          onCopyInvite={() => void copyInvite()}
           onAbout={openAbout}
           onClose={window.close}
         />
@@ -119,8 +249,7 @@ export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: bo
     label: 'Add a Friend...',
     icon16: tangoIcon('contact-new', 16),
     icon32: tangoIcon('contact-new', 32),
-    onOpen: () => undefined,
-    disabled: true,
+    onOpen: () => openAddFriend(),
   }
   const letters: Launcher = {
     id: 'letters',
@@ -189,6 +318,8 @@ export function createPrograms(api: ShellApi, env: ShellEnv, startWithSample: bo
     openReadme,
     openMessenger,
     openConversation,
+    openAddFriend,
     sample,
+    messengerEvents,
   }
 }

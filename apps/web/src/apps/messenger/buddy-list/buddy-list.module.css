@@ -83,13 +83,24 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-align: left;
 }
 
-.disabled {
+.task:hover:not(:disabled) {
+  color: var(--pg-link-hover);
+  text-decoration: underline;
+}
+
+.task:disabled {
   color: var(--pg-text-disabled);
 }
 
-.disabled img {
+.task:disabled img {
   opacity: 0.5;
 }
 
