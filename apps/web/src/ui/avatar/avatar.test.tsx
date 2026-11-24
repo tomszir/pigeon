@@ -29,4 +29,17 @@ describe('Avatar', () => {
     expect(screen.queryByRole('img')).toBeNull()
     expect((container.firstElementChild as HTMLElement).style.width).toBe('38px')
   })
+
+  it('adds nothing to the name of what it sits in when decorative', () => {
+    render(() => (
+      <button type="button">
+        <Avatar traits={traits} size={32} name="Mika" decorative />
+        Mika
+      </button>
+    ))
+    const picture = document.querySelector('img') as HTMLImageElement
+    expect(picture.getAttribute('alt')).toBe('')
+    expect(picture.hasAttribute('title')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Mika' })).toBeTruthy()
+  })
 })

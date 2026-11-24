@@ -22,7 +22,8 @@ import { Reader } from '../apps/reader/reader/reader.tsx'
 import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
-import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
+import { avatarIcon } from '../ui/avatar/avatar.tsx'
+import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
 
 export interface Programs extends ShellProps {
@@ -334,9 +335,17 @@ export function createPrograms(
       setSample(false)
       openFriendConversation(friend.id)
     },
+    // Their own bird says who it is before the name does.
     onOnline: (friend) => {
       if (muted(friend)) return
-      api.notify({ title: friend.name, icon: friendIcon, body: 'has just come online.' })
+      const messenger = host.messenger()
+      const notify = (icon: Icon) =>
+        api.notify({ title: friend.name, icon, body: 'has just come online.' })
+      if (messenger === undefined) return notify(friendIcon)
+      void messenger.avatarOf(friend.id).then(
+        (traits) => notify(avatarIcon(traits)),
+        () => notify(friendIcon),
+      )
     },
     onUnfriended: (friend) =>
       api.notify({

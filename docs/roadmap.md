@@ -52,4 +52,4 @@ M2 is built, pending its done check across two real networks. Each visitor gets 
 
 M12 is built, pending its done check on the next release. Changelog.txt sits on the desktop with notes for 0.2.0 to 0.4.0, and the release-please workflow drafts each new release's section on the release PR for the author to rewrite ([0025](decisions/0025-release-notes-for-people.md)). A returning visitor on a newer version gets a balloon, "Pigeon was updated to 0.5.0. See what's new?", once; a first visit gets none.
 
-M10 is under way. Everyone has a pixel pigeon drawn from their id, frozen per version with the version said in `hello` ([design.md](design.md#avatars)), shown in conversations and profiles; the buddy list and the pairing screen are next.
+M10 is under way. Everyone has a pixel pigeon drawn from their id, frozen per version with the version said in `hello` ([design.md](design.md#avatars)), shown in the buddy list, conversations, profiles and the came-online balloon; the pairing screen is next.

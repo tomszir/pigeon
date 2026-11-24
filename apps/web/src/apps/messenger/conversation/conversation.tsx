@@ -98,10 +98,12 @@ export function Conversation(props: ConversationProps) {
       </Toolbar>
       <div class={styles.header}>
         {props.avatar}
-        <p class={styles.to}>
-          To: <strong>{props.name}</strong> &lt;{props.fingerprint}&gt; ·{' '}
-          <span class={props.connected ? styles.route : styles.offline}>{props.route}</span>
-        </p>
+        <div class={styles.lines}>
+          <p class={styles.to}>
+            To: <strong>{props.name}</strong> &lt;{props.fingerprint}&gt;
+          </p>
+          <p class={props.connected ? styles.route : styles.offline}>{props.route}</p>
+        </div>
       </div>
       <div class={styles.transcript}>
         <Transcript label={`Conversation with ${props.name}`} entries={withTyping()} />

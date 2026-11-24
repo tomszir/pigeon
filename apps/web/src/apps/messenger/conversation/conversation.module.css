@@ -11,9 +11,19 @@
   margin: 3px 0;
 }
 
-.to {
-  margin: 0;
+/* "To: Mika <fingerprint>", and under it how she's reached. */
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   padding: 3px 5px;
+}
+
+.lines > p {
+  margin: 0;
+}
+
+.to {
   color: var(--pg-text-muted);
 }
 
