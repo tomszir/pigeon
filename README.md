@@ -7,6 +7,7 @@
     <p>
         <a href="https://github.com/tomszir/pigeon/actions/workflows/ci.yml"><img src="https://github.com/tomszir/pigeon/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
         <a href="https://github.com/tomszir/pigeon/releases/latest"><img src="https://img.shields.io/github/v/release/tomszir/pigeon?sort=semver&amp;label=release" alt="Latest release" /></a>
+        <a href="LICENSE"><img src="https://img.shields.io/github/license/tomszir/pigeon" alt="License: MIT" /></a>
     </p>
 </div>
 
@@ -78,3 +79,7 @@ Start with [docs/README.md](docs/README.md), then see [CONTRIBUTING.md](CONTRIBU
 - Icons from the [Tango Desktop Project](http://tango.freedesktop.org/) (public domain).
 
 Not affiliated with or endorsed by Microsoft.
+
+## License
+
+The code is [MIT](LICENSE). The vendored fonts, icons, styling values and wallpaper above keep their own licences.
