@@ -11,7 +11,8 @@
 }
 
 .item {
-  padding: 2px 6px;
+  min-height: var(--pg-touch-target);
+  padding: 2px var(--pg-menubar-item-inline);
   border: 0;
   background: transparent;
   color: var(--pg-text);

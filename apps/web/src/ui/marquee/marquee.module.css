@@ -1,0 +1,47 @@
+/* A single line that drifts end to end and back when it overflows (marquee.tsx). */
+
+.marquee {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.text {
+  display: inline-block;
+}
+
+.text[data-moving] {
+  animation: pg-marquee calc(var(--marquee-leg) * 2) ease-in-out infinite;
+}
+
+/* Still at the start, drift, still at the end, drift back. */
+@keyframes pg-marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+
+  50%,
+  62% {
+    transform: translateX(var(--marquee-shift));
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    text-overflow: ellipsis;
+  }
+
+  .text {
+    display: inline;
+  }
+
+  .text[data-moving] {
+    animation: none;
+  }
+}

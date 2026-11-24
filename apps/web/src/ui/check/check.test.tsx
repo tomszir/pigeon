@@ -15,3 +15,12 @@ describe('Check', () => {
     expect(screen.getByRole('radio', { name: 'Direct only' })).toHaveProperty('checked', true)
   })
 })
+
+it('toggles from its description too, which is part of the label', () => {
+  const onChange = vi.fn()
+  render(() => (
+    <Check label="&LCD effect" checked={false} onChange={onChange} description="A faint grid." />
+  ))
+  fireEvent.click(screen.getByText('A faint grid.'))
+  expect(onChange).toHaveBeenCalledWith(true)
+})

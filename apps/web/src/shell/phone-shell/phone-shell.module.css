@@ -1,28 +1,60 @@
-/* Below 1024×640: one program full-screen and a bottom switcher with 44px targets. */
+/*
+ * The Kestrel Pocket (decision 0019): a matte black frame, a screen that fills the phone, and a
+ * row of four keys. Inside the screen the desktop's controls grow to touch size through tokens.
+ */
 
 .phone {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
-  background: var(--pg-surface);
-  font: 400 14px / 18px var(--pg-font-ui);
+  padding: 6px 6px 0;
+  box-sizing: border-box;
+  background: #1c1c1e;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  font: var(--pg-type-body);
 }
 
-.home {
+/* The keys step aside while the on-screen keyboard is up; the bottom edge stays. */
+.phone[data-keyboard] {
+  padding-bottom: 6px;
+}
+
+.bezel {
+  display: flex;
+  flex-grow: 1;
+  min-height: 0;
+  padding: 4px;
+  border-radius: 4px;
+  background: #0b0b0c;
+}
+
+.screen {
+  /* Touch sizes for every control drawn inside (decision 0019). */
+  --pg-type-body: 400 13px / 17px var(--pg-font-ui);
+  --pg-type-body-strong: 700 13px / 17px var(--pg-font-ui);
+  --pg-type-message: 400 14px / 18px var(--pg-font-ui);
+  --pg-type-mono: 400 13px / 16px var(--pg-font-mono);
+  --pg-type-title: 700 14px / 18px var(--pg-font-ui);
+  --pg-button-height: 44px;
+  --pg-field-height: 44px;
+  --pg-menu-item: 44px;
+  --pg-list-row: 44px;
+  --pg-statusbar: 24px;
+  --pg-touch-target: 44px;
+  --pg-menubar-item-inline: 14px;
+
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: var(--pg-desktop) url("../../wallpapers/hills-1024x768.jpg") center / cover;
-  color: #ffffff;
-  text-shadow: 1px 1px 1px #000000;
-}
-
-.home img {
-  image-rendering: auto;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--pg-surface);
+  color: var(--pg-text);
+  font: var(--pg-type-body);
 }
 
 .app {
@@ -32,16 +64,68 @@
   min-height: 0;
 }
 
-.title {
+.app:focus {
+  outline: none;
+}
+
+.titleBar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-height: 44px;
+  color: #ffffff;
+  text-shadow: 1px 1px 0 var(--pg-title-text-shadow);
+}
+
+.titleBar {
   padding: 0 10px;
   background: var(--pg-grad-title-active);
+}
+
+/* The close button brings its own room on the right. */
+.titleBar:has(.close) {
+  padding-right: 0;
+}
+
+.barTitle {
+  flex-grow: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 700 15px / 18px var(--pg-font-ui);
+  white-space: nowrap;
+}
+
+.clock {
+  flex-shrink: 0;
+  font: 400 13px / 1 var(--pg-font-ui);
+}
+
+.close {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* The XP-style close square, drawn inside a 44px target. */
+.close span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #ffffff;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #e78a6e, #c1401c);
   color: #ffffff;
-  font: 700 16px / 20px var(--pg-font-ui);
-  text-shadow: 1px 1px var(--pg-title-text-shadow);
+  font: 700 15px / 1 var(--pg-font-ui);
 }
 
 .body {
@@ -49,31 +133,268 @@
   flex-direction: column;
   flex-grow: 1;
   min-height: 0;
-  padding: 0 4px 4px;
   overflow: auto;
 }
 
-.switcher {
-  display: flex;
-  overflow-x: auto;
-  background: var(--pg-grad-taskbar);
+/* Catches a tap outside the menu to close it; draws nothing. */
+.scrim {
+  position: absolute;
+  inset: 0;
 }
 
-.switch {
+/* The menu rises from the bottom right, over the right soft key, where a thumb already is. */
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: 37px;
   display: flex;
-  flex: 1 0 72px;
   flex-direction: column;
+  width: min(290px, 85%);
+  max-height: calc(100% - 44px);
+  overflow-y: auto;
+  border: 1px solid var(--pg-frame-blue);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 8px 0 0;
+  background: #ffffff;
+  box-shadow:
+    -2px -2px 4px rgb(0 0 0 / 25%),
+    -6px -6px 18px rgb(0 0 0 / 35%);
+}
+
+.menuHeader {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-height: 56px;
-  padding: 4px;
+  gap: 8px;
+  padding: 8px;
+  background: var(--pg-grad-menu-header);
+  color: #ffffff;
+  font: 700 15px / 18px var(--pg-font-ui);
+  text-shadow: 1px 1px 1px var(--pg-title-text-shadow);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  text-align: left;
+}
+
+.menuItem:disabled {
+  color: var(--pg-text-disabled);
+}
+
+.menuItem:disabled img {
+  opacity: 0.5;
+}
+
+.menuItem:not(:disabled):focus-visible,
+.menuItem:not(:disabled):active {
+  outline: none;
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}
+
+.menuRule {
+  height: 1px;
+  margin: 2px 10px;
+  border: 0;
+  background: var(--pg-separator);
+}
+
+.menuFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  background: var(--pg-grad-menu-header);
+}
+
+.turnOff {
+  min-height: 44px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
   color: #ffffff;
-  font: 400 11px / 13px var(--pg-font-ui);
+  font: var(--pg-type-body);
+  text-shadow: 1px 1px 1px var(--pg-title-text-shadow);
 }
 
-.switch:active {
-  background: rgb(0 0 0 / 20%);
+.turnOff:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -4px;
+}
+
+.notice {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 52px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* A faint pixel grid and backlight falloff: an LCD, not a tube. */
+.lcd {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 4%) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / 3%) 0 1px, transparent 1px 3px),
+    radial-gradient(
+      ellipse 120% 90% at 50% 40%,
+      rgb(255 255 255 / 0%) 60%,
+      rgb(30 40 20 / 12%) 100%
+    );
+}
+
+/* The soft-key strip: the words for the two keys below, in the taskbar's blue at the bottom edge. */
+.softKeys {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  border-top: 1px solid #0c2f8a;
+  background: var(--pg-grad-taskbar);
+}
+
+.softLabel {
+  min-width: 96px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: 700 14px / 1 var(--pg-font-ui);
+  text-align: left;
+  text-shadow: 1px 1px 0 var(--pg-title-text-shadow);
+}
+
+.softLabel:last-child {
+  text-align: right;
+}
+
+.softLabel:active {
+  background: rgb(0 0 0 / 18%);
+}
+
+/*
+ * The keys: two raised soft keys either side of a round home key, rounded squares each hollowed
+ * around it with a gap, as on a 2003 phone's keypad. They run to the edges, under their words. Black plastic like the
+ * frame, with a moulded dash; the screen says what they do. The shapes are SVG (SoftKeyShape).
+ */
+.keys {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 8px 2px calc(10px + env(safe-area-inset-bottom));
+}
+
+/* The button lends its shadow to the shape inside it, so the shadow follows the outline. */
+.softKey {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  filter: drop-shadow(0 3px 0 #0d0d0e) drop-shadow(0 4px 4px rgb(0 0 0 / 55%));
+}
+
+/* Each key's hollow starts 3px inside the home key's edge, so the 7px gap stays even. */
+.softKey:first-child {
+  margin-right: -3px;
+}
+
+.softKey:last-child {
+  margin-left: -3px;
+}
+
+.cap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.softKey:first-child .cap {
+  transform: scaleX(-1);
+}
+
+/* The moulded dash, in the middle of the part of the key you can see. */
+.softKey::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: #78787e;
+  box-shadow: 0 -1px 0 #000000;
+  transform: translate(-50%, -50%);
+}
+
+.softKey:first-child::after {
+  left: calc(50% - 6px);
+}
+
+.softKey:last-child::after {
+  left: calc(50% + 6px);
+}
+
+.homeKey {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #3a3a3e 0%, #2a2a2d 45%, #1f1f22 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 14%),
+    inset 0 -2px 3px rgb(0 0 0 / 45%),
+    0 3px 0 #0d0d0e,
+    0 4px 5px rgb(0 0 0 / 60%);
+  color: #b4b4b9;
+}
+
+.homeKey svg {
+  filter: drop-shadow(0 -1px 0 #000000);
+}
+
+/* Pressed: the key sinks onto its lip. */
+.softKey:active {
+  filter: drop-shadow(0 1px 0 #0d0d0e);
+  transform: translateY(2px);
+}
+
+.softKey:active .cap {
+  filter: brightness(0.75);
+}
+
+.homeKey:active {
+  background: linear-gradient(180deg, #232326, #1a1a1c);
+}
+
+.homeKey:active {
+  box-shadow:
+    inset 0 2px 4px rgb(0 0 0 / 70%),
+    0 1px 0 #0d0d0e;
+  transform: translateY(2px);
+}
+
+.softKey:focus-visible,
+.homeKey:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }

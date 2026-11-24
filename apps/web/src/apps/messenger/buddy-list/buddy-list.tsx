@@ -2,12 +2,14 @@
 // Desktop board's sample instead when asked, and says so.
 import type { Status } from '@pigeon/core'
 import { createSignal, Match, Show, Switch } from 'solid-js'
+import { classes } from '../../../ui/classes/classes.ts'
 import {
   type ContactGroup,
   ContactList,
   type ContactRow,
 } from '../../../ui/contact-list/contact-list.tsx'
 import { brand, tango } from '../../../ui/icons/icons.ts'
+import { useLayout } from '../../../ui/layout/layout.ts'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
@@ -157,7 +159,7 @@ export function BuddyList(props: BuddyListProps) {
           </Switch>
         </div>
       </div>
-      <div class={styles.list}>
+      <div class={classes(styles.list, useLayout() === 'phone' && styles.flushList)}>
         <Switch
           fallback={
             <ContactList
@@ -197,7 +199,7 @@ export function BuddyList(props: BuddyListProps) {
           </p>
         </Show>
       </div>
-      <div class={styles.tasks}>
+      <div class={classes(styles.tasks, useLayout() === 'phone' && styles.phoneTasks)}>
         <button
           type="button"
           class={styles.task}

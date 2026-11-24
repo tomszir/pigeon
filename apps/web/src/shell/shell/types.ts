@@ -8,8 +8,17 @@ import type { ResolutionId } from '../stage/stage-scale.ts'
 /** Everything the shell reads from the browser, passed in so tests can stand in fakes. */
 export interface ShellEnv {
   readonly viewport: () => { readonly width: number; readonly height: number }
+  /**
+   * The part of the page actually on screen. On a phone the on-screen keyboard shrinks it, and
+   * it may be scrolled down by `top`; elsewhere it matches the viewport.
+   */
+  readonly visible: () => { readonly height: number; readonly top: number }
   readonly prefersReducedMotion: () => boolean
+  /** The main pointer is a finger, so the phone layout expects an on-screen keyboard. */
+  readonly coarsePointer: () => boolean
   readonly now: () => Date
+  /** Vibrates the device; false where it can't (most desktops, iPhones). */
+  readonly vibrate: (pattern: readonly number[]) => boolean
   /** Opens an outside page in a new tab. */
   readonly openLink: (url: string) => void
 }
@@ -56,6 +65,8 @@ export interface Settings {
   readonly pixelMode: boolean
   /** Shake a window on a buzz; when off, or when motion is reduced, the title bar flashes. */
   readonly shakeOnBuzz: boolean
+  /** The Pocket's pixel grid and backlight on a phone; on (decision 0019). */
+  readonly lcdEffect: boolean
 }
 
 export interface ShellApi {
@@ -95,4 +106,18 @@ export interface PigeonMenuSpec {
   readonly tools: readonly Launcher[]
   /** Everything, for All Programs. */
   readonly all: readonly Launcher[]
+}
+
+/** The left soft key's word and what it does, for whatever is on the Pocket's screen. */
+export interface SoftKey {
+  readonly label: string
+  readonly onPress: () => void
+}
+
+/** What the phone layout needs from app/ beyond the menu (decision 0019). */
+export interface PhoneSpec {
+  /** The Today screen, shown at start and on the home key. */
+  readonly home: () => JSX.Element
+  /** The left soft key for the window in front, or for Today when there is none. */
+  readonly leftSoftKey: (front: WindowId | undefined) => SoftKey
 }

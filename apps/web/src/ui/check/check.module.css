@@ -36,6 +36,54 @@
   border-radius: 50%;
 }
 
+.texts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.description {
+  color: var(--pg-text-muted);
+  line-height: 15px;
+}
+
+/* On a phone the whole row is the target: at least 44px tall, with a 20px box. */
+.phone {
+  display: flex;
+}
+
+.phone .input {
+  width: 20px;
+  height: 20px;
+}
+
+.phone .label {
+  flex-grow: 1;
+  gap: 10px;
+  min-height: var(--pg-touch-target);
+  padding: 4px 0;
+  box-sizing: border-box;
+  line-height: 20px;
+}
+
+.phone .description {
+  line-height: 18px;
+}
+
+.check:has(.description) .label {
+  align-items: flex-start;
+}
+
+.phone .label::before {
+  width: 20px;
+  height: 20px;
+}
+
+/* With a description, box and tick sit by the first line, not the middle. */
+.check:has(.description) .label::before {
+  margin-top: 1px;
+}
+
 .input:checked + .label::after {
   content: "";
   position: absolute;
@@ -52,6 +100,14 @@
   width: 5px;
   height: 5px;
   background: url("../../icons/xp/radio-dot.svg") no-repeat center;
+}
+
+.phone .input:checked + .label::after {
+  left: 2px;
+  top: 14px;
+  width: 16px;
+  height: 16px;
+  background-size: contain;
 }
 
 .input:disabled + .label::before {
@@ -81,4 +137,12 @@
 
 .radio .input:disabled:checked + .label::after {
   background-image: url("../../icons/xp/radio-dot-disabled.svg");
+}
+
+.check:has(.description) .input:checked + .label::after {
+  top: 8px;
+}
+
+.phone:has(.description) .input:checked + .label::after {
+  top: 15px;
 }
