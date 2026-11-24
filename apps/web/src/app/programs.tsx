@@ -174,12 +174,11 @@ export function createPrograms(
 
   const friendIcon = brandIcon('pigeon-16')
   const messengerEvents: MessengerEvents = {
-    onPaired: (friend: FriendView) =>
-      api.notify({
-        title: `${friend.handle} is now your friend`,
-        icon: friendIcon,
-        body: `${friend.handle} answered your invite link.`,
-      }),
+    // Someone answered your invite: their chat opens, starting with "... became friends".
+    onPaired: (friend: FriendView) => {
+      setSample(false)
+      openFriendConversation(friend.id)
+    },
     onOnline: (friend) =>
       api.notify({ title: friend.handle, icon: friendIcon, body: 'has just come online.' }),
     onMessage: (friend, entry) => {

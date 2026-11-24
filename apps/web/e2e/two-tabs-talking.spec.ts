@@ -42,10 +42,13 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await expect(mikaAdd).toContainText('Rook wants to be your friend.')
   await expect(mikaAdd).toContainText('It matches the link')
   await mikaAdd.getByRole('button', { name: 'Add Rook' }).click()
-  await expect(mikaAdd).toContainText('You and Rook are now friends.')
-  await mikaAdd.getByRole('button', { name: 'Say hello' }).click()
-
+  // Friends at once: both chats open, starting with when it happened.
   const mikaChat = mika.getByRole('dialog', { name: 'Rook - Conversation' })
+  await expect(mikaChat).toContainText('Mika and Rook became friends on')
+  await expect(mikaAdd).toBeHidden()
+  await expect(rook.getByRole('dialog', { name: 'Mika - Conversation' })).toContainText(
+    'Rook and Mika became friends on',
+  )
   await expect(mikaChat).toContainText('direct, encrypted')
   const mikaDraft = mikaChat.getByRole('textbox', { name: 'Message to Rook' })
   await mikaDraft.fill('wait, there')
@@ -101,7 +104,9 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await expect(samAdd).toContainText('Rook wants to be your friend.')
   await expect(samAdd).toContainText('Check it before you add them')
   await samAdd.getByRole('button', { name: 'Add Rook' }).click()
-  await expect(samAdd).toContainText('You and Rook are now friends.')
+  await expect(sam.getByRole('dialog', { name: 'Rook - Conversation' })).toContainText(
+    'Sam and Rook became friends on',
+  )
   await expect(rookMessenger.getByRole('button', { name: /Sam/ })).toBeVisible()
 
   await samContext.close()

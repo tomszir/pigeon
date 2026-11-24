@@ -25,6 +25,11 @@ export function clockTime(at: number): string {
   return `${hours % 12 === 0 ? 12 : hours % 12}:${minutes} ${hours < 12 ? 'AM' : 'PM'}`
 }
 
+/** "November 24", the day without the year, as the era's chat windows wrote it. */
+export function dayName(at: number): string {
+  return new Date(at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+}
+
 type NoteKind = Note['kind']
 const NOTES: Record<
   NoteKind,
@@ -38,6 +43,13 @@ const NOTES: Record<
 
 export function transcriptFor(view: FriendView, self: PeerId, selfName: string) {
   const entries: TranscriptEntry[] = []
+  // Where the chat began: kept with the friend (addedAt), so it's there on every visit.
+  if (view.addedAt > 0)
+    entries.push({
+      kind: 'system',
+      id: 'became-friends',
+      text: `${selfName} and ${view.handle} became friends on ${dayName(view.addedAt)} at ${clockTime(view.addedAt)}.`,
+    })
   const notes = [...view.notes]
   const flush = (upTo: number) => {
     while (notes[0] !== undefined && notes[0].after <= upTo) {
