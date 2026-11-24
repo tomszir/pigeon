@@ -13,7 +13,7 @@ TURN fixes it by relaying the packets. Cloudflare Realtime's TURN is free up to 
 
 ## Decision
 
-- The `pigeon` Worker gets code: `apps/web/worker/`. `GET /api/turn` asks Cloudflare for ICE servers with `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` (Worker secrets set in the dashboard) for 4 hours, tags them with the visitor's country and a keyed hash of their address (`customIdentifier`, for TURN analytics; retried untagged if Cloudflare refuses the tag), drops the port 53 addresses browsers stall on, and answers `{ iceServers }`. It only answers same-origin requests. Every other path is the static assets, as before.
+- The `pigeon` Worker gets code: `apps/web/worker/`. `GET /api/turn` asks Cloudflare for ICE servers with `TURN_KEY_ID` (a plain variable in `wrangler.jsonc`: it only names the key) and `TURN_KEY_API_TOKEN` (a Worker secret set in the dashboard) for 4 hours, tags them with the visitor's country and a keyed hash of their address (`customIdentifier`, for TURN analytics; retried untagged if Cloudflare refuses the tag), drops the port 53 addresses browsers stall on, and answers `{ iceServers }`. It only answers same-origin requests. Every other path is the static assets, as before.
 - The browser fetches `/api/turn` before joining a room, reuses the answer for 50 minutes, and passes it to Trystero as `turnConfig`, next to the default STUN servers. If the route is missing, slow (3 seconds) or not configured, the room is joined with STUN alone, which is what the dev server does.
 - ICE still tries direct paths first and only falls back to the relay when they fail.
 
