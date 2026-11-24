@@ -288,6 +288,24 @@
  * around it with a gap, as on a 2003 phone's keypad. They run to the edges, under their words. Black plastic like the
  * frame, with a moulded dash; the screen says what they do. The shapes are SVG (SoftKeyShape).
  */
+/*
+ * With the backlight down the grid needs both: faint light lines show on the dark scene, dark
+ * lines cut through the bright clock, so the text sits in the pixels like everything else.
+ */
+.lcdDim {
+  z-index: 3;
+  background-image:
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 30%) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / 24%) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 1px,
+      rgb(255 255 255 / 4%) 1px 2px,
+      transparent 2px 3px
+    ),
+    radial-gradient(ellipse 120% 90% at 50% 40%, rgb(0 0 0 / 0%) 55%, rgb(0 0 0 / 35%) 100%);
+}
+
 .keys {
   display: flex;
   flex-shrink: 0;

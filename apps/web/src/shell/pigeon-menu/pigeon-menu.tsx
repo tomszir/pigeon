@@ -1,6 +1,6 @@
 // The menu that opens from the pigeon button, laid out like the era's: a blue header, pinned
 // programs on the white side with All Programs at the bottom, places and tools on the blue side,
-// and Go Offline and Close Pigeon in the footer. Highlight follows the pointer and clears when it
+// and Go Offline and Turn Off Pigeon in the footer. Highlight follows the pointer and clears when it
 // leaves; the keyboard moves through every item.
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from 'solid-js'
 import { classes } from '../../ui/classes/classes.ts'
@@ -192,7 +192,7 @@ export function PigeonMenu(props: PigeonMenuProps) {
           }}
         >
           <img src={tango('system-shutdown', 22)} alt="" width="22" height="22" />
-          Close Pigeon
+          Turn Off Pigeon
         </button>
       </div>
     </div>

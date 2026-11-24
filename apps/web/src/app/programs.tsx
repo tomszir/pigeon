@@ -329,6 +329,20 @@ export function createPrograms(
           onAddFriend={() => openAddFriend()}
         />
       ),
+      news: () => {
+        const unread =
+          host
+            .messenger()
+            ?.friends()
+            .filter((friend) => friend.unread > 0) ?? []
+        const first = unread[0]
+        if (first === undefined) return undefined
+        if (unread.length > 1) {
+          const total = unread.reduce((sum, friend) => sum + friend.unread, 0)
+          return `${total} new messages`
+        }
+        return `${first.unread} new from ${first.handle}`
+      },
       // The left soft key does the obvious next thing for what's on screen.
       leftSoftKey: (front) => {
         if (front === 'messenger') return { label: 'Add Friend', onPress: () => openAddFriend() }

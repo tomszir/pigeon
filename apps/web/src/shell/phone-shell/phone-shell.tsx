@@ -15,6 +15,7 @@ import { brand, tangoIcon } from '../../ui/icons/icons.ts'
 import { LayoutContext } from '../../ui/layout/layout.ts'
 import { Marquee } from '../../ui/marquee/marquee.tsx'
 import type { WindowAlert } from '../../ui/window/window.tsx'
+import { PocketStandby } from '../pocket-standby/pocket-standby.tsx'
 import type {
   Launcher,
   Notice,
@@ -64,6 +65,9 @@ export interface PhoneShellProps {
   /** The part of the page on screen; the keyboard takes the rest. */
   visible: { readonly height: number; readonly top: number }
   onShutDown: () => void
+  /** Turned off: the standby screen shows until a tap or a key wakes it. */
+  asleep: boolean
+  onWake: () => void
   handle: (id: WindowId) => WindowHandle
 }
 
@@ -187,13 +191,18 @@ export function PhoneShell(props: PhoneShellProps) {
   }
 
   const goHome = () => {
+    if (props.asleep) return props.onWake()
     setMenuOpen(false)
     setHome(true)
     closeAllBut(undefined)
   }
-  const toggleMenu = () => (menuOpen() ? closeMenu(true) : openMenu())
+  const toggleMenu = () => {
+    if (props.asleep) return props.onWake()
+    return menuOpen() ? closeMenu(true) : openMenu()
+  }
   const left = () => props.phone.leftSoftKey(showingHome() ? undefined : current())
   const pressLeft = () => {
+    if (props.asleep) return props.onWake()
     setMenuOpen(false)
     setHome(false)
     left().onPress()
@@ -245,6 +254,13 @@ export function PhoneShell(props: PhoneShellProps) {
                 event.preventDefault()
             }}
           >
+            <Show when={props.asleep}>
+              <PocketStandby
+                now={props.now}
+                news={props.phone.news()}
+                onWake={() => props.onWake()}
+              />
+            </Show>
             <Show
               when={!showingHome() && current()}
               fallback={
@@ -289,7 +305,7 @@ export function PhoneShell(props: PhoneShellProps) {
               )}
             </Show>
 
-            <Show when={!keyboardOpen()}>
+            <Show when={!keyboardOpen() && !props.asleep}>
               {/* What the keys under the screen do. A finger can press the words as well. */}
               <div class={styles.softKeys} aria-hidden="true">
                 <button type="button" tabindex="-1" class={styles.softLabel} onClick={pressLeft}>
@@ -301,7 +317,7 @@ export function PhoneShell(props: PhoneShellProps) {
               </div>
             </Show>
 
-            <Show when={!keyboardOpen() && props.notice}>
+            <Show when={!keyboardOpen() && !props.asleep && props.notice}>
               {(notice) => (
                 <div class={styles.notice}>
                   <Balloon
@@ -315,7 +331,7 @@ export function PhoneShell(props: PhoneShellProps) {
               )}
             </Show>
 
-            <Show when={menuOpen()}>
+            <Show when={menuOpen() && !props.asleep}>
               <div class={styles.scrim} aria-hidden="true" onClick={() => closeMenu(true)} />
               <div
                 class={styles.menu}
@@ -361,7 +377,10 @@ export function PhoneShell(props: PhoneShellProps) {
                     type="button"
                     role="menuitem"
                     class={styles.turnOff}
-                    onClick={() => props.onShutDown()}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      props.onShutDown()
+                    }}
                   >
                     Turn off the Pocket
                   </button>
@@ -370,7 +389,10 @@ export function PhoneShell(props: PhoneShellProps) {
             </Show>
 
             <Show when={props.lcd}>
-              <div class={styles.lcd} aria-hidden="true" />
+              <div
+                class={props.asleep ? `${styles.lcd} ${styles.lcdDim}` : styles.lcd}
+                aria-hidden="true"
+              />
             </Show>
           </div>
         </div>

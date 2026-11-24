@@ -1,0 +1,22 @@
+/* The maze, drawn small and shown in big pixels across the whole screen. */
+
+.mazeSaver {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #000000;
+  cursor: none;
+}
+
+.mazeSaver:focus {
+  outline: none;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
