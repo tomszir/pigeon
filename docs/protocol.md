@@ -8,7 +8,7 @@ How peers identify themselves, find each other, and exchange messages, letters a
 - The keypair is made on the first visit and kept in IndexedDB; the private key is non-extractable, so not even the page can read it. Clearing site data is a new identity.
 - A `PeerId` is 52 base32 characters for an Ed25519 key (32 bytes) or 104 for a raw P-256 point (65 bytes); the length says which. Core never holds keys: it signs through a `Signer` and verifies and hashes through `Crypto`, which the platform implements.
 - Handles are self-chosen, not unique, at most 32 characters; petnames are what you call a contact. Pairing shows a 16-hex-character fingerprint (the first 8 bytes of the id's SHA-256, spelled in fours) to compare.
-- The sealing (ECDH) keypair is made and announced in `hello` from M4, when letters need it.
+- The sealing (ECDH) keypair is made and announced in `hello` from M7, when async invites need it; letters use it too.
 
 ## Rooms
 
@@ -27,7 +27,7 @@ Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical 
 
 | Type                                                        | Room        | Purpose                                                                                                |
 | ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| `hello`                                                     | any         | handle (sealing key and capabilities from M4)                                                          |
+| `hello`                                                     | any         | handle (sealing key and capabilities from M7)                                                          |
 | `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement                                     |
 | `presence`                                                  | pair, lobby | status and personal message                                                                            |
 | `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md))                   |
