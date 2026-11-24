@@ -42,7 +42,7 @@ export function Readme(props: ReadmeProps) {
         ]}
       />
       <ScrollArea class={styles.readme} label="Read Me.txt">
-        <pre ref={text} class={classes(styles.text, wrap() && styles.wrap)}>
+        <pre ref={text} class={classes(styles.text, wrap() && styles.wrap)} data-selectable>
           {README_TEXT}
         </pre>
       </ScrollArea>

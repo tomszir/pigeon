@@ -271,6 +271,17 @@ body {
   font: var(--pg-type-body);
   color: var(--pg-text);
   -webkit-font-smoothing: antialiased;
+  /* A desktop, not a document: clicks and drags never select labels, icons or menus. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* What you'd expect to copy from: fields, and text marked selectable (chat, Read Me). */
+input,
+textarea,
+[data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 img {

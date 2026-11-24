@@ -20,6 +20,8 @@ describe('Transcript', () => {
     render(() => <Transcript label="Conversation" entries={entries} />)
     const log = screen.getByRole('log')
     expect(log.getAttribute('aria-live')).toBe('polite')
+    // The page selects nothing by default; the chat stays copyable.
+    expect(log.hasAttribute('data-selectable')).toBe(true)
     expect(screen.getAllByText(/says:$/).map((label) => label.textContent)).toEqual([
       'Mika says:',
       'Rook says:',
