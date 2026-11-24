@@ -29,31 +29,6 @@ export interface ConnectingProps {
   onCancel: () => void
 }
 
-/**
- * A paper plane in big pixels, nose to the right, drawn for Pigeon (decision 0007). Each pixel is
- * one unit of the viewBox, so it stays crisp at any whole-number scale.
- */
-function PaperPlane() {
-  return (
-    <svg
-      class={styles.plane}
-      width="32"
-      height="22"
-      viewBox="0 0 16 11"
-      shape-rendering="crispEdges"
-      aria-hidden="true"
-    >
-      <path fill="#ffffff" d="M1 1h1v1h-1zM2 2h2v1h-2zM2 3h5v1h-5zM3 4h7v1h-7zM3 5h10v1h-10z" />
-      <path fill="#c9d6ee" d="M4 7h7v1h-7zM3 8h4v1h-4zM3 9h1v1h-1z" />
-      <path fill="#7f97c9" d="M4 6h10v1h-10z" />
-      <path
-        fill="#24418f"
-        d="M0 0h2v1h-2zM0 1h1v1h-1zM2 1h2v1h-2zM1 2h1v1h-1zM4 2h3v1h-3zM1 3h1v1h-1zM7 3h3v1h-3zM2 4h1v1h-1zM10 4h3v1h-3zM2 5h1v1h-1zM13 5h2v1h-2zM3 6h1v1h-1zM14 6h2v1h-2zM3 7h1v1h-1zM11 7h3v1h-3zM2 8h1v1h-1zM7 8h3v1h-3zM2 9h1v1h-1zM4 9h3v1h-3zM2 10h2v1h-2z"
-      />
-    </svg>
-  )
-}
-
 export function Connecting(props: ConnectingProps) {
   const phone = useLayout() === 'phone'
   const [now, setNow] = createSignal(props.now())
@@ -73,7 +48,7 @@ export function Connecting(props: ConnectingProps) {
             <figcaption>You</figcaption>
           </figure>
           <div class={styles.track}>
-            <PaperPlane />
+            <img class={styles.plane} src={brand('paper-plane-24')} alt="" width="24" height="24" />
           </div>
           <figure class={styles.end}>
             <img src={tango('contact-new', 32)} alt="" width="32" height="32" />
