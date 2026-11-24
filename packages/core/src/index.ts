@@ -39,7 +39,20 @@ export {
   inviteCode,
   inviteRoom,
 } from './pairing/invite.ts'
+export type { PairPlace, PairRoomSpec } from './pairing/pair-rooms.ts'
+export {
+  encodePairSecret,
+  isPairSecret,
+  PAIR_SECRET_BYTES,
+  pairDaysAt,
+  pairPassword,
+  pairRoomOn,
+  pairRoomsAt,
+  untilPairDaysChange,
+  utcDay,
+} from './pairing/pair-rooms.ts'
 export type {
+  Accepted,
   HostInviteOptions,
   NewFriend,
   Offer,
@@ -51,7 +64,13 @@ export { hostInvite, openInvite } from './pairing/pairing.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
 export { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from './testing/testing.ts'
-export type { ConnectionId, Room, RoomName, Transport } from './transport/transport.ts'
+export type {
+  ConnectionId,
+  JoinOptions,
+  Room,
+  RoomName,
+  Transport,
+} from './transport/transport.ts'
 export type {
   Bounds,
   Desktop,

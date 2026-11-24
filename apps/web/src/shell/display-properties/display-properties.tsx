@@ -1,4 +1,5 @@
-// Display Properties: the stage's settings, kept in memory for now.
+// Display Properties: the stage's settings, kept in memory for now, and how Pigeon connects,
+// which the Messenger keeps (decision 0026).
 
 import { For } from 'solid-js'
 import { Button } from '../../ui/button/button.tsx'
@@ -6,7 +7,7 @@ import { Check } from '../../ui/check/check.tsx'
 import { GroupBox } from '../../ui/group-box/group-box.tsx'
 import { Select } from '../../ui/select/select.tsx'
 import { Tabs } from '../../ui/tabs/tabs.tsx'
-import type { ScreensaverId, Settings } from '../shell/types.ts'
+import type { ConnectionSetting, ScreensaverId, Settings } from '../shell/types.ts'
 import { RESOLUTIONS } from '../stage/stage-scale.ts'
 import styles from './display-properties.module.css'
 
@@ -16,6 +17,7 @@ export interface DisplayPropertiesProps {
   /** How the screen is shown right now. */
   layout: 'monitor' | 'bare' | 'phone'
   prefersReducedMotion: boolean
+  connection?: ConnectionSetting | undefined
   onChange: (settings: Settings) => void
   onClose: () => void
 }
@@ -53,6 +55,28 @@ function BuzzSetting(props: DisplayPropertiesProps) {
             props.prefersReducedMotion
               ? 'Your system asks for less motion, so the title bar flashes instead.'
               : 'When this is off, the title bar flashes instead.'
+          }
+        />
+      </div>
+    </GroupBox>
+  )
+}
+
+/** The same check as the Messenger's File, Always Go Through the Relay. */
+function RelaySetting(props: DisplayPropertiesProps) {
+  const relayOnly = () => props.connection?.relayOnly()
+  return (
+    <GroupBox legend="Connection">
+      <div class={styles.stack}>
+        <Check
+          label="Always go through the &relay"
+          checked={relayOnly() === true}
+          disabled={relayOnly() === undefined}
+          onChange={(on) => props.connection?.setRelayOnly(on)}
+          description={
+            relayOnly() === undefined
+              ? 'Available once Pigeon Messenger has started.'
+              : 'Friends never see your IP address. Connecting is slower, and needs the relay to be reachable.'
           }
         />
       </div>
@@ -105,6 +129,7 @@ function PocketSettings(props: DisplayPropertiesProps) {
         </div>
       </GroupBox>
       <BuzzSetting {...props} />
+      <RelaySetting {...props} />
       <div class={styles.buttons}>
         <Button label="OK" isDefault onClick={props.onClose} class={styles.wide} />
       </div>
@@ -224,6 +249,11 @@ export function DisplayProperties(props: DisplayPropertiesProps) {
             id: 'effects',
             label: 'Effects',
             content: () => <BuzzSetting {...props} />,
+          },
+          {
+            id: 'connection',
+            label: 'Connection',
+            content: () => <RelaySetting {...props} />,
           },
         ]}
       />

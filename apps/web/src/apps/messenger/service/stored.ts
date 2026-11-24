@@ -1,7 +1,14 @@
 // Shape checks for what the Messenger reads back from storage. A value that doesn't match is
 // treated as missing rather than trusted.
-import { type ChatLog, isPeerId, type LogEntry, type PeerId } from '@pigeon/core'
-import type { BlockedRecord, FriendRecord, HostedInvite, Profile } from './service.ts'
+import { type ChatLog, isPairSecret, isPeerId, type LogEntry, type PeerId } from '@pigeon/core'
+import type {
+  BlockedRecord,
+  FarewellRecord,
+  FriendRecord,
+  HostedInvite,
+  MessengerSettings,
+  Profile,
+} from './service.ts'
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -27,9 +34,34 @@ export function isFriendRecords(value: unknown): value is readonly FriendRecord[
         typeof record['addedAt'] === 'number' &&
         (record['petname'] === undefined || typeof record['petname'] === 'string') &&
         (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
-        (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number'),
+        (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number') &&
+        isPlace(record),
     )
   )
+}
+
+/** A pair secret, if any, and whether you've moved to its rooms (decision 0026). */
+const isPlace = (record: Record<string, unknown>) =>
+  (record['secret'] === undefined || isPairSecret(record['secret'])) &&
+  (record['moved'] === undefined || typeof record['moved'] === 'boolean')
+
+/** Farewells: records, or the bare ids stored before 0026. */
+export function isFarewells(value: unknown): value is readonly (PeerId | FarewellRecord)[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        (typeof entry === 'string' && isPeerId(entry)) ||
+        (isObject(entry) &&
+          typeof entry['id'] === 'string' &&
+          isPeerId(entry['id']) &&
+          isPlace(entry)),
+    )
+  )
+}
+
+export function isMessengerSettings(value: unknown): value is MessengerSettings {
+  return isObject(value) && typeof value['relayOnly'] === 'boolean'
 }
 
 export function isBlockedRecords(value: unknown): value is readonly BlockedRecord[] {

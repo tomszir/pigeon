@@ -1,11 +1,14 @@
 // The Messenger's state: who you are, your friends, your chats, and a pair session per friend.
 // It reads and writes storage, runs core's protocol over the transport, and exposes Solid state
-// the windows draw. Everything it touches comes in through platform interfaces.
+// the windows draw. Everything it touches comes in through platform interfaces. Friends meet in
+// rooms named from their pair secret, renamed each UTC day; friends from before the secret move
+// there the next time they meet (decision 0026).
 import {
   type ChatLog,
   type Crypto,
   emptyLog,
   encodeInviteLink,
+  encodePairSecret,
   fingerprint,
   formatInviteCode,
   hostInvite,
@@ -18,18 +21,24 @@ import {
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   type NewFriend,
+  type Offer,
   type OpenResult,
   type OpenStep,
   openInvite,
+  PAIR_SECRET_BYTES,
   type PairEvent,
+  type PairPlace,
   type PairSession,
   type PeerId,
   type Presence,
   pairRoom,
+  pairRoomsAt,
+  type RoomName,
   type Signer,
   type Status,
   startPairSession,
   type Transport,
+  untilPairDaysChange,
 } from '@pigeon/core'
 import { batch, createSignal } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
@@ -38,9 +47,10 @@ import type { Store } from '../../../platform/storage/storage.ts'
 import {
   isBlockedRecords,
   isChatLog,
+  isFarewells,
   isFriendRecords,
   isHostedInvite,
-  isPeerIds,
+  isMessengerSettings,
   isProfile,
 } from './stored.ts'
 
@@ -65,6 +75,22 @@ export interface FriendRecord {
   readonly mutedUntil?: number | undefined
   /** They removed you: the chat stays, read-only, until you remove them too. */
   readonly removedYouAt?: number | undefined
+  /** The pair secret your rooms are named from (decision 0026); none for friends not yet moved. */
+  readonly secret?: string | undefined
+  /** Both of you hold the secret, so the old room named from your ids is no longer used. */
+  readonly moved?: boolean | undefined
+}
+
+/** A friend you removed who hasn't been told yet, and where to find them. */
+export interface FarewellRecord {
+  readonly id: PeerId
+  readonly secret?: string | undefined
+  readonly moved?: boolean | undefined
+}
+
+export interface MessengerSettings {
+  /** Connect to friends through the TURN relay only, so they never learn your IP address. */
+  readonly relayOnly: boolean
 }
 
 /** Someone you've blocked: their invite requests and answers are refused. */
@@ -127,6 +153,7 @@ const KEYS = {
   blocked: 'blocked',
   /** Friends you removed who haven't been told yet. */
   farewells: 'farewells',
+  settings: 'messengerSettings',
   log: (id: PeerId) => `log:${id}`,
 } as const
 
@@ -141,15 +168,33 @@ export interface HostedInvite {
   readonly expiresAt: number
 }
 
+/** An invite's answer as the Messenger hands it on: confirming adds the friend here too. */
+export interface FriendOffer extends Omit<Offer, 'confirm'> {
+  /** Agrees to be friends; true once you are, false if `until` gives up first. */
+  confirm(until: Promise<void>): Promise<boolean>
+}
+
 export type OpenedInvite =
-  | OpenResult
+  | { readonly ok: true; readonly offer: FriendOffer }
+  | Extract<OpenResult, { ok: false }>
   | { readonly ok: false; readonly error: 'own' }
   /** The inviter is someone you blocked. */
   | { readonly ok: false; readonly error: 'blocked'; readonly handle: string }
 
 export async function createMessenger(deps: MessengerDeps) {
-  const { crypto, signer, store, transport, clock } = deps
+  const { crypto, signer, store, clock } = deps
   const events = deps.events ?? {}
+
+  const storedSettings = await store.get(KEYS.settings)
+  const [settings, setSettings] = createSignal<MessengerSettings>(
+    isMessengerSettings(storedSettings) ? storedSettings : { relayOnly: false },
+  )
+  /** Every room, pair and invite alike, joined the way the settings say. */
+  const transport: Transport = {
+    join: (name, options = {}) =>
+      deps.transport.join(name, settings().relayOnly ? { ...options, relayOnly: true } : options),
+  }
+  const newSecret = () => encodePairSecret(deps.random(PAIR_SECRET_BYTES))
 
   const storedProfile = await store.get(KEYS.profile)
   const [profile, setProfileSignal] = createSignal<Profile>(
@@ -174,13 +219,24 @@ export async function createMessenger(deps: MessengerDeps) {
     store.set(
       KEYS.friends,
       friendList().map(
-        ({ id, handle, addedAt, petname, mutedUntil, removedYouAt }): FriendRecord => ({
+        ({
+          id,
+          handle,
+          addedAt,
+          petname,
+          mutedUntil,
+          removedYouAt,
+          secret,
+          moved,
+        }): FriendRecord => ({
           id,
           handle,
           addedAt,
           ...(petname === undefined ? {} : { petname }),
           ...(mutedUntil === undefined ? {} : { mutedUntil }),
           ...(removedYouAt === undefined ? {} : { removedYouAt }),
+          ...(secret === undefined ? {} : { secret }),
+          ...(moved === true ? { moved } : {}),
         }),
       ),
     )
@@ -192,8 +248,46 @@ export async function createMessenger(deps: MessengerDeps) {
   )
   const isBlocked = (id: PeerId) => blocked().some((record) => record.id === id)
   const storedFarewells = await store.get(KEYS.farewells)
-  let farewells: readonly PeerId[] = isPeerIds(storedFarewells) ? storedFarewells : []
+  // Before 0026 a farewell was just an id.
+  let farewells: readonly FarewellRecord[] = isFarewells(storedFarewells)
+    ? storedFarewells.map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
+    : []
   const farewellSessions = new Map<PeerId, PairSession>()
+
+  // Where each friend is met (decision 0026): the old room from both ids until you've moved,
+  // the secret's rooms once you have one. The old room's name is also the chat's id.
+  const legacyRoom = (id: PeerId) => pairRoom(crypto, signer.id, id)
+  const places = new Map<PairSession, () => Promise<PairPlace>>()
+  const syncing = new Map<PairSession, Promise<void>>()
+  /** Joins the rooms `session` should be in now and leaves the rest, one change at a time. */
+  function syncRooms(session: PairSession): Promise<void> {
+    const place = places.get(session)
+    if (place === undefined) return Promise.resolve()
+    const next = (syncing.get(session) ?? Promise.resolve()).then(async () => {
+      const wanted = await pairRoomsAt(crypto, await place(), clock.now())
+      const have = session.rooms()
+      // New rooms first, so a friend moving between them is never dropped.
+      for (const spec of wanted)
+        if (!have.includes(spec.name))
+          session.addRoom(
+            await transport.join(
+              spec.name,
+              spec.password === undefined ? {} : { password: spec.password },
+            ),
+          )
+      const names = new Set<RoomName>(wanted.map((spec) => spec.name))
+      for (const name of have) if (!names.has(name)) await session.removeRoom(name)
+    })
+    syncing.set(
+      session,
+      next.catch(() => undefined),
+    )
+    return next
+  }
+  const forget = (session: PairSession) => {
+    places.delete(session)
+    syncing.delete(session)
+  }
 
   const handlers: {
     [T in PairEvent['type']]: (id: PeerId, event: Extract<PairEvent, { type: T }>) => void
@@ -239,6 +333,39 @@ export async function createMessenger(deps: MessengerDeps) {
       const view = friend(id)
       if (view !== undefined) events.onUnfriended?.(view)
     },
+    met: (id, event) => {
+      const view = state.friends[id]
+      const session = sessions.get(id)
+      if (view === undefined || session === undefined || view.moved === true) return
+      if (event.room !== view.log.id) {
+        // They're in a room only the secret opens, so they hold it too.
+        if (view.secret !== undefined) void moveTo(id, view.secret)
+        return
+      }
+      // In the old room, the lower id gives the secret (decision 0026).
+      if (signer.id > id) return
+      const secret = view.secret ?? newSecret()
+      void (async () => {
+        if (view.secret === undefined) {
+          setState('friends', id, 'secret', secret)
+          await saveFriends()
+          await syncRooms(session)
+        }
+        await session.sendSecret(secret)
+      })()
+    },
+    secret: (id, event) => {
+      const session = sessions.get(id)
+      if (session === undefined) return
+      void (async () => {
+        await session.confirmSecret()
+        await moveTo(id, event.secret)
+      })()
+    },
+    'secret-ok': (id) => {
+      const secret = state.friends[id]?.secret
+      if (secret !== undefined) void moveTo(id, secret)
+    },
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
       const seen = new Set(before.map((entry) => entry.sig))
@@ -263,6 +390,18 @@ export async function createMessenger(deps: MessengerDeps) {
     },
   }
 
+  /** Both of you hold `secret`: meet only in its rooms from now on. */
+  async function moveTo(id: PeerId, secret: string) {
+    const view = state.friends[id]
+    if (view === undefined) return
+    if (view.secret !== secret || view.moved !== true) {
+      setState('friends', id, { secret, moved: true })
+      await saveFriends()
+    }
+    const session = sessions.get(id)
+    if (session !== undefined) await syncRooms(session)
+  }
+
   let nextNote = 0
   function note(id: PeerId, kind: Note['kind']) {
     const view = state.friends[id]
@@ -278,12 +417,12 @@ export async function createMessenger(deps: MessengerDeps) {
     if (sessions.has(id) || profile().handle === '') return
     const view = friend(id)
     if (view === undefined || view.removedYouAt !== undefined) return
-    const room = await transport.join(await pairRoom(crypto, signer.id, id))
     const session = startPairSession({
       crypto,
       signer,
       friend: id,
-      room,
+      chat: view.log.id,
+      rooms: [],
       handle: () => profile().handle,
       presence: () => ({ status: profile().status, message: profile().message }),
       log: view.log,
@@ -292,6 +431,15 @@ export async function createMessenger(deps: MessengerDeps) {
         (handlers[event.type] as (id: PeerId, event: PairEvent) => void)(id, event),
     })
     sessions.set(id, session)
+    places.set(session, async () => {
+      const current = state.friends[id]
+      return {
+        legacy: view.log.id as `pair:${string}`,
+        secret: current?.secret,
+        moved: current?.moved,
+      }
+    })
+    await syncRooms(session)
   }
 
   async function addFriend(record: FriendRecord, log?: ChatLog) {
@@ -302,6 +450,9 @@ export async function createMessenger(deps: MessengerDeps) {
         handle: record.handle,
         name: nameOf(record.handle, existing.petname),
         removedYouAt: undefined,
+        ...(record.secret === undefined
+          ? {}
+          : { secret: record.secret, moved: record.moved === true }),
       })
       return existing
     }
@@ -347,7 +498,8 @@ export async function createMessenger(deps: MessengerDeps) {
       now: clock.now,
       sleep: clock.sleep,
       code: hosted.code,
-      onPaired: (paired) => void welcome(paired),
+      newSecret,
+      onPaired: (paired, secret) => void welcome(paired, secret),
       refuse: isBlocked,
     })
     void clock.sleep(hosted.expiresAt - clock.now()).then(() => {
@@ -355,11 +507,13 @@ export async function createMessenger(deps: MessengerDeps) {
     })
   }
 
-  async function welcome(paired: NewFriend) {
+  async function welcome(paired: NewFriend, secret: string) {
     stopHosting = undefined
     setInvite(undefined)
     await store.delete(KEYS.invite)
-    const view = await addFriend({ ...paired, addedAt: clock.now() })
+    // Not moved yet: until they're seen in the secret's room, they may be a Pigeon from before
+    // 0026 that only knows the old one.
+    const view = await addFriend({ ...paired, addedAt: clock.now(), secret })
     await saveFriends()
     await startSession(paired.id)
     events.onPaired?.(view)
@@ -384,29 +538,34 @@ export async function createMessenger(deps: MessengerDeps) {
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
   }
   // Telling a removed friend: a session of its own that says unfriend once they're there.
-  async function sayFarewell(id: PeerId) {
+  async function sayFarewell(record: FarewellRecord) {
+    const { id } = record
     if (farewellSessions.has(id)) return
-    const room = await transport.join(await pairRoom(crypto, signer.id, id))
+    const legacy = await legacyRoom(id)
     const session: PairSession = startPairSession({
       crypto,
       signer,
       friend: id,
-      room,
+      chat: legacy,
+      rooms: [],
       handle: () => profile().handle,
       presence: () => ({ status: profile().status, message: profile().message }),
-      log: emptyLog(room.name),
+      log: emptyLog(legacy),
       now: clock.now,
       onEvent: (event) => {
         if (event.type !== 'online') return
         void session.unfriend().then(async () => {
-          farewells = farewells.filter((other) => other !== id)
+          farewells = farewells.filter((other) => other.id !== id)
           await store.set(KEYS.farewells, farewells)
           farewellSessions.delete(id)
+          forget(session)
           await session.close()
         })
       },
     })
     farewellSessions.set(id, session)
+    places.set(session, async () => ({ legacy, secret: record.secret, moved: record.moved }))
+    await syncRooms(session)
   }
 
   async function removeFriend(id: PeerId, options: { block: boolean }) {
@@ -414,6 +573,7 @@ export async function createMessenger(deps: MessengerDeps) {
     if (view === undefined) return
     const session = sessions.get(id)
     sessions.delete(id)
+    if (session !== undefined) forget(session)
     await session?.close()
     batch(() => {
       setState(
@@ -429,19 +589,46 @@ export async function createMessenger(deps: MessengerDeps) {
     }
     // They removed you first: there's nobody to tell.
     if (view.removedYouAt === undefined) {
-      farewells = [...farewells.filter((other) => other !== id), id]
+      const record: FarewellRecord = {
+        id,
+        ...(view.secret === undefined ? {} : { secret: view.secret }),
+        ...(view.moved === true ? { moved: true } : {}),
+      }
+      farewells = [...farewells.filter((other) => other.id !== id), record]
       await store.set(KEYS.farewells, farewells)
-      await sayFarewell(id)
+      await sayFarewell(record)
     }
   }
 
   async function connect() {
     await Promise.all(friendList().map((view) => startSession(view.id)))
-    if (profile().handle !== '') await Promise.all(farewells.map((id) => sayFarewell(id)))
+    if (profile().handle !== '') await Promise.all(farewells.map((record) => sayFarewell(record)))
     const stored = await store.get(KEYS.invite)
     if (isHostedInvite(stored)) await host(stored)
   }
   await connect()
+
+  async function disconnect() {
+    await stopHosting?.()
+    stopHosting = undefined
+    const all = [...sessions.values(), ...farewellSessions.values()]
+    sessions.clear()
+    farewellSessions.clear()
+    for (const session of all) forget(session)
+    await Promise.all(all.map((session) => session.close()))
+  }
+
+  // Rooms are renamed each UTC day, with both joined around midnight.
+  let closed = false
+  void (async () => {
+    while (!closed) {
+      await clock.sleep(untilPairDaysChange(clock.now()))
+      if (closed) return
+      await Promise.all(
+        [...places.keys()].map((session) => syncRooms(session).catch(() => undefined)),
+      )
+    }
+  })()
 
   return {
     self: signer.id,
@@ -512,12 +699,17 @@ export async function createMessenger(deps: MessengerDeps) {
           ...offer,
           async confirm(confirmUntil: Promise<void>) {
             const accepted = await offer.confirm(confirmUntil)
-            if (accepted) {
-              await addFriend({ ...offer.friend, addedAt: clock.now() })
-              await saveFriends()
-              await startSession(offer.friend.id)
-            }
-            return accepted
+            if (accepted === false) return false
+            // The inviter made the secret, so they hold it: meet only in its rooms. An inviter
+            // from before 0026 sends none, and you move later.
+            await addFriend({
+              ...offer.friend,
+              addedAt: clock.now(),
+              ...(accepted.secret === undefined ? {} : { secret: accepted.secret, moved: true }),
+            })
+            await saveFriends()
+            await startSession(offer.friend.id)
+            return true
           },
         },
       }
@@ -578,17 +770,22 @@ export async function createMessenger(deps: MessengerDeps) {
       setBlocked(blocked().filter((record) => record.id !== id))
       await store.set(KEYS.blocked, blocked())
     },
+    settings,
+    /** Turns relay-only connections on or off, and reconnects everything to match. */
+    async setRelayOnly(relayOnly: boolean) {
+      if (settings().relayOnly === relayOnly) return
+      setSettings({ ...settings(), relayOnly })
+      await store.set(KEYS.settings, settings())
+      await disconnect()
+      await connect()
+    },
     /** For a closing tab: friends see you go offline at once. */
     goodbye() {
       for (const session of sessions.values()) session.goodbye()
     },
     async close() {
-      await stopHosting?.()
-      await Promise.all(
-        [...sessions.values(), ...farewellSessions.values()].map((session) => session.close()),
-      )
-      sessions.clear()
-      farewellSessions.clear()
+      closed = true
+      await disconnect()
     },
   }
 }

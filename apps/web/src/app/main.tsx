@@ -10,7 +10,7 @@ import type { Store } from '../platform/storage/storage.ts'
 import { createShell } from '../shell/shell/shell.tsx'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import { takeInviteFromAddress } from './address-invite.ts'
-import { createBrowserEnv, loadFonts } from './browser-env.ts'
+import { createBrowserEnv, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { startMessenger } from './start-messenger.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
@@ -35,12 +35,14 @@ render(() => {
   const [problem, setProblem] = createSignal<string | undefined>(undefined)
   // ?demo opens the Desktop board's sample conversation (docs/roadmap.md, M1).
   const sample = new URLSearchParams(window.location.search).has('demo')
+  const homeScreen = needsHomeScreen()
   const incoming = takeInviteFromAddress()
   const programs = createPrograms(
     api,
     env,
     { messenger, problem, copyText, sleep: browserClock.sleep },
     sample,
+    homeScreen,
   )
 
   if (incoming === undefined) programs.openReadme()
@@ -73,9 +75,24 @@ render(() => {
     await rememberVersion(store, version)
   }
 
+  // On an iPhone in a Safari tab, once: storage lasts 7 days there (decision 0026).
+  const HINTED = 'homeScreenHinted'
+  const hintHomeScreen = async (store: Store) => {
+    if (!homeScreen || (await store.get(HINTED)) === true) return
+    api.notify({
+      title: 'Keep Pigeon on this iPhone',
+      icon: tangoIcon('dialog-warning', 16),
+      body: 'Safari forgets Pigeon after 7 days away. Add it to your Home Screen to keep your friends. How?',
+      onClick: programs.openHomeScreen,
+    })
+    await store.set(HINTED, true)
+  }
+
   void createBrowserStore()
     .then(async (storage) => {
       await tellWhatsNew(storage.store).catch((error: unknown) => console.error(error))
+      if (storage.persistent)
+        await hintHomeScreen(storage.store).catch((error: unknown) => console.error(error))
       return startMessenger(programs.messengerEvents, storage)
     })
     .then((started) => {

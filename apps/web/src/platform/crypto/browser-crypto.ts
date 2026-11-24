@@ -62,6 +62,11 @@ export function createBrowserCrypto(subtle = crypto.subtle): Crypto {
   }
   return {
     sha256: async (data) => new Uint8Array(await subtle.digest('SHA-256', copy(data))),
+    async hmacSha256(key, data) {
+      const hmac = { name: 'HMAC', hash: 'SHA-256' } as const
+      const imported = await subtle.importKey('raw', copy(key), hmac, false, ['sign'])
+      return new Uint8Array(await subtle.sign(hmac, imported, copy(data)))
+    },
     async verify(signer, signature, data) {
       let key = keys.get(signer)
       if (key === undefined) {
