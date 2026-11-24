@@ -2,5 +2,7 @@
 
 .qrCode {
   display: block;
+  /* Never squeezed: a QR code scaled below whole pixels stops scanning. */
+  flex-shrink: 0;
   border: 1px solid var(--pg-field-border);
 }
