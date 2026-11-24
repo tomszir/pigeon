@@ -55,7 +55,7 @@ apps/
                 and builds the Messenger; address-invite.ts reads an invite link
                 from the address bar once and removes it; whats-new.ts decides
                 whether this visit says Pigeon was updated.
-  lighthouse/   The always-on Node peer: mirrors pages, carries letters, hosts the lobby.
+  lighthouse/   The always-on Node peer: holds sealed mail, carries letters, mirrors pages.
                 Reuses @pigeon/core with Node implementations of the platform interfaces.
 ```
 
