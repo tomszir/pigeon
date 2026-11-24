@@ -37,15 +37,15 @@ export function ProfileForm(props: ProfileFormProps) {
           apart by your fingerprint.
         </p>
       </Show>
-      <TextField label="Your &name:" value={handle()} onInput={setHandle} />
-      <TextField label="&Personal message:" value={message()} onInput={setMessage} />
+      <TextField label="Your &name:" stacked value={handle()} onInput={setHandle} />
+      <TextField label="&Personal message:" stacked value={message()} onInput={setMessage} />
       <Show when={handle().length > MAX_HANDLE_LENGTH}>
         <p class={styles.error}>Names are at most {MAX_HANDLE_LENGTH} characters.</p>
       </Show>
       <div class={styles.buttons}>
-        <Button label="&OK" type="submit" isDefault disabled={!valid()} />
+        <Button label="&OK" type="submit" isDefault disabled={!valid()} class={styles.button} />
         <Show when={!props.first}>
-          <Button label="Cancel" onClick={() => props.onCancel?.()} />
+          <Button label="Cancel" onClick={() => props.onCancel?.()} class={styles.button} />
         </Show>
       </div>
     </form>

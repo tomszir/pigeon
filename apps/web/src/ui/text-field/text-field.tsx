@@ -13,6 +13,8 @@ export interface TextFieldProps {
   labelHidden?: boolean | undefined
   /** Lines; more than one makes a multi-line field. */
   rows?: number | undefined
+  /** The label above the field rather than beside it; multi-line fields always stack. */
+  stacked?: boolean | undefined
   placeholder?: string | undefined
   disabled?: boolean | undefined
   readOnly?: boolean | undefined
@@ -28,7 +30,13 @@ export function TextField(props: TextFieldProps) {
     props.onInput?.(event.currentTarget.value)
 
   return (
-    <div class={classes(field.field, multiline() && field.stacked, props.class)}>
+    <div
+      class={classes(
+        field.field,
+        (multiline() || props.stacked === true) && field.stacked,
+        props.class,
+      )}
+    >
       <label
         for={id}
         class={props.labelHidden === true ? field.visuallyHidden : undefined}

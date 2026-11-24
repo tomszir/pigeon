@@ -1,10 +1,10 @@
-/* Name and personal message, stacked in a narrow window. */
+/* Name and personal message, labels above the fields, in a narrow window. */
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: 8px;
+  padding: 10px 8px;
 }
 
 .intro {
@@ -19,6 +19,12 @@
 
 .buttons {
   display: flex;
-  justify-content: flex-end;
   gap: 6px;
+  margin-top: 2px;
+}
+
+/* OK and Cancel share the width equally; OK alone fills it. */
+.button {
+  flex: 1 1 0;
+  min-width: 0;
 }
