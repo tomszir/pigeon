@@ -2,7 +2,7 @@
 
 The web app is a static build served by Cloudflare Workers static assets on the `pigeon.tomszir.com` subdomain.
 
-- Status: accepted; the manual deploy step is superseded by [0017](0017-deploy-from-cloudflare-workers-builds.md)
+- Status: accepted; the manual deploy step is superseded by [0017](0017-deploy-from-cloudflare-workers-builds.md), and "static assets only" by [0022](0022-turn-from-a-worker-route.md), which adds a TURN credentials route
 - Date: 2026-11-24
 
 ## Context

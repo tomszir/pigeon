@@ -1,8 +1,10 @@
 // The one module that knows about Trystero (decision 0002): Nostr relays for signaling, WebRTC
 // data channels for everything after. Trystero's own identity is turned off; Pigeon's signed
-// envelopes say who is who.
+// envelopes say who is who. TURN servers from the site's Worker (decision 0022) let peers meet
+// when they can't reach each other directly.
 import { MAX_MESSAGE_BYTES, type Room, type RoomName, type Transport } from '@pigeon/core'
 import { joinRoom } from 'trystero'
+import { type TurnServer, turnServers } from './turn-servers.ts'
 
 /** Rooms are namespaced by this, so Pigeon only ever meets Pigeon. */
 const APP_ID = 'pigeon.tomszir.com/v1'
@@ -14,11 +16,14 @@ const toBytes = (data: unknown): Uint8Array | undefined => {
   return undefined
 }
 
-export function createBrowserTransport(): Transport {
+export function createBrowserTransport(
+  getTurnServers: () => Promise<TurnServer[]> = turnServers(),
+): Transport {
   return {
     async join(name: RoomName): Promise<Room> {
+      const turnConfig = await getTurnServers()
       const room = joinRoom(
-        { appId: APP_ID, identity: 'none', maxReceiveBytes: MAX_MESSAGE_BYTES },
+        { appId: APP_ID, identity: 'none', maxReceiveBytes: MAX_MESSAGE_BYTES, turnConfig },
         name,
       )
       const channel = room.makeAction<Uint8Array>('envelope')

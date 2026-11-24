@@ -22,5 +22,5 @@ An alternate 2003 where peer-to-peer won. There is no cloud: computers talk to e
 
 - **Authentic, not a copy.** XP-era look and feel, but no Microsoft-owned assets, names or logos. See [design.md](design.md).
 - **Honest P2P.** The UI always says who is serving what: direct, mirrored, carried, or offline.
-- **No server of ours in the middle.** Static hosting plus public signaling relays plus the optional Lighthouse peer, which runs the same protocol as everyone else.
+- **No server of ours in the middle.** Static hosting plus public signaling relays plus the optional Lighthouse peer, which runs the same protocol as everyone else. When two peers can't reach each other directly, a TURN relay passes their encrypted packets along and stores nothing ([0022](decisions/0022-turn-from-a-worker-route.md)).
 - **Of its era.** Pages are 2000s HTML/CSS only; screens are pixel-exact at 1× and scaled by whole numbers.

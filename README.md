@@ -54,7 +54,7 @@ Honest P2P has a cost: a friend has to be online for a message to arrive. Letter
 
 ## Privacy
 
-Pigeon has no backend. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. Clearing the site's data deletes your identity and chats for good.
+Pigeon keeps nothing on a server. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. When two devices can't reach each other directly, as a phone on mobile data often can't, Cloudflare's TURN relay passes the encrypted packets along without being able to read them. Clearing the site's data deletes your identity and chats for good.
 
 ## Browser support
 
