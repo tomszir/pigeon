@@ -45,10 +45,13 @@ jobs:
       - if: ${{ steps.release.outputs.pr }}
         uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
       - if: ${{ steps.release.outputs.pr }}
+        # GitHub reads env before if, so the PR's JSON is parsed here: fromJSON would fail on
+        # the empty output of a run that left the release PR alone.
         env:
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          PR: ${{ steps.release.outputs.pr }}
           PREVIOUS: ${{ steps.before.outputs.head }}
         run: |
+          BRANCH=$(jq -r .headBranchName <<<"$PR")
           git fetch --tags origin "$BRANCH"
           git checkout -B "$BRANCH" "origin/$BRANCH"
           node scripts/release-notes.ts "$PREVIOUS"
