@@ -56,6 +56,7 @@ function setup(touch = true) {
       menu={{ programs: [messenger, readme], places: [files], tools: [], all: [] }}
       phone={{
         home: () => <p>Good evening, Toms</p>,
+        news: () => undefined,
         leftSoftKey: (front) =>
           front === 'messenger'
             ? { label: 'Add Friend', onPress: addFriend }
@@ -69,6 +70,8 @@ function setup(touch = true) {
       alerts={new Map()}
       visible={{ height: 844, top: 0 }}
       onShutDown={() => undefined}
+      asleep={false}
+      onWake={() => undefined}
       handle={handle}
     />
   ))

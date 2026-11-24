@@ -21,11 +21,13 @@ import {
 } from '@pigeon/core'
 import {
   batch,
+  createEffect,
   createMemo,
   createSignal,
   For,
   type JSX,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -37,11 +39,12 @@ import { brandIcon, tangoIcon } from '../../ui/icons/icons.ts'
 import { MessageBox } from '../../ui/message-box/message-box.tsx'
 import { Window, type WindowAlert } from '../../ui/window/window.tsx'
 import { Backdrop } from '../backdrop/backdrop.tsx'
-import { ClosedScreen } from '../closed-screen/closed-screen.tsx'
 import { DisplayProperties } from '../display-properties/display-properties.tsx'
+import { MazeSaver } from '../maze-saver/maze-saver.tsx'
 import { Monitor } from '../monitor/monitor.tsx'
 import { PhoneShell } from '../phone-shell/phone-shell.tsx'
 import { PigeonMenu } from '../pigeon-menu/pigeon-menu.tsx'
+import { Screensaver } from '../screensaver/screensaver.tsx'
 import { Stage } from '../stage/stage.tsx'
 import {
   DEFAULT_RESOLUTION,
@@ -106,6 +109,8 @@ export function createShell(env: ShellEnv): CreatedShell {
     pixelMode: false,
     shakeOnBuzz: true,
     lcdEffect: true,
+    screensaver: 'pigeons',
+    screensaverWait: 5,
   })
   const [running, setRunning] = createSignal(true)
   let messages = 0
@@ -143,6 +148,8 @@ export function createShell(env: ShellEnv): CreatedShell {
     })
 
   const buzz = (id: WindowId) => {
+    // A buzz is worth waking up for.
+    if (!running()) wake()
     // A phone buzzes in the hand when it can; otherwise its screen shakes or flashes.
     if (layout().kind === 'phone' && settings().shakeOnBuzz && env.vibrate(BUZZ_VIBRATION)) return
     const kind = buzzAlert(env.prefersReducedMotion(), settings().shakeOnBuzz)
@@ -179,7 +186,7 @@ export function createShell(env: ShellEnv): CreatedShell {
       // A phone has no monitor or resolution to set, only the Pocket's own screen.
       title: layout().kind === 'phone' ? 'Settings' : 'Display Properties',
       icon: tangoIcon('preferences-system', 16),
-      bounds: { x: 322, y: 140, width: 380, height: 380 },
+      bounds: { x: 322, y: 110, width: 380, height: 460 },
       content: (window) => (
         <DisplayProperties
           settings={settings()}
@@ -192,13 +199,13 @@ export function createShell(env: ShellEnv): CreatedShell {
       ),
     })
 
+  // Turning Pigeon off puts it to sleep behind a screen saver; waking finds everything as it was.
   const shutDown = () =>
     batch(() => {
-      setSpecs(new Map())
-      setDesktop(emptyDesktop)
       setNotice(null)
       setRunning(false)
     })
+  const wake = () => setRunning(true)
 
   const api: ShellApi = {
     open,
@@ -243,6 +250,23 @@ export function createShell(env: ShellEnv): CreatedShell {
       update((d) => focusWindow(d, first.id))
     }
     onMount(() => document.addEventListener('keydown', cycle))
+
+    // Left alone long enough, Pigeon goes to sleep behind its screen saver or standby screen.
+    let idle: ReturnType<typeof setTimeout> | undefined
+    const restartIdle = () => {
+      clearTimeout(idle)
+      const minutes = settings().screensaverWait
+      if (minutes > 0 && running()) idle = setTimeout(shutDown, minutes * 60_000)
+    }
+    const ACTIVITY = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const
+    onMount(() => {
+      for (const kind of ACTIVITY) document.addEventListener(kind, restartIdle, { passive: true })
+    })
+    onCleanup(() => {
+      clearTimeout(idle)
+      for (const kind of ACTIVITY) document.removeEventListener(kind, restartIdle)
+    })
+    createEffect(on(() => [settings().screensaverWait, running()] as const, restartIdle))
     onCleanup(() => document.removeEventListener('keydown', cycle))
 
     const tasks = () =>
@@ -372,82 +396,93 @@ export function createShell(env: ShellEnv): CreatedShell {
         pixelMode={settings().pixelMode}
         crt={settings().crtEffect}
       >
-        {desktopView()}
+        <Show
+          when={running()}
+          fallback={
+            settings().screensaver === 'maze' ? (
+              <MazeSaver onWake={wake} still={env.prefersReducedMotion()} />
+            ) : (
+              <Screensaver onWake={wake} />
+            )
+          }
+        >
+          {desktopView()}
+        </Show>
       </Stage>
     )
 
     return (
-      <Show when={running()} fallback={<ClosedScreen onReopen={() => setRunning(true)} />}>
-        <Switch
-          fallback={
-            <PhoneShell
-              specs={specs()}
-              desktop={desktop()}
-              menu={props.menu}
-              phone={props.phone}
-              notice={notice()}
-              onCloseNotice={() => setNotice(null)}
-              now={env.now}
-              touch={env.coarsePointer()}
-              lcd={settings().lcdEffect}
-              alerts={alerts()}
-              visible={env.visible()}
-              onShutDown={shutDown}
-              handle={handle}
-            />
-          }
+      <Switch
+        fallback={
+          <PhoneShell
+            specs={specs()}
+            desktop={desktop()}
+            menu={props.menu}
+            phone={props.phone}
+            notice={notice()}
+            onCloseNotice={() => setNotice(null)}
+            now={env.now}
+            touch={env.coarsePointer()}
+            lcd={settings().lcdEffect}
+            alerts={alerts()}
+            visible={env.visible()}
+            onShutDown={shutDown}
+            asleep={!running()}
+            onWake={wake}
+            handle={handle}
+          />
+        }
+      >
+        <Match
+          when={(() => {
+            const current = layout()
+            return current.kind === 'monitor' ? current : undefined
+          })()}
         >
-          <Match
-            when={(() => {
-              const current = layout()
-              return current.kind === 'monitor' ? current : undefined
-            })()}
-          >
-            {(current) => (
-              <div class={styles.room}>
-                <Backdrop
-                  monitor={{
-                    left: current().left,
-                    top: current().top,
-                    width: monitorSize(screen()).width * current().scale,
-                    height: monitorSize(screen()).height * current().scale,
-                  }}
-                  still={env.prefersReducedMotion()}
-                />
-                <Monitor scale={current().scale} left={current().left} top={current().top}>
-                  {screenView(current())}
-                </Monitor>
+          {(current) => (
+            <div class={styles.room}>
+              <Backdrop
+                monitor={{
+                  left: current().left,
+                  top: current().top,
+                  width: monitorSize(screen()).width * current().scale,
+                  height: monitorSize(screen()).height * current().scale,
+                }}
+                still={env.prefersReducedMotion()}
+              />
+              <Monitor scale={current().scale} left={current().left} top={current().top}>
+                {screenView(current())}
+              </Monitor>
+            </div>
+          )}
+        </Match>
+        <Match
+          when={(() => {
+            const current = layout()
+            return current.kind === 'bare' ? current : undefined
+          })()}
+        >
+          {(current) => (
+            <div class={styles.room}>
+              <Backdrop
+                monitor={{
+                  left: current().left,
+                  top: current().top,
+                  width: screen().width,
+                  height: screen().height,
+                }}
+                still={env.prefersReducedMotion()}
+              />
+              <div
+                class={styles.bare}
+                style={{ left: `${current().left}px`, top: `${current().top}px` }}
+              >
+                {screenView(current())}
               </div>
-            )}
-          </Match>
-          <Match
-            when={(() => {
-              const current = layout()
-              return current.kind === 'bare' ? current : undefined
-            })()}
-          >
-            {(current) => (
-              <div class={styles.room}>
-                <Backdrop
-                  monitor={{
-                    left: current().left,
-                    top: current().top,
-                    width: screen().width,
-                    height: screen().height,
-                  }}
-                  still={env.prefersReducedMotion()}
-                />
-                <div
-                  class={styles.bare}
-                  style={{ left: `${current().left}px`, top: `${current().top}px` }}
-                >
-                  {screenView(current())}
-                </div>
-              </div>
-            )}
-          </Match>
-        </Switch>
-      </Show>
+            </div>
+          )}
+        </Match>
+      </Switch>
     )
   }
 

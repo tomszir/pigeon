@@ -1,0 +1,66 @@
+/* The Pocket's standby: Today's wallpaper with the backlight turned down, and a big clock. */
+
+.standby {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: #000000;
+  color: #ffffff;
+}
+
+.standby:focus {
+  outline: none;
+}
+
+/* The backlight at a third: the scene is still there, just dim. */
+.wallpaper {
+  position: absolute;
+  inset: 0;
+  background-color: var(--pg-desktop);
+  background-position: 40% 60%;
+  background-size: cover;
+  filter: brightness(0.33) saturate(0.7);
+}
+
+.face {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-shadow: 1px 1px 2px #000000;
+  opacity: 0.85;
+}
+
+.clock {
+  font: 700 52px / 56px var(--pg-font-ui);
+}
+
+.date {
+  font: 400 16px / 20px var(--pg-font-ui);
+}
+
+.news {
+  margin-top: 18px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 35%);
+  font: 700 14px / 18px var(--pg-font-ui);
+}
+
+.hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  font: 400 13px / 16px var(--pg-font-ui);
+  opacity: 0.5;
+  text-shadow: 1px 1px 1px #000000;
+}

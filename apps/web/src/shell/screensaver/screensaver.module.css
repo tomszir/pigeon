@@ -1,0 +1,98 @@
+/* Pigeons in flight: logos crossing a starry night sky, bobbing as they go. */
+
+.screensaver {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(180deg, #050a24 0%, #0d1a4a 55%, #1d2f6e 100%);
+  cursor: none;
+}
+
+.screensaver:focus {
+  outline: none;
+}
+
+.star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #dfe8ff;
+  animation: pg-twinkle 3s ease-in-out infinite;
+}
+
+.bird {
+  position: absolute;
+  left: -64px;
+  animation: pg-fly linear infinite;
+}
+
+.bird img {
+  display: block;
+  image-rendering: auto;
+  animation: pg-bob 1.6s ease-in-out infinite alternate;
+}
+
+.hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  color: rgb(223 232 255 / 45%);
+  font: var(--pg-type-body);
+  text-align: center;
+}
+
+@keyframes pg-fly {
+  from {
+    left: -64px;
+  }
+
+  to {
+    left: calc(100% + 64px);
+  }
+}
+
+@keyframes pg-bob {
+  from {
+    transform: translateY(-6px);
+  }
+
+  to {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes pg-twinkle {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* Less motion: the flock holds still mid-flight and the stars stop twinkling. */
+@media (prefers-reduced-motion: reduce) {
+  .bird {
+    left: calc(var(--pg-still-left, 40) * 1%);
+    animation: none;
+  }
+
+  .bird:nth-child(odd) {
+    --pg-still-left: 22;
+  }
+
+  .bird:nth-child(3n) {
+    --pg-still-left: 64;
+  }
+
+  .bird img,
+  .star {
+    animation: none;
+  }
+}

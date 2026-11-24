@@ -1,10 +1,12 @@
 // Display Properties: the stage's settings, kept in memory for now.
+
+import { For } from 'solid-js'
 import { Button } from '../../ui/button/button.tsx'
 import { Check } from '../../ui/check/check.tsx'
 import { GroupBox } from '../../ui/group-box/group-box.tsx'
 import { Select } from '../../ui/select/select.tsx'
 import { Tabs } from '../../ui/tabs/tabs.tsx'
-import type { Settings } from '../shell/types.ts'
+import type { ScreensaverId, Settings } from '../shell/types.ts'
 import { RESOLUTIONS } from '../stage/stage-scale.ts'
 import styles from './display-properties.module.css'
 
@@ -58,6 +60,23 @@ function BuzzSetting(props: DisplayPropertiesProps) {
   )
 }
 
+/** How long Pigeon waits, untouched, before it goes to sleep by itself. */
+function WaitSetting(props: DisplayPropertiesProps) {
+  return (
+    <Select
+      label="&Wait:"
+      options={WAITS.map((minutes) => ({
+        value: String(minutes),
+        label: minutes === 0 ? 'Never' : `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
+      }))}
+      value={String(props.settings.screensaverWait)}
+      onChange={(value) => props.onChange({ ...props.settings, screensaverWait: Number(value) })}
+    />
+  )
+}
+
+const WAITS = [0, 1, 3, 5, 10, 15] as const
+
 /** The Pocket's settings: its own screen, and the buzz (decision 0019). */
 function PocketSettings(props: DisplayPropertiesProps) {
   return (
@@ -77,6 +96,14 @@ function PocketSettings(props: DisplayPropertiesProps) {
           />
         </div>
       </GroupBox>
+      <GroupBox legend="Standby">
+        <div class={styles.stack}>
+          <WaitSetting {...props} />
+          <p class={`${styles.plain} ${styles.muted}`}>
+            How long the Pocket waits, untouched, before it dims to its clock.
+          </p>
+        </div>
+      </GroupBox>
       <BuzzSetting {...props} />
       <div class={styles.buttons}>
         <Button label="OK" isDefault onClick={props.onClose} class={styles.wide} />
@@ -84,6 +111,19 @@ function PocketSettings(props: DisplayPropertiesProps) {
     </div>
   )
 }
+
+const SAVERS: readonly { id: ScreensaverId; label: string; description: string }[] = [
+  {
+    id: 'pigeons',
+    label: '&Pigeons in flight',
+    description: 'Pigeons crossing a starry night sky.',
+  },
+  {
+    id: 'maze',
+    label: '&Maze',
+    description: 'A walk through a new maze each time, a hand on the left wall.',
+  },
+]
 
 export function DisplayProperties(props: DisplayPropertiesProps) {
   if (props.layout === 'phone') return <PocketSettings {...props} />
@@ -150,6 +190,34 @@ export function DisplayProperties(props: DisplayPropertiesProps) {
                   </div>
                 </GroupBox>
               </div>
+            ),
+          },
+          {
+            id: 'saver',
+            label: 'Screen Saver',
+            content: () => (
+              <GroupBox legend="Screen saver">
+                <div class={styles.stack} role="radiogroup" aria-label="Screen saver">
+                  <For each={SAVERS}>
+                    {(saver) => (
+                      <Check
+                        kind="radio"
+                        name="screensaver"
+                        label={saver.label}
+                        checked={props.settings.screensaver === saver.id}
+                        onChange={(checked) => {
+                          if (checked) props.onChange({ ...props.settings, screensaver: saver.id })
+                        }}
+                        description={saver.description}
+                      />
+                    )}
+                  </For>
+                  <WaitSetting {...props} />
+                  <p class={`${styles.plain} ${styles.muted}`}>
+                    Shown when you turn Pigeon off, or after the wait. A click or any key wakes it.
+                  </p>
+                </div>
+              </GroupBox>
             ),
           },
           {

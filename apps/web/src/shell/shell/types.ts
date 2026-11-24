@@ -56,6 +56,9 @@ export interface MessageSpec {
   readonly text: readonly string[]
 }
 
+/** The desktop's screen savers: pigeons crossing a night sky, or a walk through a maze. */
+export type ScreensaverId = 'pigeons' | 'maze'
+
 export interface Settings {
   /** The screen resolution the desktop is laid out at (decision 0012). */
   readonly resolution: ResolutionId
@@ -67,6 +70,10 @@ export interface Settings {
   readonly shakeOnBuzz: boolean
   /** The Pocket's pixel grid and backlight on a phone; on (decision 0019). */
   readonly lcdEffect: boolean
+  /** What the desktop shows while Pigeon is turned off. */
+  readonly screensaver: ScreensaverId
+  /** Minutes without a touch, click or key before Pigeon goes to sleep by itself; 0 never. */
+  readonly screensaverWait: number
 }
 
 export interface ShellApi {
@@ -120,4 +127,6 @@ export interface PhoneSpec {
   readonly home: () => JSX.Element
   /** The left soft key for the window in front, or for Today when there is none. */
   readonly leftSoftKey: (front: WindowId | undefined) => SoftKey
+  /** What the standby screen says is new ("1 new from Mika"), or nothing. */
+  readonly news: () => string | undefined
 }
