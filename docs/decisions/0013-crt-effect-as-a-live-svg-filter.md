@@ -13,8 +13,8 @@ The CRT effect runs the screen through an SVG filter chain (curvature, colour fr
 
 - `shell/stage/crt-filter.tsx` filters the screen in this order:
   1. a barrel bend from `feDisplacementMap`, drawn from a 256×256 map made on a canvas, at most 2 screen pixels at the corners;
-  2. red and blue split off with `feColorMatrix` and nudged a third of a pixel apart;
-  3. scanlines: each screen row multiplied by a darker band, one row per band from 2×, every other device row at 1×;
+  2. red and blue split off with `feColorMatrix` and nudged a fifth of a pixel apart;
+  3. scanlines: each screen row multiplied by a band at about 70% brightness, one row per band from 2×, every other device row at 1×; light enough that 1px details and small text stay readable;
   4. bloom: the parts above about 60% brightness blurred and added back, so bright areas glow and fill their scanlines.
 - A 3px black border runs round the inside of the tube, like the black border round a CRT picture. It hides the corners the bend pulls in and the coloured seams the fringing leaves at the edges, so the picture ends in one clean curve. The tube's rounded shape belongs to the monitor, so it's the same with the effect off or the power off.
 - On top, the only layers are the ones that sit on real glass: a curved reflection, darker rounded edges, a slow refresh band, and a faint flicker. The band and flicker stop when motion is reduced.

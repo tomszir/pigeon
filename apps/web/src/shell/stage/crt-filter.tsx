@@ -2,8 +2,9 @@
 // frame of the real desktop, the closest thing to a fragment shader that HTML allows.
 //
 //   1. curvature: a displacement map pulls the picture in towards the corners;
-//   2. colour fringing: red and blue are split off and nudged a third of a pixel either way;
-//   3. scanlines: each screen row is multiplied by a darker band at its foot;
+//   2. colour fringing: red and blue are split off and nudged a fifth of a pixel either way;
+//   3. scanlines: each screen row is multiplied by a darker band at its foot, kept light enough
+//      that 1px details and 11px text survive;
 //   4. bloom: a blurred copy is added back, so bright areas glow and fill their scanlines.
 //
 // Hit-testing ignores filters, so the curvature is kept to a few screen pixels at the corners.
@@ -63,7 +64,7 @@ export function CrtFilter(props: CrtFilterProps) {
   // One scanline per screen row; at 1× a row is one device pixel, so every other row instead.
   const period = () => Math.max(2, props.scale)
   const band = () => Math.max(1, Math.round(props.scale / 2))
-  const fringe = () => 0.35 * props.scale
+  const fringe = () => 0.2 * props.scale
 
   return (
     <svg aria-hidden="true" width="0" height="0" style={{ position: 'absolute' }}>
@@ -130,7 +131,7 @@ export function CrtFilter(props: CrtFilterProps) {
           y={period() - band()}
           width="1"
           height={band()}
-          flood-color="#8f8f8f"
+          flood-color="#b4b4b4"
           result="rowDark"
         />
         <feMerge x="0" y="0" width="1" height={period()} result="row">
@@ -152,8 +153,8 @@ export function CrtFilter(props: CrtFilterProps) {
           in2="glow"
           operator="arithmetic"
           k1="0"
-          k2="1.06"
-          k3="0.22"
+          k2="1.03"
+          k3="0.16"
           k4="0"
         />
       </filter>
