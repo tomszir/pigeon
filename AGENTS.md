@@ -11,7 +11,8 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
   from 0000-template.md. Don't reverse an accepted decision without saying so and
   writing a new one that supersedes it.
 - Every doc opens with a `# Heading` and then a one-line summary.
-- Git history is the change log. Don't keep one in docs/.
+- Git history is the developers' change log. Don't keep one in docs/. Release notes for people
+  are Changelog.txt, written on each release PR (decision 0025).
 - A commit with nothing to document carries the trailer `Docs: none`.
 - `scripts/check-docs` checks all of this. It runs when you finish and in CI.
 

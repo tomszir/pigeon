@@ -351,6 +351,7 @@ export function createShell(env: ShellEnv): CreatedShell {
                 title={current().title}
                 icon={current().icon ?? tangoIcon('dialog-information', 16)}
                 onClose={() => setNotice(null)}
+                onClick={current().onClick}
               >
                 {current().body}
               </Balloon>

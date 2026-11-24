@@ -1,0 +1,53 @@
+        __
+    ___( o)>     PIGEON  WHAT'S NEW
+    \ <_. )      what changed in each
+     `---'       version, newest first
+==============================================
+
+0.4.0, 24 November 2026
+----------------------------------------------
+  * Adding a friend shows each step as it
+    happens: reaching the relays, finding your
+    friend's Pigeon and asking who they are.
+    If a step stalls, Pigeon says what to
+    check.
+  * Once you're friends, the chat opens
+    straight away, starting with the day you
+    became friends.
+  * Every friend has a menu: right-click them,
+    press and hold on a phone, or press
+    Shift+F10. See their profile, give them a
+    name of your own, copy their fingerprint,
+    mute them for a while, or remove them.
+  * Removing a friend tells their Pigeon, so
+    they aren't left waiting for you. You can
+    block them too, and unblock them later
+    from Contacts > Blocked People.
+
+0.3.0, 24 November 2026
+----------------------------------------------
+  * Friends on different networks can reach
+    each other, such as a phone on mobile data
+    and a laptop on home Wi-Fi. When a direct
+    connection is blocked, Pigeon passes your
+    messages through a relay that can't read
+    them.
+
+0.2.0, 24 November 2026
+----------------------------------------------
+  * Pick a name, invite a friend and chat
+    browser to browser: messages, buzzes,
+    "is writing..." and away or busy.
+  * Invite with a link, a QR code, or a short
+    code your friend can type in.
+  * Chats are kept in this browser and catch
+    up when you're both online.
+  * On a phone, Pigeon runs as the Kestrel
+    Pocket, a handheld with its own Today
+    screen.
+  * Turn Pigeon off, or leave it alone for a
+    while, and it sleeps behind a screen
+    saver: pigeons in flight or a brick maze.
+    A click or a key wakes it with everything
+    where you left it.
+  * About Pigeon says which version you have.

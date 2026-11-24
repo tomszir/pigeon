@@ -324,6 +324,7 @@ export function PhoneShell(props: PhoneShellProps) {
                     title={notice().title}
                     icon={notice().icon ?? tangoIcon('dialog-information', 16)}
                     onClose={() => props.onCloseNotice()}
+                    onClick={notice().onClick}
                   >
                     {notice().body}
                   </Balloon>

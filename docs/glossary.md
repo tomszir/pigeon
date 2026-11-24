@@ -5,6 +5,7 @@ The words Pigeon uses for its own things.
 - **Buzz**: shaking a friend's conversation window to get their attention.
 - **Carrier**: a peer holding a sealed letter for someone else.
 - **Fingerprint**: 16 hex characters from a peer's key, compared out loud or on screen when pairing.
+- **Changelog.txt**: the release notes on the desktop, written for the people using Pigeon, newest first.
 - **Coo**: the opt-in bot that runs in your own tab.
 - **Invite**: an 8-character code, or a short link and QR code carrying it, that pairs one friend with you within 30 minutes while your Pigeon is open.
 - **Letter**: a message sealed to an offline friend and carried until they return.

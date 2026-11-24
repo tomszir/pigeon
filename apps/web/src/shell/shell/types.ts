@@ -48,6 +48,8 @@ export interface Notice {
   readonly title: string
   readonly body: JSX.Element
   readonly icon?: Icon
+  /** Clicking the balloon does this, then closes it. */
+  readonly onClick?: () => void
 }
 
 export interface MessageSpec {

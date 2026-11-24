@@ -27,11 +27,15 @@ Bundled only ([0009](decisions/0009-bundled-fonts-only.md)): Wine's Tahoma clone
 - Text that doesn't fit on one line (status bars, phone title bars, Today's rows) drifts slowly to its end and back (`ui/marquee`), and stays put when motion is reduced.
 - `prefers-reduced-motion`: buzz flashes the title bar instead of shaking the window.
 - Turning Pigeon off (Turn Off Pigeon, Turn off the Pocket), or leaving it untouched for the wait set in Display Properties (Screen Saver tab, 5 minutes unless changed; Settings on a phone), puts it to sleep, not away: windows stay as they were and a click, tap, key or incoming buzz wakes it. The desktop shows a screen saver on the monitor, CRT and all: Pigeons in flight (logos crossing a starry sky) or Maze (a walk through a new brick maze with tiled ceiling and floor, a hand on the left wall, drawn at 320×240 in big pixels; `shell/maze-saver/`). The Pocket dims to standby: its wallpaper with the backlight at a third, a big clock and date, and what's new. With reduced motion the savers hold still.
-- Nothing selects by accident: the page is `user-select: none`, and only fields and elements marked `data-selectable` (the chat transcript, Read Me's text) can be selected and copied.
+- Nothing selects by accident: the page is `user-select: none`, and only fields and elements marked `data-selectable` (the chat transcript, the text in Pigeon Reader) can be selected and copied.
 
 ## Menu and taskbar
 
 The Pigeon menu and taskbar follow the era's proportions more closely than the canvas: a 54px header, 34px pinned items (bold, with a grey description) over the rest, All Programs at the bottom of the white column, 26px items in the blue column, a 36px footer, and 22px task buttons. The measurements were checked against [ShizukuIchi/winXP](https://github.com/ShizukuIchi/winXP) (MIT); only numbers and colours were taken, none of its images. In every menu, the highlight is keyboard focus: it follows the pointer, clears when the pointer leaves, and a menu opened with the mouse starts with nothing highlighted.
+
+## Desktop and balloons
+
+The desktop shows Pigeon Messenger, Read Me.txt, Changelog.txt, Letters, Shared Files, Source Code and Trash. Read Me.txt and Changelog.txt open in Pigeon Reader (`apps/reader/`), a plain-text window with Word Wrap; What's New in the menu opens Changelog.txt too. Balloons come from the tray, one at a time, and close themselves after 10 seconds. A balloon that does something, such as "Pigeon was updated to 0.4.0. See what's new?", does it when clicked anywhere but its close button, and its text is a button for the keyboard ([0025](decisions/0025-release-notes-for-people.md)).
 
 ## Friends
 
