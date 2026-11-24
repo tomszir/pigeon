@@ -67,4 +67,20 @@ Drawn the XP way: art 2px under size (46, 30, 22, 14), light from the upper left
 
 ## Avatars
 
-Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/avatar/`): the SHA-256 of `pigeon/avatar/v1` and the id picks a plumage (12, all real pigeon colours), a neck sheen (6), wing (4), head marking (6), eye (5), beak (3), accessory (16, or none for a third of birds), tile (12) and tile pattern (6), about 30 million birds. The traits draw a 32×32 picture by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, and a sentence for its alt text ("A slate pigeon with a copper neck, wearing a flat cap"). Every Pigeon draws the same bird for an id and nothing is sent. A bird is only about 25 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it. The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own logo.
+Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/avatar/`), the same on every Pigeon, and nothing about it is sent. The SHA-256 of `pigeon/avatar/v1` and the id picks the traits:
+
+- The bird: plumage (12, all real pigeon colours), neck sheen (6), wing (4), head marking (6), eye (5), expression (4, bright on most birds) and beak (3).
+- What it wears, each slot apart: headwear (9, on half of birds), neckwear (3), eyewear (3) and something held in the beak (a letter or an olive twig, on one in eight).
+- Where it is: tile (12) and pattern (6), a scene behind it (a telephone wire, rooftops, a branch or hills) and something in the sky (a sun, which is a moon at night, a cloud, a paper plane or stars).
+
+That is about 90 billion birds. They're drawn at 32×32 by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, with a sentence for alt text ("A slate pigeon with a copper neck, wearing a flat cap and a scarf, on a wire").
+
+The generated bird is the only avatar: nobody can wear someone else's face, and there is nothing to upload, store, sync or moderate. A bird is only about 32 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it.
+
+Birds stay put:
+
+- The traits an id gets are frozen per version: which digest byte each trait reads, how often it is worn, and every option list. New options make a version 2, with tables of their own; version 1 stays in the code. Tests pin the traits of twenty ids, so a change that would move somebody's bird fails.
+- How a trait is drawn may improve at any time: a better flat cap is still a flat cap.
+- `hello` carries the version a person's bird is drawn with (1 when left out), so a new version only reaches new people and those who ask for it. A version this Pigeon doesn't know yet is drawn as the newest one it does.
+
+The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own logo.

@@ -2,6 +2,7 @@
 // pass typing, buzz and presence along. Pure protocol over a Room; the app stores the log and
 // draws the events.
 
+import { AVATAR_VERSION } from '../avatar/avatar.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
@@ -30,7 +31,8 @@ export interface Presence {
 }
 
 export type PairEvent =
-  | { readonly type: 'online'; readonly handle: string }
+  /** `avatar`: the version the friend's bird is drawn with. */
+  | { readonly type: 'online'; readonly handle: string; readonly avatar: number }
   | { readonly type: 'offline' }
   | { readonly type: 'presence'; readonly presence: Presence }
   | { readonly type: 'typing'; readonly active: boolean }
@@ -46,6 +48,8 @@ export interface PairSessionOptions {
   readonly room: Room
   readonly handle: () => string
   readonly presence: () => Presence
+  /** The version your bird is drawn with; the newest unless you've kept an older one. */
+  readonly avatar?: () => number
   /** The chat as stored. The session keeps its own copy and reports every change. */
   readonly log: ChatLog
   readonly now: () => number
@@ -71,6 +75,11 @@ export interface PairSession {
 
 export function startPairSession(options: PairSessionOptions): PairSession {
   const { crypto, signer, friend, room } = options
+  const hello = (): Body => ({
+    type: 'hello',
+    handle: options.handle(),
+    avatar: options.avatar?.() ?? AVATAR_VERSION,
+  })
   let log = options.log
   /** Connections that have proved, by a signed envelope, to be the friend. */
   const friendConnections = new Set<ConnectionId>()
@@ -97,7 +106,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   prepareBye()
 
   const greet = (to: ConnectionId) => {
-    sendTo(to, { type: 'hello', handle: options.handle() })
+    sendTo(to, hello())
     sendTo(to, { type: 'presence', ...options.presence() })
     sendTo(to, { type: 'log-sync', have: summarize(log) })
   }
@@ -116,7 +125,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     hello: (from, body) => {
       const first = friendConnections.size === 0
       friendConnections.add(from)
-      if (first) options.onEvent({ type: 'online', handle: body.handle })
+      if (first) options.onEvent({ type: 'online', handle: body.handle, avatar: body.avatar ?? 1 })
     },
     presence: (_from, body) =>
       options.onEvent({
@@ -173,7 +182,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       prepareBye()
     },
     announce() {
-      sendTo('all', { type: 'hello', handle: options.handle() })
+      sendTo('all', hello())
       sendTo('all', { type: 'presence', ...options.presence() })
     },
     async unfriend() {

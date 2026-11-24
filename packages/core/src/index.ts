@@ -1,6 +1,7 @@
 export type { AvatarPixels, AvatarTraits } from './avatar/avatar.ts'
 export {
   AVATAR_SIZE,
+  AVATAR_VERSION,
   avatarFor,
   avatarSvg,
   avatarTraits,
