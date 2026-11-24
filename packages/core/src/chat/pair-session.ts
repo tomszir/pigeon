@@ -36,6 +36,8 @@ export type PairEvent =
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
   | { readonly type: 'log'; readonly log: ChatLog }
+  /** The friend removed you. */
+  | { readonly type: 'unfriended' }
 
 export interface PairSessionOptions {
   readonly crypto: Crypto
@@ -62,6 +64,8 @@ export interface PairSession {
   goodbye(): void
   /** Tells the friend about a new handle or presence. */
   announce(): void
+  /** Tells the friend you've removed them; resolves once it's been sent to them. */
+  unfriend(): Promise<void>
   close(): Promise<void>
 }
 
@@ -121,6 +125,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       }),
     typing: (_from, body) => options.onEvent({ type: 'typing', active: body.active }),
     buzz: () => options.onEvent({ type: 'buzz' }),
+    unfriend: () => options.onEvent({ type: 'unfriended' }),
     bye: (from) => {
       if (friendConnections.delete(from) && friendConnections.size === 0)
         options.onEvent({ type: 'offline' })
@@ -170,6 +175,10 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     announce() {
       sendTo('all', { type: 'hello', handle: options.handle() })
       sendTo('all', { type: 'presence', ...options.presence() })
+    },
+    async unfriend() {
+      sendTo('all', { type: 'unfriend' })
+      await queue
     },
     async close() {
       offMessage()

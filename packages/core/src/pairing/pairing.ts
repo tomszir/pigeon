@@ -27,6 +27,8 @@ export interface HostInviteOptions extends Common {
   /** Resolves after `ms`; the platform clock provides it. */
   readonly sleep: (ms: number) => Promise<void>
   readonly onPaired: (friend: NewFriend) => void
+  /** People this side has blocked: their requests go unanswered. */
+  readonly refuse?: (id: PeerId) => boolean
 }
 
 function listen(
@@ -53,6 +55,7 @@ export async function hostInvite(options: HostInviteOptions): Promise<() => Prom
   const off = listen(options.crypto, room, (from, sender, body) => {
     if (done || sender === signer.id || !('code' in body) || body.code !== code) return
     if (body.type === 'pair-request') {
+      if (options.refuse?.(sender) === true) return
       asked.set(from, { id: sender, handle: body.handle })
       void send(from, { type: 'pair-offer', code, handle: options.handle })
       return

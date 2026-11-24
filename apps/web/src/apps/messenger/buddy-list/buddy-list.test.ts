@@ -15,6 +15,7 @@ const friend = (over: Partial<FriendView>): FriendView => ({
   unread: 0,
   notes: [],
   ...over,
+  name: over.name ?? over.handle ?? 'X',
 })
 
 it('groups friends by online, marks away and busy, and counts unread', () => {

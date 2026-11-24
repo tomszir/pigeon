@@ -41,6 +41,16 @@ const texts = (log: ChatLog) => log.entries.map((entry) => entry.text)
 const kinds = (side: Side) => side.events.map((event) => event.type).filter((t) => t !== 'log')
 
 describe('pair sessions', () => {
+  it('tells the friend when you remove them', async () => {
+    const network = createMemoryNetwork()
+    const a = await open(network.transport(), rook, mika)
+    const b = await open(network.transport(), mika, rook)
+    await flush()
+    await a.session.unfriend()
+    await flush()
+    expect(kinds(b)).toContain('unfriended')
+  })
+
   it('sees each other come online, chat, type, buzz and go offline', async () => {
     const network = createMemoryNetwork()
     const a = await open(network.transport(), rook, mika)

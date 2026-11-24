@@ -16,6 +16,7 @@ describe('transcriptFor', () => {
     const view: FriendView = {
       id: mika.id,
       handle: 'Mika',
+      name: 'Mika',
       addedAt: at,
       fingerprint: '0'.repeat(16),
       online: true,
@@ -51,6 +52,7 @@ it('leaves out the start of a friendship it has no date for', () => {
   const view = {
     id: fakeSigner('mika').id,
     handle: 'Mika',
+    name: 'Mika',
     addedAt: 0,
     log: emptyLog('pair:x'),
     notes: [],

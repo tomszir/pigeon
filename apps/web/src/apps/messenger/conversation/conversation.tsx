@@ -4,6 +4,7 @@
 import { createSignal } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { brandIcon, tangoIcon } from '../../../ui/icons/icons.ts'
+import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
@@ -25,6 +26,10 @@ export interface ConversationProps {
   status: string
   /** A buzz needs the friend online; messages wait in the chat log. */
   canBuzz: boolean
+  /** More for the Actions menu, after its own items: the friend's menu. */
+  actions?: readonly MenuEntry[] | undefined
+  /** Nothing can be written: the friend removed you. */
+  closed?: boolean | undefined
   onSend: (text: string) => void
   onDraft?: (text: string) => void
   onBuzz: () => void
@@ -67,6 +72,9 @@ export function Conversation(props: ConversationProps) {
               },
               { label: 'Send a &File...', disabled: true },
               { label: 'S&eal a letter', disabled: true },
+              ...(props.actions === undefined || props.actions.length === 0
+                ? []
+                : [{ kind: 'separator' } as const, ...props.actions]),
             ],
           },
           { label: '&Tools', entries: [{ label: '&Font...', disabled: true }] },
@@ -101,10 +109,17 @@ export function Conversation(props: ConversationProps) {
           value={draft()}
           onInput={edit}
           onSubmit={send}
+          disabled={props.closed}
           class={styles.draft}
         />
         <div class={styles.send}>
-          <Button label="&Send" isDefault onClick={send} class={styles.sendButton} />
+          <Button
+            label="&Send"
+            isDefault
+            disabled={props.closed}
+            onClick={send}
+            class={styles.sendButton}
+          />
           <Button label="S&eal letter" disabled />
         </div>
       </div>

@@ -1,7 +1,7 @@
 // Shape checks for what the Messenger reads back from storage. A value that doesn't match is
 // treated as missing rather than trusted.
-import { type ChatLog, isPeerId, type LogEntry } from '@pigeon/core'
-import type { FriendRecord, HostedInvite, Profile } from './service.ts'
+import { type ChatLog, isPeerId, type LogEntry, type PeerId } from '@pigeon/core'
+import type { BlockedRecord, FriendRecord, HostedInvite, Profile } from './service.ts'
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -24,9 +24,30 @@ export function isFriendRecords(value: unknown): value is readonly FriendRecord[
         typeof record['id'] === 'string' &&
         isPeerId(record['id']) &&
         typeof record['handle'] === 'string' &&
-        typeof record['addedAt'] === 'number',
+        typeof record['addedAt'] === 'number' &&
+        (record['petname'] === undefined || typeof record['petname'] === 'string') &&
+        (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
+        (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number'),
     )
   )
+}
+
+export function isBlockedRecords(value: unknown): value is readonly BlockedRecord[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (record) =>
+        isObject(record) &&
+        typeof record['id'] === 'string' &&
+        isPeerId(record['id']) &&
+        typeof record['handle'] === 'string' &&
+        typeof record['at'] === 'number',
+    )
+  )
+}
+
+export function isPeerIds(value: unknown): value is readonly PeerId[] {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string' && isPeerId(id))
 }
 
 const isEntry = (value: unknown): value is LogEntry =>

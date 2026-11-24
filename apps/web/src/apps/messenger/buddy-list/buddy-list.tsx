@@ -10,6 +10,7 @@ import {
 } from '../../../ui/contact-list/contact-list.tsx'
 import { brand, tango } from '../../../ui/icons/icons.ts'
 import { useLayout } from '../../../ui/layout/layout.ts'
+import { Menu, type MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
@@ -27,6 +28,9 @@ export interface BuddyListProps {
   onHideSample: () => void
   onOpenConversation: (contactId: string) => void
   onAddFriend: () => void
+  /** What a friend's right-click menu offers; none for the sample. */
+  menuFor?: ((id: string) => readonly MenuEntry[]) | undefined
+  onBlockedPeople?: (() => void) | undefined
   onCopyInvite: () => void
   onAbout: () => void
   onClose: () => void
@@ -34,33 +38,69 @@ export interface BuddyListProps {
 
 const STATUS_LABEL: Record<Status, string> = { online: 'Online', away: 'Away', busy: 'Busy' }
 
-export function friendRow(view: FriendView): ContactRow {
+export function friendRow(view: FriendView, muted = false): ContactRow {
   const notes = [
     view.online && view.presence.status !== 'online'
       ? `(${STATUS_LABEL[view.presence.status]})`
       : '',
     view.unread > 0 ? `- ${view.unread} new` : '',
+    view.removedYouAt !== undefined ? '(removed you)' : '',
+    muted ? '(muted)' : '',
   ].filter((note) => note !== '')
   return {
     id: view.id,
-    name: view.handle,
+    name: view.name,
     presence: !view.online ? 'offline' : view.presence.status === 'online' ? 'online' : 'away',
     ...(notes.length > 0 ? { note: notes.join(' ') } : {}),
   }
 }
 
-export function friendGroups(friends: readonly FriendView[]): readonly ContactGroup[] {
+export function friendGroups(
+  friends: readonly FriendView[],
+  muted: (view: FriendView) => boolean = () => false,
+): readonly ContactGroup[] {
   const online = friends.filter((view) => view.online)
   const offline = friends.filter((view) => !view.online)
+  const row = (view: FriendView) => friendRow(view, muted(view))
   return [
-    { id: 'online', label: 'Online', contacts: online.map(friendRow) },
-    { id: 'offline', label: 'Offline', contacts: offline.map(friendRow) },
+    { id: 'online', label: 'Online', contacts: online.map(row) },
+    { id: 'offline', label: 'Offline', contacts: offline.map(row) },
   ].filter((group) => group.contacts.length > 0)
 }
 
 export function BuddyList(props: BuddyListProps) {
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
   const [editing, setEditing] = createSignal(false)
+  const [menu, setMenu] = createSignal<{ id: string; x: number; y: number } | undefined>()
+  let listBox: HTMLDivElement | undefined
+  /** A point on the page as a spot inside the list, allowing for the stage's scale. */
+  const openMenu = (id: string, at: { x: number; y: number }) => {
+    if (listBox === undefined || props.menuFor === undefined) return
+    const box = listBox.getBoundingClientRect()
+    const scale = listBox.offsetWidth > 0 ? box.width / listBox.offsetWidth : 1
+    setMenu({
+      id,
+      x: (at.x - box.left) / scale + listBox.scrollLeft,
+      y: (at.y - box.top) / scale + listBox.scrollTop,
+    })
+  }
+  /** Keeps the menu inside the list: shifted left, or opened upwards, when it would spill. */
+  const place = (element: HTMLDivElement) => {
+    requestAnimationFrame(() => {
+      if (listBox === undefined) return
+      const room = {
+        width: listBox.clientWidth,
+        height: listBox.scrollTop + listBox.clientHeight,
+      }
+      const left = Math.max(0, Math.min(element.offsetLeft, room.width - element.offsetWidth))
+      const top =
+        element.offsetTop + element.offsetHeight > room.height
+          ? Math.max(0, element.offsetTop - element.offsetHeight)
+          : element.offsetTop
+      element.style.left = `${left}px`
+      element.style.top = `${top}px`
+    })
+  }
   const live = () => (props.sample ? undefined : props.messenger)
   const named = () => (live()?.profile().handle ?? '') !== ''
 
@@ -71,6 +111,15 @@ export function BuddyList(props: BuddyListProps) {
   const setStatus = (status: Status) => {
     const messenger = live()
     if (messenger !== undefined) void messenger.setProfile({ ...messenger.profile(), status })
+  }
+  /** The selected friend's menu, its access keys dropped: the status items already use them. */
+  const selectedActions = (): readonly MenuEntry[] => {
+    const id = selected()
+    const entries = id === undefined || props.sample ? [] : (props.menuFor?.(id) ?? [])
+    if (entries.length === 0) return [{ label: 'Select a friend for more', disabled: true }]
+    return entries.map((entry) =>
+      entry.kind === 'separator' ? entry : { ...entry, label: entry.label.replace('&', '') },
+    )
   }
   const statusEntry = (status: Status, label: string) => ({
     label,
@@ -100,6 +149,12 @@ export function BuddyList(props: BuddyListProps) {
                 disabled: live() === undefined,
                 onSelect: props.onAddFriend,
               },
+              { kind: 'separator' },
+              {
+                label: '&Blocked People...',
+                disabled: live() === undefined || props.onBlockedPeople === undefined,
+                onSelect: () => props.onBlockedPeople?.(),
+              },
             ],
           },
           {
@@ -108,6 +163,8 @@ export function BuddyList(props: BuddyListProps) {
               statusEntry('online', 'Appear &Online'),
               statusEntry('away', 'Appear &Away'),
               statusEntry('busy', 'Appear &Busy'),
+              { kind: 'separator' },
+              ...selectedActions(),
               { kind: 'separator' },
               props.sample
                 ? { label: '&Leave the sample', onSelect: props.onHideSample }
@@ -159,15 +216,20 @@ export function BuddyList(props: BuddyListProps) {
           </Switch>
         </div>
       </div>
-      <div class={classes(styles.list, useLayout() === 'phone' && styles.flushList)}>
+      <div ref={listBox} class={classes(styles.list, useLayout() === 'phone' && styles.flushList)}>
         <Switch
           fallback={
             <ContactList
               label="Friends"
-              groups={props.sample ? SAMPLE_GROUPS : friendGroups(live()?.friends() ?? [])}
+              groups={
+                props.sample
+                  ? SAMPLE_GROUPS
+                  : friendGroups(live()?.friends() ?? [], (view) => live()?.muted(view.id) === true)
+              }
               selected={selected()}
               onSelect={setSelected}
               onOpen={open}
+              onMenu={props.sample || props.menuFor === undefined ? undefined : openMenu}
               empty="No friends yet."
             />
           }
@@ -190,6 +252,17 @@ export function BuddyList(props: BuddyListProps) {
             )}
           </Match>
         </Switch>
+        <Show when={menu()}>
+          {(at) => (
+            <Menu
+              label="Friend menu"
+              entries={props.menuFor?.(at().id) ?? []}
+              onClose={() => setMenu(undefined)}
+              style={{ left: `${at().x}px`, top: `${at().y}px` }}
+              ref={place}
+            />
+          )}
+        </Show>
         <Show when={!props.sample && named() && live()?.friends().length === 0 && !editing()}>
           <p class={styles.hint}>
             Add a friend by sending them your invite link.{' '}

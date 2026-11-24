@@ -34,6 +34,32 @@ async function host(network: ReturnType<typeof createMemoryNetwork>, signer = ro
 }
 
 describe('the invite handshake', () => {
+  it('leaves someone the inviter has blocked unanswered', async () => {
+    const network = createMemoryNetwork()
+    await hostInvite({
+      ...common,
+      signer: rook,
+      transport: network.transport(),
+      handle: 'Rook',
+      code,
+      sleep: () => never,
+      onPaired: () => undefined,
+      refuse: (id) => id === mika.id,
+    })
+    const gaveUp = stopper()
+    const opened = openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code },
+      until: gaveUp.until,
+    })
+    await flush()
+    gaveUp.stop()
+    expect(await opened).toEqual({ ok: false, error: 'stopped' })
+  })
+
   it('says how far it has got: on the relays, then in touch with the inviter', async () => {
     const network = createMemoryNetwork()
     const steps: OpenStep[] = []
