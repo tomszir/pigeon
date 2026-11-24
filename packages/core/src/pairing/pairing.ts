@@ -74,10 +74,18 @@ export async function hostInvite(options: HostInviteOptions): Promise<() => Prom
   return stop
 }
 
+/**
+ * How far opening an invite has got: `listening` once the invite's room is joined on the relays,
+ * `reached` once another Pigeon has connected there and been asked who it is.
+ */
+export type OpenStep = 'listening' | 'reached'
+
 export interface OpenInviteOptions extends Common {
   readonly invite: Invite
   /** Gives up waiting for an answer: a Cancel button or a timeout. */
   readonly until: Promise<void>
+  /** Told each step once, in order, so a screen can say what's happening. */
+  readonly onStep?: (step: OpenStep) => void
 }
 
 export interface Offer {
@@ -100,10 +108,17 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
   const { invite, signer } = options
   const { code } = invite
   const room = await options.transport.join(inviteRoom(code))
+  options.onStep?.('listening')
   const send = async (to: ConnectionId, body: Body) =>
     room.send(to, await sealEnvelope(signer, room.name, options.now(), body))
-  const request = (to: ConnectionId) =>
+  let reached = false
+  const request = (to: ConnectionId) => {
+    if (!reached) {
+      reached = true
+      options.onStep?.('reached')
+    }
     void send(to, { type: 'pair-request', code, handle: options.handle })
+  }
 
   let impostor = false
   let onAccept: ((sender: PeerId) => void) | undefined

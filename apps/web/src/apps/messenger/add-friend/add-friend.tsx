@@ -1,7 +1,15 @@
 // Add a Friend: share your invite (a code to type, a link, its QR code), or open one a friend
 // sent. Opening one asks the inviter who they are and shows their fingerprint; nothing is agreed
 // until you choose Add (decision 0018).
-import { decodeInvite, formatFingerprint, type Invite, type Offer, type PeerId } from '@pigeon/core'
+import {
+  decodeInvite,
+  formatFingerprint,
+  formatInviteCode,
+  type Invite,
+  type Offer,
+  type OpenStep,
+  type PeerId,
+} from '@pigeon/core'
 import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
@@ -9,6 +17,7 @@ import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
+import { Connecting, type StepState } from '../connecting/connecting.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
 import type { Messenger } from '../service/service.ts'
@@ -26,15 +35,22 @@ export interface AddFriendProps {
   sleep: (ms: number) => Promise<void>
   onOpenConversation: (id: PeerId) => void
   onClose: () => void
+  /** The clock the countdown reads; Date.now unless a test says otherwise. */
+  now?: () => number
 }
 
 type Failure = 'no-answer' | 'impostor' | 'no-confirm'
 
 type View =
   | { readonly kind: 'share' }
-  | { readonly kind: 'looking' }
+  | {
+      readonly kind: 'looking'
+      readonly code: string
+      readonly step: 'joining' | OpenStep
+      readonly startedAt: number
+    }
   | { readonly kind: 'offer'; readonly offer: Offer }
-  | { readonly kind: 'adding'; readonly offer: Offer }
+  | { readonly kind: 'adding'; readonly offer: Offer; readonly startedAt: number }
   | { readonly kind: 'paired'; readonly id: PeerId; readonly handle: string }
   | { readonly kind: 'failed'; readonly failure: Failure }
 
@@ -54,6 +70,7 @@ export function AddFriend(props: AddFriendProps) {
   const [typedError, setTypedError] = createSignal('')
   const [copied, setCopied] = createSignal('')
   let stopWaiting: (() => void) | undefined
+  const now = () => (props.now ?? Date.now)()
 
   const hasName = () => props.messenger.profile().handle !== ''
   const wait = (ms: number) =>
@@ -64,8 +81,15 @@ export function AddFriend(props: AddFriendProps) {
 
   const open = async (invite: Invite) => {
     setTypedError('')
-    setView({ kind: 'looking' })
-    const opened = await props.messenger.open(invite, wait(ANSWER_TIMEOUT_MS))
+    const looking = {
+      kind: 'looking',
+      code: formatInviteCode(invite.code),
+      startedAt: now(),
+    } as const
+    setView({ ...looking, step: 'joining' })
+    const opened = await props.messenger.open(invite, wait(ANSWER_TIMEOUT_MS), (step) => {
+      if (view().kind === 'looking') setView({ ...looking, step })
+    })
     if (view().kind !== 'looking') {
       if (opened.ok) await opened.offer.cancel()
       return
@@ -90,7 +114,7 @@ export function AddFriend(props: AddFriendProps) {
   }
 
   const add = async (offer: Offer) => {
-    setView({ kind: 'adding', offer })
+    setView({ kind: 'adding', offer, startedAt: now() })
     const accepted = await offer.confirm(wait(CONFIRM_TIMEOUT_MS))
     if (view().kind !== 'adding') return
     setView(
@@ -229,9 +253,44 @@ export function AddFriend(props: AddFriendProps) {
           </GroupBox>
         </Match>
         <Match when={current('looking')}>
-          <MessageBox kind="information" buttons={[{ label: 'Cancel', onClick: back }]}>
-            <p>Looking for whoever made this invite... Their Pigeon has to be open.</p>
-          </MessageBox>
+          {(shown) => {
+            const order = ['joining', 'listening', 'reached'] as const
+            const at = () => order.indexOf(shown().step)
+            const state = (index: number): StepState =>
+              index < at() ? 'done' : index === at() ? 'current' : 'pending'
+            return (
+              <Connecting
+                friend="Friend"
+                startedAt={shown().startedAt}
+                timeoutMs={ANSWER_TIMEOUT_MS}
+                now={now}
+                onCancel={back}
+                steps={[
+                  { label: 'Reaching the relays', state: state(0) },
+                  {
+                    label: (
+                      <>
+                        Looking for whoever made <code>{shown().code}</code>
+                      </>
+                    ),
+                    state: state(1),
+                  },
+                  { label: 'Asking who they are', state: state(2) },
+                ]}
+                hint={
+                  shown().step === 'reached'
+                    ? {
+                        afterMs: 10_000,
+                        text: "Their Pigeon is there but hasn't answered yet. It may be on a slow connection.",
+                      }
+                    : {
+                        afterMs: 12_000,
+                        text: "Nobody there yet. Pigeon has to be open on your friend's side, with this invite still showing in Add a Friend, and the code has to be right.",
+                      }
+                }
+              />
+            )
+          }}
         </Match>
         <Match when={current('offer')}>
           {(shown) => {
@@ -269,11 +328,23 @@ export function AddFriend(props: AddFriendProps) {
           }}
         </Match>
         <Match when={current('adding')}>
-          {(shown) => (
-            <MessageBox kind="information" buttons={[{ label: 'Cancel', onClick: back }]}>
-              <p>Adding {shown().offer.friend.handle}...</p>
-            </MessageBox>
-          )}
+          {(shown) => {
+            const name = shown().offer.friend.handle
+            return (
+              <Connecting
+                friend={name}
+                startedAt={shown().startedAt}
+                timeoutMs={CONFIRM_TIMEOUT_MS}
+                now={now}
+                onCancel={back}
+                steps={[
+                  { label: `Found ${name}`, state: 'done' },
+                  { label: `You said yes to ${name}`, state: 'done' },
+                  { label: `Waiting for ${name}'s Pigeon to add you`, state: 'current' },
+                ]}
+              />
+            )
+          }}
         </Match>
         <Match when={current('paired')}>
           {(shown) => (
