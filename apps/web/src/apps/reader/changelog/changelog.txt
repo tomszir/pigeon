@@ -4,6 +4,22 @@
      `---'       version, newest first
 ==============================================
 
+0.5.0, 24 November 2026
+----------------------------------------------
+  * After an update, Pigeon tells you once in
+    a balloon. Click it to see what changed.
+  * Changelog.txt on the desktop lists what's
+    new in each version, newest first. What's
+    New in the menu opens it too.
+  * Opening an invite link in a tab where
+    Pigeon is already open works even while
+    Pigeon is still starting.
+  * Meet friends in private rooms only you two
+    can find.
+  * Give everyone a pixel pigeon drawn from
+    their id.
+  * Use one Pigeon on several devices.
+
 0.4.0, 24 November 2026
 ----------------------------------------------
   * Adding a friend shows each step as it
