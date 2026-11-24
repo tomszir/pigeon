@@ -1,7 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   // Static assets, plus one route that hands out short-lived TURN credentials (decision 0022).
-  // Its secrets, TURN_KEY_ID and TURN_KEY_API_TOKEN, are set in the dashboard, not here.
+  // TURN_KEY_ID is only a name for the key and lives here, so deploys keep it; the key's API
+  // token is the secret TURN_KEY_API_TOKEN, set in the dashboard and kept across deploys.
   "name": "pigeon",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-20",
@@ -10,6 +11,9 @@
     "binding": "ASSETS",
     "html_handling": "drop-trailing-slash",
     "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "TURN_KEY_ID": "fe0ba8f0c1a27b93240441a75b183804"
   },
   "routes": [{ "pattern": "pigeon.tomszir.com", "custom_domain": true }]
 }
