@@ -64,3 +64,7 @@ Never: the Windows logo, Bliss, Microsoft icons, sounds, cursors or fonts (inclu
 ## Custom icons
 
 Drawn the XP way: art 2px under size (46, 30, 22, 14), light from the upper left, outline in a darker shade of the object's colour, drop shadow black 75% at 135°, distance 2, size 2 (1 at 16px). Ship a PNG per size; hand-pixel the 16px. Masters live in `assets/brand/`.
+
+## Avatars
+
+Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/avatar/`): the SHA-256 of `pigeon/avatar/v1` and the id picks a plumage (12, all real pigeon colours), a neck sheen (6), wing (4), head marking (6), eye (5), beak (3), accessory (16, or none for a third of birds), tile (12) and tile pattern (6), about 30 million birds. The traits draw a 32×32 picture by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, and a sentence for its alt text ("A slate pigeon with a copper neck, wearing a flat cap"). Every Pigeon draws the same bird for an id and nothing is sent. A bird is only about 25 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it. The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own logo.

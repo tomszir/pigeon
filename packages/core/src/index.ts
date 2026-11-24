@@ -1,3 +1,12 @@
+export type { AvatarPixels, AvatarTraits } from './avatar/avatar.ts'
+export {
+  AVATAR_SIZE,
+  avatarFor,
+  avatarSvg,
+  avatarTraits,
+  describeAvatar,
+  drawAvatar,
+} from './avatar/avatar.ts'
 export type { ChatLog, LogEntry, LogSummary } from './chat/chat-log.ts'
 export {
   appendMessage,
