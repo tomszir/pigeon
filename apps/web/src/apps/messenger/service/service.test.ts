@@ -48,7 +48,11 @@ function messenger(
   }))
 }
 
-async function pair(network: Network, events: { a?: MessengerEvents; b?: MessengerEvents } = {}) {
+async function pair(
+  network: Network,
+  events: { a?: MessengerEvents; b?: MessengerEvents } = {},
+  by: 'link' | 'code' = 'link',
+) {
   const clock = fakeClock()
   const a = await messenger(network, 'rook', { clock, ...(events.a ? { events: events.a } : {}) })
   const b = await messenger(network, 'mika', { clock, ...(events.b ? { events: events.b } : {}) })
@@ -56,10 +60,17 @@ async function pair(network: Network, events: { a?: MessengerEvents; b?: Messeng
   await b.messenger.setProfile({ handle: 'Mika', status: 'away', message: 'brb' })
   await a.messenger.newInvite()
   const link = a.messenger.inviteLink() ?? ''
-  expect(link.startsWith('https://pigeon.test/#invite/')).toBe(true)
-  const invite = decodeInvite(link.slice(link.indexOf('#') + 1))
-  if (!invite.ok) throw new Error('bad link')
-  expect(await b.messenger.accept(invite.value, never)).toMatchObject({ ok: true })
+  expect(link).toMatch(/^https:\/\/pigeon\.test\/#i\/[a-z2-7]{21}$/)
+  expect(a.messenger.inviteCode()).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)
+  const invite = decodeInvite(by === 'link' ? link : (a.messenger.inviteCode() ?? ''))
+  if (!invite.ok) throw new Error('bad invite')
+  const opened = await b.messenger.open(invite.value, never)
+  if (!opened.ok) throw new Error(opened.error)
+  expect(opened.offer.friend.handle).toBe('Rook')
+  expect(opened.offer.checked).toBe(by === 'link')
+  // Nobody is a friend until Mika agrees.
+  expect(a.messenger.friends()).toEqual([])
+  expect(await opened.offer.confirm(never)).toBe(true)
   await flush()
   return { a, b, clock }
 }
@@ -162,12 +173,44 @@ describe('the Messenger service', () => {
     expect(rook?.log.entries.map((entry) => entry.text)).toEqual(['before', 'while you were out'])
   })
 
-  it('refuses its own invite and makes no link without a name', async () => {
+  it('pairs from a typed code, unchecked', async () => {
+    const { a, b } = await pair(createMemoryNetwork(), {}, 'code')
+    expect(only(a.messenger.friends()).handle).toBe('Mika')
+    expect(only(b.messenger.friends()).handle).toBe('Rook')
+  })
+
+  it('refuses its own invite and makes no invite without a name', async () => {
     const a = await messenger(createMemoryNetwork(), 'rook')
     expect(await a.messenger.newInvite()).toBeUndefined()
     await a.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    const invite = await a.messenger.newInvite()
-    if (invite === undefined) throw new Error('no invite')
-    expect(await a.messenger.accept(invite, never)).toEqual({ ok: false, error: 'stopped' })
+    const hosted = await a.messenger.newInvite()
+    if (hosted === undefined) throw new Error('no invite')
+    expect(await a.messenger.open({ code: hosted.code }, never)).toEqual({
+      ok: false,
+      error: 'own',
+    })
+    const link = decodeInvite(a.messenger.inviteLink() ?? '')
+    if (!link.ok) throw new Error('bad link')
+    expect(await a.messenger.open(link.value, never)).toEqual({ ok: false, error: 'own' })
+  })
+
+  it('lets an invite lapse after 30 minutes, also across a reload', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock()
+    const store = createMemoryStore()
+    const a = await messenger(network, 'rook', { clock, store })
+    await a.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await a.messenger.newInvite()
+    await clock.tick(29 * 60 * 1000)
+    expect(a.messenger.invite()).toBeDefined()
+    await clock.tick(60 * 1000)
+    expect(a.messenger.invite()).toBeUndefined()
+    expect(await store.get('invite')).toBeUndefined()
+
+    await a.messenger.newInvite()
+    await a.messenger.close()
+    await clock.tick(31 * 60 * 1000)
+    const again = await messenger(network, 'rook', { clock, store })
+    expect(again.messenger.invite()).toBeUndefined()
   })
 })

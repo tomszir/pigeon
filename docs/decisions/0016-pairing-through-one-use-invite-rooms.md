@@ -2,7 +2,7 @@
 
 Friends pair by meeting in an `invite:<token>` room named by a random token in the link, not in their pair room.
 
-- Status: accepted
+- Status: superseded by [0018](0018-invite-codes-and-short-links.md) (link format and handshake; the one-use invite rooms stand)
 - Date: 2026-11-24
 
 ## Context

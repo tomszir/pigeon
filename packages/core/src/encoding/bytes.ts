@@ -111,6 +111,13 @@ export function hexEncode(bytes: Uint8Array): string {
   return out
 }
 
+export function hexDecode(text: string): Result<Uint8Array, 'malformed'> {
+  if (text.length % 2 !== 0 || !/^[0-9a-f]*$/.test(text)) return err('malformed')
+  const out = new Uint8Array(text.length / 2)
+  for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(text.slice(i * 2, i * 2 + 2), 16)
+  return ok(out)
+}
+
 export function concatBytes(...parts: readonly Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
   let at = 0

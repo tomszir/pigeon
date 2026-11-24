@@ -1,76 +1,121 @@
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { fingerprint } from '../identity/identity.ts'
 import { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from '../testing/testing.ts'
-import { INVITE_TOKEN_BYTES, inviteToken } from './invite.ts'
-import { acceptInvite, hostInvite, type NewFriend } from './pairing.ts'
+import { INVITE_CODE_BYTES, inviteCode } from './invite.ts'
+import { hostInvite, type NewFriend, openInvite } from './pairing.ts'
 
 const rook = fakeSigner('rook')
 const mika = fakeSigner('mika')
-const token = inviteToken(new Uint8Array(INVITE_TOKEN_BYTES).fill(1))
-const common = { crypto: fakeCrypto, now: () => 0, sleep: () => Promise.resolve() }
+const eve = fakeSigner('eve')
+const code = inviteCode(new Uint8Array(INVITE_CODE_BYTES).fill(1))
+const common = { crypto: fakeCrypto, now: () => 0 }
 const never = new Promise<void>(() => undefined)
 
-it('pairs the inviter and whoever opens the link, once', async () => {
-  const network = createMemoryNetwork()
+function stopper() {
+  let stop: () => void = () => undefined
+  const until = new Promise<void>((resolve) => {
+    stop = resolve
+  })
+  return { until, stop }
+}
+
+async function host(network: ReturnType<typeof createMemoryNetwork>, signer = rook) {
   const paired: NewFriend[] = []
   await hostInvite({
     ...common,
-    signer: rook,
+    signer,
     transport: network.transport(),
     handle: 'Rook',
-    token,
+    code,
+    sleep: () => never,
     onPaired: (friend) => paired.push(friend),
   })
-  const result = await acceptInvite({
-    ...common,
-    signer: mika,
-    transport: network.transport(),
-    handle: 'Mika',
-    invite: { id: rook.id, token, handle: 'Rook' },
-    until: never,
-  })
-  expect(result).toEqual({ ok: true, friend: { id: rook.id, handle: 'Rook' } })
-  expect(paired).toEqual([{ id: mika.id, handle: 'Mika' }])
+  return paired
+}
 
-  let stop: () => void = () => undefined
-  const late = acceptInvite({
-    ...common,
-    signer: fakeSigner('eve'),
-    transport: network.transport(),
-    handle: 'Eve',
-    invite: { id: rook.id, token, handle: 'Rook' },
-    until: new Promise<void>((resolve) => {
-      stop = resolve
-    }),
-  })
-  await flush()
-  stop()
-  expect(await late).toEqual({ ok: false, error: 'stopped' })
-  expect(paired).toHaveLength(1)
-})
+describe('the invite handshake', () => {
+  it('shows who answered before anything is agreed, then pairs both ways', async () => {
+    const network = createMemoryNetwork()
+    const paired = await host(network)
+    const opened = await openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code, fingerprint: await fingerprint(fakeCrypto, rook.id) },
+      until: never,
+    })
+    if (!opened.ok) throw new Error(opened.error)
+    expect(opened.offer.friend).toEqual({ id: rook.id, handle: 'Rook' })
+    expect(opened.offer.checked).toBe(true)
+    expect(paired).toEqual([])
 
-it('ignores an accept from anyone but the id in the link', async () => {
-  const network = createMemoryNetwork()
-  // Eve hosts the token but the link names Rook.
-  await hostInvite({
-    ...common,
-    signer: fakeSigner('eve'),
-    transport: network.transport(),
-    handle: 'Rook',
-    token,
-    onPaired: () => undefined,
+    expect(await opened.offer.confirm(never)).toBe(true)
+    await flush()
+    expect(paired).toEqual([{ id: mika.id, handle: 'Mika' }])
   })
-  let stop: () => void = () => undefined
-  const result = acceptInvite({
-    ...common,
-    signer: mika,
-    transport: network.transport(),
-    handle: 'Mika',
-    invite: { id: rook.id, token, handle: 'Rook' },
-    until: new Promise<void>((resolve) => {
-      stop = resolve
-    }),
+
+  it('pairs from a typed code too, unchecked, and only once', async () => {
+    const network = createMemoryNetwork()
+    const paired = await host(network)
+    const opened = await openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code },
+      until: never,
+    })
+    if (!opened.ok) throw new Error(opened.error)
+    expect(opened.offer.checked).toBe(false)
+    await opened.offer.confirm(never)
+
+    const late = stopper()
+    const second = openInvite({
+      ...common,
+      signer: eve,
+      transport: network.transport(),
+      handle: 'Eve',
+      invite: { code },
+      until: late.until,
+    })
+    await flush()
+    late.stop()
+    expect(await second).toEqual({ ok: false, error: 'stopped' })
+    expect(paired).toHaveLength(1)
   })
-  await flush()
-  stop()
-  expect(await result).toEqual({ ok: false, error: 'stopped' })
+
+  it('adds nobody when the invitee cancels after seeing the offer', async () => {
+    const network = createMemoryNetwork()
+    const paired = await host(network)
+    const opened = await openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code },
+      until: never,
+    })
+    if (!opened.ok) throw new Error(opened.error)
+    await opened.offer.cancel()
+    await flush()
+    expect(paired).toEqual([])
+  })
+
+  it('names an impostor answering a link that carries someone else’s fingerprint', async () => {
+    const network = createMemoryNetwork()
+    await host(network, eve)
+    const wait = stopper()
+    const opened = openInvite({
+      ...common,
+      signer: mika,
+      transport: network.transport(),
+      handle: 'Mika',
+      invite: { code, fingerprint: await fingerprint(fakeCrypto, rook.id) },
+      until: wait.until,
+    })
+    await flush()
+    wait.stop()
+    expect(await opened).toEqual({ ok: false, error: 'impostor' })
+  })
 })

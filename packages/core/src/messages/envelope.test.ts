@@ -16,8 +16,10 @@ describe('envelopes', () => {
       { type: 'bye' },
       { type: 'log-sync', have: { [rook.id]: 3 } },
       { type: 'log-entries', entries: [] },
-      { type: 'pair-request', token: 'abc', handle: 'Mika' },
-      { type: 'pair-accept', token: 'abc', handle: 'Rook' },
+      { type: 'pair-request', code: 'abc', handle: 'Mika' },
+      { type: 'pair-offer', code: 'abc', handle: 'Rook' },
+      { type: 'pair-confirm', code: 'abc' },
+      { type: 'pair-accept', code: 'abc' },
     ] as const
     for (const body of bodies) {
       const bytes = await sealEnvelope(rook, 'pair:x', 1000, body)

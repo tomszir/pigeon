@@ -17,7 +17,7 @@ All traffic goes through the `Transport` interface ([0002](decisions/0002-tryste
 Inside a room the transport names connections (`ConnectionId`); those are not identities. A connection becomes a friend only by sending an envelope signed by that friend's key, starting with `hello`.
 
 - `pair:<hash of both ids>`: one per pair of friends. Chat, buzz, typing, files, letters. The hash is base32 SHA-256 of `pigeon/pair/v1`, then the two ids sorted, newline-separated.
-- `invite:<token>`: one per invite link, used once for pairing ([0016](decisions/0016-pairing-through-one-use-invite-rooms.md)).
+- `invite:<code>`: one per invite, used once for pairing ([0016](decisions/0016-pairing-through-one-use-invite-rooms.md), [0018](decisions/0018-invite-codes-and-short-links.md)).
 - `page:<owner id>`: one per homepage. Snapshot requests and guestbook entries.
 - `lobby`: opt-in public presence.
 
@@ -25,21 +25,23 @@ Inside a room the transport names connections (`ConnectionId`); those are not id
 
 Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical JSON (keys sorted), at most 64 KB (files are chunked). `sig` is `from`'s base32 signature over the envelope without `sig`, so naming the room stops an envelope being replayed into another one. Unsigned, oversized, malformed, wrong-room or blocked-sender messages are dropped, as is anything in a pair room from a key other than the friend's.
 
-| Type                                               | Room        | Purpose                                                                              |
-| -------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------ |
-| `hello`                                            | any         | handle (sealing key and capabilities from M4)                                        |
-| `pair-request`, `pair-accept`                      | invite      | the invite handshake: token and handle each way                                      |
-| `presence`                                         | pair, lobby | status and personal message                                                          |
-| `log-sync`, `log-entries`                          | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)) |
-| `typing`, `buzz`                                   | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s             |
-| `bye`                                              | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides  |
-| `file-offer`, `file-chunk`, `file-ack`             | pair        | chunked transfer with back-pressure                                                  |
-| `letter-offer`, `letter-deliver`, `letter-receipt` | pair        | store and forward                                                                    |
-| `page-request`, `page-snapshot`                    | page        | fetch the newest signed snapshot                                                     |
+| Type                                                        | Room        | Purpose                                                                              |
+| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------ |
+| `hello`                                                     | any         | handle (sealing key and capabilities from M4)                                        |
+| `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement                   |
+| `presence`                                                  | pair, lobby | status and personal message                                                          |
+| `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)) |
+| `typing`, `buzz`                                            | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s             |
+| `bye`                                                       | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides  |
+| `file-offer`, `file-chunk`, `file-ack`                      | pair        | chunked transfer with back-pressure                                                  |
+| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair        | store and forward                                                                    |
+| `page-request`, `page-snapshot`                             | page        | fetch the newest signed snapshot                                                     |
 
 ## Pairing
 
-The inviter makes a 128-bit random token and shares `https://pigeon.tomszir.com/#invite/<id>/<token>/<base32 handle>` as a link or QR code, and waits in `invite:<token>`. The link is kept across reloads until it's used; renaming yourself makes a new one. Opening it takes it out of the address bar. Whoever opens it sees the inviter's handle and fingerprint, joins that room and sends a signed `pair-request` with the token and their handle. The inviter answers the first valid request with `pair-accept` and stops hosting the token. The invitee only accepts a `pair-accept` signed by the id in the link. Both then save each other as friends and meet in their pair room.
+An invite is an 8-character base32 code (40 bits, shown as `K7RT-VP2B`) that pairs once and is hosted for 30 minutes, also across reloads ([0018](decisions/0018-invite-codes-and-short-links.md)). It is shared typed, or as the link `https://pigeon.tomszir.com/#i/<code><fingerprint>`, which adds the inviter's fingerprint in base32 (23 characters after `#`); the QR code is the link. Typing accepts either case, with or without the dash, and reads 0, 1 and 8 as o, l and b. Opening a link takes it out of the address bar.
+
+The inviter waits in `invite:<code>`. The invitee joins and sends `pair-request` (code, their name); the inviter answers `pair-offer` (code, its name). The invitee is shown the name and fingerprint: from a link, an offer whose fingerprint doesn't match the link's is refused; from a typed code, they're warned to compare it with their friend's screen. Only when they choose Add does `pair-confirm` go back; the inviter adds them, answers `pair-accept`, and stops hosting the code. Both then save each other as friends and meet in their pair room.
 
 ## Logs
 

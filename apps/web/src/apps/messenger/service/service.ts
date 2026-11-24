@@ -2,22 +2,24 @@
 // It reads and writes storage, runs core's protocol over the transport, and exposes Solid state
 // the windows draw. Everything it touches comes in through platform interfaces.
 import {
-  type AcceptResult,
-  acceptInvite,
   type ChatLog,
   type Crypto,
   emptyLog,
-  encodeInvite,
+  encodeInviteLink,
   fingerprint,
+  formatInviteCode,
   hostInvite,
-  INVITE_TOKEN_BYTES,
+  INVITE_CODE_BYTES,
+  INVITE_LIFETIME_MS,
   type Invite,
-  inviteToken,
+  inviteCode,
   isPeerId,
   type LogEntry,
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   type NewFriend,
+  type OpenResult,
+  openInvite,
   type PairEvent,
   type PairSession,
   type PeerId,
@@ -32,7 +34,7 @@ import { batch, createSignal } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
-import { isChatLog, isFriendRecords, isProfile } from './stored.ts'
+import { isChatLog, isFriendRecords, isHostedInvite, isProfile } from './stored.ts'
 
 /** How long a "typing" lasts without a refresh, and how often the sender refreshes it. */
 export const TYPING_EXPIRES_MS = 6000
@@ -100,8 +102,16 @@ const KEYS = {
 
 const DEFAULT_PROFILE: Profile = { handle: '', status: 'online', message: '' }
 
-export const inviteLink = (base: string, invite: Invite): string =>
-  `${base}#${encodeInvite(invite)}`
+export const inviteLink = (base: string, code: string, fingerprint: string): string =>
+  `${base}#${encodeInviteLink(code, fingerprint)}`
+
+/** The invite this tab is hosting. */
+export interface HostedInvite {
+  readonly code: string
+  readonly expiresAt: number
+}
+
+export type OpenedInvite = OpenResult | { readonly ok: false; readonly error: 'own' }
 
 export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, transport, clock } = deps
@@ -237,15 +247,25 @@ export async function createMessenger(deps: MessengerDeps) {
     return state.friends[record.id] as FriendView
   }
 
-  // Invites: at most one live link, kept across reloads until someone uses it.
-  const [invite, setInvite] = createSignal<Invite | undefined>(undefined)
+  // Invites: at most one live code at a time, kept across reloads until it's used or expires.
+  const [invite, setInvite] = createSignal<HostedInvite | undefined>(undefined)
   let stopHosting: (() => Promise<void>) | undefined
 
-  async function host(token: string) {
+  async function stopInvite() {
     await stopHosting?.()
     stopHosting = undefined
-    if (profile().handle === '') return
-    setInvite({ id: signer.id, token, handle: profile().handle })
+    setInvite(undefined)
+    await store.delete(KEYS.invite)
+  }
+
+  async function host(hosted: HostedInvite) {
+    await stopHosting?.()
+    stopHosting = undefined
+    if (profile().handle === '' || hosted.expiresAt <= clock.now()) {
+      await stopInvite()
+      return
+    }
+    setInvite(hosted)
     stopHosting = await hostInvite({
       crypto,
       signer,
@@ -253,26 +273,32 @@ export async function createMessenger(deps: MessengerDeps) {
       handle: profile().handle,
       now: clock.now,
       sleep: clock.sleep,
-      token,
+      code: hosted.code,
       onPaired: (paired) => void welcome(paired),
+    })
+    void clock.sleep(hosted.expiresAt - clock.now()).then(() => {
+      if (invite()?.code === hosted.code) void stopInvite()
     })
   }
 
   async function welcome(paired: NewFriend) {
+    stopHosting = undefined
     setInvite(undefined)
     await store.delete(KEYS.invite)
-    stopHosting = undefined
     const view = await addFriend({ ...paired, addedAt: clock.now() })
     await saveFriends()
     await startSession(paired.id)
     events.onPaired?.(view)
   }
 
-  async function newInvite(): Promise<Invite | undefined> {
+  async function newInvite(): Promise<HostedInvite | undefined> {
     if (profile().handle === '') return undefined
-    const token = inviteToken(deps.random(INVITE_TOKEN_BYTES))
-    await store.set(KEYS.invite, token)
-    await host(token)
+    const hosted = {
+      code: inviteCode(deps.random(INVITE_CODE_BYTES)),
+      expiresAt: clock.now() + INVITE_LIFETIME_MS,
+    }
+    await store.set(KEYS.invite, hosted)
+    await host(hosted)
     return invite()
   }
 
@@ -285,8 +311,8 @@ export async function createMessenger(deps: MessengerDeps) {
   }
   async function connect() {
     await Promise.all(friendList().map((view) => startSession(view.id)))
-    const token = await store.get(KEYS.invite)
-    if (typeof token === 'string') await host(token)
+    const stored = await store.get(KEYS.invite)
+    if (isHostedInvite(stored)) await host(stored)
   }
   await connect()
 
@@ -303,8 +329,9 @@ export async function createMessenger(deps: MessengerDeps) {
       await store.set(KEYS.profile, profile())
       if (first) await connect()
       else for (const session of sessions.values()) session.announce()
-      // A live link carries the old name; make a fresh one.
-      if (renamed && !first && invite() !== undefined) await newInvite()
+      // The code's host answers with the name it was started with.
+      const current = invite()
+      if (renamed && !first && current !== undefined) await host(current)
     },
     friends: friendList,
     friend,
@@ -312,27 +339,52 @@ export async function createMessenger(deps: MessengerDeps) {
     invite,
     inviteLink: () => {
       const current = invite()
-      return current === undefined ? undefined : inviteLink(deps.inviteBase, current)
+      return current === undefined
+        ? undefined
+        : inviteLink(deps.inviteBase, current.code, selfFingerprint)
+    },
+    inviteCode: () => {
+      const current = invite()
+      return current === undefined ? undefined : formatInviteCode(current.code)
     },
     newInvite,
-    async accept(target: Invite, until: Promise<void>): Promise<AcceptResult> {
-      if (target.id === signer.id) return { ok: false, error: 'stopped' }
-      const result = await acceptInvite({
+    /**
+     * Answers someone's invite and waits to hear who they are. Nothing is agreed until the
+     * returned offer is confirmed, which adds the friend on both sides.
+     */
+    async open(target: Invite, until: Promise<void>): Promise<OpenedInvite> {
+      if (target.code === invite()?.code || target.fingerprint === selfFingerprint)
+        return { ok: false, error: 'own' }
+      const result = await openInvite({
         crypto,
         signer,
         transport,
         handle: profile().handle,
         now: clock.now,
-        sleep: clock.sleep,
         invite: target,
         until,
       })
-      if (result.ok) {
-        await addFriend({ ...result.friend, addedAt: clock.now() })
-        await saveFriends()
-        await startSession(result.friend.id)
+      if (!result.ok) return result
+      const { offer } = result
+      if (offer.friend.id === signer.id) {
+        await offer.cancel()
+        return { ok: false, error: 'own' }
       }
-      return result
+      return {
+        ok: true,
+        offer: {
+          ...offer,
+          async confirm(confirmUntil: Promise<void>) {
+            const accepted = await offer.confirm(confirmUntil)
+            if (accepted) {
+              await addFriend({ ...offer.friend, addedAt: clock.now() })
+              await saveFriends()
+              await startSession(offer.friend.id)
+            }
+            return accepted
+          },
+        },
+      }
     },
     async send(id: PeerId, text: string) {
       const trimmed = text.trim()

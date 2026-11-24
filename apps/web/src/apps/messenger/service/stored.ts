@@ -1,7 +1,7 @@
 // Shape checks for what the Messenger reads back from storage. A value that doesn't match is
 // treated as missing rather than trusted.
 import { type ChatLog, isPeerId, type LogEntry } from '@pigeon/core'
-import type { FriendRecord, Profile } from './service.ts'
+import type { FriendRecord, HostedInvite, Profile } from './service.ts'
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,5 +45,11 @@ export function isChatLog(value: unknown): value is ChatLog {
     typeof value['id'] === 'string' &&
     Array.isArray(value['entries']) &&
     value['entries'].every(isEntry)
+  )
+}
+
+export function isHostedInvite(value: unknown): value is HostedInvite {
+  return (
+    isObject(value) && typeof value['code'] === 'string' && typeof value['expiresAt'] === 'number'
   )
 }

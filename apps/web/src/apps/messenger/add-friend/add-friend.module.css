@@ -46,3 +46,14 @@
   margin: 6px 0 0;
   color: var(--pg-text-muted);
 }
+
+/* The code is read out loud and typed: big, monospaced, spaced. */
+.code {
+  margin: 0;
+  font: 700 20px / 24px var(--pg-font-mono);
+  letter-spacing: 0.12em;
+}
+
+.warning {
+  color: var(--pg-text-error);
+}

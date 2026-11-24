@@ -23,10 +23,14 @@ export type Body =
   | { readonly type: 'bye' }
   | { readonly type: 'log-sync'; readonly have: LogSummary }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
-  /** The invitee answers an invite link; `token` proves they were given it. */
-  | { readonly type: 'pair-request'; readonly token: string; readonly handle: string }
-  /** The inviter confirms; both sides now know each other's id and move to the pair room. */
-  | { readonly type: 'pair-accept'; readonly token: string; readonly handle: string }
+  /** The invitee answers an invite; `code` proves they were given it (decision 0018). */
+  | { readonly type: 'pair-request'; readonly code: string; readonly handle: string }
+  /** The inviter says who it is, so the invitee can check the fingerprint before agreeing. */
+  | { readonly type: 'pair-offer'; readonly code: string; readonly handle: string }
+  /** The invitee agrees, having seen the inviter's name and fingerprint. */
+  | { readonly type: 'pair-confirm'; readonly code: string }
+  /** The inviter has added the invitee; both move to their pair room. */
+  | { readonly type: 'pair-accept'; readonly code: string }
 
 export type BodyType = Body['type']
 
@@ -46,7 +50,7 @@ const isString = (max: number) => (value: unknown) =>
   typeof value === 'string' && value.length <= max
 const isHandle = (value: unknown) =>
   isString(MAX_HANDLE_LENGTH)(value) && (value as string).trim() !== ''
-const isToken = isString(64)
+const isCode = isString(64)
 
 function isSummary(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -66,8 +70,10 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   bye: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
-  'pair-request': (b) => isToken(b['token']) && isHandle(b['handle']),
-  'pair-accept': (b) => isToken(b['token']) && isHandle(b['handle']),
+  'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']),
+  'pair-offer': (b) => isCode(b['code']) && isHandle(b['handle']),
+  'pair-confirm': (b) => isCode(b['code']),
+  'pair-accept': (b) => isCode(b['code']),
 }
 
 function isBody(value: unknown): value is Body {

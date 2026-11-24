@@ -6,7 +6,7 @@ The words Pigeon uses for its own things.
 - **Carrier**: a peer holding a sealed letter for someone else.
 - **Fingerprint**: 16 hex characters from a peer's key, compared out loud or on screen when pairing.
 - **Coo**: the opt-in bot that runs in your own tab.
-- **Invite link**: a one-use link (and QR code) that pairs whoever opens it with you while your Pigeon is open.
+- **Invite**: an 8-character code, or a short link and QR code carrying it, that pairs one friend with you within 30 minutes while your Pigeon is open.
 - **Letter**: a message sealed to an offline friend and carried until they return.
 - **Lighthouse**: the always-on peer. Same protocol as everyone, labelled as such in the UI.
 - **Lobby**: the opt-in public room of strangers who are online.

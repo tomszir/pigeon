@@ -73,7 +73,7 @@ render(() => {
     body:
       incoming === undefined
         ? 'Have a look at Read Me.txt first, or open Pigeon Messenger to add a friend.'
-        : `${incoming.handle} sent you an invite. Choose Pair to become friends.`,
+        : 'Someone sent you an invite. Pigeon is asking them who they are.',
   })
 
   return <Shell {...programs} />
