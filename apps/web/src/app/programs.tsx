@@ -5,6 +5,7 @@ import { type Accessor, createEffect, createSignal, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
+import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
 import {
   BlockedPeople,
   FriendProfile,
@@ -36,6 +37,8 @@ export interface Programs extends ShellProps {
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
   readonly openAddFriend: (incoming?: Invite) => void
+  /** Link to My Other Device, perhaps from a link in the address bar (decision 0024). */
+  readonly openJoinDevice: (incoming?: Invite) => void
   readonly sample: Accessor<boolean>
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
@@ -48,6 +51,8 @@ export interface MessengerHost {
   readonly problem: Accessor<string | undefined>
   readonly copyText: (text: string) => Promise<boolean>
   readonly sleep: (ms: number) => Promise<void>
+  /** Starts Pigeon again, as a newly linked device must to become its identity. */
+  readonly restart: () => void
 }
 
 /** Things that come in later milestones say so, in the world's own voice. */
@@ -212,6 +217,58 @@ export function createPrograms(
             />
           )}
         </Show>
+      ),
+    })
+  }
+
+  // Your devices (decision 0024).
+  const deviceIcon = tangoIcon('network-transmit-receive', 16)
+  const openLinkDevice = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('link-device', {
+      title: 'Link a Device',
+      icon: deviceIcon,
+      bounds: { x: 232, y: 110, width: 520, height: 330 },
+      controls: { maximize: false },
+      content: (window) => <LinkDevice messenger={messenger} onClose={window.close} />,
+    })
+  }
+  const openJoinDevice = (incoming?: Invite) => {
+    if (incoming !== undefined) api.close('join-device')
+    api.open('join-device', {
+      title: 'Link to My Other Device',
+      icon: deviceIcon,
+      bounds: { x: 252, y: 130, width: 480, height: 300 },
+      controls: { maximize: false },
+      content: (window) => (
+        <Show
+          when={host.messenger()}
+          fallback={<p>{host.problem() ?? 'Pigeon is still starting...'}</p>}
+        >
+          {(messenger) => (
+            <JoinDevice
+              messenger={messenger()}
+              incoming={incoming}
+              sleep={host.sleep}
+              onLinked={host.restart}
+              onClose={window.close}
+            />
+          )}
+        </Show>
+      ),
+    })
+  }
+  const openMyDevices = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('my-devices', {
+      title: 'My Devices',
+      icon: deviceIcon,
+      bounds: { x: 312, y: 150, width: 400, height: 320 },
+      controls: { maximize: false },
+      content: (window) => (
+        <MyDevices messenger={messenger} onLinkDevice={openLinkDevice} onClose={window.close} />
       ),
     })
   }
@@ -384,6 +441,12 @@ export function createPrograms(
       if (muted(friend)) return
       notifyFrom(friend, { title: friend.name, body: 'has just come online.' })
     },
+    onDeviceRemoved: () =>
+      api.notify({
+        title: 'This device was removed',
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'Another of your devices took this one off your Pigeon. It keeps its chats, but talks to nobody now.',
+      }),
     onUnfriended: (friend) =>
       notifyFrom(friend, {
         title: `${friend.name} removed you`,
@@ -434,6 +497,9 @@ export function createPrograms(
           onCopyInvite={() => void copyInvite()}
           menuFor={friendMenu}
           onBlockedPeople={openBlocked}
+          onMyDevices={openMyDevices}
+          onLinkDevice={openLinkDevice}
+          onJoinDevice={() => openJoinDevice()}
           onRelayOnly={(on) => void setRelayOnly(on)}
           onAbout={openAbout}
           onClose={window.close}
@@ -550,6 +616,9 @@ export function createPrograms(
   const messengerWindow = (id: string) =>
     id === 'messenger' ||
     id === 'add-friend' ||
+    id === 'link-device' ||
+    id === 'join-device' ||
+    id === 'my-devices' ||
     id.startsWith('conversation:') ||
     id.startsWith('sample:')
 
@@ -621,6 +690,7 @@ export function createPrograms(
     openMessenger,
     openConversation,
     openAddFriend,
+    openJoinDevice,
     sample,
     messengerEvents,
   }

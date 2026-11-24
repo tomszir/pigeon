@@ -2,6 +2,7 @@
 // it was sent in so it can't be replayed elsewhere (docs/protocol.md, "Messages").
 
 import { isLogEntry, type LogEntry, type LogSummary } from '../chat/chat-log.ts'
+import { type DeviceLog, isDeviceLog } from '../devices/device-log.ts'
 import { base32Decode, base32Encode, utf8Decode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
@@ -16,8 +17,18 @@ export const MAX_PERSONAL_MESSAGE_LENGTH = 120
 export type Status = 'online' | 'away' | 'busy'
 
 export type Body =
-  /** `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. */
-  | { readonly type: 'hello'; readonly handle: string; readonly avatar?: number }
+  /**
+   * `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. `devices`:
+   * this Pigeon knows device logs (decision 0024); those before it don't say so.
+   */
+  | {
+      readonly type: 'hello'
+      readonly handle: string
+      readonly avatar?: number
+      readonly devices?: boolean
+    }
+  /** Your device log: which devices speak for you. Sent before hello by an identity with one. */
+  | { readonly type: 'device-log'; readonly log: DeviceLog }
   | { readonly type: 'presence'; readonly status: Status; readonly message: string }
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
@@ -27,10 +38,13 @@ export type Body =
   | { readonly type: 'unfriend' }
   | { readonly type: 'log-sync'; readonly have: LogSummary }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
-  /** The invitee answers an invite; `code` proves they were given it (decision 0018). */
-  | { readonly type: 'pair-request'; readonly code: string; readonly handle: string }
+  /**
+   * The invitee answers an invite; `code` proves they were given it (decision 0018). From a
+   * device that isn't its identity's first, `identity` and its device log say who it speaks for.
+   */
+  | ({ readonly type: 'pair-request'; readonly code: string; readonly handle: string } & Speaker)
   /** The inviter says who it is, so the invitee can check the fingerprint before agreeing. */
-  | { readonly type: 'pair-offer'; readonly code: string; readonly handle: string }
+  | ({ readonly type: 'pair-offer'; readonly code: string; readonly handle: string } & Speaker)
   /** The invitee agrees, having seen the inviter's name and fingerprint. */
   | { readonly type: 'pair-confirm'; readonly code: string }
   /**
@@ -42,8 +56,20 @@ export type Body =
   | { readonly type: 'pair-secret'; readonly secret: string }
   /** The other side has the secret too: both leave the old room. */
   | { readonly type: 'pair-secret-ok' }
+  /** A new device asks to join the identity whose device showed `code` (decision 0024). */
+  | { readonly type: 'link-request'; readonly code: string }
+  /** The existing device says whose it is, so both can show the same 6-digit check. */
+  | ({ readonly type: 'link-offer'; readonly code: string; readonly handle: string } & Speaker)
+  /** Confirmed on the existing device: the new one is on the log, and gets what it needs. */
+  | { readonly type: 'link-accept'; readonly code: string; readonly bundle: Json }
 
 export type BodyType = Body['type']
+
+/** Who a device speaks for, when it isn't its identity's first device. */
+export interface Speaker {
+  readonly identity?: PeerId
+  readonly devices?: DeviceLog
+}
 
 export interface Envelope {
   readonly v: 1
@@ -70,6 +96,10 @@ function isSummary(value: unknown): boolean {
   )
 }
 
+const isSpeaker = (b: Fields) =>
+  (b['identity'] === undefined && b['devices'] === undefined) ||
+  (typeof b['identity'] === 'string' && isPeerId(b['identity']) && isDeviceLog(b['devices']))
+
 /** One shape check per body type: content lives in a table, not a switch. */
 const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   hello: (b) =>
@@ -77,7 +107,9 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
     (b['avatar'] === undefined ||
       (Number.isSafeInteger(b['avatar']) &&
         (b['avatar'] as number) >= 1 &&
-        (b['avatar'] as number) <= 255)),
+        (b['avatar'] as number) <= 255)) &&
+    (b['devices'] === undefined || b['devices'] === true),
+  'device-log': (b) => isDeviceLog(b['log']),
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&
     isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']),
@@ -87,13 +119,17 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   unfriend: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
-  'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']),
-  'pair-offer': (b) => isCode(b['code']) && isHandle(b['handle']),
+  'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
+  'pair-offer': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
   'pair-confirm': (b) => isCode(b['code']),
   'pair-accept': (b) =>
     isCode(b['code']) && (b['secret'] === undefined || isPairSecret(b['secret'])),
   'pair-secret': (b) => isPairSecret(b['secret']),
   'pair-secret-ok': () => true,
+  'link-request': (b) => isCode(b['code']),
+  'link-offer': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
+  'link-accept': (b) =>
+    isCode(b['code']) && typeof b['bundle'] === 'object' && b['bundle'] !== null,
 }
 
 function isBody(value: unknown): value is Body {

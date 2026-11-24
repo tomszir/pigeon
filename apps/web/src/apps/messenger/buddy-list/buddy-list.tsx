@@ -32,6 +32,10 @@ export interface BuddyListProps {
   /** What a friend's right-click menu offers; none for the sample. */
   menuFor?: ((id: string) => readonly MenuEntry[]) | undefined
   onBlockedPeople?: (() => void) | undefined
+  /** File, My Devices, Link a Device and Link to My Other Device (decision 0024). */
+  onMyDevices?: (() => void) | undefined
+  onLinkDevice?: (() => void) | undefined
+  onJoinDevice?: (() => void) | undefined
   /** File, Always Go Through the Relay: turns relay-only connections on or off (0026). */
   onRelayOnly?: ((on: boolean) => void) | undefined
   onCopyInvite: () => void
@@ -156,6 +160,23 @@ export function BuddyList(props: BuddyListProps) {
               { label: 'Change my &name...', disabled: !named(), onSelect: () => setEditing(true) },
               { kind: 'separator' },
               {
+                label: 'My &Devices...',
+                disabled: live() === undefined || props.onMyDevices === undefined,
+                onSelect: () => props.onMyDevices?.(),
+              },
+              {
+                label: 'Link a De&vice...',
+                // Only the first device links devices (decision 0024).
+                disabled:
+                  !named() || live()?.isFirstDevice() !== true || props.onLinkDevice === undefined,
+                onSelect: () => props.onLinkDevice?.(),
+              },
+              // Only a Pigeon with nobody on it yet can become another one.
+              ...(live()?.canJoin() === true && props.onJoinDevice !== undefined
+                ? [{ label: 'Link to My &Other Device...', onSelect: () => props.onJoinDevice?.() }]
+                : []),
+              { kind: 'separator' },
+              {
                 label: 'Always Go Through the &Relay',
                 checked: live()?.settings().relayOnly === true,
                 disabled: live() === undefined || props.onRelayOnly === undefined,
@@ -273,6 +294,14 @@ export function BuddyList(props: BuddyListProps) {
         >
           <Match when={!props.sample && props.problem !== undefined}>
             <p class={styles.hint}>{props.problem}</p>
+          </Match>
+          <Match
+            when={!props.sample && live() !== undefined && live()?.deviceStatus() !== 'active'}
+          >
+            <p class={styles.hint}>
+              This device was removed from your Pigeon. It keeps the chats it had, but talks to
+              nobody now.
+            </p>
           </Match>
           <Match when={live() !== undefined && (!named() || editing()) && live()}>
             {(messenger) => (

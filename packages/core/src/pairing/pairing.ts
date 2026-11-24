@@ -4,15 +4,19 @@
 // against the link's when there is one. Only when they agree does pair-confirm go back, and the
 // inviter's pair-accept close it, carrying the pair secret their room is named from (decision
 // 0026). A code pairs once.
+import { type DeviceLog, speakerIdentity } from '../devices/device-log.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { fingerprint, type PeerId } from '../identity/identity.ts'
-import { type Body, openEnvelope, sealEnvelope } from '../messages/envelope.ts'
+import { type Body, openEnvelope, type Speaker, sealEnvelope } from '../messages/envelope.ts'
 import type { ConnectionId, Room, Transport } from '../transport/transport.ts'
 import { type Invite, inviteRoom } from './invite.ts'
 
 export interface NewFriend {
+  /** Their identity: what they're known by, whichever device answered (decision 0024). */
   readonly id: PeerId
   readonly handle: string
+  /** Their device log, when the device that answered isn't their first. */
+  readonly devices?: DeviceLog | undefined
 }
 
 interface Common {
@@ -21,6 +25,25 @@ interface Common {
   readonly transport: Transport
   readonly handle: string
   readonly now: () => number
+  /** The identity this device speaks for, and its device log, when it isn't the first device. */
+  readonly speaker?: (() => Speaker | undefined) | undefined
+}
+
+const speakerFields = (common: Common): Speaker => common.speaker?.() ?? {}
+
+/** Who a pair-request or pair-offer is from, or undefined when its claim doesn't hold. */
+async function friendFrom(
+  crypto: Crypto,
+  device: PeerId,
+  body: { readonly handle: string } & Speaker,
+): Promise<NewFriend | undefined> {
+  const id = await speakerIdentity(crypto, device, body)
+  if (id === undefined) return undefined
+  return {
+    id,
+    handle: body.handle,
+    ...(body.devices === undefined ? {} : { devices: body.devices }),
+  }
 }
 
 export interface HostInviteOptions extends Common {
@@ -53,18 +76,28 @@ export async function hostInvite(options: HostInviteOptions): Promise<() => Prom
   const send = async (to: ConnectionId, body: Body) =>
     room.send(to, await sealEnvelope(signer, room.name, options.now(), body))
   /** Who has asked on each connection, so a confirm is only taken from whoever was offered. */
-  const asked = new Map<ConnectionId, NewFriend>()
+  const asked = new Map<ConnectionId, { device: PeerId; friend: NewFriend }>()
+  const self = options.speaker?.()?.identity ?? signer.id
   let done = false
   const off = listen(options.crypto, room, (from, sender, body) => {
     if (done || sender === signer.id || !('code' in body) || body.code !== code) return
     if (body.type === 'pair-request') {
-      if (options.refuse?.(sender) === true) return
-      asked.set(from, { id: sender, handle: body.handle })
-      void send(from, { type: 'pair-offer', code, handle: options.handle })
+      void friendFrom(options.crypto, sender, body).then((friend) => {
+        if (friend === undefined || friend.id === self || options.refuse?.(friend.id) === true)
+          return
+        asked.set(from, { device: sender, friend })
+        void send(from, {
+          type: 'pair-offer',
+          code,
+          handle: options.handle,
+          ...speakerFields(options),
+        })
+      })
       return
     }
-    const friend = asked.get(from)
-    if (body.type !== 'pair-confirm' || friend?.id !== sender) return
+    const asking = asked.get(from)
+    if (body.type !== 'pair-confirm' || asking?.device !== sender) return
+    const friend = asking.friend
     done = true
     const secret = options.newSecret()
     void send(from, { type: 'pair-accept', code, secret }).then(() => {
@@ -131,7 +164,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
       reached = true
       options.onStep?.('reached')
     }
-    void send(to, { type: 'pair-request', code, handle: options.handle })
+    void send(to, { type: 'pair-request', code, handle: options.handle, ...speakerFields(options) })
   }
 
   let impostor = false
@@ -148,12 +181,15 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
       return
     }
     if (body.type !== 'pair-offer') return
-    void fingerprint(options.crypto, sender).then((print) => {
+    void (async () => {
+      const friend = await friendFrom(options.crypto, sender, body)
+      if (friend === undefined) return
+      // The link carries the identity's fingerprint, whichever of its devices answers.
+      const print = await fingerprint(options.crypto, friend.id)
       if (invite.fingerprint !== undefined && print !== invite.fingerprint) {
         impostor = true
         return
       }
-      const friend = { id: sender, handle: body.handle }
       resolveOffer?.({
         ok: true,
         offer: {
@@ -163,7 +199,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
           async confirm(until) {
             const accepted = await new Promise<Accepted | false>((resolve) => {
               onAccept = (who, secret) => {
-                if (who === friend.id) resolve({ secret })
+                if (who === sender) resolve({ secret })
               }
               void until.then(() => resolve(false))
               void send(from, { type: 'pair-confirm', code })
@@ -174,7 +210,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
           cancel: () => leave(),
         },
       })
-    })
+    })()
   })
   const offJoin = room.onPeerJoin(request)
   for (const peer of room.peers()) request(peer)

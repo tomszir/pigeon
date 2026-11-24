@@ -42,13 +42,32 @@ export async function pairRoomOn(
  * The room's Trystero password: HKDF-SHA256 of the secret with info `pigeon/pair/password`,
  * no salt, 32 bytes (RFC 5869), as base32.
  */
-export async function pairPassword(crypto: Crypto, secret: string): Promise<string> {
+export const pairPassword = (crypto: Crypto, secret: string): Promise<string> =>
+  derivePassword(crypto, secret, 'pigeon/pair/password')
+
+async function derivePassword(crypto: Crypto, secret: string, info: string): Promise<string> {
   const prk = await crypto.hmacSha256(new Uint8Array(32), secretBytes(secret))
-  const okm = await crypto.hmacSha256(
-    prk,
-    concatBytes(utf8Encode('pigeon/pair/password'), new Uint8Array([1])),
-  )
+  const okm = await crypto.hmacSha256(prk, concatBytes(utf8Encode(info), new Uint8Array([1])))
   return base32Encode(okm)
+}
+
+/**
+ * Where your own devices meet (decision 0024): named and locked like a pair room, from a self
+ * secret only your devices hold, with the `self` prefix and `pigeon/self/v1/` and
+ * `pigeon/self/password` in place of the pair's. Device logs travel here until M8's self space.
+ */
+export async function selfRoomsAt(
+  crypto: Crypto,
+  secret: string,
+  now: number,
+): Promise<readonly PairRoomSpec[]> {
+  const password = await derivePassword(crypto, secret, 'pigeon/self/password')
+  return Promise.all(
+    pairDaysAt(now).map(async (day) => {
+      const mac = await crypto.hmacSha256(secretBytes(secret), utf8Encode(`pigeon/self/v1/${day}`))
+      return { name: `self:${base32Encode(mac)}` as RoomName, password }
+    }),
+  )
 }
 
 /**

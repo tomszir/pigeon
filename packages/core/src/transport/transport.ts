@@ -7,7 +7,13 @@
  */
 export type ConnectionId = string
 
-export type RoomName = `pair:${string}` | `invite:${string}` | `page:${string}` | 'lobby'
+export type RoomName =
+  | `pair:${string}`
+  | `invite:${string}`
+  | `link:${string}`
+  | `self:${string}`
+  | `page:${string}`
+  | 'lobby'
 
 export interface Room {
   readonly name: RoomName

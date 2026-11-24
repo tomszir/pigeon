@@ -50,11 +50,23 @@ function readCode(text: string): string | undefined {
  * Reads whatever someone pasted or typed: a whole link, the part after `#`, or a code with or
  * without its dash, in any case.
  */
-export function decodeInvite(text: string): Result<Invite, 'malformed'> {
+export const decodeInvite = (text: string): Result<Invite, 'malformed'> => decode(text, 'i/')
+
+/**
+ * A link that links a new device to yours (decision 0024): `l/<code><fingerprint>`, the same
+ * shape as an invite with the identity's fingerprint. Typed codes read as for invites.
+ */
+export function encodeDeviceLink(code: string, fingerprint: string): string {
+  return `l/${encodeInviteLink(code, fingerprint).slice(2)}`
+}
+
+export const decodeDeviceLink = (text: string): Result<Invite, 'malformed'> => decode(text, 'l/')
+
+function decode(text: string, prefix: 'i/' | 'l/'): Result<Invite, 'malformed'> {
   const trimmed = text.trim()
   const hash = trimmed.indexOf('#')
   const fragment = hash < 0 ? trimmed : trimmed.slice(hash + 1)
-  if (fragment.startsWith('i/')) {
+  if (fragment.startsWith(prefix)) {
     const body = fragment.slice(2).toLowerCase()
     if (body.length !== INVITE_CODE_LENGTH + FINGERPRINT_LENGTH) return err('malformed')
     const code = readCode(body.slice(0, INVITE_CODE_LENGTH))

@@ -16,8 +16,11 @@ packages/
       messages/   signed envelopes: body types, shape checks, the 64 KB limit.
       chat/       signed append-only chat logs and the pair session that syncs them,
                   across however many pair rooms the friend is in.
-      pairing/    invite codes and links, the invite handshake, and pair rooms named
-                  from the pair secret and the UTC day (decision 0026).
+      pairing/    invite codes and links, the invite handshake, pair rooms named
+                  from the pair secret and the UTC day (decision 0026), and linking
+                  a new device (link.ts, decision 0024).
+      devices/    the signed device log that ties several devices to one identity
+                  (decision 0024).
       windows/    window-manager state.
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
@@ -46,7 +49,10 @@ apps/
                 holding one folder per component: apps/<app>/<component>/. The
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
-                answers invites, and exposes Solid state the windows draw. reader/ is
+                answers invites, and exposes Solid state the windows draw;
+                service/devices.ts keeps your device log and friends', and says who
+                a device is. messenger/devices/ draws Link a Device, Link to My
+                Other Device and My Devices. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
                 (Changelog.txt, the release notes, decision 0025).
       app/      The composition root: builds platform implementations, creates the

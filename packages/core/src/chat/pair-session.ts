@@ -4,6 +4,7 @@
 // rooms that come and go. Pure protocol over Rooms; the app stores the log and draws the events.
 
 import { AVATAR_VERSION } from '../avatar/avatar.ts'
+import type { DeviceLog } from '../devices/device-log.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
@@ -18,6 +19,7 @@ import {
   appendMessage,
   batchEntries,
   type ChatLog,
+  type LogEntry,
   mergeEntries,
   missingFrom,
   summarize,
@@ -32,8 +34,16 @@ export interface Presence {
 }
 
 export type PairEvent =
-  /** `avatar`: the version the friend's bird is drawn with. */
-  | { readonly type: 'online'; readonly handle: string; readonly avatar: number }
+  /**
+   * `avatar`: the version the friend's bird is drawn with. `current`: their Pigeon knows device
+   * logs, so it accepts your other devices too.
+   */
+  | {
+      readonly type: 'online'
+      readonly handle: string
+      readonly avatar: number
+      readonly current: boolean
+    }
   | { readonly type: 'offline' }
   | { readonly type: 'presence'; readonly presence: Presence }
   | { readonly type: 'typing'; readonly active: boolean }
@@ -63,6 +73,20 @@ export interface PairSessionOptions {
   readonly log: ChatLog
   readonly now: () => number
   readonly onEvent: (event: PairEvent) => void
+  /**
+   * Who a device is (decision 0024): one of the friend's, one of your own others, or nobody.
+   * Without it only the friend's own key is the friend.
+   */
+  readonly accepts?: ((device: PeerId) => 'friend' | 'self' | undefined) | undefined
+  /**
+   * Whose chat entries count: your devices and theirs, or a test per entry (a removed device's
+   * older ones). Without it, you and the friend.
+   */
+  readonly authors?: (() => ReadonlySet<PeerId> | ((entry: LogEntry) => boolean)) | undefined
+  /** Your device log, sent ahead of hello so a friend knows this device is yours. */
+  readonly deviceLog?: (() => DeviceLog | undefined) | undefined
+  /** A device log arrived; resolves once it's been taken in, before anything after it is read. */
+  readonly onDeviceLog?: ((log: DeviceLog) => Promise<void>) | undefined
 }
 
 export interface PairSession {
@@ -79,6 +103,10 @@ export interface PairSession {
   announce(): void
   /** Tells the friend you've removed them; resolves once it's been sent to them. */
   unfriend(): Promise<void>
+  /** Sends your device log again to everyone here, after it changed. */
+  shareDevices(): void
+  /** Lets go of connections from devices `accepts` no longer takes, as after a removal. */
+  recheck(): void
   /** Gives the friend the pair secret, in every room they're in. */
   sendSecret(secret: string): Promise<void>
   /** Tells the friend their secret arrived; resolves once it's been sent. */
@@ -102,12 +130,21 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     type: 'hello',
     handle: options.handle(),
     avatar: options.avatar?.() ?? AVATAR_VERSION,
+    devices: true,
   })
+  const accepts =
+    options.accepts ?? ((device: PeerId) => (device === friend ? 'friend' : undefined))
+  const authors = options.authors ?? (() => new Set([signer.id, friend]))
   let log = options.log
   const rooms = new Map<RoomName, { room: Room; off: () => void }>()
   /** Connections that have proved, by a signed envelope, to be the friend. */
   const friendConnections = new Set<Link>()
-  const authors = new Set([signer.id, friend])
+  /** Connections that have proved to be another of your own devices: they only catch up. */
+  const selfConnections = new Set<Link>()
+  /** Which device each proved connection is, so a removal can cut it off. */
+  const deviceOf = new Map<Link, PeerId>()
+  /** When the presence shown was sent: with several devices, the newest wins. */
+  let presenceAt = Number.NEGATIVE_INFINITY
   // Sends go out in order even though sealing is async.
   let queue = Promise.resolve()
 
@@ -116,11 +153,14 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     rooms.get(to.slice(0, cut) as RoomName)?.room.send(to.slice(cut + 1), bytes)
   }
   const seal = (body: Body) => sealEnvelope(signer, chat, options.now(), body)
-  const sendTo = (to: Link | 'all', body: Body) => {
+  /** `all`: the friend's devices; `everyone`: those and your own others, for chat entries. */
+  const sendTo = (to: Link | 'all' | 'everyone', body: Body) => {
     queue = queue.then(async () => {
       const bytes = await seal(body)
-      if (to === 'all') for (const id of friendConnections) deliver(id, bytes)
-      else deliver(to, bytes)
+      if (to === 'all' || to === 'everyone') {
+        for (const id of friendConnections) deliver(id, bytes)
+        if (to === 'everyone') for (const id of selfConnections) deliver(id, bytes)
+      } else deliver(to, bytes)
     })
   }
 
@@ -133,7 +173,15 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   }
   prepareBye()
 
+  const devicesBody = (): Body | undefined => {
+    const devices = options.deviceLog?.()
+    return devices === undefined || devices.entries.length === 0
+      ? undefined
+      : { type: 'device-log', log: devices }
+  }
   const greet = (to: Link) => {
+    const devices = devicesBody()
+    if (devices !== undefined) sendTo(to, devices)
     sendTo(to, hello())
     sendTo(to, { type: 'presence', ...options.presence() })
     sendTo(to, { type: 'log-sync', have: summarize(log) })
@@ -146,6 +194,8 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   }
 
   const drop = (from: Link) => {
+    deviceOf.delete(from)
+    selfConnections.delete(from)
     if (friendConnections.delete(from) && friendConnections.size === 0)
       options.onEvent({ type: 'offline' })
   }
@@ -153,21 +203,30 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   // Merges run one after another so two batches can't race on `log`.
   let merging = Promise.resolve()
   const handlers: {
-    [T in Body['type']]?: (from: Link, body: Extract<Body, { type: T }>) => void
+    [T in Body['type']]?: (from: Link, body: Extract<Body, { type: T }>, at: number) => void
   } = {
     hello: (from, body) => {
       const first = friendConnections.size === 0
       const room = from.slice(0, from.indexOf('\n')) as RoomName
       const firstHere = ![...friendConnections].some((id) => id.startsWith(`${room}\n`))
       friendConnections.add(from)
-      if (first) options.onEvent({ type: 'online', handle: body.handle, avatar: body.avatar ?? 1 })
+      if (first)
+        options.onEvent({
+          type: 'online',
+          handle: body.handle,
+          avatar: body.avatar ?? 1,
+          current: body.devices === true,
+        })
       if (firstHere) options.onEvent({ type: 'met', room })
     },
-    presence: (_from, body) =>
+    presence: (_from, body, at) => {
+      if (at < presenceAt) return
+      presenceAt = at
       options.onEvent({
         type: 'presence',
         presence: { status: body.status, message: body.message },
-      }),
+      })
+    },
     typing: (_from, body) => options.onEvent({ type: 'typing', active: body.active }),
     buzz: () => options.onEvent({ type: 'buzz' }),
     unfriend: () => options.onEvent({ type: 'unfriended' }),
@@ -180,7 +239,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     },
     'log-entries': (_from, body) => {
       merging = merging.then(async () =>
-        setLog(await mergeEntries(crypto, log, body.entries, authors)),
+        setLog(await mergeEntries(crypto, log, body.entries, authors())),
       )
     },
   }
@@ -204,6 +263,17 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     return true
   }
 
+  function recheck() {
+    for (const [from, device] of [...deviceOf]) {
+      const was = friendConnections.has(from) ? 'friend' : 'self'
+      if (accepts(device) !== was) drop(from)
+    }
+  }
+
+  /** What your own other devices may send: they only catch the chat up. */
+  const SELF: ReadonlySet<Body['type']> = new Set(['log-sync', 'log-entries'])
+  let inbound = Promise.resolve()
+
   let closed = false
   function addRoom(room: Room) {
     if (closed || rooms.has(room.name)) {
@@ -211,19 +281,43 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       return
     }
     const offMessage = room.onMessage((connection, bytes) => {
-      void openEnvelope(crypto, chat, bytes).then((opened) => {
-        if (!opened.ok || opened.value.from !== friend || !rooms.has(room.name)) return
-        const from = link(room.name, connection)
-        const body = opened.value.body
-        // Anything but hello from a connection that hasn't said hello yet is ignored.
-        if (body.type !== 'hello' && !friendConnections.has(from)) return
-        if (ONCE.has(body.type) && !firstTime(`${opened.value.at} ${body.type}`)) return
-        const handler = handlers[body.type] as ((from: Link, body: Body) => void) | undefined
-        handler?.(from, body)
-      })
+      // One at a time, in order: a device log must be taken in before the hello after it.
+      inbound = inbound
+        .then(async () => {
+          const opened = await openEnvelope(crypto, chat, bytes)
+          if (!opened.ok || !rooms.has(room.name)) return
+          const from = link(room.name, connection)
+          const { body, at } = opened.value
+          if (body.type === 'device-log') {
+            await options.onDeviceLog?.(body.log)
+            recheck()
+            return
+          }
+          const who = accepts(opened.value.from)
+          if (who === undefined) return
+          if (body.type === 'hello') deviceOf.set(from, opened.value.from)
+          if (who === 'self') {
+            if (body.type === 'hello') selfConnections.add(from)
+            else if (selfConnections.has(from) && SELF.has(body.type))
+              (handlers[body.type] as (from: Link, body: Body, at: number) => void)(from, body, at)
+            return
+          }
+          // Anything but hello from a connection that hasn't said hello yet is ignored.
+          if (body.type !== 'hello' && !friendConnections.has(from)) return
+          if (ONCE.has(body.type) && !firstTime(`${opened.value.from} ${at} ${body.type}`)) return
+          const handler = handlers[body.type] as
+            | ((from: Link, body: Body, at: number) => void)
+            | undefined
+          handler?.(from, body, at)
+        })
+        // A message that breaks something must not stop the ones after it.
+        .catch(() => undefined)
     })
     const offJoin = room.onPeerJoin((peer) => greet(link(room.name, peer)))
-    const offLeave = room.onPeerLeave((peer) => drop(link(room.name, peer)))
+    // Behind the messages already in, so a hello read late can't bring a gone connection back.
+    const offLeave = room.onPeerLeave((peer) => {
+      inbound = inbound.then(() => drop(link(room.name, peer)))
+    })
     rooms.set(room.name, {
       room,
       off: () => {
@@ -252,7 +346,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     async send(text) {
       const { log: next, entry } = await appendMessage(log, signer, text, options.now())
       setLog(next)
-      sendTo('all', { type: 'log-entries', entries: [entry] })
+      sendTo('everyone', { type: 'log-entries', entries: [entry] })
     },
     typing: (active) => sendTo('all', { type: 'typing', active }),
     buzz: () => sendTo('all', { type: 'buzz' }),
@@ -268,6 +362,13 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     async unfriend() {
       sendTo('all', { type: 'unfriend' })
       await queue
+    },
+    recheck,
+    shareDevices() {
+      const devices = devicesBody()
+      if (devices === undefined) return
+      for (const [name, entry] of rooms)
+        for (const peer of entry.room.peers()) sendTo(link(name, peer), devices)
     },
     async sendSecret(secret) {
       sendTo('all', { type: 'pair-secret', secret })
@@ -285,6 +386,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       await queue
       // Closing isn't the friend going offline, so it says nothing.
       friendConnections.clear()
+      selfConnections.clear()
       await Promise.all([...rooms.keys()].map(removeRoom))
     },
   }

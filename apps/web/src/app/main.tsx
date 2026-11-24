@@ -9,8 +9,8 @@ import { createBrowserStore } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
 import { createShell } from '../shell/shell/shell.tsx'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
-import { takeInviteFromAddress } from './address-invite.ts'
-import { createBrowserEnv, loadFonts, needsHomeScreen } from './browser-env.ts'
+import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invite.ts'
+import { createBrowserEnv, deviceName, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { startMessenger } from './start-messenger.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
@@ -37,15 +37,25 @@ render(() => {
   const sample = new URLSearchParams(window.location.search).has('demo')
   const homeScreen = needsHomeScreen()
   const incoming = takeInviteFromAddress()
+  // A link from Link a Device on your other device (decision 0024).
+  const linking = takeDeviceLinkFromAddress()
   const programs = createPrograms(
     api,
     env,
-    { messenger, problem, copyText, sleep: browserClock.sleep },
+    {
+      messenger,
+      problem,
+      copyText,
+      sleep: browserClock.sleep,
+      // Linked: start again as the identity this device now speaks for.
+      restart: () => location.reload(),
+    },
     sample,
     homeScreen,
   )
 
-  if (incoming === undefined) programs.openReadme()
+  if (incoming === undefined && linking === undefined) programs.openReadme()
+  if (linking !== undefined) programs.openJoinDevice(linking)
   if (sample) {
     programs.openMessenger()
     programs.openConversation('mika')
@@ -59,7 +69,11 @@ render(() => {
   // A link followed in a tab where Pigeon is already open only changes the hash. Listening from
   // the start catches one followed while the Messenger is still starting: Add a Friend says so
   // until it's ready.
-  window.addEventListener('hashchange', () => showInvite(takeInviteFromAddress()))
+  window.addEventListener('hashchange', () => {
+    showInvite(takeInviteFromAddress())
+    const device = takeDeviceLinkFromAddress()
+    if (device !== undefined) programs.openJoinDevice(device)
+  })
 
   // After an update, a returning visitor is told once, in place of the welcome (decision 0025).
   // It waits before the Messenger starts, which makes the identity a first visit lacks.
@@ -106,7 +120,7 @@ render(() => {
       await tellWhatsNew(storage.store).catch((error: unknown) => console.error(error))
       if (storage.persistent)
         await hintHomeScreen(storage.store).catch((error: unknown) => console.error(error))
-      return startMessenger(programs.messengerEvents, storage, sayNoRelay)
+      return startMessenger(programs.messengerEvents, storage, sayNoRelay, deviceName())
     })
     .then((started) => {
       if (!started.ok) {

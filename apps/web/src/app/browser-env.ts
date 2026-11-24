@@ -58,6 +58,34 @@ export function needsHomeScreen(): boolean {
   return ios && !standalone
 }
 
+/** "Firefox on Linux": what My Devices calls this browser until you rename it (decision 0024). */
+export function deviceName(): string {
+  const agent = navigator.userAgent
+  const browser = /Edg\//.test(agent)
+    ? 'Edge'
+    : /Firefox\//.test(agent)
+      ? 'Firefox'
+      : /Chrome\//.test(agent)
+        ? 'Chrome'
+        : /Safari\//.test(agent)
+          ? 'Safari'
+          : 'A browser'
+  const system = /iPhone/.test(agent)
+    ? 'iPhone'
+    : /iPad/.test(agent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      ? 'iPad'
+      : /Android/.test(agent)
+        ? 'Android'
+        : /Mac OS X/.test(agent)
+          ? 'Mac'
+          : /Windows/.test(agent)
+            ? 'Windows'
+            : /Linux/.test(agent)
+              ? 'Linux'
+              : 'a computer'
+  return `${browser} on ${system}`
+}
+
 /** Waits for the bundled fonts so the first frame is drawn in them (decision 0009). */
 export async function loadFonts(): Promise<void> {
   await Promise.all([

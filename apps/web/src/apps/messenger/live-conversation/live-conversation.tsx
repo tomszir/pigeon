@@ -45,7 +45,13 @@ const NOTES: Record<
   offline: { kind: 'system', text: (name, at) => `${name} went offline at ${clockTime(at)}.` },
 }
 
-export function transcriptFor(view: FriendView, self: PeerId, selfName: string) {
+/** `mine` says which entries are yours: written on any of your devices (decision 0024). */
+export function transcriptFor(
+  view: FriendView,
+  mine: PeerId | ((author: PeerId) => boolean),
+  selfName: string,
+) {
+  const isMine = typeof mine === 'string' ? (author: PeerId) => author === mine : mine
   const entries: TranscriptEntry[] = []
   // Where the chat began: kept with the friend (addedAt), so it's there on every visit.
   if (view.addedAt > 0)
@@ -69,7 +75,7 @@ export function transcriptFor(view: FriendView, self: PeerId, selfName: string) 
   }
   view.log.entries.forEach((entry, index) => {
     flush(index)
-    const own = entry.author === self
+    const own = isMine(entry.author)
     entries.push({
       kind: 'message',
       id: entry.sig,
@@ -84,6 +90,13 @@ export function transcriptFor(view: FriendView, self: PeerId, selfName: string) 
       kind: 'system',
       id: 'removed-you',
       text: `${view.name} removed you as a friend on ${dayName(view.removedYouAt)} at ${clockTime(view.removedYouAt)}.`,
+    })
+  // Their Pigeon is from before device logs: it only takes messages from your first device.
+  if (view.seesThisDevice === false)
+    entries.push({
+      kind: 'system',
+      id: 'needs-update',
+      text: `${view.name}'s Pigeon needs an update to get messages from this device. Your first device still reaches them, and reloading Pigeon updates it.`,
     })
   return entries
 }
@@ -113,7 +126,11 @@ export function LiveConversation(props: LiveConversationProps) {
           }
           route={current().online ? 'direct, encrypted' : 'offline'}
           connected={current().online}
-          entries={transcriptFor(current(), props.messenger.self, props.messenger.profile().handle)}
+          entries={transcriptFor(
+            current(),
+            props.messenger.isMine,
+            props.messenger.profile().handle,
+          )}
           typing={current().typing ? `${current().name} is writing a message...` : ''}
           closed={current().removedYouAt !== undefined}
           status={
