@@ -1,7 +1,7 @@
 // The Read Me shown on first boot. Plain text, 46 columns, in the voice of the world.
 
 export const README_TEXT = `        __
-    ___( o)>     PIGEON  v0.1
+    ___( o)>     PIGEON  v${__PIGEON_VERSION__.split('.').slice(0, 2).join('.')}
     \\ <_. )     a messenger with nobody
      \`---'       in the middle
 ==============================================

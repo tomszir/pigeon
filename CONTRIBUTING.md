@@ -26,3 +26,7 @@ Before opening a PR, run `mise run check` and `mise run build`. [docs/README.md]
 - **No AI attribution** lines (`Co-Authored-By` bots, "Generated with …") in commits or PRs.
 
 The `commit-msg` git hook and the `pr-title` CI job enforce the format (`scripts/commit-message.ts`).
+
+## Releases
+
+[release-please](https://github.com/googleapis/release-please) reads the Conventional Commits on `main` and keeps a release PR open, `chore: release <version>`. Below 1.0, a `feat` raises the minor version and a `fix` the patch. Merging that PR tags `v<version>`, writes the GitHub release from the commit summaries, and deploys the site ([decision 0021](docs/decisions/0021-releases-with-release-please.md)). Merging it is the maintainer's call.

@@ -1,0 +1,29 @@
+name: release-please
+
+# Keeps a release PR open that bumps the version from the Conventional Commits on main. Merging
+# it tags the release and points the `release` branch at it, which Cloudflare deploys
+# (decision 0021). Releasing stays the author's call: it's a merge.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # A token of the author's lets CI run on the release PR; GITHUB_TOKEN alone can't.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Workers Builds deploys a branch, not a tag: move `release` to the commit just released.
+      - if: ${{ steps.release.outputs.release_created }}
+        run: git push --force origin "${{ steps.release.outputs.sha }}:refs/heads/release"

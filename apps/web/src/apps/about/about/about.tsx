@@ -49,7 +49,10 @@ export function About(props: { onClose: () => void }) {
         <img src={brand('pigeon-128')} alt="" width="64" height="64" class={styles.logo} />
         <div>
           <p class={styles.name}>Pigeon</p>
-          <p class={styles.plain}>Version 0.1, the desktop</p>
+          <p class={styles.plain}>
+            Version {__PIGEON_VERSION__}
+            {__PIGEON_COMMIT__ === '' ? '' : ` (build ${__PIGEON_COMMIT__})`}
+          </p>
           <p class={styles.plain}>
             <a href={SITE_URL} target="_blank" rel="noopener">
               pigeon.tomszir.com

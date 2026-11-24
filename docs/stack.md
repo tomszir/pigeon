@@ -28,14 +28,17 @@ No Yjs ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)), no CSS frame
 
 ## Hosting
 
-Static build deployed to Cloudflare Workers static assets at `pigeon.tomszir.com` ([0005](decisions/0005-cloudflare-at-pigeon-tomszir-com.md)) by Workers Builds, Cloudflare's Git integration, on every push to `main` ([0017](decisions/0017-deploy-from-cloudflare-workers-builds.md)). The `pigeon` Worker's build settings in the dashboard:
+Static build deployed to Cloudflare Workers static assets at `pigeon.tomszir.com` ([0005](decisions/0005-cloudflare-at-pigeon-tomszir-com.md)) by Workers Builds, Cloudflare's Git integration ([0017](decisions/0017-deploy-from-cloudflare-workers-builds.md)), on each release: release-please moves the `release` branch to the released commit ([0021](decisions/0021-releases-with-release-please.md)). The `pigeon` Worker's build settings in the dashboard:
 
-| Setting        | Value                                          |
-| -------------- | ---------------------------------------------- |
-| Git repository | `tomszir/pigeon`, production branch `main`     |
-| Root directory | `apps/web`                                     |
-| Build command  | `pnpm install --frozen-lockfile && pnpm build` |
-| Deploy command | `npx wrangler deploy`                          |
-| Variables      | `NODE_VERSION` = `24`                          |
+| Setting        | Value                                                                    |
+| -------------- | ------------------------------------------------------------------------ |
+| Git repository | `tomszir/pigeon`, production branch `release`                            |
+| Root directory | `apps/web`                                                               |
+| Build command  | `pnpm install --frozen-lockfile && pnpm build`                           |
+| Deploy command | `npx wrangler deploy`                                                    |
+| Variables      | `NODE_VERSION` = `24`                                                    |
+| Preview builds | other branches, deploy command `npx wrangler versions upload` (optional) |
 
-`apps/web/wrangler.jsonc` is the Worker: static assets from `dist`, no Worker code, and the custom domain route. `mise run deploy` does the same from the author's machine. Merging to main, and so deploying, is the author's call, never an agent's. WebRTC and WebCrypto need a secure page, which the HTTPS site and `localhost` both are.
+`apps/web/wrangler.jsonc` is the Worker: static assets from `dist`, no Worker code, and the custom domain route. `mise run deploy` does the same from the author's machine. Merging the release PR, and so deploying, is the author's call, never an agent's.
+
+The version lives in the root `package.json` and is shown in About and Read Me (`__PIGEON_VERSION__`, with the build's commit as `__PIGEON_COMMIT__`). release-please (`release-please-config.json`, `.release-please-manifest.json`) keeps a release PR open on main; merging it tags `v<version>`, writes the GitHub release, and moves `release`. WebRTC and WebCrypto need a secure page, which the HTTPS site and `localhost` both are.
