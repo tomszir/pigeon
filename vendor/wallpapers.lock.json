@@ -1,0 +1,21 @@
+{
+  "sources": {
+    "hills-800x600": {
+      "url": "https://images.unsplash.com/photo-1756074924706-48ca9f24410f?w=800&h=600&fit=crop&crop=entropy&q=85&fm=jpg",
+      "integrity": "sha512-kxwAfhUDr63fxd5FSPa8WMfw/1AalFk4pxMCNPFXG1fSC7Tea691PFl6Vrbv+3YIEBlcoCH56zG8dmpa/M7AeQ=="
+    },
+    "hills-1024x768": {
+      "url": "https://images.unsplash.com/photo-1756074924706-48ca9f24410f?w=1024&h=768&fit=crop&crop=entropy&q=85&fm=jpg",
+      "integrity": "sha512-KeMzpqAhuoY4ei9SQuuntdTOnL8XxK/BWg2ImUvUS1UoFRsSHbt3oYHeTB8SI6qbQYzQjMjtpq+0jEfyjFJTNA=="
+    },
+    "hills-1280x1024": {
+      "url": "https://images.unsplash.com/photo-1756074924706-48ca9f24410f?w=1280&h=1024&fit=crop&crop=entropy&q=85&fm=jpg",
+      "integrity": "sha512-567rZVyZX9wk+981euXl03w9q6QrBrHCN5YmxO8HlVwI+i0TQ6ptceIncTX/2YL9LsnNGcqhJxPDl7Dl3I+8ew=="
+    }
+  },
+  "files": [
+    { "source": "hills-800x600", "out": "hills-800x600.jpg" },
+    { "source": "hills-1024x768", "out": "hills-1024x768.jpg" },
+    { "source": "hills-1280x1024", "out": "hills-1280x1024.jpg" }
+  ]
+}

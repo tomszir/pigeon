@@ -1,0 +1,167 @@
+/* Taskbar: 30px, the pigeon button, quick launch, 150px task buttons, the tray. */
+
+.taskbar {
+  display: flex;
+  align-items: stretch;
+  height: var(--pg-taskbar-height);
+  background: var(--pg-grad-taskbar);
+}
+
+.menuButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 100%;
+  margin-right: 10px;
+  padding: 0 22px 2px 8px;
+  border: 0;
+  border-radius: 0 10px 10px 0;
+  /* A glossy green pill: light top edge, a soft highlight on the left, darker towards the
+     right-hand curve, and a shadow cast on the taskbar. */
+  background:
+    radial-gradient(ellipse 70% 90% at 22% 10%, rgb(255 255 255 / 28%), rgb(255 255 255 / 0%) 70%),
+    linear-gradient(
+      180deg,
+      #3c9b3c 0%,
+      #56bb52 6%,
+      #46a843 14%,
+      #3a9a38 45%,
+      #318b30 78%,
+      #2b7c2a 92%,
+      #26702a 100%
+    );
+  box-shadow:
+    inset 0 1px #7fd27c,
+    inset -3px 0 4px rgb(0 0 0 / 22%),
+    inset 0 -1px 2px rgb(0 0 0 / 25%),
+    3px 0 4px rgb(0 0 0 / 40%);
+  color: #ffffff;
+  font: italic 700 19px / 20px var(--pg-font-ui);
+  text-shadow: 1px 1px 2px rgb(0 0 0 / 55%);
+}
+
+.menuButton:hover {
+  filter: brightness(1.08);
+}
+
+.menuButton[aria-expanded="true"] {
+  filter: brightness(0.85);
+  box-shadow:
+    inset 1px 1px 3px rgb(0 0 0 / 50%),
+    2px 0 3px rgb(0 0 0 / 35%);
+}
+
+.menuButton:focus-visible {
+  outline: 1px dotted #ffffff;
+  outline-offset: -4px;
+}
+
+.quickLaunch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 5px;
+  border-right: 1px solid #1a3c9a;
+  box-shadow: 1px 0 #3e7ce3;
+}
+
+.button {
+  width: 22px;
+  height: 22px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.button img {
+  display: block;
+}
+
+.button:hover,
+.button:focus-visible {
+  outline: none;
+  border-color: #6aa0f7;
+  background: rgb(255 255 255 / 15%);
+}
+
+.tasks {
+  display: flex;
+  flex-grow: 1;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.task {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 2px;
+  background: #3c81f3;
+  box-shadow:
+    inset -1px 0 rgb(0 0 0 / 30%),
+    inset 1px 1px 1px rgb(255 255 255 / 20%);
+  color: #ffffff;
+  font: var(--pg-type-body);
+  text-align: left;
+}
+
+.task:hover {
+  background: #53a3ff;
+}
+
+.task:hover:active {
+  background: #1e52b7;
+}
+
+.active {
+  background: #1e52b7;
+  box-shadow:
+    inset 0 0 1px 1px rgb(0 0 0 / 20%),
+    inset 1px 0 1px rgb(0 0 0 / 70%);
+  font-weight: 700;
+}
+
+.active:hover {
+  background: #3576f3;
+}
+
+.task:focus-visible {
+  outline: 1px dotted #ffffff;
+  outline-offset: -3px;
+}
+
+.title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tray {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 0 10px;
+  border-left: 1px solid #092e8b;
+  background: var(--pg-grad-tray);
+  box-shadow: inset 1px 0 1px #18bbff;
+  color: #ffffff;
+}
+
+.clock {
+  white-space: nowrap;
+  padding-left: 3px;
+}

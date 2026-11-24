@@ -1,0 +1,30 @@
+.messageBox {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 14px;
+  padding: 14px 12px 10px;
+}
+
+.content {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.text {
+  flex-grow: 1;
+  padding-top: 2px;
+  line-height: 15px;
+}
+
+.text p {
+  margin: 0 0 6px;
+}
+
+.buttons {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: auto;
+}

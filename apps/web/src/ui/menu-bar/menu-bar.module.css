@@ -1,0 +1,31 @@
+.menuBar {
+  display: flex;
+  flex-shrink: 0;
+  padding: 1px 0;
+  border-bottom: 1px solid #ffffff;
+  box-shadow: 0 1px var(--pg-separator);
+}
+
+.slot {
+  position: relative;
+}
+
+.item {
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+}
+
+.item:focus-visible,
+.open {
+  outline: none;
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}
+
+.dropDown {
+  left: 0;
+  top: calc(100% + 1px);
+}

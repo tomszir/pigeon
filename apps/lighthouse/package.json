@@ -1,0 +1,16 @@
+{
+  "name": "lighthouse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@pigeon/core": "workspace:*",
+    "@pigeon/pigeonhtml": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      glob: "*.{js,mjs,ts,tsx,json,jsonc,css,html}"
+      run: pnpm biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: conventional commit, no AI attribution
+      run: node scripts/check-commit-msg.ts {1}
+
+pre-push:
+  jobs:
+    - name: check-docs
+      run: scripts/check-docs

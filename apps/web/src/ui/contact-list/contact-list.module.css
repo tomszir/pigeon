@@ -1,0 +1,79 @@
+.contactList {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 1px;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 3px;
+  border: 0;
+  background: transparent;
+  color: var(--pg-group-heading);
+  font: var(--pg-type-body-strong);
+  text-align: left;
+}
+
+.section:first-child > .group {
+  margin-top: 0;
+}
+
+.toggle {
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--pg-field-border);
+  background: #ffffff;
+  color: var(--pg-text);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 7px;
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--pg-list-row);
+  padding: 0 4px 0 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  text-align: left;
+}
+
+.row:focus {
+  outline: none;
+  border: 1px dotted var(--pg-text-faint);
+}
+
+.offline {
+  color: var(--pg-text-faint);
+}
+
+.selected,
+.selected:focus {
+  border: 1px dotted #ffffff;
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}
+
+.note {
+  color: var(--pg-text-faint);
+}
+
+.selected .note {
+  color: inherit;
+}
+
+.empty {
+  margin: 6px 8px;
+  color: var(--pg-text-muted);
+}

@@ -1,0 +1,47 @@
+.transcript {
+  flex-grow: 1;
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px 7px;
+  font: var(--pg-type-message);
+}
+
+.log :where(p) {
+  margin: 0;
+}
+
+.says {
+  font: var(--pg-type-body);
+  color: var(--pg-text-faint);
+}
+
+.text {
+  margin-left: 10px;
+  overflow-wrap: anywhere;
+}
+
+.own {
+  color: var(--pg-text-own);
+}
+
+.notice {
+  font: var(--pg-type-body);
+}
+
+.buzz {
+  margin: 1px 0;
+  font-weight: 700;
+}
+
+.letter,
+.system {
+  color: var(--pg-text-faint);
+}
+
+.error {
+  color: var(--pg-text-error);
+}

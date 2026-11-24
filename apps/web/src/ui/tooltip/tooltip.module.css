@@ -1,0 +1,20 @@
+/* Pale yellow with a black edge, shown under its anchor. */
+
+.tooltipAnchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  top: calc(100% + 4px);
+  padding: 2px 4px;
+  border: 1px solid #000000;
+  background: var(--pg-tooltip);
+  box-shadow: 1px 1px 2px rgb(0 0 0 / 30%);
+  color: var(--pg-text);
+  white-space: nowrap;
+  pointer-events: none;
+}

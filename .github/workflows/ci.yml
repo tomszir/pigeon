@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (lint, types, tests, docs, build)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm biome check .
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - run: node --test scripts/*.test.ts
+      - run: mise run build
+
+  # PRs are squash-merged, so the PR title becomes the commit on main: it's checked here.
+  pr-title:
+    name: PR title (conventional commit, no AI attribution)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      # Through env, never interpolated into the script: titles are untrusted.
+      - run: node scripts/check-commit-msg.ts
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}

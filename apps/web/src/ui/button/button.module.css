@@ -1,0 +1,33 @@
+.button {
+  box-sizing: border-box;
+  min-width: var(--pg-button-min-width);
+  height: var(--pg-button-height);
+  padding: 0 12px;
+  border: 1px solid var(--pg-button-border);
+  border-radius: var(--pg-radius-button);
+  background: var(--pg-grad-button);
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.button:not(:disabled):hover {
+  box-shadow: var(--pg-shadow-button-hover);
+}
+
+.button:focus-visible,
+.default {
+  outline: none;
+  box-shadow: var(--pg-shadow-button-focus);
+}
+
+.button:not(:disabled):active {
+  background: var(--pg-grad-button-pressed);
+  box-shadow: none;
+}
+
+.button:disabled {
+  border-color: #c9c7ba;
+  background: #f5f4ea;
+  color: var(--pg-text-disabled);
+}

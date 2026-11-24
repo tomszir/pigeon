@@ -1,0 +1,217 @@
+/* XP.css v0.2.6 window: six inset shadows, a 3px edge, top corners 8 and 7. */
+
+.window {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 var(--pg-frame-width);
+  border-radius: var(--pg-radius-window) var(--pg-radius-window) 0 0;
+  background: var(--pg-surface);
+  box-shadow: var(--pg-frame-window-inactive), var(--pg-shadow-window);
+  -webkit-font-smoothing: antialiased;
+}
+
+.window:focus {
+  outline: none;
+}
+
+.active {
+  box-shadow: var(--pg-frame-window-active), var(--pg-shadow-window-active);
+}
+
+.maximized {
+  box-shadow: var(--pg-frame-window-inactive);
+}
+
+.maximized.active {
+  box-shadow: var(--pg-frame-window-active);
+}
+
+.titleBar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 21px;
+  padding: 3px 5px 3px 3px;
+  border-top: 1px solid var(--pg-frame-lilac);
+  border-left: 1px solid var(--pg-frame-lilac);
+  border-right: 1px solid var(--pg-frame-lilac-dark);
+  border-radius: var(--pg-radius-window) var(--pg-radius-window-right) 0 0;
+  background: var(--pg-grad-title-inactive);
+  color: var(--pg-title-text-inactive);
+  font: var(--pg-type-title);
+  user-select: none;
+  touch-action: none;
+}
+
+.active .titleBar {
+  border-color: var(--pg-frame-blue);
+  border-right-color: var(--pg-frame-blue-dark);
+  background: var(--pg-grad-title-active);
+  color: var(--pg-title-text);
+  text-shadow: 1px 1px var(--pg-title-text-shadow);
+}
+
+.icon {
+  flex-shrink: 0;
+  margin: 0 4px 0 2px;
+}
+
+.title {
+  flex-grow: 1;
+  min-width: 0;
+  padding-left: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.icon + .title {
+  padding-left: 0;
+}
+
+.controls {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.control {
+  width: var(--pg-titlebar-button);
+  height: var(--pg-titlebar-button);
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  background: no-repeat center;
+}
+
+.window:not(.active) .control {
+  opacity: 0.6;
+}
+
+.control:focus-visible {
+  outline: 1px dotted #ffffff;
+  outline-offset: -3px;
+}
+
+.minimize {
+  background-image: url("../../icons/xp/minimize.svg");
+}
+
+.minimize:hover {
+  background-image: url("../../icons/xp/minimize-hover.svg");
+}
+
+.minimize:active {
+  background-image: url("../../icons/xp/minimize-active.svg");
+}
+
+.maximize {
+  background-image: url("../../icons/xp/maximize.svg");
+}
+
+.maximize:hover {
+  background-image: url("../../icons/xp/maximize-hover.svg");
+}
+
+.maximize:active {
+  background-image: url("../../icons/xp/maximize-active.svg");
+}
+
+.restore {
+  background-image: url("../../icons/xp/restore.svg");
+}
+
+.restore:hover {
+  background-image: url("../../icons/xp/restore-hover.svg");
+}
+
+.restore:active {
+  background-image: url("../../icons/xp/restore-active.svg");
+}
+
+.help {
+  background-image: url("../../icons/xp/help.svg");
+}
+
+.help:hover {
+  background-image: url("../../icons/xp/help-hover.svg");
+}
+
+.help:active {
+  background-image: url("../../icons/xp/help-active.svg");
+}
+
+.close {
+  background-image: url("../../icons/xp/close.svg");
+}
+
+.close:hover {
+  background-image: url("../../icons/xp/close-hover.svg");
+}
+
+.close:active {
+  background-image: url("../../icons/xp/close-active.svg");
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+  margin: 0 var(--pg-frame-width);
+}
+
+.grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+/* Buzz: five 100ms shakes, or a flashing title bar when motion is reduced. */
+@keyframes pg-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  20% {
+    transform: translate(-6px, 2px);
+  }
+
+  40% {
+    transform: translate(5px, -3px);
+  }
+
+  60% {
+    transform: translate(-5px, -1px);
+  }
+
+  80% {
+    transform: translate(4px, 3px);
+  }
+}
+
+@keyframes pg-flash {
+  0%,
+  49% {
+    filter: none;
+  }
+
+  50%,
+  100% {
+    filter: saturate(0.3) brightness(1.3);
+  }
+}
+
+.shake {
+  animation: pg-shake 0.1s linear 5;
+}
+
+.flash .titleBar {
+  animation: pg-flash 0.2s steps(1) 5;
+}

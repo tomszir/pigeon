@@ -1,0 +1,29 @@
+.statusBar {
+  display: flex;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: var(--pg-statusbar);
+  padding: 2px 1px;
+  box-shadow: var(--pg-frame-statusbar);
+}
+
+.field {
+  padding: 1px 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-left: 1px solid rgb(255 255 255 / 75%);
+  border-right: 1px solid rgb(208 206 191 / 75%);
+}
+
+.field:first-child {
+  border-left: none;
+}
+
+.field:last-child {
+  border-right: none;
+}
+
+.grow {
+  flex-grow: 1;
+}

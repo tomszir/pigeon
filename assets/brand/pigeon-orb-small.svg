@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <defs>
+    <radialGradient id="sky" cx="0.38" cy="0.28" r="0.85">
+      <stop offset="0" stop-color="#bfe9ff"/>
+      <stop offset="0.45" stop-color="#4aa8f2"/>
+      <stop offset="1" stop-color="#0d45b0"/>
+    </radialGradient>
+    <clipPath id="orb"><circle cx="8" cy="8" r="7.2"/></clipPath>
+  </defs>
+  <circle cx="8" cy="8" r="7.2" fill="url(#sky)"/>
+  <path clip-path="url(#orb)" d="M0 11.8 C 4 10.2, 10 10.4, 16 12 V16 H0 Z" fill="#47a428"/>
+  <!-- bold bird: one wing + body, no letter -->
+  <path d="M3 10.2 C 4.6 8.6, 7.2 8.4, 9.4 8.9 C 10.4 8.3, 11 7.4, 11.6 6.7 C 12.2 6, 13.2 6, 13.7 6.6 L 15 7 L 13.7 7.5 C 13.4 8.8, 12.2 10, 10.4 10.5 C 8.4 11.1, 5.8 11, 4.4 10.7 L 1.8 11.5 Z" fill="#ffffff" stroke="#08307f" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M5.4 9.4 C 5 7.2, 6 4.6, 8.2 2.7 C 9 4.6, 9.4 6.8, 8.9 9 Z" fill="#ffffff" stroke="#08307f" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M13.7 6.6 L 15 7 L 13.7 7.5 Z" fill="#f59a3c"/>
+  <circle cx="8" cy="8" r="7.2" fill="none" stroke="#082d7a" stroke-width="0.9"/>
+  <ellipse cx="6.6" cy="4" rx="3.6" ry="1.7" fill="#ffffff" opacity="0.45"/>
+</svg>

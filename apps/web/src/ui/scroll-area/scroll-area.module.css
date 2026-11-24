@@ -1,0 +1,75 @@
+.scrollArea {
+  box-sizing: border-box;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--pg-field-border);
+  background: var(--pg-field);
+  scrollbar-color: #c8d6fb #f3f1ec;
+}
+
+.scrollArea:focus {
+  outline: none;
+}
+
+/* XP.css v0.2.6 scroll bars, for engines that style them. */
+@supports selector(::-webkit-scrollbar) {
+  .scrollArea {
+    scrollbar-color: auto;
+  }
+
+  .scrollArea::-webkit-scrollbar {
+    width: var(--pg-scrollbar);
+    height: var(--pg-scrollbar);
+  }
+
+  .scrollArea::-webkit-scrollbar-corner {
+    background: #dfdfdf;
+  }
+
+  .scrollArea::-webkit-scrollbar-track:vertical {
+    background-image: url("../../icons/xp/scroll-background.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-track:horizontal {
+    background-image: url("../../icons/xp/scroll-background-horizontal.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-thumb {
+    border: 1px solid #ffffff;
+    border-radius: 2px;
+    background-color: #c8d6fb;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 7px;
+    box-shadow: var(--pg-frame-scroll-thumb);
+  }
+
+  .scrollArea::-webkit-scrollbar-thumb:vertical {
+    background-image: url("../../icons/xp/scroll-thumb.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-thumb:horizontal {
+    background-size: 8px;
+    background-image: url("../../icons/xp/scroll-thumb-horizontal.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-button:vertical:start:decrement {
+    height: var(--pg-scrollbar);
+    background-image: url("../../icons/xp/scroll-arrow-up.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-button:vertical:end:increment {
+    height: var(--pg-scrollbar);
+    background-image: url("../../icons/xp/scroll-arrow-down.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-button:horizontal:start:decrement {
+    width: var(--pg-scrollbar);
+    background-image: url("../../icons/xp/scroll-arrow-left.svg");
+  }
+
+  .scrollArea::-webkit-scrollbar-button:horizontal:end:increment {
+    width: var(--pg-scrollbar);
+    background-image: url("../../icons/xp/scroll-arrow-right.svg");
+  }
+}

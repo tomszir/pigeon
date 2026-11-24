@@ -1,0 +1,31 @@
+/* Display Properties. */
+
+.displayProperties {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px 6px 6px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plain {
+  margin: 0;
+  line-height: 15px;
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+}

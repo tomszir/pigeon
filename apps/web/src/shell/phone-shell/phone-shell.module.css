@@ -1,0 +1,79 @@
+/* Below 1024×640: one program full-screen and a bottom switcher with 44px targets. */
+
+.phone {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pg-surface);
+  font: 400 14px / 18px var(--pg-font-ui);
+}
+
+.home {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--pg-desktop) url("../../wallpapers/hills-1024x768.jpg") center / cover;
+  color: #ffffff;
+  text-shadow: 1px 1px 1px #000000;
+}
+
+.home img {
+  image-rendering: auto;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px;
+  background: var(--pg-grad-title-active);
+  color: #ffffff;
+  font: 700 16px / 20px var(--pg-font-ui);
+  text-shadow: 1px 1px var(--pg-title-text-shadow);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+  padding: 0 4px 4px;
+  overflow: auto;
+}
+
+.switcher {
+  display: flex;
+  overflow-x: auto;
+  background: var(--pg-grad-taskbar);
+}
+
+.switch {
+  display: flex;
+  flex: 1 0 72px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: 400 11px / 13px var(--pg-font-ui);
+}
+
+.switch:active {
+  background: rgb(0 0 0 / 20%);
+}

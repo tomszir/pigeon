@@ -1,0 +1,46 @@
+[tools]
+node = "24"
+pnpm = "12.15.0"
+lefthook = "2.2.2"
+
+[tasks.setup]
+description = "One-time setup after cloning (safe to re-run)"
+run = ["pnpm install", "lefthook install", "node scripts/css-module-types.mjs apps/web/src"]
+
+[tasks.dev]
+description = "Run the web app on Vite's dev server"
+run = "pnpm --filter web dev"
+
+[tasks.build]
+description = "Build the static site into apps/web/dist"
+run = "pnpm --filter web build"
+
+[tasks."fonts:vendor"]
+description = "Re-vendor the pinned fonts in vendor/fonts.lock.json into apps/web/src/fonts"
+run = "node scripts/vendor.mjs vendor/fonts.lock.json apps/web/src/fonts"
+
+[tasks."icons:vendor"]
+description = "Re-vendor the pinned icons in vendor/icons.lock.json into apps/web/src/icons"
+run = "node scripts/vendor.mjs vendor/icons.lock.json apps/web/src/icons"
+
+[tasks."wallpapers:vendor"]
+description = "Re-vendor the pinned wallpapers in vendor/wallpapers.lock.json into apps/web/src/wallpapers"
+run = "node scripts/vendor.mjs vendor/wallpapers.lock.json apps/web/src/wallpapers"
+
+[tasks.fmt]
+description = "Format and fix everything Biome can"
+run = "pnpm biome check --write ."
+
+[tasks.test]
+description = "Unit tests in every package"
+run = "pnpm -r test"
+
+[tasks.check]
+description = "The gate: lint, types, unit tests, docs (what CI runs)"
+run = [
+  "pnpm biome check .",
+  "pnpm -r typecheck",
+  "pnpm -r test",
+  "node --test scripts/*.test.ts",
+  "scripts/check-docs",
+]

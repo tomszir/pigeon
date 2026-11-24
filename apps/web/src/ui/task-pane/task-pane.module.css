@@ -1,0 +1,63 @@
+.taskPane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--pg-grad-task-pane);
+}
+
+.group {
+  overflow: hidden;
+  border-radius: 3px 3px 0 0;
+}
+
+.header {
+  margin: 0;
+  padding: 5px 8px;
+  background: var(--pg-grad-task-pane-header);
+  color: var(--pg-task-pane-link);
+  font: var(--pg-type-body-strong);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.toggle:hover {
+  color: #428eff;
+}
+
+.chevron {
+  box-sizing: border-box;
+  width: 17px;
+  height: 17px;
+  border: 1px solid #b6c8f2;
+  border-radius: 50%;
+  background: #ffffff;
+  font-size: 9px;
+  line-height: 15px;
+  text-align: center;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  background: #d6dff7;
+}
+
+.body a {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--pg-task-pane-link);
+}

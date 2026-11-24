@@ -1,0 +1,184 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!.claude",
+      "!**/dist",
+      "!assets",
+      "!apps/web/src/icons",
+      "!apps/web/src/fonts"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "style": {
+        "useImportType": "error",
+        "noNonNullAssertion": "error"
+      },
+      "complexity": {
+        "useLiteralKeys": "off"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["solid-js", "solid-js/*"],
+                    "message": "packages/ stay framework-free; Solid is for apps/web/src/ui, shell and apps."
+                  },
+                  {
+                    "group": ["**/apps/**"],
+                    "message": "packages/ must not depend on apps/."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/platform/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["solid-js", "solid-js/*"],
+                    "message": "platform/ wraps browser APIs and stays framework-free."
+                  },
+                  {
+                    "group": ["**/ui", "**/ui/**", "**/shell", "**/shell/**", "**/apps/**"],
+                    "message": "platform/ may import only packages/."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/ui/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/platform",
+                      "**/platform/**",
+                      "**/shell",
+                      "**/shell/**",
+                      "**/apps/**"
+                    ],
+                    "message": "ui/ is the presentational kit: Solid and packages/ only."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/shell/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/apps/**", "**/app", "**/app/**"],
+                    "message": "shell/ may import ui/, packages/ and platform interfaces; app/ hands it everything else."
+                  },
+                  {
+                    "group": ["**/platform/browser-*", "**/platform/**/browser-*"],
+                    "message": "shell/ takes platform interfaces, never browser implementations."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/shell", "**/shell/**", "**/app", "**/app/**"],
+                    "message": "apps/ may import themselves, ui/, packages/ and platform interfaces."
+                  },
+                  {
+                    "group": ["../../*", "../../*/**", "!../../../**"],
+                    "message": "An app never imports another app; share through ui/ or packages/. App files live one folder deep: apps/<app>/<component>/."
+                  },
+                  {
+                    "group": ["**/platform/browser-*", "**/platform/**/browser-*"],
+                    "message": "apps/ take platform interfaces, never browser implementations."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "css": {
+    "parser": {
+      "cssModules": true
+    }
+  }
+}

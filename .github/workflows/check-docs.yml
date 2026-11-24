@@ -1,0 +1,16 @@
+name: check-docs
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/check-docs --base "origin/${{ github.base_ref }}"

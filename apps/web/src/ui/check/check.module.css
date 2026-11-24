@@ -1,0 +1,84 @@
+/* Check boxes and radio buttons: the native input is hidden; the label draws the box. */
+
+.check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.input {
+  position: absolute;
+  opacity: 0;
+  margin: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 16px;
+}
+
+.label::before {
+  content: "";
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #1d5281;
+  background: var(--pg-grad-check);
+}
+
+.radio .label::before {
+  border-radius: 50%;
+}
+
+.input:checked + .label::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translateY(-50%);
+  background: url("../../icons/xp/checkmark.svg") no-repeat center;
+}
+
+.radio .input:checked + .label::after {
+  left: 4px;
+  width: 5px;
+  height: 5px;
+  background: url("../../icons/xp/radio-dot.svg") no-repeat center;
+}
+
+.input:disabled + .label::before {
+  border-color: #cac8bb;
+  background: #ffffff;
+}
+
+.input:not(:disabled):not(:active) + .label:hover::before {
+  box-shadow: var(--pg-shadow-check-hover);
+}
+
+.input:not(:disabled):active + .label::before {
+  background: var(--pg-grad-check-pressed);
+}
+
+.input:focus-visible + .label {
+  outline: 1px dotted var(--pg-text);
+}
+
+.input:disabled + .label {
+  color: var(--pg-text-disabled);
+}
+
+.input:disabled:checked + .label::after {
+  background-image: url("../../icons/xp/checkmark-disabled.svg");
+}
+
+.radio .input:disabled:checked + .label::after {
+  background-image: url("../../icons/xp/radio-dot-disabled.svg");
+}

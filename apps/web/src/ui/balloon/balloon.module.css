@@ -1,0 +1,58 @@
+/* A tray notice: the tooltip yellow, rounded, with a tail. */
+
+.balloon {
+  position: relative;
+  box-sizing: border-box;
+  width: 260px;
+  padding: 6px 8px 8px;
+  border: 1px solid #000000;
+  border-radius: var(--pg-radius-tooltip);
+  background: var(--pg-tooltip);
+  box-shadow: var(--pg-shadow-popup);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+
+.title {
+  flex-grow: 1;
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid #8a8a8a;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #ffffff, #e9e6d4);
+}
+
+.close:hover {
+  border-color: var(--pg-hot);
+}
+
+.body {
+  margin: 0 0 0 21px;
+  line-height: 13px;
+}
+
+/* The tail points down at the tray, 30px in from the right. */
+.balloon::after {
+  content: "";
+  position: absolute;
+  right: 30px;
+  bottom: -8px;
+  width: 13px;
+  height: 13px;
+  border-right: 1px solid #000000;
+  border-bottom: 1px solid #000000;
+  background: var(--pg-tooltip);
+  transform: rotate(45deg) skew(10deg, 10deg);
+}

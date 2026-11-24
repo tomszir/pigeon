@@ -1,0 +1,51 @@
+.about {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo {
+  image-rendering: auto;
+}
+
+.name {
+  margin: 0 0 4px;
+  font: 700 16px / 18px var(--pg-font-ui);
+  color: #0a246a;
+}
+
+.rule {
+  height: 1px;
+  background: var(--pg-separator);
+  box-shadow: 0 1px #ffffff;
+}
+
+.credits {
+  margin: 0;
+  padding-left: 16px;
+  line-height: 15px;
+}
+
+.plain {
+  margin: 0;
+  line-height: 15px;
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+}

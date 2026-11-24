@@ -1,0 +1,291 @@
+/*
+ * Pigeon UI tokens: every value on the canvas's Design system › Foundations board, plus the control
+ * states on the Components board. Names follow the board: `frame.blue.dark` is `--pg-frame-blue-dark`.
+ * Control values come from XP.css v0.2.6 (MIT). Change a value here and on the canvas together.
+ */
+
+/* Wine ships a tahomabd.ttf, but its outlines draw at regular weight, so bold is synthesised
+   from the regular face (decision 0009). */
+@font-face {
+  font-family: "Wine Tahoma";
+  src: url("../fonts/wine-tahoma.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  font-synthesis: weight;
+}
+
+@font-face {
+  font-family: "Vera Sans Mono";
+  src: url("../fonts/vera-sans-mono.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* Colour */
+  --pg-surface: #ece9d8;
+  --pg-surface-panel: #fcfcfe;
+  --pg-field: #ffffff;
+  --pg-field-border: #7f9db9;
+  --pg-button-border: #003c74;
+  --pg-text: #000000;
+  --pg-text-muted: #4a4a4a;
+  --pg-text-faint: #6b6b6b;
+  --pg-text-disabled: #a19f91;
+  --pg-text-own: #0a2a8f;
+  --pg-text-error: #c13b12;
+  --pg-text-ok: #2f6a1f;
+  --pg-link: #0033cc;
+  --pg-link-hover: #e8743b;
+  --pg-selection: #316ac5;
+  --pg-selection-text: #ffffff;
+  --pg-legend: #0046d5;
+  --pg-group-border: #d0d0bf;
+  --pg-separator: #d6d2c2;
+  --pg-menu-border: #aca899;
+  --pg-frame-blue: #0831d9;
+  --pg-frame-blue-dark: #001ea0;
+  --pg-frame-lilac: #7b96e1;
+  --pg-frame-lilac-dark: #6d89dc;
+  --pg-title-text: #ffffff;
+  --pg-title-text-inactive: #d8e4f8;
+  --pg-title-text-shadow: #0f1089;
+  --pg-menu-right: #d3e5fa;
+  --pg-menu-right-border: #95bdee;
+  --pg-menu-right-text: #0a246a;
+  --pg-tooltip: #ffffe1;
+  --pg-desktop: #3a6ea5;
+  --pg-hot: #e68b2c;
+  --pg-group-heading: #1b3e8e;
+  --pg-status-online: #3cb043;
+  --pg-status-away: #f0aa1e;
+  --pg-status-offline: #a8a8a8;
+  --pg-accent-letter: #d23c12;
+  --pg-task-pane-link: #215dc6;
+
+  /* Gradients */
+  --pg-grad-title-active: linear-gradient(
+    180deg,
+    #0997ff 0%,
+    #0053ee 8%,
+    #0050ee 40%,
+    #0066ff 88%,
+    #0066ff 93%,
+    #005bff 95%,
+    #003dd7 96%,
+    #003dd7 100%
+  );
+  --pg-grad-title-inactive: linear-gradient(
+    180deg,
+    #7697e7 0%,
+    #7e9ee3 3%,
+    #94afe8 6%,
+    #97b4e9 8%,
+    #82a5e4 14%,
+    #7c9fe2 17%,
+    #7996de 25%,
+    #7b99e1 56%,
+    #82a9e9 81%,
+    #80a5e7 89%,
+    #7b96e1 94%,
+    #7a93df 97%,
+    #abbae3 100%
+  );
+  --pg-grad-button: linear-gradient(180deg, #ffffff 0%, #ecebe5 86%, #d8d0c4 100%);
+  --pg-grad-button-pressed: linear-gradient(
+    180deg,
+    #cdcac3 0%,
+    #e3e3db 8%,
+    #e5e5de 94%,
+    #f2f2f1 100%
+  );
+  --pg-grad-taskbar: linear-gradient(
+    180deg,
+    #1f2f86 0%,
+    #3165c4 3%,
+    #3682e5 6%,
+    #4490e6 10%,
+    #3883e5 12%,
+    #2b71e0 15%,
+    #2663da 18%,
+    #235bd6 20%,
+    #2258d5 23%,
+    #2157d6 38%,
+    #245ddb 54%,
+    #2562df 86%,
+    #245fdc 89%,
+    #2158d4 92%,
+    #1d4ec0 95%,
+    #1941a5 98%
+  );
+  --pg-grad-tray: linear-gradient(
+    180deg,
+    #0c59b9 1%,
+    #139ee9 6%,
+    #18b5f2 10%,
+    #139beb 14%,
+    #1290e8 19%,
+    #0d8dea 63%,
+    #0d9ff1 81%,
+    #0f9eed 88%,
+    #119be9 91%,
+    #1392e2 94%,
+    #137ed7 97%,
+    #095bc9 100%
+  );
+  --pg-grad-start: radial-gradient(
+    circle at 30% 20%,
+    #6dce64 0%,
+    #3ea53b 35%,
+    #2d8c2b 70%,
+    #237a22 100%
+  );
+  --pg-grad-menu-header: linear-gradient(
+    180deg,
+    #1868ce 0%,
+    #0e60cb 12%,
+    #0e60cb 20%,
+    #1164cf 32%,
+    #1667cf 33%,
+    #1b6cd3 47%,
+    #1e70d9 54%,
+    #2476dc 60%,
+    #297ae0 65%,
+    #3482e3 77%,
+    #3786e5 79%,
+    #428ee9 90%,
+    #4791eb 100%
+  );
+  --pg-grad-menu-footer: linear-gradient(
+    180deg,
+    #4282d6 0%,
+    #3b85e0 3%,
+    #418ae3 5%,
+    #418ae3 17%,
+    #3c87e2 21%,
+    #3786e4 26%,
+    #3482e3 29%,
+    #2e7ee1 39%,
+    #2374df 49%,
+    #2072db 57%,
+    #196edb 62%,
+    #176bd8 72%,
+    #1468d6 75%,
+    #0f61d0 83%,
+    #0b5bc9 88%,
+    #0a59c6 93%,
+    #0c5ac7 100%
+  );
+  --pg-grad-menu-rule: linear-gradient(
+    90deg,
+    rgb(218 136 74 / 0%) 0%,
+    #da884a 50%,
+    rgb(218 136 74 / 0%) 100%
+  );
+  --pg-grad-progress:
+    repeating-linear-gradient(90deg, #ffffff 0, #ffffff 2px, transparent 2px, transparent 10px),
+    linear-gradient(
+      180deg,
+      #acedad 0%,
+      #7be47d 14%,
+      #4cda50 28%,
+      #2ed330 42%,
+      #42d845 57%,
+      #76e275 71%,
+      #8fe791 85%,
+      #ffffff 100%
+    );
+  --pg-grad-toolbar: linear-gradient(180deg, #fcfcf9 0%, #f1efe2 100%);
+  --pg-grad-tab: linear-gradient(180deg, #ffffff 0%, #fafaf9 26%, #f0f0ea 95%, #ecebe5 100%);
+  --pg-grad-tab-panel: linear-gradient(180deg, #fcfcfe 0%, #f4f3ee 100%);
+  --pg-grad-user-band: linear-gradient(180deg, #ffffff 0%, #e4ecfb 55%, #ccdbf5 100%);
+  --pg-grad-task-pane: linear-gradient(180deg, #7ba2e7 0%, #6375d6 100%);
+  --pg-grad-task-pane-header: linear-gradient(90deg, #ffffff 0%, #c6d3f7 100%);
+  --pg-grad-scroll-track: linear-gradient(90deg, #f3f1ec 0%, #fefefe 50%, #f3f1ec 100%);
+  --pg-grad-check: linear-gradient(135deg, #dcdcd7 0%, #ffffff 100%);
+  --pg-grad-check-pressed: linear-gradient(135deg, #b0b0a7 0%, #e3e1d2 100%);
+
+  /* Frames and depth */
+  --pg-frame-window-active:
+    inset -1px -1px #00138c, inset 1px 1px #0831d9, inset -2px -2px #001ea0,
+    inset 2px 2px #166aee, inset -3px -3px #003bda, inset 3px 3px #0855dd;
+  --pg-frame-window-inactive:
+    inset -1px -1px #5d77c9, inset 1px 1px #7b96e1,
+    inset -2px -2px #6d89dc, inset 2px 2px #9db2ec, inset -3px -3px #7b96e1, inset 3px 3px #8aa3e6;
+  --pg-frame-statusbar: inset 0 1px 2px #808080;
+  --pg-frame-scroll-thumb: inset -3px 0 #bad1fc, inset 1px 1px #b7caf5;
+  --pg-frame-tab-panel:
+    inset 1px 1px #fcfcfe, inset -1px -1px #fcfcfe, 1px 2px 2px 0 rgb(208 206 191 / 75%);
+  --pg-shadow-window: 2px 3px 8px rgb(0 0 0 / 35%);
+  --pg-shadow-window-active: 3px 4px 10px rgb(0 0 0 / 45%);
+  --pg-shadow-popup: 2px 2px 3px rgb(0 0 0 / 30%);
+  --pg-shadow-button-hover:
+    inset -1px 1px #fff0cf, inset 1px 2px #fdd889, inset -2px 2px #fbc761, inset 2px -2px #e5a01a;
+  --pg-shadow-button-focus:
+    inset -1px 1px #cee7ff, inset 1px 2px #98b8ea, inset -2px 2px #bcd4f6, inset 1px -1px #89ade4,
+    inset 2px -2px #89ade4;
+  --pg-shadow-check-hover: inset -2px -2px #f8b636, inset 2px 2px #fedf9c;
+
+  /* Type (bundled fonts only, decision 0009) */
+  --pg-font-ui: "Wine Tahoma", sans-serif;
+  --pg-font-mono: "Vera Sans Mono", monospace;
+  --pg-type-title: 700 13px / 15px var(--pg-font-ui);
+  --pg-type-body: 400 11px / 13px var(--pg-font-ui);
+  --pg-type-body-strong: 700 11px / 13px var(--pg-font-ui);
+  --pg-type-message: 400 12px / 15px var(--pg-font-ui);
+  --pg-type-mono: 400 12px / 14px var(--pg-font-mono);
+  --pg-type-start: italic 700 18px / 20px var(--pg-font-ui);
+
+  /* Metrics */
+  --pg-titlebar-height: 28px;
+  --pg-titlebar-button: 21px;
+  --pg-frame-width: 3px;
+  --pg-radius-window: 8px;
+  --pg-radius-window-right: 7px;
+  --pg-button-min-width: 75px;
+  --pg-button-height: 23px;
+  --pg-radius-button: 3px;
+  --pg-field-height: 23px;
+  --pg-menu-item: 20px;
+  --pg-list-row: 20px;
+  --pg-statusbar: 20px;
+  --pg-taskbar-height: 30px;
+  --pg-task-button-width: 150px;
+  --pg-task-button-height: 24px;
+  --pg-scrollbar: 17px;
+  --pg-radius-tooltip: 7px;
+  --pg-radius-group: 4px;
+  --pg-desktop-icon-cell: 76px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--pg-desktop);
+}
+
+body {
+  font: var(--pg-type-body);
+  color: var(--pg-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  image-rendering: pixelated;
+}
+
+a {
+  color: var(--pg-link);
+}
+
+a:hover {
+  color: var(--pg-link-hover);
+}
+
+::selection {
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}

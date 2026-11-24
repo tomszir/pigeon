@@ -1,0 +1,15 @@
+.readme {
+  flex-grow: 1;
+  margin-top: 2px;
+}
+
+.text {
+  margin: 0;
+  padding: 2px 4px;
+  font: var(--pg-type-mono);
+  white-space: pre;
+}
+
+.wrap {
+  white-space: pre-wrap;
+}

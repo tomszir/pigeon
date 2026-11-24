@@ -1,0 +1,111 @@
+/* The Messenger's main window: you, your friends, the ways to add one. */
+
+.me {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 6px;
+  border-bottom: 1px solid #9db3dc;
+  background: var(--pg-grad-user-band);
+}
+
+.avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 42px;
+  height: 42px;
+  padding: 3px;
+  border: 1px solid #8ea4c8;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #fbd9b7, #f2a86c);
+  box-shadow: 0 0 0 2px #59b84a;
+  color: #8a3d16;
+  font: 700 18px / 20px var(--pg-font-ui);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.personal {
+  overflow: hidden;
+  color: var(--pg-text-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.letters {
+  color: var(--pg-link);
+  text-decoration: underline;
+}
+
+.list {
+  flex-grow: 1;
+  min-height: 0;
+  margin-top: 4px;
+  overflow: auto;
+  border: 1px solid var(--pg-field-border);
+  background: var(--pg-field);
+}
+
+.hint {
+  margin: 0 8px 8px;
+  color: var(--pg-text-muted);
+  line-height: 14px;
+}
+
+.tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 3px;
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.disabled {
+  color: var(--pg-text-disabled);
+}
+
+.disabled img {
+  opacity: 0.5;
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-decoration: underline;
+}
+
+.linkButton:hover {
+  color: var(--pg-link-hover);
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}

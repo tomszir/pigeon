@@ -1,0 +1,59 @@
+# Architecture
+
+The pnpm monorepo, its layers, and the import rules Biome enforces.
+
+## Layout
+
+```
+packages/
+  core/         @pigeon/core: pure TypeScript, no browser or Node APIs.
+                Protocol types and codecs, signed append-only logs, letter rules,
+                pigeon:// resolution, window-manager state.
+  pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
+                Pure; used by the web app and the Lighthouse.
+apps/
+  web/          The static site (Vite + Solid).
+    src/
+      platform/ The only code that touches browser APIs: crypto, storage, transport,
+                clock, audio, files. Each is an interface plus a browser implementation.
+      ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
+                and tokens.css, the only global stylesheet.
+      shell/    Stage and scaling, desktop, taskbar, Pigeon menu, tray and balloons,
+                the window layer and the phone layout. createShell() returns the
+                ShellApi that app/ hands to programs.
+      apps/     One folder per app (messenger, explorer, builder, letters, files), each
+                holding one folder per component: apps/<app>/<component>/.
+      app/      The composition root: builds platform implementations, creates the
+                shell, and wires the desktop, menu and windows to the apps
+                (app/programs.tsx).
+  lighthouse/   The always-on Node peer: mirrors pages, carries letters, hosts the lobby.
+                Reuses @pigeon/core with Node implementations of the platform interfaces.
+```
+
+## Import rules
+
+| Layer          | May import                                                          |
+| -------------- | ------------------------------------------------------------------- |
+| `packages/*`   | each other, nothing from `apps/`, no `solid-js`                     |
+| `platform/`    | `packages/*`                                                        |
+| `ui/`          | `solid-js`, `packages/*`; not `platform/`, `shell/`, `apps/`        |
+| `shell/`       | `ui/`, `packages/*`, platform interfaces                            |
+| `apps/<name>/` | itself, `ui/`, `packages/*`, platform interfaces; never another app |
+| `app/`         | everything                                                          |
+
+Biome's `noRestrictedImports` overrides in `biome.json` enforce every row. An app importing a sibling (`../other-app/...`) is caught by pattern, so apps keep their files flat. A platform interface is passed in from `app/`, never imported as an implementation, so tests can stand a fake in.
+
+## Shell and windows
+
+The window-manager state (open windows, bounds, z-order, focus, minimise and maximise) lives in `@pigeon/core` as pure functions (`window-manager.ts`). The shell keeps one `Desktop` value in a Solid signal and replaces it through those functions. `ui/window.tsx` draws a frame at the bounds it is given and reports drags, clicks and keys; it never moves itself. Windows stay in opening order in the DOM and stack by `z-index`, so raising a window never re-parents it mid-drag.
+
+The shell reads the browser only through `ShellEnv` (viewport, reduced motion, clock, outside links), which `app/browser-env.ts` builds, so shell tests can pass fakes.
+
+## Patterns
+
+- Functions over classes. Errors as values (`{ ok: true, value } | { ok: false, error }`); `throw` only for bugs.
+- The caller passes time and randomness in; `core` has no module-level state.
+- Content and numbers live in tables, not branches.
+- Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`.
+- In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses ([0010](decisions/0010-component-folders-and-css-modules.md)). Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
+- Tests sit beside the file they test (`name.test.ts`) and go at the lowest level that fails for the reason they guard. Playwright e2e lives in `apps/web/e2e/`.

@@ -1,0 +1,44 @@
+/* The desktop surface and the layers drawn over it, in stage pixels. Values from the Desktop board. */
+
+.desktop {
+  position: absolute;
+  inset: 0 0 var(--pg-taskbar-height) 0;
+}
+
+.icons {
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: var(--pg-desktop-icon-cell);
+}
+
+.taskbarHost {
+  position: absolute;
+  z-index: 1000;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* The tray balloon points down at the tray. */
+.balloonHost {
+  position: absolute;
+  z-index: 1001;
+  right: 46px;
+  bottom: 40px;
+}
+
+/* Behind the monitor: a black room, lit only by the backdrop shader and the screen. */
+.room {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: #000000;
+}
+
+.bare {
+  position: absolute;
+}

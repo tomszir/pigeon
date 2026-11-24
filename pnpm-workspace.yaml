@@ -1,0 +1,6 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Exact versions; upgrades are deliberate.
+savePrefix: ""

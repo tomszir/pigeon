@@ -1,0 +1,84 @@
+/* An XP drop-down list: a white field with the blue arrow button at its right, and a list that
+   drops below it with the highlighted row in the selection blue. */
+
+.wrap {
+  position: relative;
+}
+
+.anchor {
+  position: relative;
+  display: flex;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.select {
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 4px;
+  text-align: left;
+}
+
+.value {
+  flex-grow: 1;
+  min-width: 0;
+  margin-right: 2px;
+  padding: 1px 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.select:focus-visible .value {
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}
+
+/* XP.css v0.2.6's arrow button, drawn inside the field's 1px edge. */
+.arrow {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 17px;
+  margin: 1px;
+  background: url("../../icons/xp/dropdown.svg") no-repeat center / 17px 100%;
+}
+
+.select:hover .arrow {
+  background-image: url("../../icons/xp/dropdown-hover.svg");
+}
+
+.select.open .arrow,
+.select:active .arrow {
+  background-image: url("../../icons/xp/dropdown-active.svg");
+}
+
+.select:disabled .arrow {
+  opacity: 0.5;
+}
+
+.list {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #000000;
+  background: var(--pg-field);
+  box-shadow: var(--pg-shadow-popup);
+}
+
+.option {
+  padding: 1px 4px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.active {
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}

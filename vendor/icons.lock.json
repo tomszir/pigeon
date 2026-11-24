@@ -1,0 +1,296 @@
+{
+  "sources": {
+    "xp.css": {
+      "package": "xp.css",
+      "version": "0.2.6",
+      "integrity": "sha512-v0qUB4wOvyXIMLNid5bIpm+0n5aL4i8wE5dqJH8LNVxE04PxUUxjwf2rNzengegUIK03XC4vbfLVCPAfMLtuqA==",
+      "archive": "package",
+      "path": "themes/XP/icon/{icon}.svg",
+      "out": "xp/{icon}.svg",
+      "licence": {
+        "path": "LICENSE",
+        "out": "LICENSES/xp.css.txt"
+      }
+    },
+    "tango": {
+      "url": "https://snapshot.debian.org/archive/debian/20090315T155958Z/pool/main/t/tango-icon-theme/tango-icon-theme_0.8.90.orig.tar.gz",
+      "integrity": "sha512-eLkJv8ixJgYPijIPVGXuavmFM7Uinr5GlSRpup8IeWGJsa2BEOD/oeV0XQg8rSkjlq+IfE+HkllbC40okSWKUg==",
+      "archive": "tango-icon-theme-0.8.90",
+      "path": "{size}x{size}/{context}/{icon}.png",
+      "out": "tango/{icon}-{size}.png",
+      "licence": {
+        "path": "COPYING",
+        "out": "LICENSES/tango.txt"
+      }
+    },
+    "brand": {
+      "local": "assets/brand",
+      "path": "{icon}.png",
+      "out": "brand/{icon}.png"
+    }
+  },
+  "icons": [
+    {
+      "source": "xp.css",
+      "icon": "close"
+    },
+    {
+      "source": "xp.css",
+      "icon": "close-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "close-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "minimize"
+    },
+    {
+      "source": "xp.css",
+      "icon": "minimize-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "minimize-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "maximize"
+    },
+    {
+      "source": "xp.css",
+      "icon": "maximize-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "maximize-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "restore"
+    },
+    {
+      "source": "xp.css",
+      "icon": "restore-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "restore-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "help"
+    },
+    {
+      "source": "xp.css",
+      "icon": "help-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "help-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "checkmark"
+    },
+    {
+      "source": "xp.css",
+      "icon": "checkmark-disabled"
+    },
+    {
+      "source": "xp.css",
+      "icon": "radio-dot"
+    },
+    {
+      "source": "xp.css",
+      "icon": "radio-dot-disabled"
+    },
+    {
+      "source": "xp.css",
+      "icon": "dropdown"
+    },
+    {
+      "source": "xp.css",
+      "icon": "dropdown-hover"
+    },
+    {
+      "source": "xp.css",
+      "icon": "dropdown-active"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-arrow-up"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-arrow-down"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-arrow-left"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-arrow-right"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-background"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-background-horizontal"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-thumb"
+    },
+    {
+      "source": "xp.css",
+      "icon": "scroll-thumb-horizontal"
+    },
+    {
+      "source": "tango",
+      "icon": "text-x-generic",
+      "context": "mimetypes",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "image-x-generic",
+      "context": "mimetypes",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "internet-mail",
+      "context": "apps",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "internet-web-browser",
+      "context": "apps",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "help-browser",
+      "context": "apps",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "folder",
+      "context": "places",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "user-trash",
+      "context": "places",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "contact-new",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "system-log-out",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "system-shutdown",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "mail-attachment",
+      "context": "status",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "network-transmit-receive",
+      "context": "status",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "dialog-information",
+      "context": "status",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "dialog-warning",
+      "context": "status",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "dialog-error",
+      "context": "status",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "preferences-system",
+      "context": "categories",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "face-smile",
+      "context": "emotes",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "brand",
+      "icon": "pigeon-16"
+    },
+    {
+      "source": "brand",
+      "icon": "pigeon-24"
+    },
+    {
+      "source": "brand",
+      "icon": "pigeon-32"
+    },
+    {
+      "source": "brand",
+      "icon": "pigeon-48"
+    },
+    {
+      "source": "brand",
+      "icon": "pigeon-128"
+    },
+    {
+      "source": "brand",
+      "icon": "presence-16"
+    },
+    {
+      "source": "brand",
+      "icon": "presence-16-online"
+    },
+    {
+      "source": "brand",
+      "icon": "presence-16-away"
+    },
+    {
+      "source": "brand",
+      "icon": "presence-16-offline"
+    },
+    {
+      "source": "brand",
+      "icon": "buzz-22"
+    }
+  ]
+}

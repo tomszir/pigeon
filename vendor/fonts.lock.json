@@ -1,0 +1,37 @@
+{
+  "sources": {
+    "wine-tahoma": {
+      "url": "https://gitlab.winehq.org/wine/wine/-/raw/wine-10.0/fonts/tahoma.ttf",
+      "integrity": "sha512-RMRkyOjygjny+s7slXV+CnrN/kg9ElzbBpt8GcUl3DsrqF3BMyJsoZpxHiARow9g2kIFv3fhPDPi87y59nAzgQ=="
+    },
+    "wine-licence": {
+      "url": "https://gitlab.winehq.org/wine/wine/-/raw/wine-10.0/COPYING.LIB",
+      "integrity": "sha512-JKywyGe6ddW3nT4IOITVvcjPiI/qv2FJLK5hj/aqqLeGuPH/9GEDHsEYQlS8iGe9hbUPjC70K2BRksR7/RcFBw=="
+    },
+    "bitstream-vera": {
+      "url": "https://download.gnome.org/sources/ttf-bitstream-vera/1.10/ttf-bitstream-vera-1.10.tar.bz2",
+      "integrity": "sha512-dbSBVT2+J3Ef93nBOZA5f3bVnegZCF5VCS+y7obSeAIyUSSHpdzjOynjjt/Mc+NO+7oH9wFuf/Tlm7NTAeejkg==",
+      "archive": "ttf-bitstream-vera-1.10"
+    }
+  },
+  "files": [
+    {
+      "source": "wine-tahoma",
+      "out": "wine-tahoma.ttf"
+    },
+    {
+      "source": "wine-licence",
+      "out": "LICENSES/wine-tahoma.txt"
+    },
+    {
+      "source": "bitstream-vera",
+      "path": "VeraMono.ttf",
+      "out": "vera-sans-mono.ttf"
+    },
+    {
+      "source": "bitstream-vera",
+      "path": "COPYRIGHT.TXT",
+      "out": "LICENSES/bitstream-vera.txt"
+    }
+  ]
+}

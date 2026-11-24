@@ -1,0 +1,10 @@
+/* The photo crop for the current resolution, one image pixel per screen pixel (decision 0011). */
+
+.wallpaper {
+  position: absolute;
+  inset: 0;
+  background-color: var(--pg-desktop);
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}

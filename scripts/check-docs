@@ -1,0 +1,131 @@
+#!/bin/sh
+# check-docs: holds a repository to its docs/ rule.
+#
+#   1. A change outside docs/ comes with a change inside docs/, unless the commit
+#      that made it carries the trailer "Docs: none".
+#   2. Every file in docs/ is listed in docs/README.md (a listed folder, such as
+#      "decisions/", covers everything inside it).
+#   3. Every doc opens with a heading and then a one-line summary.
+#
+# Usage: scripts/check-docs [--base <ref>] [--hook claude]
+#
+# The base is what the change is measured against: --base, else $CHECK_DOCS_BASE,
+# else the upstream branch, else origin's default branch. Without one, only the
+# uncommitted changes are checked. Uncommitted and untracked files always count.
+#
+# --hook claude reads a Claude Code Stop hook's JSON on stdin and exits 2 on a
+# problem, which sends the report back to the agent instead of letting it stop.
+# It nudges once: when the agent is already continuing because of this hook, it
+# lets it stop, and CI stays the hard gate.
+
+set -eu
+
+base=${CHECK_DOCS_BASE:-}
+hook=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--base) base=${2:?--base needs a ref}; shift 2 ;;
+	--hook) hook=${2:?--hook needs a name}; shift 2 ;;
+	-h | --help) sed -n '2,20s/^# \{0,1\}//p' "$0"; exit 0 ;;
+	*) echo "check-docs: unknown argument $1" >&2; exit 64 ;;
+	esac
+done
+
+if [ "$hook" = claude ]; then
+	input=$(cat)
+	case $input in *'"stop_hook_active":true'* | *'"stop_hook_active": true'*) exit 0 ;; esac
+fi
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root"
+
+if [ -z "$base" ]; then
+	base=$(git merge-base HEAD '@{upstream}' 2>/dev/null) ||
+		base=$(git merge-base HEAD origin/HEAD 2>/dev/null) ||
+		base=
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+: >"$tmp/needs"   # files whose change needs a docs change
+: >"$tmp/docs"    # changed files under docs/
+
+record() { # sorts each changed path into needs or docs
+	while IFS= read -r f; do
+		case $f in
+		'') ;;
+		docs/*) echo "$f" >>"$tmp/docs" ;;
+		*.md | *.mdx | LICENSE* | .gitignore | .gitattributes) ;;
+		*) [ "${1:-}" = exempt ] || echo "$f" >>"$tmp/needs" ;;
+		esac
+	done
+}
+
+# Committed changes since the base, one commit at a time so a "Docs: none"
+# trailer exempts only the commit that carries it.
+if [ -n "$base" ]; then
+	for c in $(git rev-list --no-merges "$base"..HEAD); do
+		if git log -1 --format=%B "$c" | grep -qiE '^Docs:[[:space:]]*none[[:space:]]*$'; then
+			git diff-tree --no-commit-id --name-only -r "$c" | record exempt
+		else
+			git diff-tree --no-commit-id --name-only -r "$c" | record
+		fi
+	done
+fi
+
+# Uncommitted changes, staged or not, and untracked files.
+if git rev-parse --verify -q HEAD >/dev/null; then
+	git diff --name-only HEAD | record
+else
+	git diff --name-only --cached | record
+fi
+git ls-files --others --exclude-standard | record
+
+problems=$tmp/problems
+: >"$problems"
+
+if [ -s "$tmp/needs" ] && [ ! -s "$tmp/docs" ]; then
+	{
+		echo "Files changed outside docs/ with no change in docs/:"
+		sort -u "$tmp/needs" | sed 's/^/  /'
+		echo "  Update the doc that covers this change, or add one and list it in docs/README.md."
+		echo "  If there is nothing to document, commit with the trailer \"Docs: none\"."
+	} >>"$problems"
+fi
+
+if [ -d docs ]; then
+	if [ ! -f docs/README.md ]; then
+		echo "docs/README.md is missing: it is the index of docs/." >>"$problems"
+	else
+		find docs -type f -name '*.md' ! -path docs/README.md | sort | while IFS= read -r f; do
+			rel=${f#docs/}
+			listed=
+			grep -qF "$rel" docs/README.md && listed=yes
+			dir=$(dirname "$rel")
+			while [ -z "$listed" ] && [ "$dir" != . ]; do
+				grep -qF "$dir/" docs/README.md && listed=yes
+				dir=$(dirname "$dir")
+			done
+			[ -n "$listed" ] || echo "$f is not listed in docs/README.md." >>"$problems"
+		done
+	fi
+
+	find docs -type f -name '*.md' | sort | while IFS= read -r f; do
+		# The first non-blank line is a heading; the next one is plain text.
+		awk '
+			/^[[:space:]]*$/ { next }
+			!h { if ($0 !~ /^# /) exit 1; h = 1; next }
+			{ if ($0 ~ /^([#>|*-]|```|[0-9]+\.)/) exit 1; ok = 1; exit 0 }
+			END { if (!ok) exit 1 }
+		' "$f" || echo "$f must open with a \"# Heading\" and then a one-line summary." >>"$problems"
+	done
+else
+	echo "docs/ is missing." >>"$problems"
+fi
+
+[ -s "$problems" ] || exit 0
+
+echo "check-docs: docs/ is out of step with this change." >&2
+cat "$problems" >&2
+[ "$hook" = claude ] && exit 2
+exit 1

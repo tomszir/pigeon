@@ -1,0 +1,44 @@
+.desktopIcon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: var(--pg-desktop-icon-cell);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: var(--pg-type-body);
+}
+
+.desktopIcon:focus {
+  outline: none;
+}
+
+.label {
+  display: -webkit-box;
+  max-width: 100%;
+  padding: 0 2px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-align: center;
+  text-shadow: 1px 1px 1px #000000;
+  overflow-wrap: anywhere;
+}
+
+.selected .label {
+  background: var(--pg-selection);
+  text-shadow: none;
+}
+
+.selected:focus-visible .label,
+.selected:focus .label {
+  outline: 1px dotted #ffffff;
+}
+
+/* The selected icon's picture takes a blue tint, as on the era's desktops. */
+.selected img {
+  filter: sepia(1) hue-rotate(180deg) saturate(3) brightness(0.8);
+}

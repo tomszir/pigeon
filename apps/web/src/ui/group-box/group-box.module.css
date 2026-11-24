@@ -1,0 +1,12 @@
+.groupBox {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--pg-group-border);
+  border-radius: var(--pg-radius-group);
+  background: transparent;
+}
+
+.legend {
+  padding: 0 3px;
+  color: var(--pg-legend);
+}

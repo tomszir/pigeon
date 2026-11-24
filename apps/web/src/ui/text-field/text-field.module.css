@@ -1,0 +1,5 @@
+.multiline {
+  height: auto;
+  resize: none;
+  font: var(--pg-type-message);
+}
