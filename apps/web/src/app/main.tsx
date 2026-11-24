@@ -17,6 +17,14 @@ if (root === null) throw new Error('index.html is missing #root')
 
 await loadFonts()
 
+// Pigeon draws its own menus; the browser's only shows where you can type or select text,
+// so Copy and Paste still work there (docs/design.md, "Friends").
+document.addEventListener('contextmenu', (event) => {
+  const target = event.target instanceof Element ? event.target : null
+  if (target?.closest('input, textarea, [contenteditable], [data-selectable]') != null) return
+  event.preventDefault()
+})
+
 render(() => {
   const env = createBrowserEnv()
   const { api, Shell } = createShell(env)

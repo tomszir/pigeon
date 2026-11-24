@@ -3,7 +3,7 @@ import { createRoot } from 'solid-js'
 import { describe, expect, it } from 'vitest'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import { createMemoryStore, type Store } from '../../../platform/storage/storage.ts'
-import { createMessenger, type FriendView, type MessengerEvents } from './service.ts'
+import { createMessenger, type FriendView, type MessengerEvents, MUTED_FOREVER } from './service.ts'
 
 const never = new Promise<void>(() => undefined)
 
@@ -81,6 +81,80 @@ const only = (list: readonly FriendView[]) => {
 }
 
 describe('the Messenger service', () => {
+  it('renames and mutes a friend, and keeps both across a reload', async () => {
+    const network = createMemoryNetwork()
+    const { a, clock } = await pair(network)
+    const mikaId = only(a.messenger.friends()).id
+    await a.messenger.rename(mikaId, '  Mika (work)  ')
+    expect(a.messenger.friend(mikaId)).toMatchObject({ handle: 'Mika', name: 'Mika (work)' })
+    await a.messenger.mute(mikaId, clock.now() + 60_000)
+    expect(a.messenger.muted(mikaId)).toBe(true)
+    await clock.tick(61_000)
+    expect(a.messenger.muted(mikaId)).toBe(false)
+    await a.messenger.mute(mikaId, MUTED_FOREVER)
+
+    const again = await messenger(network, 'rook', { store: a.store, clock })
+    expect(again.messenger.friend(mikaId)).toMatchObject({ name: 'Mika (work)' })
+    expect(again.messenger.muted(mikaId)).toBe(true)
+    await again.messenger.rename(mikaId, '')
+    expect(again.messenger.friend(mikaId)?.name).toBe('Mika')
+  })
+
+  it('removes a friend, tells them, and with a block refuses their next invite', async () => {
+    const network = createMemoryNetwork()
+    const told: string[] = []
+    const { a, b } = await pair(network, {
+      b: { onUnfriended: (friend) => told.push(friend.name) },
+    })
+    const mikaId = only(a.messenger.friends()).id
+    const rookId = only(b.messenger.friends()).id
+    await b.messenger.send(rookId, 'hi')
+    await flush()
+    await a.messenger.remove(mikaId, { block: true })
+    await flush()
+    expect(a.messenger.friends()).toEqual([])
+    expect(await a.store.get(`log:${mikaId}`)).toBeUndefined()
+    expect(a.messenger.blocked().map((person) => person.handle)).toEqual(['Mika'])
+    // Mika's side is told, and keeps the chat read-only.
+    expect(told).toEqual(['Rook'])
+    expect(b.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
+    expect(b.messenger.friend(rookId)?.log.entries).toHaveLength(1)
+
+    // Rook's new invite won't answer a blocked Mika.
+    await a.messenger.newInvite()
+    const invite = decodeInvite(a.messenger.inviteCode() ?? '')
+    if (!invite.ok) throw new Error('bad invite')
+    let giveUp: () => void = () => undefined
+    const opened = b.messenger.open(
+      invite.value,
+      new Promise<void>((resolve) => {
+        giveUp = resolve
+      }),
+    )
+    await flush()
+    giveUp()
+    expect(await opened).toEqual({ ok: false, error: 'stopped' })
+    await a.messenger.unblock(mikaId)
+    expect(a.messenger.blocked()).toEqual([])
+  })
+
+  it('tells a removed friend who was offline once they come back', async () => {
+    const network = createMemoryNetwork()
+    const { a, b, clock } = await pair(network)
+    const mikaId = only(a.messenger.friends()).id
+    const rookId = only(b.messenger.friends()).id
+    b.transport.disconnect()
+    await flush()
+    await a.messenger.remove(mikaId, { block: false })
+    expect(await a.store.get('farewells')).toEqual([mikaId])
+
+    const back = await messenger(network, 'mika', { store: b.store, clock })
+    await flush()
+    expect(back.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
+    await flush()
+    expect(await a.store.get('farewells')).toEqual([])
+  })
+
   it('pairs by invite link and then sees the friend online, with presence', async () => {
     const paired: string[] = []
     const { a, b } = await pair(createMemoryNetwork(), {

@@ -101,7 +101,7 @@ export function Today(props: TodayProps) {
                       {online().length} {online().length === 1 ? 'friend' : 'friends'} online:
                     </strong>{' '}
                     {online()
-                      .map((friend) => friend.handle)
+                      .map((friend) => friend.name)
                       .join(', ')}
                   </span>
                 </Show>
@@ -117,7 +117,7 @@ export function Today(props: TodayProps) {
                   <img src={brand('pigeon-32')} alt="" width="32" height="32" />
                   <span class={styles.text}>
                     <strong>
-                      {friend.unread} new from {friend.handle}
+                      {friend.unread} new from {friend.name}
                     </strong>
                     <Marquee class={styles.muted}>
                       {

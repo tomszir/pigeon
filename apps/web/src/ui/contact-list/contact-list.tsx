@@ -36,6 +36,11 @@ export interface ContactListProps {
   selected?: string | undefined
   onSelect?: ((id: string) => void) | undefined
   onOpen?: ((id: string) => void) | undefined
+  /**
+   * Right-click, a long press, or the keyboard's menu key (Shift+F10) on a row, at a point in
+   * the page's own pixels.
+   */
+  onMenu?: ((id: string, at: { x: number; y: number }) => void) | undefined
   /** Shown when there are no contacts at all. */
   empty?: string | undefined
 }
@@ -49,6 +54,14 @@ export function ContactList(props: ContactListProps) {
   }
   /** The last press was a finger or pen rather than a mouse. */
   let tapped = false
+  /** A long press opened the menu, so the tap that ends it doesn't also open the chat. */
+  let pressed: ReturnType<typeof setTimeout> | undefined
+  let longPressed = false
+  const LONG_PRESS_MS = 500
+  const cancelPress = () => {
+    clearTimeout(pressed)
+    pressed = undefined
+  }
   const total = () => props.groups.reduce((sum, group) => sum + group.contacts.length, 0)
 
   return (
@@ -87,8 +100,31 @@ export function ContactList(props: ContactListProps) {
                           )}
                           onPointerDown={(event) => {
                             tapped = event.pointerType === 'touch' || event.pointerType === 'pen'
+                            longPressed = false
+                            cancelPress()
+                            if (!tapped || props.onMenu === undefined) return
+                            const at = { x: event.clientX, y: event.clientY }
+                            pressed = setTimeout(() => {
+                              longPressed = true
+                              props.onSelect?.(contact.id)
+                              props.onMenu?.(contact.id, at)
+                            }, LONG_PRESS_MS)
+                          }}
+                          onPointerUp={cancelPress}
+                          onPointerCancel={cancelPress}
+                          onPointerLeave={cancelPress}
+                          onContextMenu={(event) => {
+                            event.preventDefault()
+                            if (longPressed || props.onMenu === undefined) return
+                            props.onSelect?.(contact.id)
+                            props.onMenu(contact.id, { x: event.clientX, y: event.clientY })
                           }}
                           onClick={() => {
+                            if (longPressed) {
+                              longPressed = false
+                              tapped = false
+                              return
+                            }
                             props.onSelect?.(contact.id)
                             // A finger has no double-click: one tap opens, as on a phone.
                             if (tapped) props.onOpen?.(contact.id)
@@ -97,6 +133,16 @@ export function ContactList(props: ContactListProps) {
                           onDblClick={() => props.onOpen?.(contact.id)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter') props.onOpen?.(contact.id)
+                            if (
+                              props.onMenu !== undefined &&
+                              (event.key === 'ContextMenu' ||
+                                (event.shiftKey && event.key === 'F10'))
+                            ) {
+                              event.preventDefault()
+                              const box = event.currentTarget.getBoundingClientRect()
+                              props.onSelect?.(contact.id)
+                              props.onMenu(contact.id, { x: box.left + 24, y: box.bottom })
+                            }
                           }}
                         >
                           <img src={figures[contact.presence]()} alt="" width="16" height="16" />

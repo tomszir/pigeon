@@ -25,17 +25,18 @@ Inside a room the transport names connections (`ConnectionId`); those are not id
 
 Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical JSON (keys sorted), at most 64 KB (files are chunked). `sig` is `from`'s base32 signature over the envelope without `sig`, so naming the room stops an envelope being replayed into another one. Unsigned, oversized, malformed, wrong-room or blocked-sender messages are dropped, as is anything in a pair room from a key other than the friend's.
 
-| Type                                                        | Room        | Purpose                                                                              |
-| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------ |
-| `hello`                                                     | any         | handle (sealing key and capabilities from M4)                                        |
-| `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement                   |
-| `presence`                                                  | pair, lobby | status and personal message                                                          |
-| `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)) |
-| `typing`, `buzz`                                            | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s             |
-| `bye`                                                       | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides  |
-| `file-offer`, `file-chunk`, `file-ack`                      | pair        | chunked transfer with back-pressure                                                  |
-| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair        | store and forward                                                                    |
-| `page-request`, `page-snapshot`                             | page        | fetch the newest signed snapshot                                                     |
+| Type                                                        | Room        | Purpose                                                                                                |
+| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `hello`                                                     | any         | handle (sealing key and capabilities from M4)                                                          |
+| `pair-request`, `pair-offer`, `pair-confirm`, `pair-accept` | invite      | the invite handshake: names each way, then the invitee's agreement                                     |
+| `presence`                                                  | pair, lobby | status and personal message                                                                            |
+| `log-sync`, `log-entries`                                   | pair, page  | catch up on a signed log ([0003](decisions/0003-signed-append-only-logs-not-yjs.md))                   |
+| `typing`, `buzz`                                            | pair        | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s                               |
+| `bye`                                                       | pair        | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides                    |
+| `unfriend`                                                  | pair        | you removed them; resent until it's delivered ([0023](decisions/0023-removing-a-friend-tells-them.md)) |
+| `file-offer`, `file-chunk`, `file-ack`                      | pair        | chunked transfer with back-pressure                                                                    |
+| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair        | store and forward                                                                                      |
+| `page-request`, `page-snapshot`                             | page        | fetch the newest signed snapshot                                                                       |
 
 ## Pairing
 
@@ -44,6 +45,10 @@ An invite is an 8-character base32 code (40 bits, shown as `K7RT-VP2B`) that pai
 The inviter waits in `invite:<code>`. The invitee joins and sends `pair-request` (code, their name); the inviter answers `pair-offer` (code, its name). The invitee is shown the name and fingerprint: from a link, an offer whose fingerprint doesn't match the link's is refused; from a typed code, they're warned to compare it with their friend's screen. Only when they choose Add does `pair-confirm` go back; the inviter adds them, answers `pair-accept`, and stops hosting the code. Both then save each other as friends and meet in their pair room.
 
 While it waits, the invitee's Add a Friend shows each real step as it happens (`openInvite`'s `onStep`): reaching the relays (the room is joined), finding whoever made the code (a peer connected and was sent `pair-request`), and asking who they are (until `pair-offer`), then, after Add, waiting for `pair-accept`. A paper plane glides one way along a dotted path from you to your friend, its tip on the dots, fading in and out; the bar keeps moving, a countdown shows when it gives up (45 seconds for an answer, 20 for the accept), and a hint says what to check when a step stalls (`apps/messenger/connecting/`). Once paired, both sides go straight to the conversation, which opens with "Toms and Mika became friends on November 24 at 6:38 PM.", drawn from the friend's `addedAt`, so it stays on every visit.
+
+## Removing and blocking
+
+Removing a friend deletes them and your chat from this browser and sends `unfriend` in your pair room. If they're offline, the id waits in `farewells` and a session of its own sends it the next time they're there. Their Pigeon keeps the chat read-only, marks them "removed you", and stops its session; removing them too deletes it. Pairing again makes you friends once more. Blocking also keeps their id in `blocked`: your invites leave their `pair-request` unanswered, and an invite of theirs you open is refused before anything is agreed. Petnames and mutes are yours alone and never leave the browser.
 
 ## Logs
 

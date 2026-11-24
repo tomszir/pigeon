@@ -21,6 +21,8 @@ export type Body =
   | { readonly type: 'buzz' }
   /** Sent as a tab closes, so the friend shows you offline now rather than at the timeout. */
   | { readonly type: 'bye' }
+  /** You've removed this friend: their Pigeon stops talking to you and says so. */
+  | { readonly type: 'unfriend' }
   | { readonly type: 'log-sync'; readonly have: LogSummary }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
   /** The invitee answers an invite; `code` proves they were given it (decision 0018). */
@@ -68,6 +70,7 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   typing: (b) => typeof b['active'] === 'boolean',
   buzz: () => true,
   bye: () => true,
+  unfriend: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
   'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']),

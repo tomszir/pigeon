@@ -35,7 +35,14 @@ import { batch, createSignal } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
-import { isChatLog, isFriendRecords, isHostedInvite, isProfile } from './stored.ts'
+import {
+  isBlockedRecords,
+  isChatLog,
+  isFriendRecords,
+  isHostedInvite,
+  isPeerIds,
+  isProfile,
+} from './stored.ts'
 
 /** How long a "typing" lasts without a refresh, and how often the sender refreshes it. */
 export const TYPING_EXPIRES_MS = 6000
@@ -52,9 +59,27 @@ export interface FriendRecord {
   /** The name they chose, as last seen in their signed hello. */
   readonly handle: string
   readonly addedAt: number
+  /** What you call them, shown instead of their handle. */
+  readonly petname?: string | undefined
+  /** No balloons and no shaking from them until then (`Infinity` stored as -1: until unmuted). */
+  readonly mutedUntil?: number | undefined
+  /** They removed you: the chat stays, read-only, until you remove them too. */
+  readonly removedYouAt?: number | undefined
 }
 
+/** Someone you've blocked: their invite requests and answers are refused. */
+export interface BlockedRecord {
+  readonly id: PeerId
+  readonly handle: string
+  readonly at: number
+}
+
+/** Stored for "until I unmute". */
+export const MUTED_FOREVER = -1
+
 export interface FriendView extends FriendRecord {
+  /** The petname if you gave one, else their handle: what every screen shows. */
+  readonly name: string
   readonly fingerprint: string
   readonly online: boolean
   readonly presence: Presence
@@ -78,6 +103,7 @@ export interface MessengerEvents {
   readonly onMessage?: (friend: FriendView, entry: LogEntry) => void
   readonly onBuzz?: (friend: FriendView) => void
   readonly onOnline?: (friend: FriendView) => void
+  readonly onUnfriended?: (friend: FriendView) => void
 }
 
 export interface MessengerDeps {
@@ -98,6 +124,9 @@ const KEYS = {
   profile: 'profile',
   friends: 'friends',
   invite: 'invite',
+  blocked: 'blocked',
+  /** Friends you removed who haven't been told yet. */
+  farewells: 'farewells',
   log: (id: PeerId) => `log:${id}`,
 } as const
 
@@ -112,7 +141,11 @@ export interface HostedInvite {
   readonly expiresAt: number
 }
 
-export type OpenedInvite = OpenResult | { readonly ok: false; readonly error: 'own' }
+export type OpenedInvite =
+  | OpenResult
+  | { readonly ok: false; readonly error: 'own' }
+  /** The inviter is someone you blocked. */
+  | { readonly ok: false; readonly error: 'blocked'; readonly handle: string }
 
 export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, transport, clock } = deps
@@ -140,15 +173,39 @@ export async function createMessenger(deps: MessengerDeps) {
   const saveFriends = () =>
     store.set(
       KEYS.friends,
-      friendList().map(({ id, handle, addedAt }) => ({ id, handle, addedAt })),
+      friendList().map(
+        ({ id, handle, addedAt, petname, mutedUntil, removedYouAt }): FriendRecord => ({
+          id,
+          handle,
+          addedAt,
+          ...(petname === undefined ? {} : { petname }),
+          ...(mutedUntil === undefined ? {} : { mutedUntil }),
+          ...(removedYouAt === undefined ? {} : { removedYouAt }),
+        }),
+      ),
     )
+  const nameOf = (handle: string, petname: string | undefined) => petname ?? handle
+
+  const storedBlocked = await store.get(KEYS.blocked)
+  const [blocked, setBlocked] = createSignal<readonly BlockedRecord[]>(
+    isBlockedRecords(storedBlocked) ? storedBlocked : [],
+  )
+  const isBlocked = (id: PeerId) => blocked().some((record) => record.id === id)
+  const storedFarewells = await store.get(KEYS.farewells)
+  let farewells: readonly PeerId[] = isPeerIds(storedFarewells) ? storedFarewells : []
+  const farewellSessions = new Map<PeerId, PairSession>()
 
   const handlers: {
     [T in PairEvent['type']]: (id: PeerId, event: Extract<PairEvent, { type: T }>) => void
   } = {
     online: (id, event) => {
-      const changed = state.friends[id]?.handle !== event.handle
-      setState('friends', id, { online: true, handle: event.handle })
+      const current = state.friends[id]
+      const changed = current?.handle !== event.handle
+      setState('friends', id, {
+        online: true,
+        handle: event.handle,
+        name: nameOf(event.handle, current?.petname),
+      })
       note(id, 'online')
       if (changed) void saveFriends()
       const view = friend(id)
@@ -172,6 +229,15 @@ export async function createMessenger(deps: MessengerDeps) {
       note(id, 'buzz-in')
       const view = friend(id)
       if (view !== undefined) events.onBuzz?.(view)
+    },
+    unfriended: (id) => {
+      setState('friends', id, { removedYouAt: clock.now(), online: false, typing: false })
+      void saveFriends()
+      const session = sessions.get(id)
+      sessions.delete(id)
+      void session?.close()
+      const view = friend(id)
+      if (view !== undefined) events.onUnfriended?.(view)
     },
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
@@ -211,7 +277,7 @@ export async function createMessenger(deps: MessengerDeps) {
   async function startSession(id: PeerId) {
     if (sessions.has(id) || profile().handle === '') return
     const view = friend(id)
-    if (view === undefined) return
+    if (view === undefined || view.removedYouAt !== undefined) return
     const room = await transport.join(await pairRoom(crypto, signer.id, id))
     const session = startPairSession({
       crypto,
@@ -231,12 +297,18 @@ export async function createMessenger(deps: MessengerDeps) {
   async function addFriend(record: FriendRecord, log?: ChatLog) {
     const existing = friend(record.id)
     if (existing !== undefined) {
-      setState('friends', record.id, 'handle', record.handle)
+      // Paired again, perhaps after they'd removed you: friends once more.
+      setState('friends', record.id, {
+        handle: record.handle,
+        name: nameOf(record.handle, existing.petname),
+        removedYouAt: undefined,
+      })
       return existing
     }
     const room = await pairRoom(crypto, signer.id, record.id)
     setState('friends', record.id, {
       ...record,
+      name: nameOf(record.handle, record.petname),
       fingerprint: await fingerprint(crypto, record.id),
       online: false,
       presence: { status: 'online', message: '' },
@@ -276,6 +348,7 @@ export async function createMessenger(deps: MessengerDeps) {
       sleep: clock.sleep,
       code: hosted.code,
       onPaired: (paired) => void welcome(paired),
+      refuse: isBlocked,
     })
     void clock.sleep(hosted.expiresAt - clock.now()).then(() => {
       if (invite()?.code === hosted.code) void stopInvite()
@@ -310,8 +383,61 @@ export async function createMessenger(deps: MessengerDeps) {
     const log = await store.get(KEYS.log(record.id))
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
   }
+  // Telling a removed friend: a session of its own that says unfriend once they're there.
+  async function sayFarewell(id: PeerId) {
+    if (farewellSessions.has(id)) return
+    const room = await transport.join(await pairRoom(crypto, signer.id, id))
+    const session: PairSession = startPairSession({
+      crypto,
+      signer,
+      friend: id,
+      room,
+      handle: () => profile().handle,
+      presence: () => ({ status: profile().status, message: profile().message }),
+      log: emptyLog(room.name),
+      now: clock.now,
+      onEvent: (event) => {
+        if (event.type !== 'online') return
+        void session.unfriend().then(async () => {
+          farewells = farewells.filter((other) => other !== id)
+          await store.set(KEYS.farewells, farewells)
+          farewellSessions.delete(id)
+          await session.close()
+        })
+      },
+    })
+    farewellSessions.set(id, session)
+  }
+
+  async function removeFriend(id: PeerId, options: { block: boolean }) {
+    const view = friend(id)
+    if (view === undefined) return
+    const session = sessions.get(id)
+    sessions.delete(id)
+    await session?.close()
+    batch(() => {
+      setState(
+        'friends',
+        produce((friends) => delete friends[id]),
+      )
+    })
+    await saveFriends()
+    await store.delete(KEYS.log(id))
+    if (options.block && !isBlocked(id)) {
+      setBlocked([...blocked(), { id, handle: view.handle, at: clock.now() }])
+      await store.set(KEYS.blocked, blocked())
+    }
+    // They removed you first: there's nobody to tell.
+    if (view.removedYouAt === undefined) {
+      farewells = [...farewells.filter((other) => other !== id), id]
+      await store.set(KEYS.farewells, farewells)
+      await sayFarewell(id)
+    }
+  }
+
   async function connect() {
     await Promise.all(friendList().map((view) => startSession(view.id)))
+    if (profile().handle !== '') await Promise.all(farewells.map((id) => sayFarewell(id)))
     const stored = await store.get(KEYS.invite)
     if (isHostedInvite(stored)) await host(stored)
   }
@@ -376,6 +502,10 @@ export async function createMessenger(deps: MessengerDeps) {
         await offer.cancel()
         return { ok: false, error: 'own' }
       }
+      if (isBlocked(offer.friend.id)) {
+        await offer.cancel()
+        return { ok: false, error: 'blocked', handle: offer.friend.handle }
+      }
       return {
         ok: true,
         offer: {
@@ -423,14 +553,42 @@ export async function createMessenger(deps: MessengerDeps) {
       if (state.friends[id]?.unread !== 0) setState('friends', id, 'unread', 0)
     },
     isFriend: (id: string) => isPeerId(id) && friend(id) !== undefined,
+    /** Calls a friend something of your own; an empty name goes back to theirs. */
+    async rename(id: PeerId, petname: string) {
+      const view = friend(id)
+      if (view === undefined) return
+      const trimmed = petname.trim().slice(0, MAX_HANDLE_LENGTH)
+      const next = trimmed === '' || trimmed === view.handle ? undefined : trimmed
+      setState('friends', id, { petname: next, name: nameOf(view.handle, next) })
+      await saveFriends()
+    },
+    /** Quiets a friend until `until` (a time, or MUTED_FOREVER); undefined unmutes. */
+    async mute(id: PeerId, until: number | undefined) {
+      if (friend(id) === undefined) return
+      setState('friends', id, 'mutedUntil', until)
+      await saveFriends()
+    },
+    muted(id: PeerId): boolean {
+      const until = friend(id)?.mutedUntil
+      return until !== undefined && (until === MUTED_FOREVER || until > clock.now())
+    },
+    remove: removeFriend,
+    blocked,
+    async unblock(id: PeerId) {
+      setBlocked(blocked().filter((record) => record.id !== id))
+      await store.set(KEYS.blocked, blocked())
+    },
     /** For a closing tab: friends see you go offline at once. */
     goodbye() {
       for (const session of sessions.values()) session.goodbye()
     },
     async close() {
       await stopHosting?.()
-      await Promise.all([...sessions.values()].map((session) => session.close()))
+      await Promise.all(
+        [...sessions.values(), ...farewellSessions.values()].map((session) => session.close()),
+      )
       sessions.clear()
+      farewellSessions.clear()
     },
   }
 }

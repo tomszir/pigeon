@@ -39,7 +39,7 @@ export interface AddFriendProps {
   now?: () => number
 }
 
-type Failure = 'no-answer' | 'impostor' | 'no-confirm'
+type Failure = 'no-answer' | 'impostor' | 'no-confirm' | 'blocked'
 
 type View =
   | { readonly kind: 'share' }
@@ -58,6 +58,8 @@ const FAILURES: Record<Failure, string> = {
     "Nobody answered. An invite works once, for 30 minutes, and only while Pigeon is open on your friend's side. Ask them for a new one.",
   impostor:
     "Someone answered this link, but not the person who made it: their fingerprint doesn't match the one in the link. Pigeon didn't add them. Ask your friend for a new invite.",
+  blocked:
+    'This invite is from someone you blocked. To add them, unblock them first in Contacts, Blocked People.',
   'no-confirm':
     "Your friend's Pigeon stopped answering before it added you. Ask them for a new invite and try again.",
 }
@@ -109,7 +111,15 @@ export function AddFriend(props: AddFriendProps) {
       setTypedError("That's your own invite. Send it to a friend instead.")
       return
     }
-    setView({ kind: 'failed', failure: opened.error === 'impostor' ? 'impostor' : 'no-answer' })
+    setView({
+      kind: 'failed',
+      failure:
+        opened.error === 'impostor'
+          ? 'impostor'
+          : opened.error === 'blocked'
+            ? 'blocked'
+            : 'no-answer',
+    })
   }
 
   const add = async (offer: Offer) => {

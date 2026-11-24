@@ -39,6 +39,8 @@ export interface MenuProps {
   focusFirst?: boolean | undefined
   style?: JSX.CSSProperties | undefined
   class?: string | undefined
+  /** The menu's element once it's on the page, to measure or move it. */
+  ref?: ((element: HTMLDivElement) => void) | undefined
 }
 
 export function Menu(props: MenuProps) {
@@ -112,7 +114,10 @@ export function Menu(props: MenuProps) {
 
   return (
     <div
-      ref={root}
+      ref={(element) => {
+        root = element
+        props.ref?.(element)
+      }}
       role="menu"
       aria-label={props.label}
       class={classes(styles.menu, props.class)}

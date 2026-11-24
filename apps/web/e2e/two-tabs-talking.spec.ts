@@ -109,6 +109,14 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   )
   await expect(rookMessenger.getByRole('button', { name: /Sam/ })).toBeVisible()
 
+  // A friend's own menu: right-click Mika and call her something else.
+  await rookMessenger.getByRole('button', { name: /^Mika/ }).click({ button: 'right' })
+  await rook.getByRole('menuitem', { name: 'Rename...' }).click()
+  const rename = rook.getByRole('dialog', { name: 'Rename Friend' })
+  await rename.getByRole('textbox', { name: 'Call them:' }).fill('Mika (work)')
+  await rename.getByRole('button', { name: 'OK' }).click()
+  await expect(rookMessenger.getByRole('button', { name: /Mika \(work\)/ })).toBeVisible()
+
   await samContext.close()
   await rookContext.close()
   await mikaContext.close()

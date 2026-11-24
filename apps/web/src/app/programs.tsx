@@ -1,10 +1,17 @@
 // What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
 // shell draws it and the apps fill the windows.
-import type { Invite, PeerId } from '@pigeon/core'
+import { formatFingerprint, type Invite, type PeerId } from '@pigeon/core'
 import { type Accessor, createSignal, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
+import {
+  BlockedPeople,
+  FriendProfile,
+  MuteFriend,
+  RemoveFriend,
+  RenameFriend,
+} from '../apps/messenger/friend-dialogs/friend-dialogs.tsx'
 import { LiveConversation } from '../apps/messenger/live-conversation/live-conversation.tsx'
 import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample.ts'
 import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
@@ -14,6 +21,7 @@ import { Readme } from '../apps/readme/readme/readme.tsx'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
+import type { MenuEntry } from '../ui/menu/menu.tsx'
 
 export interface Programs extends ShellProps {
   readonly openReadme: () => void
@@ -104,8 +112,8 @@ export function createPrograms(
     if (messenger === undefined || friend === undefined) return
     const windowId = conversationWindow(id)
     api.open(windowId, {
-      title: `${friend.handle} - Conversation`,
-      taskTitle: friend.handle,
+      title: `${friend.name} - Conversation`,
+      taskTitle: friend.name,
       icon: brandIcon('pigeon-16'),
       bounds: cascade(),
       resizable: true,
@@ -117,6 +125,7 @@ export function createPrograms(
           onBuzz={window.buzz}
           onClose={window.close}
           onAbout={openAbout}
+          actions={() => friendMenu(id, 'chat')}
         />
       ),
     })
@@ -172,24 +181,158 @@ export function createPrograms(
     })
   }
 
+  // A friend's menu and the windows it opens (docs/design.md, "Friends").
+  const now = () => env.now().getTime()
+  const friendDialog = (
+    kind: string,
+    id: PeerId,
+    title: string,
+    size: { width: number; height: number },
+    content: (messenger: Messenger, close: () => void) => ReturnType<typeof FriendProfile>,
+  ) => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open(`${kind}:${id}`, {
+      title,
+      icon: tangoIcon('contact-new', 16),
+      bounds: { x: 512 - size.width / 2, y: 384 - size.height / 2 - 40, ...size },
+      controls: { minimize: false, maximize: false },
+      content: (window) => content(messenger, window.close),
+    })
+  }
+  const openRename = (id: PeerId) =>
+    friendDialog('rename', id, 'Rename Friend', { width: 340, height: 190 }, (messenger, close) => (
+      <RenameFriend messenger={messenger} friend={id} onClose={close} now={now} />
+    ))
+  const openProfile = (id: PeerId) => {
+    const name = host.messenger()?.friend(id)?.name ?? 'Friend'
+    friendDialog('profile', id, `${name} - Profile`, { width: 380, height: 280 }, (m, close) => (
+      <FriendProfile
+        messenger={m}
+        friend={id}
+        onClose={close}
+        now={now}
+        onRename={() => {
+          close()
+          openRename(id)
+        }}
+      />
+    ))
+  }
+  const openMute = (id: PeerId) =>
+    friendDialog('mute', id, 'Mute Friend', { width: 360, height: 230 }, (messenger, close) => (
+      <MuteFriend messenger={messenger} friend={id} onClose={close} now={now} />
+    ))
+  const openRemove = (id: PeerId) =>
+    friendDialog('remove', id, 'Remove Friend', { width: 400, height: 220 }, (messenger, close) => (
+      <RemoveFriend
+        messenger={messenger}
+        friend={id}
+        now={now}
+        onClose={() => {
+          close()
+          if (messenger.friend(id) === undefined) api.close(conversationWindow(id))
+        }}
+      />
+    ))
+  const openBlocked = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('blocked', {
+      title: 'Blocked People',
+      icon: tangoIcon('contact-new', 16),
+      bounds: { x: 332, y: 220, width: 360, height: 280 },
+      controls: { minimize: false, maximize: false },
+      content: (window) => <BlockedPeople messenger={messenger} onClose={window.close} />,
+    })
+  }
+  const copyFingerprint = async (id: PeerId) => {
+    const view = host.messenger()?.friend(id)
+    if (view === undefined) return
+    const copied = await host.copyText(formatFingerprint(view.fingerprint))
+    api.notify({
+      title: copied ? 'Fingerprint copied' : 'Copy the fingerprint',
+      icon: tangoIcon('contact-new', 16),
+      body: copied
+        ? `${view.name}'s fingerprint is on the clipboard.`
+        : `Your browser kept the clipboard to itself. It's in ${view.name}'s profile.`,
+    })
+  }
+  /**
+   * A friend's menu. In the list it starts with Send a Message and Buzz!; a chat window's
+   * Actions menu has its own Buzz, so it starts at View Profile.
+   */
+  const friendMenu = (contactId: string, place: 'list' | 'chat' = 'list'): readonly MenuEntry[] => {
+    const messenger = host.messenger()
+    const view = messenger?.friend(contactId as PeerId)
+    if (messenger === undefined || view === undefined) return []
+    const id = view.id
+    if (view.removedYouAt !== undefined)
+      return [
+        ...(place === 'list'
+          ? [{ label: 'Open &Chat', onSelect: () => openFriendConversation(id) }]
+          : []),
+        { label: 'View &Profile', onSelect: () => openProfile(id) },
+        { kind: 'separator' },
+        { label: 'Re&move Friend...', onSelect: () => openRemove(id) },
+      ]
+    const about: readonly MenuEntry[] = [
+      { label: 'View &Profile', onSelect: () => openProfile(id) },
+      { label: '&Rename...', onSelect: () => openRename(id) },
+      { label: 'Copy &Fingerprint', onSelect: () => void copyFingerprint(id) },
+      { kind: 'separator' },
+      messenger.muted(id)
+        ? { label: 'Un&mute', onSelect: () => void messenger.mute(id, undefined) }
+        : { label: '&Mute...', onSelect: () => openMute(id) },
+      { kind: 'separator' },
+      { label: 'Re&move Friend...', onSelect: () => openRemove(id) },
+    ]
+    if (place === 'chat') return about
+    return [
+      { label: 'Send a &Message', onSelect: () => openFriendConversation(id) },
+      {
+        label: '&Buzz!',
+        disabled: !view.online,
+        onSelect: () => {
+          openFriendConversation(id)
+          messenger.buzz(id)
+          api.buzz(conversationWindow(id))
+        },
+      },
+      { kind: 'separator' },
+      ...about,
+    ]
+  }
+
   const friendIcon = brandIcon('pigeon-16')
+  const muted = (friend: FriendView) => host.messenger()?.muted(friend.id) === true
   const messengerEvents: MessengerEvents = {
     // Someone answered your invite: their chat opens, starting with "... became friends".
     onPaired: (friend: FriendView) => {
       setSample(false)
       openFriendConversation(friend.id)
     },
-    onOnline: (friend) =>
-      api.notify({ title: friend.handle, icon: friendIcon, body: 'has just come online.' }),
-    onMessage: (friend, entry) => {
-      if (api.isActive(conversationWindow(friend.id))) return
+    onOnline: (friend) => {
+      if (muted(friend)) return
+      api.notify({ title: friend.name, icon: friendIcon, body: 'has just come online.' })
+    },
+    onUnfriended: (friend) =>
       api.notify({
-        title: `${friend.handle} says:`,
+        title: `${friend.name} removed you`,
+        icon: friendIcon,
+        body: 'Your chat stays until you remove them too.',
+      }),
+    onMessage: (friend, entry) => {
+      if (muted(friend) || api.isActive(conversationWindow(friend.id))) return
+      api.notify({
+        title: `${friend.name} says:`,
         icon: friendIcon,
         body: entry.text.slice(0, 120),
       })
     },
     onBuzz: (friend) => {
+      // Muted: the buzz is in the chat, but nothing shakes or vibrates.
+      if (muted(friend)) return
       if (!sample()) openFriendConversation(friend.id)
       api.buzz(conversationWindow(friend.id))
     },
@@ -212,6 +355,8 @@ export function createPrograms(
           onOpenConversation={openConversation}
           onAddFriend={() => openAddFriend()}
           onCopyInvite={() => void copyInvite()}
+          menuFor={friendMenu}
+          onBlockedPeople={openBlocked}
           onAbout={openAbout}
           onClose={window.close}
         />
@@ -340,7 +485,7 @@ export function createPrograms(
           const total = unread.reduce((sum, friend) => sum + friend.unread, 0)
           return `${total} new messages`
         }
-        return `${first.unread} new from ${first.handle}`
+        return `${first.unread} new from ${first.name}`
       },
       // The left soft key does the obvious next thing for what's on screen.
       leftSoftKey: (front) => {

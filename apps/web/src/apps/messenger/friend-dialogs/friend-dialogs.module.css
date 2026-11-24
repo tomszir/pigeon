@@ -1,0 +1,97 @@
+/* The friend menu's small windows: a body, and the era's buttons along the bottom right. */
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 12px;
+  padding: 12px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.lead,
+.note {
+  margin: 0;
+  line-height: 15px;
+}
+
+.note,
+.muted {
+  color: var(--pg-text-muted);
+}
+
+/* Label in a column of its own, the value beside it. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--pg-text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blocked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--pg-separator);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Phone: centred in the screen, buttons full width along the bottom. */
+.phone {
+  padding: 16px 12px 12px;
+}
+
+.phone .buttons {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.wide {
+  width: 100%;
+}

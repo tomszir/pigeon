@@ -2,6 +2,7 @@
 // typing line, and a status bar that says plainly how the words travel.
 import { formatFingerprint, type PeerId } from '@pigeon/core'
 import { createEffect, Show } from 'solid-js'
+import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import { Conversation } from '../conversation/conversation.tsx'
 import type { FriendView, Messenger, Note } from '../service/service.ts'
@@ -15,6 +16,8 @@ export interface LiveConversationProps {
   onBuzz: () => void
   onClose: () => void
   onAbout: () => void
+  /** The friend's own items for the Actions menu (profile, rename, mute, remove). */
+  actions?: (() => readonly MenuEntry[]) | undefined
 }
 
 /** "6:38 PM", in the visitor's own time zone, like the taskbar clock. */
@@ -48,7 +51,7 @@ export function transcriptFor(view: FriendView, self: PeerId, selfName: string) 
     entries.push({
       kind: 'system',
       id: 'became-friends',
-      text: `${selfName} and ${view.handle} became friends on ${dayName(view.addedAt)} at ${clockTime(view.addedAt)}.`,
+      text: `${selfName} and ${view.name} became friends on ${dayName(view.addedAt)} at ${clockTime(view.addedAt)}.`,
     })
   const notes = [...view.notes]
   const flush = (upTo: number) => {
@@ -59,7 +62,7 @@ export function transcriptFor(view: FriendView, self: PeerId, selfName: string) 
       entries.push({
         kind: shown.kind,
         id: `note-${note.id}`,
-        text: shown.text(view.handle, note.at),
+        text: shown.text(view.name, note.at),
       })
     }
   }
@@ -69,12 +72,18 @@ export function transcriptFor(view: FriendView, self: PeerId, selfName: string) 
     entries.push({
       kind: 'message',
       id: entry.sig,
-      from: own ? selfName : view.handle,
+      from: own ? selfName : view.name,
       own,
       text: entry.text,
     })
   })
   flush(Number.POSITIVE_INFINITY)
+  if (view.removedYouAt !== undefined)
+    entries.push({
+      kind: 'system',
+      id: 'removed-you',
+      text: `${view.name} removed you as a friend on ${dayName(view.removedYouAt)} at ${clockTime(view.removedYouAt)}.`,
+    })
   return entries
 }
 
@@ -91,16 +100,19 @@ export function LiveConversation(props: LiveConversationProps) {
     <Show when={view()} fallback={<p>This friend is no longer on your list.</p>}>
       {(current) => (
         <Conversation
-          name={current().handle}
+          name={current().name}
           fingerprint={formatFingerprint(current().fingerprint)}
           route={current().online ? 'direct, encrypted' : 'offline'}
           connected={current().online}
           entries={transcriptFor(current(), props.messenger.self, props.messenger.profile().handle)}
-          typing={current().typing ? `${current().handle} is writing a message...` : ''}
+          typing={current().typing ? `${current().name} is writing a message...` : ''}
+          closed={current().removedYouAt !== undefined}
           status={
-            current().online
-              ? `Connected directly to ${current().handle}. Nothing passes through a server.`
-              : `${current().handle} is offline. What you write reaches them next time you're both online.`
+            current().removedYouAt !== undefined
+              ? `${current().name} removed you. This chat stays here until you remove them too.`
+              : current().online
+                ? `Connected directly to ${current().name}. Nothing passes through a server.`
+                : `${current().name} is offline. What you write reaches them next time you're both online.`
           }
           canBuzz={current().online}
           onSend={(text) => void props.messenger.send(props.friend, text)}
@@ -111,6 +123,7 @@ export function LiveConversation(props: LiveConversationProps) {
           }}
           onClose={props.onClose}
           onAbout={props.onAbout}
+          actions={props.actions?.()}
         />
       )}
     </Show>
