@@ -20,7 +20,7 @@ export function resolution(id: ResolutionId): Resolution {
 }
 
 /** The monitor's plastic and glass around the screen, in screen pixels at 1×. */
-export const BEZEL = { side: 46, top: 44, bottom: 74 } as const
+export const BEZEL = { side: 25, top: 25, bottom: 25 } as const
 
 export const monitorSize = (screen: Resolution) => ({
   width: screen.width + BEZEL.side * 2,

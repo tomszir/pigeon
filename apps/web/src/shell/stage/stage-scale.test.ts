@@ -6,14 +6,14 @@ const monitor = monitorSize(xga)
 
 describe('layoutFor', () => {
   it('sizes the monitor as the screen plus its plastic', () => {
-    expect(monitor).toEqual({ width: 1116, height: 886 })
+    expect(monitor).toEqual({ width: 1074, height: 818 })
   })
 
   it.each([
-    ['a 1080p browser window', 1920, 960, 1, 402, 37],
-    ['a 1440p screen', 2560, 1300, 1, 722, 207],
-    ['a 4K screen', 3840, 2000, 2, 804, 114],
-    ['exactly two monitors', 2232, 1772, 2, 0, 0],
+    ['a 1080p browser window', 1920, 960, 1, 423, 71],
+    ['a 1440p screen', 2560, 1300, 1, 743, 241],
+    ['a 4K screen', 3840, 2000, 2, 846, 182],
+    ['exactly two monitors', 2148, 1636, 2, 0, 0],
   ])('%s (%i×%i) shows the monitor at %i×', (_, width, height, scale, left, top) => {
     expect(layoutFor(width, height, xga)).toEqual({ kind: 'monitor', scale, left, top })
   })

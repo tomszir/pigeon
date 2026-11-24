@@ -48,7 +48,8 @@
  */
 .crtLayer {
   inset: calc(-2px * var(--pg-scale));
-  border-radius: calc(18px * var(--pg-scale));
+  /* The tube's curve plus the overhang; bare, with no tube, the corners stay square. */
+  border-radius: calc(var(--pg-tube-radius, 0px) + 2px * var(--pg-scale));
   background:
     radial-gradient(
       ellipse 130% 55% at 35% -12%,
