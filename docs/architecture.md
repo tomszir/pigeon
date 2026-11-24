@@ -6,9 +6,13 @@ The pnpm monorepo, its layers, and the import rules Biome enforces.
 
 ```
 packages/
-  core/         @pigeon/core: pure TypeScript, no browser or Node APIs.
-                Protocol types and codecs, signed append-only logs, letter rules,
-                pigeon:// resolution, window-manager state.
+  core/         @pigeon/core: pure TypeScript, no browser or Node APIs. One folder
+                per feature under src/, each holding its files and their tests:
+      transport/  the Transport and Room interfaces (decision 0002).
+      windows/    window-manager state.
+      result/     the Result type.
+                Protocol codecs, signed append-only logs, letter rules and
+                pigeon:// resolution arrive as their own folders.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse.
 apps/
@@ -45,7 +49,7 @@ Biome's `noRestrictedImports` overrides in `biome.json` enforce every row. An ap
 
 ## Shell and windows
 
-The window-manager state (open windows, bounds, z-order, focus, minimise and maximise) lives in `@pigeon/core` as pure functions (`window-manager.ts`). The shell keeps one `Desktop` value in a Solid signal and replaces it through those functions. `ui/window.tsx` draws a frame at the bounds it is given and reports drags, clicks and keys; it never moves itself. Windows stay in opening order in the DOM and stack by `z-index`, so raising a window never re-parents it mid-drag.
+The window-manager state (open windows, bounds, z-order, focus, minimise and maximise) lives in `@pigeon/core` as pure functions (`windows/window-manager.ts`). The shell keeps one `Desktop` value in a Solid signal and replaces it through those functions. `ui/window.tsx` draws a frame at the bounds it is given and reports drags, clicks and keys; it never moves itself. Windows stay in opening order in the DOM and stack by `z-index`, so raising a window never re-parents it mid-drag.
 
 The shell reads the browser only through `ShellEnv` (viewport, reduced motion, clock, outside links), which `app/browser-env.ts` builds, so shell tests can pass fakes.
 
@@ -55,5 +59,6 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - The caller passes time and randomness in; `core` has no module-level state.
 - Content and numbers live in tables, not branches.
 - Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`.
+- Folders by feature, never one flat directory: in a package, `src/<feature>/` ([0015](decisions/0015-feature-folders-everywhere.md)); in the web app, the layer folders above and one folder per component.
 - In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses ([0010](decisions/0010-component-folders-and-css-modules.md)). Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
 - Tests sit beside the file they test (`name.test.ts`) and go at the lowest level that fails for the reason they guard. Playwright e2e lives in `apps/web/e2e/`.
