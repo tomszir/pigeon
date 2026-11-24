@@ -1,9 +1,11 @@
 /* Check boxes and radio buttons: the native input is hidden; the label draws the box. */
 
+/* Always left-aligned, even inside a centred phone dialog: the box stays by its label. */
 .check {
   position: relative;
   display: inline-flex;
   align-items: center;
+  text-align: left;
 }
 
 .input {

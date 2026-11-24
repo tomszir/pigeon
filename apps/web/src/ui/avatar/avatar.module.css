@@ -7,6 +7,7 @@
   box-sizing: border-box;
   padding: 2px;
   border: 1px solid var(--pg-field-border);
+  border-radius: var(--pg-radius-avatar);
   background: #ffffff;
   box-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
 }
@@ -20,17 +21,18 @@
 .avatar img,
 .bare img {
   display: block;
-  image-rendering: pixelated;
+  border-radius: calc(var(--pg-radius-avatar) - 2px);
 }
 
 /* How they are, as a lit dot in the corner, the way 2003 lit a status. */
+/* On the frame's bottom-right corner, over the border, just past it, but not so far it gets clipped. */
 .status {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
+  right: -2px;
+  bottom: -2px;
   box-sizing: border-box;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border: 1px solid #ffffff;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);

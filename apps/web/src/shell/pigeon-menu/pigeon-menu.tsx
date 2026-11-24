@@ -91,8 +91,21 @@ export function PigeonMenu(props: PigeonMenuProps) {
       onKeyDown={onKeyDown}
     >
       <div class={styles.header}>
-        <img src={brand('pigeon-48')} alt="" width="42" height="42" class={styles.picture} />
-        <span class={styles.name}>Pigeon</span>
+        <Show
+          when={props.spec.user?.().picture !== undefined}
+          fallback={
+            <img src={brand('pigeon-48')} alt="" width="42" height="42" class={styles.picture} />
+          }
+        >
+          <img
+            src={props.spec.user?.().picture?.src}
+            alt=""
+            width="42"
+            height="42"
+            class={classes(styles.picture, styles.bird)}
+          />
+        </Show>
+        <span class={styles.name}>{props.spec.user?.().name || 'Pigeon'}</span>
       </div>
       <div class={styles.columns}>
         <div class={styles.rule} aria-hidden="true" />

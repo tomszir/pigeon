@@ -35,6 +35,13 @@
 }
 
 /* Label in a column of its own, the value beside it. */
+/* The bird beside the facts, not above them, so the window needn't grow. */
+.profile {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 .facts {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -51,6 +58,11 @@
   overflow-wrap: anywhere;
 }
 
+.profile .facts {
+  flex-grow: 1;
+  min-width: 0;
+}
+
 .choices {
   display: flex;
   flex-direction: column;
@@ -64,6 +76,14 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* A blocked person's bird beside their name and when you blocked them. */
+.someone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .person {
@@ -94,4 +114,11 @@
 
 .wide {
   width: 100%;
+}
+
+/* A choice in a message box: a full-width, left-aligned block, even where the text is centred. */
+.choice {
+  align-self: stretch;
+  margin-top: 4px;
+  text-align: left;
 }

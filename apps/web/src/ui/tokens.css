@@ -41,6 +41,8 @@
   --pg-link-hover: #e8743b;
   --pg-selection: #316ac5;
   --pg-list-hover: #e3ecfa;
+  /* Every pixel pigeon's corners, wherever it's shown. */
+  --pg-radius-avatar: 4px;
   --pg-selection-text: #ffffff;
   --pg-legend: #0046d5;
   --pg-group-border: #d0d0bf;

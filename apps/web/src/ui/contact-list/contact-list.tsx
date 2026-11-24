@@ -174,7 +174,7 @@ export function ContactList(props: ContactListProps) {
                           >
                             <Avatar
                               traits={contact.avatar}
-                              size={32}
+                              size={24}
                               name={contact.name}
                               decorative
                               status={DOT[contact.presence]}

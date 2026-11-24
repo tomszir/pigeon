@@ -1,7 +1,7 @@
 // What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
 // shell draws it and the apps fill the windows.
 import { formatFingerprint, type Invite, type PeerId } from '@pigeon/core'
-import { type Accessor, createSignal, Show } from 'solid-js'
+import { type Accessor, createEffect, createSignal, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
@@ -66,6 +66,13 @@ export function createPrograms(
   needsHomeScreen = false,
 ): Programs {
   const [sample, setSample] = createSignal(startWithSample)
+  // Your own pixel pigeon, for the Pigeon menu's header, once the Messenger is up.
+  const [selfPicture, setSelfPicture] = createSignal<Icon | undefined>()
+  createEffect(() => {
+    const running = host.messenger()
+    if (running === undefined) return
+    void running.avatarOf(running.self).then((traits) => setSelfPicture(avatarIcon(traits, 32)))
+  })
 
   const openAbout = () =>
     api.open('about', {
@@ -349,6 +356,23 @@ export function createPrograms(
   }
 
   const friendIcon = brandIcon('pigeon-16')
+  // A balloon about a friend carries their own bird, which says who it is before the name does.
+  // Each friend's is worked out once, so later balloons show at once and stay in order.
+  const birds = new Map<PeerId, Icon>()
+  const notifyFrom = (friend: FriendView, notice: { title: string; body: string }) => {
+    const known = birds.get(friend.id)
+    if (known !== undefined) return api.notify({ ...notice, icon: known })
+    const messenger = host.messenger()
+    if (messenger === undefined) return api.notify({ ...notice, icon: friendIcon })
+    void messenger.avatarOf(friend.id).then(
+      (traits) => {
+        const icon = avatarIcon(traits)
+        birds.set(friend.id, icon)
+        api.notify({ ...notice, icon })
+      },
+      () => api.notify({ ...notice, icon: friendIcon }),
+    )
+  }
   const muted = (friend: FriendView) => host.messenger()?.muted(friend.id) === true
   const messengerEvents: MessengerEvents = {
     // Someone answered your invite: their chat opens, starting with "... became friends".
@@ -356,31 +380,18 @@ export function createPrograms(
       setSample(false)
       openFriendConversation(friend.id)
     },
-    // Their own bird says who it is before the name does.
     onOnline: (friend) => {
       if (muted(friend)) return
-      const messenger = host.messenger()
-      const notify = (icon: Icon) =>
-        api.notify({ title: friend.name, icon, body: 'has just come online.' })
-      if (messenger === undefined) return notify(friendIcon)
-      void messenger.avatarOf(friend.id).then(
-        (traits) => notify(avatarIcon(traits)),
-        () => notify(friendIcon),
-      )
+      notifyFrom(friend, { title: friend.name, body: 'has just come online.' })
     },
     onUnfriended: (friend) =>
-      api.notify({
+      notifyFrom(friend, {
         title: `${friend.name} removed you`,
-        icon: friendIcon,
         body: 'Your chat stays until you remove them too.',
       }),
     onMessage: (friend, entry) => {
       if (muted(friend) || api.isActive(conversationWindow(friend.id))) return
-      api.notify({
-        title: `${friend.name} says:`,
-        icon: friendIcon,
-        body: entry.text.slice(0, 120),
-      })
+      notifyFrom(friend, { title: `${friend.name} says:`, body: entry.text.slice(0, 120) })
     },
     onBuzz: (friend) => {
       // Muted: the buzz is in the chat, but nothing shakes or vibrates.
@@ -599,6 +610,10 @@ export function createPrograms(
       places: [{ ...letters, label: 'My Letters' }, files, source],
       tools: [settings, help, changelog, ...iphone],
       all: [about, explorer, messenger, readme, settings, changelog],
+      user: () => {
+        const name = host.messenger()?.profile().handle ?? ''
+        return { name, picture: name === '' ? undefined : selfPicture() }
+      },
     },
     openReadme,
     openChangelog,

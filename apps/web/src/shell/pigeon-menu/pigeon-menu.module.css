@@ -65,6 +65,13 @@
   image-rendering: auto;
 }
 
+/* Your pixel pigeon: 32px inside the frame, so every pixel stays square. */
+.bird {
+  padding: 3px;
+  border-radius: var(--pg-radius-avatar);
+  image-rendering: pixelated;
+}
+
 .name {
   font: 700 14px / 16px var(--pg-font-ui);
   text-shadow: 1px 1px rgb(0 0 0 / 70%);

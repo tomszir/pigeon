@@ -20,6 +20,8 @@
 
 .icon {
   flex-shrink: 0;
+  /* Rounds a pixel pigeon like everywhere else; a plain icon's corners are clear anyway. */
+  border-radius: var(--pg-radius-avatar);
 }
 
 .text {

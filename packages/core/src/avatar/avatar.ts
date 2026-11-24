@@ -631,8 +631,14 @@ export function drawAvatar(traits: AvatarTraits): AvatarPixels {
   return pixels
 }
 
-/** The picture as an SVG, one `rect` per run of a colour along a row, sharp at any size. */
+/**
+ * The picture as an SVG, one `rect` per run of a colour along a row. At a whole multiple of 32px
+ * every pixel stays square and sharp; at any other size it's drawn smoothly instead, each rect a
+ * hair larger than its cell so no seams show between them.
+ */
 export function avatarSvg(pixels: AvatarPixels, size = AVATAR_SIZE, title?: string): string {
+  const crisp = size % AVATAR_SIZE === 0
+  const bleed = crisp ? 0 : 0.04
   const rects: string[] = []
   for (let y = 0; y < AVATAR_SIZE; y++) {
     let x = 0
@@ -640,13 +646,15 @@ export function avatarSvg(pixels: AvatarPixels, size = AVATAR_SIZE, title?: stri
       const colour = pixels[y * AVATAR_SIZE + x]
       let run = 1
       while (x + run < AVATAR_SIZE && pixels[y * AVATAR_SIZE + x + run] === colour) run++
-      rects.push(`<rect x="${x}" y="${y}" width="${run}" height="1" fill="${colour}"/>`)
+      rects.push(
+        `<rect x="${x}" y="${y}" width="${run + bleed}" height="${1 + bleed}" fill="${colour}"/>`,
+      )
       x += run
     }
   }
   const label =
     title === undefined ? ' aria-hidden="true">' : ` role="img"><title>${escapeXml(title)}</title>`
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${AVATAR_SIZE} ${AVATAR_SIZE}" width="${size}" height="${size}" shape-rendering="crispEdges"${label}${rects.join('')}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${AVATAR_SIZE} ${AVATAR_SIZE}" width="${size}" height="${size}"${crisp ? ' shape-rendering="crispEdges"' : ''}${label}${rects.join('')}</svg>`
 }
 
 const escapeXml = (text: string) =>

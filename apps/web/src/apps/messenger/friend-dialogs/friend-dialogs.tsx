@@ -70,43 +70,45 @@ export function FriendProfile(props: FriendDialogProps & { onRename: () => void 
             </>
           }
         >
-          <FriendAvatar
-            messenger={props.messenger}
-            id={props.friend}
-            name={view().name}
-            size={64}
-          />
-          <dl class={styles.facts}>
-            <dt>Name</dt>
-            <dd>
-              <strong>{view().name}</strong>
-              <Show when={view().petname !== undefined}>
-                <span class={styles.muted}> (calls themselves {view().handle})</span>
+          <div class={styles.profile}>
+            <FriendAvatar
+              messenger={props.messenger}
+              id={props.friend}
+              name={view().name}
+              size={64}
+            />
+            <dl class={styles.facts}>
+              <dt>Name</dt>
+              <dd>
+                <strong>{view().name}</strong>
+                <Show when={view().petname !== undefined}>
+                  <span class={styles.muted}> (calls themselves {view().handle})</span>
+                </Show>
+              </dd>
+              <dt>Status</dt>
+              <dd>
+                {view().removedYouAt !== undefined
+                  ? 'Removed you as a friend'
+                  : view().online
+                    ? STATUS[view().presence.status]
+                    : 'Offline'}
+              </dd>
+              <Show when={view().presence.message !== ''}>
+                <dt>Message</dt>
+                <dd>{view().presence.message}</dd>
               </Show>
-            </dd>
-            <dt>Status</dt>
-            <dd>
-              {view().removedYouAt !== undefined
-                ? 'Removed you as a friend'
-                : view().online
-                  ? STATUS[view().presence.status]
-                  : 'Offline'}
-            </dd>
-            <Show when={view().presence.message !== ''}>
-              <dt>Message</dt>
-              <dd>{view().presence.message}</dd>
-            </Show>
-            <dt>Fingerprint</dt>
-            <dd>
-              <code data-selectable>{formatFingerprint(view().fingerprint)}</code>
-            </dd>
-            <dt>Friends since</dt>
-            <dd>{view().addedAt > 0 ? longDate(view().addedAt) : 'Unknown'}</dd>
-            <Show when={props.messenger.muted(props.friend)}>
-              <dt>Muted</dt>
-              <dd>{mutedUntilText(view().mutedUntil ?? MUTED_FOREVER, props.now())}</dd>
-            </Show>
-          </dl>
+              <dt>Fingerprint</dt>
+              <dd>
+                <code data-selectable>{formatFingerprint(view().fingerprint)}</code>
+              </dd>
+              <dt>Friends since</dt>
+              <dd>{view().addedAt > 0 ? longDate(view().addedAt) : 'Unknown'}</dd>
+              <Show when={props.messenger.muted(props.friend)}>
+                <dt>Muted</dt>
+                <dd>{mutedUntilText(view().mutedUntil ?? MUTED_FOREVER, props.now())}</dd>
+              </Show>
+            </dl>
+          </div>
           <p class={styles.note}>
             Compare the fingerprint with the one in {view().name}'s Add a Friend window to be sure
             it's really them.
@@ -237,12 +239,14 @@ export function RemoveFriend(props: FriendDialogProps) {
               online.
             </p>
           </Show>
-          <Check
-            label={`Also &block ${view().name}`}
-            checked={block()}
-            onChange={setBlock}
-            description="They can't add you again until you unblock them in Contacts, Blocked People."
-          />
+          <div class={styles.choice}>
+            <Check
+              label={`Also &block ${view().name}`}
+              checked={block()}
+              onChange={setBlock}
+              description="They can't add you again until you unblock them in Contacts, Blocked People."
+            />
+          </div>
         </MessageBox>
       )}
     </Show>
@@ -271,9 +275,18 @@ export function BlockedPeople(props: { messenger: Messenger; onClose: () => void
           <For each={props.messenger.blocked()}>
             {(person) => (
               <li class={styles.person}>
-                <span class={styles.who}>
-                  <strong>{person.handle}</strong>
-                  <span class={styles.muted}>blocked {longDate(person.at)}</span>
+                <span class={styles.someone}>
+                  <FriendAvatar
+                    messenger={props.messenger}
+                    id={person.id}
+                    name={person.handle}
+                    size={24}
+                    decorative
+                  />
+                  <span class={styles.who}>
+                    <strong>{person.handle}</strong>
+                    <span class={styles.muted}>blocked {longDate(person.at)}</span>
+                  </span>
                 </span>
                 <Button label={`Unblock`} onClick={() => void props.messenger.unblock(person.id)} />
               </li>

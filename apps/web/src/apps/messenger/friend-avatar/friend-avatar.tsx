@@ -10,10 +10,19 @@ export function FriendAvatar(props: {
   id: PeerId
   name: string
   size: number
+  /** Beside their name already, so a screen reader skips it. */
+  decorative?: boolean
 }) {
   const [traits] = createResource(
     () => props.id,
     (id) => props.messenger.avatarOf(id),
   )
-  return <Avatar traits={traits()} size={props.size} name={props.name} />
+  return (
+    <Avatar
+      traits={traits()}
+      size={props.size}
+      name={props.name}
+      decorative={props.decorative === true}
+    />
+  )
 }

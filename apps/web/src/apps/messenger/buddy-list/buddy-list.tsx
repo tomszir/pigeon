@@ -199,23 +199,22 @@ export function BuddyList(props: BuddyListProps) {
         ]}
       />
       <div class={styles.me}>
-        <div class={styles.avatar} aria-hidden="true">
-          <Show
-            when={props.sample}
-            fallback={
-              <Avatar
-                traits={avatars().get(live()?.self ?? '')}
-                size={32}
-                name="Your"
-                decorative
-                bare
-                status={live()?.profile().status}
-              />
-            }
-          >
+        <Show
+          when={props.sample}
+          fallback={
+            <Avatar
+              traits={avatars().get(live()?.self ?? '')}
+              size={32}
+              name="Your"
+              decorative
+              status={live()?.profile().status}
+            />
+          }
+        >
+          <div class={styles.avatar} aria-hidden="true">
             <span class={styles.initial}>R</span>
-          </Show>
-        </div>
+          </div>
+        </Show>
         <div class={styles.who}>
           <Switch>
             <Match when={props.sample}>
@@ -249,7 +248,7 @@ export function BuddyList(props: BuddyListProps) {
           </Switch>
         </div>
       </div>
-      <div ref={listBox} class={classes(styles.list, useLayout() === 'phone' && styles.flushList)}>
+      <div ref={listBox} class={styles.list}>
         <Switch
           fallback={
             <ContactList

@@ -1,18 +1,18 @@
 // A person's pixel pigeon (docs/design.md, Avatars) in a white frame, the way 2003 drew a
 // display picture. It draws traits it's given; working them out from an id is the Messenger's.
 import { type AvatarTraits, avatarSvg, describeAvatar, drawAvatar } from '@pigeon/core'
-import { createMemo, Show } from 'solid-js'
+import { createMemo, type JSX, Show } from 'solid-js'
 import { classes } from '../classes/classes.ts'
 import type { Icon } from '../icons/icons.ts'
 import styles from './avatar.module.css'
 
 /** The bird as an image address, for an `<img>` or anywhere that takes an icon. */
-export const avatarSrc = (traits: AvatarTraits): string =>
-  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(avatarSvg(drawAvatar(traits)))}`
+export const avatarSrc = (traits: AvatarTraits, size = 32): string =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(avatarSvg(drawAvatar(traits), size))}`
 
 /** The bird as an icon, for a balloon. */
 export const avatarIcon = (traits: AvatarTraits, size = 32): Icon => ({
-  src: avatarSrc(traits),
+  src: avatarSrc(traits, size),
   size,
 })
 
@@ -29,13 +29,15 @@ export interface AvatarProps {
   bare?: boolean
   /** A dot in the corner for how they are; an offline bird is greyed too. */
   status?: 'online' | 'away' | 'busy' | 'offline' | undefined
+  /** Shown in the frame while there's no bird: who's at the far end before they answer. */
+  placeholder?: JSX.Element
 }
 
 export function Avatar(props: AvatarProps) {
   const src = createMemo(() => {
     const traits = props.traits
     if (traits === undefined) return undefined
-    return avatarSrc(traits)
+    return avatarSrc(traits, props.size)
   })
   const outer = () => props.size + (props.bare ? 0 : 6)
   return (
@@ -46,24 +48,25 @@ export function Avatar(props: AvatarProps) {
       )}
       style={{ width: `${outer()}px`, height: `${outer()}px` }}
     >
-      <Show when={src()}>
-        {(url) => (
-          <img
-            src={url()}
-            alt={
-              props.decorative
-                ? ''
-                : `${props.name}'s pigeon: ${describeAvatar(props.traits as AvatarTraits)}`
-            }
-            // A decorative bird adds nothing to the name of what it sits in, not even a tooltip.
-            title={props.decorative ? undefined : describeAvatar(props.traits as AvatarTraits)}
-            width={props.size}
-            height={props.size}
-          />
-        )}
+      <Show when={src() !== undefined} fallback={props.placeholder}>
+        <img
+          src={src()}
+          alt={
+            props.decorative
+              ? ''
+              : `${props.name}'s pigeon: ${describeAvatar(props.traits as AvatarTraits)}`
+          }
+          // A decorative bird adds nothing to the name of what it sits in, not even a tooltip.
+          title={props.decorative ? undefined : describeAvatar(props.traits as AvatarTraits)}
+          width={props.size}
+          height={props.size}
+        />
       </Show>
-      <Show when={props.status}>
-        {(status) => <span class={classes(styles.status, styles[status()])} aria-hidden="true" />}
+      <Show when={props.status !== undefined}>
+        <span
+          class={classes(styles.status, props.status && styles[props.status])}
+          aria-hidden="true"
+        />
       </Show>
     </span>
   )

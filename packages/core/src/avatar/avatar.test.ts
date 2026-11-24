@@ -211,10 +211,17 @@ describe('drawAvatar', () => {
 
 describe('avatarSvg', () => {
   it('is a crisp square with a title when one is given', () => {
-    const svg = avatarSvg(drawAvatar(avatarTraits(digest(5))), 48, 'Mika & co')
-    expect(svg).toContain('width="48" height="48"')
+    const svg = avatarSvg(drawAvatar(avatarTraits(digest(5))), 64, 'Mika & co')
+    expect(svg).toContain('width="64" height="64"')
     expect(svg).toContain('shape-rendering="crispEdges"')
     expect(svg).toContain('role="img"><title>Mika &amp; co</title><rect')
+  })
+
+  it('is drawn smoothly, without seams, at a size that is not a multiple of 32', () => {
+    const svg = avatarSvg(drawAvatar(avatarTraits(digest(5))), 24)
+    expect(svg).toContain('width="24" height="24"')
+    expect(svg).not.toContain('crispEdges')
+    expect(svg).toContain('height="1.04"')
   })
 
   it('is hidden from screen readers without a title', () => {
