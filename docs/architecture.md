@@ -23,12 +23,14 @@ packages/
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse.
 apps/
-  web/          The static site (Vite + Solid).
+  web/          The site (Vite + Solid), served by a Cloudflare Worker.
+    worker/     The Worker: static assets, and /api/turn, which hands out short-lived
+                TURN credentials (decision 0022). Holds no user data.
     src/
       platform/ The only code that touches browser APIs, one folder per concern:
                 crypto/ (WebCrypto keys behind core's Crypto and Signer), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
-                (Trystero), clock/, clipboard/. Each is an interface plus a
+                (Trystero, with TURN servers from /api/turn), clock/, clipboard/. Each is an interface plus a
                 browser-*.ts implementation; audio and files come later.
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
                 and tokens.css, the only global stylesheet.
