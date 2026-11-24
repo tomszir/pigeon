@@ -16,7 +16,7 @@ describe('transcriptFor', () => {
     const view: FriendView = {
       id: mika.id,
       handle: 'Mika',
-      addedAt: 0,
+      addedAt: at,
       fingerprint: '0'.repeat(16),
       online: true,
       presence: { status: 'online', message: '' },
@@ -36,6 +36,7 @@ describe('transcriptFor', () => {
         'text' in entry ? entry.text : '',
       ]),
     ).toEqual([
+      ['system', 'Rook and Mika became friends on November 24 at 6:38 PM.'],
       ['system', 'Mika came online at 6:38 PM.'],
       ['message', 'prove it'],
       ['buzz', 'You have just sent a buzz!'],
@@ -44,6 +45,17 @@ describe('transcriptFor', () => {
       ['system', 'Mika went offline at 6:38 PM.'],
     ])
   })
+})
+
+it('leaves out the start of a friendship it has no date for', () => {
+  const view = {
+    id: fakeSigner('mika').id,
+    handle: 'Mika',
+    addedAt: 0,
+    log: emptyLog('pair:x'),
+    notes: [],
+  } as unknown as FriendView
+  expect(transcriptFor(view, fakeSigner('rook').id, 'Rook')).toEqual([])
 })
 
 it('spells times like the taskbar clock', () => {

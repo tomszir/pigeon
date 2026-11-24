@@ -51,7 +51,6 @@ type View =
     }
   | { readonly kind: 'offer'; readonly offer: Offer }
   | { readonly kind: 'adding'; readonly offer: Offer; readonly startedAt: number }
-  | { readonly kind: 'paired'; readonly id: PeerId; readonly handle: string }
   | { readonly kind: 'failed'; readonly failure: Failure }
 
 const FAILURES: Record<Failure, string> = {
@@ -117,11 +116,13 @@ export function AddFriend(props: AddFriendProps) {
     setView({ kind: 'adding', offer, startedAt: now() })
     const accepted = await offer.confirm(wait(CONFIRM_TIMEOUT_MS))
     if (view().kind !== 'adding') return
-    setView(
-      accepted
-        ? { kind: 'paired', id: offer.friend.id, handle: offer.friend.handle }
-        : { kind: 'failed', failure: 'no-confirm' },
-    )
+    if (!accepted) {
+      setView({ kind: 'failed', failure: 'no-confirm' })
+      return
+    }
+    // Friends now: the chat opens, and its first line says so.
+    props.onOpenConversation(offer.friend.id)
+    props.onClose()
   }
 
   const back = () => {
@@ -345,26 +346,6 @@ export function AddFriend(props: AddFriendProps) {
               />
             )
           }}
-        </Match>
-        <Match when={current('paired')}>
-          {(shown) => (
-            <MessageBox
-              kind="information"
-              buttons={[
-                {
-                  label: '&Say hello',
-                  isDefault: true,
-                  onClick: () => {
-                    props.onOpenConversation(shown().id)
-                    props.onClose()
-                  },
-                },
-                { label: 'Close', onClick: props.onClose },
-              ]}
-            >
-              <p>You and {shown().handle} are now friends.</p>
-            </MessageBox>
-          )}
         </Match>
         <Match when={current('failed')}>
           {(shown) => (
