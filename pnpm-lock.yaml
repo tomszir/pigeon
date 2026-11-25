@@ -178,10 +178,19 @@ importers:
       '@pigeon/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@pigeon/pigeonhtml':
+      '@pigeon/lighthouse':
         specifier: workspace:*
-        version: link:../../packages/pigeonhtml
+        version: link:../../packages/lighthouse
+      ws:
+        specifier: 8.20.0
+        version: 8.20.0
     devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))
@@ -1675,6 +1684,18 @@ packages:
       '@cloudflare/workers-types':
         optional: true
 
+  ws@8.20.0:
+    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
@@ -2835,6 +2856,8 @@ snapshots:
       - '@types/node'
       - bufferutil
       - utf-8-validate
+
+  ws@8.20.0: {}
 
   ws@8.21.0: {}
 

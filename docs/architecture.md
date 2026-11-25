@@ -95,8 +95,12 @@ apps/
                 and builds the Messenger; address-invite.ts reads an invite link
                 from the address bar once and removes it; whats-new.ts decides
                 whether this visit says Pigeon was updated.
-  lighthouse/   The always-on Node peer: holds sealed mail, carries letters, mirrors pages.
-                Reuses @pigeon/core with Node implementations of the platform interfaces.
+  lighthouse/   The Node Lighthouse (decision 0037, docs/lighthouse.md): @pigeon/lighthouse
+                run from one config file. config/ reads and checks it; platform/ is core's
+                Crypto and the Lighthouse's key file over Node's WebCrypto; store/ the
+                MailStore in SQLite (node:sqlite); server/ the WebSocket server (ws), one
+                connection per client, each frame one request. main.ts starts it.
+                Dockerfile builds it from the repository root.
 ```
 
 ## Import rules

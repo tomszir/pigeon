@@ -3,14 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node src/main.ts --config lighthouse.json",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@pigeon/core": "workspace:*",
-    "@pigeon/pigeonhtml": "workspace:*"
+    "@pigeon/lighthouse": "workspace:*",
+    "ws": "8.20.0"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/ws": "8.18.2",
     "vitest": "5.0.5"
   }
 }
