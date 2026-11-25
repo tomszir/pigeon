@@ -20,12 +20,12 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       sha: ${{ steps.release.outputs.sha }}
     steps:
-      # A personal access token, as a repository secret, lets pushes to the release PR run CI;
-      # GITHUB_TOKEN alone can't.
+      # No token is left in .git/config: the tools and scripts below run without it, and only the
+      # step that pushes the release notes is given it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
       # Where the release PR stood before release-please rebuilds its branch, so the notes
       # written there carry over. The branch is release-please--branches--main, plus
       # --components--<name> when the package has one (ours is pigeon), so match both.
@@ -51,6 +51,7 @@ jobs:
       - if: ${{ steps.release.outputs.pr }}
         uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
       - if: ${{ steps.release.outputs.pr }}
+        id: notes
         # GitHub reads env before if, so the PR's JSON is parsed here: fromJSON would fail on
         # the empty output of a run that left the release PR alone.
         env:
@@ -65,7 +66,18 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -qam 'docs: draft the release notes' -m 'Docs: none'
-          git push origin "HEAD:$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+      # A personal access token, as a repository secret, lets pushes to the release PR run CI;
+      # GITHUB_TOKEN alone can't. It's handed to this one push and nothing else.
+      - if: ${{ steps.notes.outputs.branch }}
+        env:
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.notes.outputs.branch }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push origin "HEAD:$BRANCH"
 
   # Each release's Lighthouse image, built from the released commit (docs/lighthouse.md).
   lighthouse-image:

@@ -227,7 +227,8 @@ render(() => {
     const join = await opened.store.get(JOIN_ON_START)
     if (join !== undefined) {
       await opened.store.delete(JOIN_ON_START)
-      programs.openJoinDevice(isInvite(join) ? join : undefined)
+      // Chosen before leaving: Link was pressed already, so it isn't asked again.
+      programs.openJoinDevice(isInvite(join) ? join : undefined, true)
     }
     const started = await startMessenger(programs.messengerEvents, opened, sayNoRelay, deviceName())
     if (!started.ok) {

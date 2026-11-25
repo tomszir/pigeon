@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   base32Decode,
+  base32DecodeExact,
   base32Encode,
   base64Decode,
   base64Encode,
@@ -49,6 +50,15 @@ describe('base32', () => {
     expect(base32Decode('mzxw1').ok).toBe(false)
     expect(base32Decode('mz').ok).toBe(false)
     expect(base32Decode('m').ok).toBe(false)
+  })
+
+  it('decodes only lowercase where it must be exact', () => {
+    expect(base32DecodeExact('mzxw6').ok).toBe(true)
+    expect(base32DecodeExact('MZXW6').ok).toBe(false)
+    expect(base32DecodeExact('mzXw6').ok).toBe(false)
+    // The Kelvin sign lowercases to an ASCII k.
+    expect(base32Decode('\u212a').ok).toBe(base32Decode('k').ok)
+    expect(base32DecodeExact('\u212a').ok).toBe(false)
   })
 })
 

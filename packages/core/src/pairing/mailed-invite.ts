@@ -7,6 +7,7 @@
 import { type DeviceLog, deviceState, isDeviceLog, speakerIdentity } from '../devices/device-log.ts'
 import {
   base32Decode,
+  base32DecodeExact,
   base32Encode,
   base64Decode,
   base64Encode,
@@ -257,7 +258,7 @@ export async function openInviteCard(
   // Signed for this link, not moved here from another of theirs.
   if (card.tag !== (await inviteCardTag(crypto, link.secret))) return err('not-theirs')
   const { sig, ...fields } = card
-  const signature = base32Decode(sig)
+  const signature = base32DecodeExact(sig)
   if (!signature.ok) return err('malformed')
   if (!(await crypto.verify(fields.from, signature.value, canonicalBytes(cardPart(fields)))))
     return err('bad-signature')

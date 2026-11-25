@@ -70,8 +70,11 @@ export interface Programs extends ShellProps {
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
   readonly openAddFriend: (incoming?: IncomingInvite, tab?: AddFriendTab) => void
-  /** Link to My Other Device, perhaps from a link in the address bar. */
-  readonly openJoinDevice: (incoming?: Invite) => void
+  /**
+   * Link to My Other Device, perhaps from a link in the address bar. `confirmed` when you
+   * already chose to link to it here, so it goes ahead without asking again.
+   */
+  readonly openJoinDevice: (incoming?: Invite, confirmed?: boolean) => void
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
 }
@@ -267,7 +270,7 @@ export function createPrograms(
       content: (window) => <LinkDevice messenger={messenger} onClose={window.close} />,
     })
   }
-  const openJoinDevice = (incoming?: Invite) => {
+  const openJoinDevice = (incoming?: Invite, confirmed = false) => {
     if (incoming !== undefined) api.close('join-device')
     api.open('join-device', {
       title: 'Link to My Other Device',
@@ -284,6 +287,7 @@ export function createPrograms(
             <JoinDevice
               messenger={messenger()}
               incoming={incoming}
+              confirmed={confirmed}
               sleep={host.sleep}
               onLinked={host.restart}
               onLeave={(left, target) => {

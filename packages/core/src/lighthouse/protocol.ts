@@ -5,6 +5,7 @@
 // answer, nor replay an answer on another connection.
 import {
   base32Decode,
+  base32DecodeExact,
   base32Encode,
   base64Decode,
   utf8Decode,
@@ -339,7 +340,7 @@ export async function openReply(
   if (typeof type !== 'string' || !Object.hasOwn(REPLY_CHECKS, type)) return err('malformed')
   if (!REPLY_CHECKS[type as LighthouseReply['type']](reply)) return err('malformed')
   if (from !== lighthouse) return err('not-this-lighthouse')
-  const signature = base32Decode(sig)
+  const signature = base32DecodeExact(sig)
   if (!signature.ok) return err('malformed')
   const typed = reply as unknown as LighthouseReply
   const to: ReplyTo = { req, nonce, request }

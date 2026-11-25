@@ -85,6 +85,15 @@ export function base32Encode(bytes: Uint8Array): string {
   return out
 }
 
+/**
+ * Decodes base32 only as Pigeon writes it: lowercase letters and 2 to 7, nothing else. Signatures
+ * are kept and compared as text, so any other spelling of the same bytes (capitals, or a
+ * character such as the Kelvin sign that lowercases to `k`) would count as a second signature.
+ */
+export function base32DecodeExact(text: string): Result<Uint8Array, 'malformed'> {
+  return /^[a-z2-7]*$/.test(text) ? base32Decode(text) : err('malformed')
+}
+
 /** Decodes base32 in either case. Leftover bits must be zero so each value has one spelling. */
 export function base32Decode(text: string): Result<Uint8Array, 'malformed'> {
   const out: number[] = []
