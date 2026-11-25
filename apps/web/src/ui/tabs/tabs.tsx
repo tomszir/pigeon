@@ -1,4 +1,5 @@
-import { createSignal, createUniqueId, For, type JSX } from 'solid-js'
+import { createMemo, createSignal, createUniqueId, For, type JSX, Show, untrack } from 'solid-js'
+import { classes } from '../classes/classes.ts'
 import styles from './tabs.module.css'
 
 export interface Tab {
@@ -13,6 +14,8 @@ export interface TabsProps {
   /** The tab shown first; the first tab unless set. */
   initial?: string | undefined
   onSelect?: ((id: string) => void) | undefined
+  /** Tabs share the width and are a finger tall, as on the phone. */
+  fill?: boolean | undefined
 }
 
 /** Property-sheet tabs: the selected one has an orange top line and joins its panel. */
@@ -43,9 +46,11 @@ export function Tabs(props: TabsProps) {
   }
 
   const current = () => props.tabs.find((tab) => tab.id === selected()) ?? props.tabs[0]
+  // The panel is made again only when another tab is chosen, not when a label changes.
+  const shownId = createMemo(() => current()?.id)
 
   return (
-    <div class={styles.tabs}>
+    <div class={classes(styles.tabs, props.fill === true && styles.fill)}>
       <div role="tablist" aria-label={props.label} class={styles.list}>
         <For each={props.tabs}>
           {(tab, index) => (
@@ -74,7 +79,9 @@ export function Tabs(props: TabsProps) {
         aria-labelledby={`${base}-${current()?.id ?? ''}`}
         class={styles.panel}
       >
-        {current()?.content()}
+        <Show when={shownId()} keyed>
+          {(id) => untrack(() => props.tabs.find((tab) => tab.id === id)?.content())}
+        </Show>
       </div>
     </div>
   )

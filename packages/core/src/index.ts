@@ -182,6 +182,40 @@ export type {
   OpenLinkResult,
 } from './pairing/link.ts'
 export { hostLink, linkCheck, linkRoom, openLink } from './pairing/link.ts'
+export type {
+  CardError,
+  InviteAnswer,
+  InviteCard,
+  InviteLink,
+  InviteRequest,
+} from './pairing/mailed-invite.ts'
+export {
+  DEFAULT_INVITE_LINK_LIFETIME,
+  DEFAULT_INVITE_LINK_USES,
+  decodeInviteLink,
+  encodeInviteLinkFragment,
+  INVITE_LINK_LIFETIMES,
+  INVITE_LINK_USES,
+  INVITE_SECRET_BYTES,
+  inviteAnswerBody,
+  inviteAnswerTag,
+  inviteAskTag,
+  inviteCardTag,
+  inviteExpiry,
+  inviteRequestBody,
+  isInviteSecret,
+  LINK_FINGERPRINT_BYTES,
+  linkFingerprint,
+  logProgress,
+  MAX_INVITE_LINK_LIFETIME,
+  MAX_INVITE_REQUEST_BYTES,
+  MAX_INVITE_REQUESTS_PER_DAY,
+  newestCard,
+  openInviteCard,
+  readInviteAnswer,
+  readInviteRequest,
+  sealInviteCard,
+} from './pairing/mailed-invite.ts'
 export type { PairPlace, PairRoomSpec } from './pairing/pair-rooms.ts'
 export {
   encodePairSecret,

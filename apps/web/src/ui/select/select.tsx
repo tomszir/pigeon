@@ -19,6 +19,8 @@ export interface SelectProps {
   value: string
   onChange?: ((value: string) => void) | undefined
   labelHidden?: boolean | undefined
+  /** The label above the list instead of beside it, as on the phone. */
+  stacked?: boolean | undefined
   disabled?: boolean | undefined
   class?: string | undefined
 }
@@ -112,7 +114,15 @@ export function Select(props: SelectProps) {
   }
 
   return (
-    <div ref={root} class={classes(field.field, styles.wrap, props.class)}>
+    <div
+      ref={root}
+      class={classes(
+        field.field,
+        props.stacked === true && field.stacked,
+        styles.wrap,
+        props.class,
+      )}
+    >
       <label
         for={id}
         class={props.labelHidden === true ? field.visuallyHidden : undefined}

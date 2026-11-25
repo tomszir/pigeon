@@ -1,8 +1,15 @@
 // An invite link opened in the address bar: read it once, then take it out of the address so a
 // reload or a shared screenshot doesn't reuse it.
 import { decodeDeviceLink, decodeInvite, type Invite } from '@pigeon/core'
+import type { IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 
-export function takeInviteFromAddress(): Invite | undefined {
+/** A live invite's link (`#i/`), or a link through Lighthouses (`#a/`), kept whole. */
+export function takeInviteFromAddress(): IncomingInvite | undefined {
+  const hash = location.hash.slice(1)
+  if (hash.startsWith('a/')) {
+    history.replaceState(history.state, '', `${location.pathname}${location.search}`)
+    return { link: hash }
+  }
   return take('i/', decodeInvite)
 }
 

@@ -52,3 +52,28 @@
   background: var(--pg-grad-tab-panel);
   box-shadow: var(--pg-frame-tab-panel);
 }
+
+/* Filling the width: each tab an equal share, tall enough for a finger. */
+.fill .list {
+  padding-left: 0;
+}
+
+.fill .tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: max(var(--pg-touch-target), 24px);
+  padding-right: 4px;
+  padding-left: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fill .tab[aria-selected="true"] {
+  padding-right: 4px;
+  padding-left: 4px;
+}
+
+.fill .panel {
+  padding: 10px;
+}

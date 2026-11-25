@@ -32,8 +32,9 @@ test('a second device is the same Rook, and its messages reach the first', async
   // Mika and Rook become friends first, so the phone gets Mika when it's linked.
   await laptopMessenger.getByRole('button', { name: 'Add a Friend' }).click()
   const addFriend = laptop.getByRole('dialog', { name: 'Add a Friend' })
-  await addFriend.getByRole('button', { name: 'Copy link' }).click()
-  const invite = String(await laptop.evaluate('navigator.clipboard.readText()'))
+  await addFriend.getByRole('tab', { name: 'Quick code' }).click()
+  const invite =
+    (await addFriend.locator('[data-invite-link]').getAttribute('data-invite-link')) ?? ''
   const mika = await (await browser.newContext()).newPage()
   await mika.goto(invite.slice(invite.indexOf('/#') + 1))
   const mikaAdd = mika.getByRole('dialog', { name: 'Add a Friend' })

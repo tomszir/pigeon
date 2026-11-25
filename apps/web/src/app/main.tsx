@@ -1,6 +1,7 @@
 import type { Invite } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import { render } from 'solid-js/web'
+import type { IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 import { createBrowserBack } from '../platform/back/browser-back.ts'
 import { BackContext } from '../ui/back/back.ts'
 import '../ui/tokens.css'
@@ -67,7 +68,7 @@ render(() => {
     programs.openConversation('mika')
   }
 
-  const showInvite = (invite: Invite | undefined) => {
+  const showInvite = (invite: IncomingInvite | undefined) => {
     if (invite === undefined) return
     programs.openMessenger()
     programs.openAddFriend(invite)

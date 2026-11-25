@@ -176,9 +176,9 @@ async function pairWith(
   await flush()
 }
 
-const only = (list: readonly FriendView[]) => {
+const only = <T = FriendView>(list: readonly T[]): T => {
   expect(list).toHaveLength(1)
-  return list[0] as FriendView
+  return list[0] as T
 }
 
 describe('the Messenger service', () => {
@@ -1395,5 +1395,221 @@ describe('the recovery key', () => {
     if (!invite.ok) throw new Error('bad invite')
     const opened = await stranger.messenger.open(invite.value, flush(400))
     expect(opened.ok).toBe(false)
+  })
+})
+
+describe('invite links through Lighthouses', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  /** Rook and Mika on networks of their own: they never meet, and share only a Lighthouse. */
+  async function apart() {
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse })
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    await rook.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
+    return { clock, lighthouse, rook, mika }
+  }
+
+  async function made(
+    who: Awaited<ReturnType<typeof messenger>>,
+    options = { lifetime: 7 * DAY, uses: 5 },
+  ) {
+    const result = await who.messenger.makeInviteLink(options)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.link.url).toMatch(/^https:\/\/pigeon\.test\/#a\/[a-z2-7]{52}$/)
+    return result.link
+  }
+
+  async function asks(who: Awaited<ReturnType<typeof messenger>>, url: string) {
+    const opened = await who.messenger.openInviteLink(url)
+    if (!opened.ok) throw new Error(opened.error)
+    expect(await who.messenger.askThroughLink(opened)).toBe('sent')
+    return opened
+  }
+
+  it('makes friends of two people who are never online together', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    const link = await made(rook)
+    await rook.messenger.close()
+
+    // Mika opens the link with Rook's Pigeon closed: his card says who he is.
+    const opened = await mika.messenger.openInviteLink(link.url)
+    if (!opened.ok) throw new Error(opened.error)
+    expect(opened.card.name).toBe('Rook')
+    expect(opened.fingerprint.replaceAll(' ', '')).toBe(rook.messenger.selfFingerprint)
+    expect(await mika.messenger.askThroughLink(opened)).toBe('sent')
+    await mika.messenger.close()
+
+    // Rook opens Pigeon the next day: Mika's request waits for him.
+    await clock.tick(DAY)
+    const back = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await flush(400)
+    const request = only(back.messenger.inviteLinks()).requests[0]
+    expect(request).toMatchObject({ name: 'Mika', state: 'waiting' })
+    expect(await back.messenger.approveRequest(link.secret, request?.identity ?? '')).toBe(true)
+    expect(only(back.messenger.friends()).handle).toBe('Mika')
+    await back.messenger.close()
+
+    // Mika opens Pigeon later still, and Rook is her friend, with the same secret.
+    await clock.tick(DAY)
+    const mikaBack = await messenger(createMemoryNetwork(), 'mika', {
+      clock,
+      lighthouse,
+      store: mika.store,
+    })
+    await flush(800)
+    const rookOnMika = only(mikaBack.messenger.friends())
+    expect(rookOnMika).toMatchObject({ handle: 'Rook', id: rook.messenger.self })
+    expect(rookOnMika.secret).toBe(only(back.messenger.friends()).secret)
+    expect(mikaBack.messenger.sentAsks()).toEqual([])
+  })
+
+  it('pairs within a minute when both happen to be online', async () => {
+    const { clock, rook, mika } = await apart()
+    const link = await made(rook)
+    await asks(mika, link.url)
+    await clock.tick(30_000)
+    await flush(400)
+    const request = only(rook.messenger.inviteLinks()).requests[0]
+    await rook.messenger.approveRequest(link.secret, request?.identity ?? '')
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(mika.messenger.friends()).handle).toBe('Rook')
+    // Her receipt comes under their new pair secret, and Rook stops putting the answer again.
+    await rook.messenger.checkMail()
+    expect(await rook.store.get('mail-outbox')).toEqual([])
+  })
+
+  it('tells whoever is waiting when the link is closed', async () => {
+    const { clock, rook, mika } = await apart()
+    const link = await made(rook)
+    await asks(mika, link.url)
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(rook.messenger.inviteLinks()).requests).toHaveLength(1)
+    await rook.messenger.cancelInviteLink(link.secret)
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(mika.messenger.sentAsks()).state).toBe('closed')
+  })
+
+  it('tells someone declined, and uses none of the link', async () => {
+    const { clock, rook, mika } = await apart()
+    const link = await made(rook)
+    await asks(mika, link.url)
+    await clock.tick(30_000)
+    await flush(400)
+    const request = only(rook.messenger.inviteLinks()).requests[0]
+    await rook.messenger.declineRequest(link.secret, request?.identity ?? '')
+    expect(only(rook.messenger.inviteLinks()).used).toBe(0)
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(mika.messenger.sentAsks()).state).toBe('declined')
+    expect(mika.messenger.friends()).toEqual([])
+  })
+
+  it('closes once its uses run out, and says so to whoever opens it next', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    const link = await made(rook, { lifetime: DAY, uses: 1 })
+    await asks(mika, link.url)
+    await clock.tick(30_000)
+    await flush(400)
+    const request = only(rook.messenger.inviteLinks()).requests[0]
+    await rook.messenger.approveRequest(link.secret, request?.identity ?? '')
+    expect(only(rook.messenger.inviteLinks())).toMatchObject({ used: 1, open: false })
+    const late = await messenger(createMemoryNetwork(), 'kestrel', { clock, lighthouse })
+    await late.messenger.setProfile({ handle: 'Kestrel', status: 'online', message: '' })
+    expect(await late.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
+  })
+
+  it('answers a request that comes after the link was cancelled', async () => {
+    const { clock, rook, mika } = await apart()
+    const link = await made(rook)
+    const opened = await mika.messenger.openInviteLink(link.url)
+    if (!opened.ok) throw new Error(opened.error)
+    await rook.messenger.cancelInviteLink(link.secret)
+    expect(await mika.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
+    // Asked from the card Mika saw before it closed.
+    expect(await mika.messenger.askThroughLink(opened)).toBe('sent')
+    // A closed link is looked at only at the usual mail check, every 10 minutes.
+    await clock.tick(10 * 60_000)
+    await flush(400)
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(mika.messenger.sentAsks()).state).toBe('closed')
+    expect(only(rook.messenger.inviteLinks()).requests).toEqual([])
+  })
+
+  it('closes the links of a device you remove, from your other devices', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
+    if (!result.ok) throw new Error(result.error)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    expect(laptop.messenger.inviteLinksElsewhere()).toHaveLength(1)
+    // The phone is stolen: the laptop removes it, and its link closes.
+    await away(phone)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
+    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
+      ok: false,
+      error: 'closed',
+    })
+  })
+
+  it('leaves a stolen phone unable to open again a link it made', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
+    if (!result.ok) throw new Error(result.error)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    await away(phone)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    // The thief's Pigeon never fetches, so it never hears, and puts the open card again.
+    await phone.store.set('mail-fetched', {
+      [lighthouse.address.id]: { cursor: Number.MAX_SAFE_INTEGER, at: clock.now() },
+    })
+    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(400)
+    await thief.messenger.setLighthouses([lighthouse.address])
+    await flush(400)
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
+    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
+      ok: false,
+      error: 'closed',
+    })
+  })
+
+  it('says nothing to someone blocked, and refuses your own link', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    const link = await made(rook)
+    expect(await rook.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'own' })
+    // Rook has Mika blocked, from when they were friends once.
+    await rook.messenger.close()
+    await rook.store.set('blocked', [{ id: mika.messenger.self, handle: 'Mika', at: NOON }])
+    const again = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await asks(mika, link.url)
+    await clock.tick(30_000)
+    await flush(400)
+    expect(only(again.messenger.inviteLinks()).requests).toEqual([])
+    expect(only(mika.messenger.sentAsks()).state).toBe('waiting')
   })
 })

@@ -25,11 +25,10 @@ test('a farewell left in the mailbox reaches a friend who was offline', async ({
     .getByRole('button', { name: 'Later' })
     .click()
   await rookMessenger.getByRole('button', { name: 'Add a Friend' }).click()
-  await rook
-    .getByRole('dialog', { name: 'Add a Friend' })
-    .getByRole('button', { name: 'Copy link' })
-    .click()
-  const invite = String(await rook.evaluate('navigator.clipboard.readText()'))
+  const addFriend = rook.getByRole('dialog', { name: 'Add a Friend' })
+  await addFriend.getByRole('tab', { name: 'Quick code' }).click()
+  const invite =
+    (await addFriend.locator('[data-invite-link]').getAttribute('data-invite-link')) ?? ''
 
   const mikaContext = await browser.newContext()
   const mika = await mikaContext.newPage()

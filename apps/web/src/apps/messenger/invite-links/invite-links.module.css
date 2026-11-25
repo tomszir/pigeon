@@ -1,0 +1,206 @@
+/* Invite links: requests waiting, a new link, then your links. */
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text {
+  margin: 0;
+  line-height: 14px;
+}
+
+/* Lasts and For with their labels beside them, and Make Link after; on the phone, above. */
+.make {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.choice > :last-child {
+  width: 100px;
+  flex-grow: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--pg-field);
+  border: 1px solid var(--pg-field-border);
+}
+
+.link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px;
+}
+
+.link + .link {
+  border-top: 1px solid var(--pg-separator);
+}
+
+.linkText {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 180px;
+  gap: 2px;
+  min-width: 0;
+}
+
+.linkLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The link itself, as a link: clicking it copies it. */
+.url {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: 11px / 14px var(--pg-font-mono);
+  text-align: left;
+  text-decoration: underline;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.url:hover {
+  color: var(--pg-link-hover);
+}
+
+.url:focus-visible {
+  outline: 1px dotted var(--pg-text);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.requests {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.request {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px;
+  background: var(--pg-field);
+  border: 1px solid var(--pg-field-border);
+}
+
+.requestText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+  line-height: 14px;
+}
+
+.requestActions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}
+
+.note {
+  flex-shrink: 0;
+  color: var(--pg-text-ok);
+}
+
+.error:empty {
+  display: none;
+}
+
+.error,
+.warning {
+  color: var(--pg-text-error);
+}
+
+/*
+ * Phone: Lasts and For share a row with Make Link under them, a link's buttons share the width
+ * under it, and a request's buttons go under the request.
+ */
+.phone {
+  gap: 12px;
+}
+
+.phone .make {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.phone .choice {
+  min-width: 0;
+}
+
+.phone .choice > :last-child {
+  width: auto;
+}
+
+.phone .makeButton {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.phone .link {
+  padding: 8px;
+}
+
+.phone .url {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.phone .actions {
+  width: 100%;
+}
+
+.phone .actions > button,
+.phone .requestActions > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.phone .request {
+  flex-wrap: wrap;
+}
+
+.phone .requestText {
+  flex-basis: calc(100% - 48px);
+}
+
+.phone .requestActions {
+  flex-direction: row;
+  width: 100%;
+}
