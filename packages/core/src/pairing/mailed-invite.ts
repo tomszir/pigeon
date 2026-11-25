@@ -83,7 +83,9 @@ export function encodeInviteLinkFragment(link: InviteLink): string {
 /** Reads a whole link or the part after `#`. */
 export function decodeInviteLink(text: string): Result<InviteLink, 'malformed'> {
   const trimmed = text.trim()
-  const hash = trimmed.indexOf('#')
+  // The last '#': a link pasted with a message before it ("Toms invites you…") opens too, even
+  // when the message has a '#' of its own.
+  const hash = trimmed.lastIndexOf('#')
   const fragment = hash < 0 ? trimmed : trimmed.slice(hash + 1)
   if (!fragment.startsWith('a/')) return err('malformed')
   const rest = fragment.slice(2)

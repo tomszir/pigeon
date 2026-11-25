@@ -99,7 +99,7 @@ export function Today(props: TodayProps) {
           <div class={styles.rows}>
             <Show when={name() === ''}>
               <button type="button" class={styles.row} onClick={() => props.onOpenMessenger()}>
-                <img src={brand('pigeon-32')} alt="" width="32" height="32" />
+                <img src={brand('messenger-32')} alt="" width="32" height="32" />
                 <span class={styles.text}>
                   <strong>Choose your name</strong>
                   <span class={styles.muted}>Friends see it when you invite them.</span>

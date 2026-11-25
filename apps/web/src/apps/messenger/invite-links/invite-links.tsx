@@ -47,6 +47,17 @@ export function shortLink(url: string): string {
   return `${bare.slice(0, hash)}#a/${body.slice(0, 4)}…${body.slice(-6)}`
 }
 
+/**
+ * What Copy Link puts on the clipboard: a line saying who it's from, then the link, ready to paste
+ * into a chat. The name stays in the message itself; a link preview only ever shows the site's own
+ * card, since nothing after the `#` reaches a server. Pasted back into Have an Invite?, the whole
+ * message still opens, as the link is read from its `#`.
+ */
+export function inviteMessage(name: string, url: string): string {
+  const from = name.trim()
+  return `${from === '' ? "You're invited to Pigeon!" : `${from} invites you to Pigeon!`}\n${url}`
+}
+
 const MAKE_ERRORS = {
   'no-lighthouse':
     "Links wait at your Lighthouses, and yours all need a pass. Add one that doesn't in Network.",
@@ -79,7 +90,7 @@ export function InviteLinks(props: InviteLinksProps) {
   const [copied, setCopied] = createSignal<string | undefined>(undefined)
 
   const copy = async (link: OwnLink) => {
-    const done = await props.copyText(link.url)
+    const done = await props.copyText(inviteMessage(props.messenger.profile().handle, link.url))
     setCopied(done ? link.secret : undefined)
     if (!done) setError('Pigeon couldn’t copy the link here. Try again.')
   }

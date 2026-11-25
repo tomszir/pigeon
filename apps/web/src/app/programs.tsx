@@ -202,7 +202,7 @@ export function createPrograms(
     api.open(windowId, {
       title: `${friend.name} - Conversation`,
       taskTitle: friend.name,
-      icon: brandIcon('pigeon-16'),
+      icon: brandIcon('messenger-16'),
       bounds: cascade(),
       resizable: true,
       content: (window) => (
@@ -564,7 +564,7 @@ export function createPrograms(
     ]
   }
 
-  const friendIcon = brandIcon('pigeon-16')
+  const friendIcon = brandIcon('messenger-16')
   // A balloon about a friend carries their own bird, which says who it is before the name does.
   // Each friend's is worked out once, so later balloons show at once and stay in order.
   const birds = new Map<PeerId, Icon>()
@@ -612,7 +612,7 @@ export function createPrograms(
     const one = names.length === 1
     api.notify({
       title: who ?? '',
-      icon: one ? (birds.get(first.friend.id) ?? friendIcon) : brandIcon('pigeon-16'),
+      icon: one ? (birds.get(first.friend.id) ?? friendIcon) : brandIcon('messenger-16'),
       body: `${waiting.length} new messages. Click to read.`,
       onClick: one ? () => openFriendConversation(first.friend.id) : openMessenger,
     })
@@ -675,7 +675,7 @@ export function createPrograms(
   const openMessenger = () =>
     api.open('messenger', {
       title: 'Pigeon',
-      icon: brandIcon('pigeon-16'),
+      icon: brandIcon('messenger-16'),
       bounds: { x: 818, y: 8, width: 200, height: 600 },
       resizable: true,
       controls: { maximize: false },
@@ -740,8 +740,9 @@ export function createPrograms(
     id: 'messenger',
     label: 'Pigeon Messenger',
     description: 'Chat with friends',
-    icon16: brandIcon('pigeon-16'),
-    icon32: brandIcon('pigeon-32'),
+    icon16: brandIcon('messenger-16'),
+    icon22: brandIcon('messenger-22'),
+    icon32: brandIcon('messenger-32'),
     onOpen: openMessenger,
   }
   const explorer: Launcher = {

@@ -1,0 +1,287 @@
+<!doctype html>
+<!--
+  The master of apps/web/public/share-card.png, the picture a chat app or search engine shows
+  beside a link to Pigeon. Like the desktop, it is laid out at 600×315, scaled 2× to 1200×630,
+  and run through the CRT effect: the filter below is crt-filter.tsx's at scale 2 and the glass
+  is stage.module.css's .crtLayer, so change them together. `mise run share-card` renders it.
+  Paths are from the repository's root; the render script serves them.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: "Wine Tahoma";
+        src: url("/apps/web/src/fonts/wine-tahoma.ttf") format("truetype");
+        font-synthesis: weight;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #000000;
+      }
+      .frame {
+        position: absolute;
+        inset: 0;
+        filter: url(#pg-crt);
+      }
+      .stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 600px;
+        height: 315px;
+        overflow: hidden;
+        transform: scale(2);
+        transform-origin: 0 0;
+        background: #3a6ea5 url("/apps/web/src/wallpapers/hills-1280x1024.jpg") center 30% / cover;
+        font-family: "Wine Tahoma", sans-serif;
+      }
+      .glass {
+        position: absolute;
+        inset: -4px;
+        background:
+          radial-gradient(
+            ellipse 130% 55% at 35% -12%,
+            rgb(255 255 255 / 11%) 0%,
+            rgb(255 255 255 / 0%) 60%
+          ),
+          radial-gradient(ellipse 85% 80% at 50% 50%, rgb(0 0 0 / 0%) 65%, rgb(0 0 0 / 30%) 100%);
+        box-shadow:
+          inset 0 0 0 10px #000000,
+          inset 0 0 4px 10px rgb(0 0 0 / 90%),
+          inset 0 0 48px rgb(0 0 0 / 45%),
+          inset 0 0 6px rgb(140 210 255 / 20%);
+      }
+      img {
+        image-rendering: pixelated;
+      }
+      .window {
+        position: absolute;
+        left: 48px;
+        top: 40px;
+        width: 504px;
+        border-radius: 8px 8px 0 0;
+        background: #0831d9;
+        box-shadow:
+          inset -1px -1px #00138c,
+          inset 1px 1px #0831d9,
+          inset -2px -2px #001ea0,
+          inset 2px 2px #166aee,
+          inset -3px -3px #003bda,
+          inset 3px 3px #0855dd,
+          3px 4px 10px rgb(0 0 0 / 45%);
+        padding: 0 3px 3px;
+      }
+      .title {
+        height: 28px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 3px 0 4px;
+        border-radius: 8px 8px 0 0;
+        margin: 0 -3px;
+        background: linear-gradient(
+          180deg,
+          #0997ff 0%,
+          #0053ee 8%,
+          #0050ee 40%,
+          #0066ff 88%,
+          #0066ff 93%,
+          #005bff 95%,
+          #003dd7 96%,
+          #003dd7 100%
+        );
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+        text-shadow: 1px 1px #0f1089;
+      }
+      .title span {
+        flex: 1;
+      }
+      .close {
+        width: 21px;
+        height: 21px;
+        box-sizing: border-box;
+        border: 1px solid #fff;
+        border-radius: 3px;
+        background: radial-gradient(circle at 90% 90%, #cc4600 0%, #dc6527 55%, #cd7546 70%, #ffccb2 90%, #fff 100%);
+        position: relative;
+      }
+      .close::before,
+      .close::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 8px;
+        width: 11px;
+        height: 2px;
+        background: #fff;
+        transform: rotate(45deg);
+      }
+      .close::after {
+        transform: rotate(-45deg);
+      }
+      .body {
+        background: #ece9d8;
+        padding: 16px 22px 14px;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+      .head img {
+        width: 64px;
+        height: 64px;
+        flex: none;
+      }
+      h1 {
+        margin: 0 0 2px;
+        font-size: 30px;
+        line-height: 32px;
+        color: #1b3e8e;
+      }
+      .tagline {
+        margin: 0;
+        font-size: 16px;
+        line-height: 20px;
+      }
+      .programs {
+        display: grid;
+        gap: 8px;
+        margin: 0 0 12px;
+        padding: 0;
+        list-style: none;
+      }
+      .programs li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        line-height: 16px;
+        color: #4a4a4a;
+      }
+      .programs img {
+        width: 22px;
+        height: 22px;
+        flex: none;
+      }
+      .programs b {
+        color: #000000;
+      }
+      .address {
+        margin: 0;
+        padding-top: 9px;
+        border-top: 1px solid #d6d2c2;
+        font-size: 13px;
+        color: #0033cc;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute">
+      <filter
+        id="pg-crt"
+        x="0"
+        y="0"
+        width="1200"
+        height="630"
+        filterUnits="userSpaceOnUse"
+        primitiveUnits="userSpaceOnUse"
+        color-interpolation-filters="sRGB"
+      >
+        <feImage id="barrel" x="0" y="0" width="1200" height="630" preserveAspectRatio="none" result="map" />
+        <feDisplacementMap in="SourceGraphic" in2="map" scale="16" xChannelSelector="R" yChannelSelector="G" result="bent" />
+        <feColorMatrix in="bent" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="red" />
+        <feOffset in="red" dx="-0.4" dy="0" result="redShifted" />
+        <feColorMatrix in="bent" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="green" />
+        <feColorMatrix in="bent" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="blue" />
+        <feOffset in="blue" dx="0.4" dy="0" result="blueShifted" />
+        <feBlend in="redShifted" in2="green" mode="screen" result="redGreen" />
+        <feBlend in="redGreen" in2="blueShifted" mode="screen" result="fringed" />
+        <feFlood x="0" y="0" width="1" height="2" flood-color="#ffffff" result="rowLight" />
+        <feFlood x="0" y="1" width="1" height="1" flood-color="#b4b4b4" result="rowDark" />
+        <feMerge x="0" y="0" width="1" height="2" result="row">
+          <feMergeNode in="rowLight" />
+          <feMergeNode in="rowDark" />
+        </feMerge>
+        <feTile in="row" result="rows" />
+        <feBlend in="fringed" in2="rows" mode="multiply" result="scanned" />
+        <feComponentTransfer in="fringed" result="bright">
+          <feFuncR type="linear" slope="2.2" intercept="-1.3" />
+          <feFuncG type="linear" slope="2.2" intercept="-1.3" />
+          <feFuncB type="linear" slope="2.2" intercept="-1.3" />
+        </feComponentTransfer>
+        <feGaussianBlur in="bright" stdDeviation="3.2" result="glow" />
+        <feComposite in="scanned" in2="glow" operator="arithmetic" k1="0" k2="1.03" k3="0.16" k4="0" />
+      </filter>
+    </svg>
+    <div class="frame">
+    <div class="stage">
+    <div class="window">
+      <div class="title">
+        <img src="/assets/brand/pigeon-16.png" width="16" height="16" alt="" />
+        <span>Pigeon</span>
+        <div class="close"></div>
+      </div>
+      <div class="body">
+        <div class="head">
+          <img src="/assets/brand/pigeon-128.png" alt="" />
+          <div>
+            <h1>Pigeon</h1>
+            <p class="tagline">The internet of 2003, if peer-to-peer had won.</p>
+          </div>
+        </div>
+        <ul class="programs">
+          <li>
+            <img src="/assets/brand/messenger-22.png" alt="" />
+            <span><b>Pigeon Messenger</b>: chat with your friends and buzz them.</span>
+          </li>
+          <li>
+            <img src="/apps/web/src/icons/tango/internet-web-browser-22.png" alt="" />
+            <span><b>Pigeon Explorer</b>: a 2003 browser for the Pigeonweb.</span>
+          </li>
+          <li>
+            <img src="/apps/web/src/icons/tango/network-workgroup-22.png" alt="" />
+            <span><b>Your people</b>: friends added by a link, no account, no cloud.</span>
+          </li>
+        </ul>
+        <p class="address">pigeon.tomszir.com</p>
+      </div>
+    </div>
+    </div>
+    </div>
+    <div class="glass"></div>
+    <script>
+      // crt-filter.tsx's barrelMap at scale 2: a corner shift of 4 device pixels, range 16.
+      const size = 256
+      const shift = 4
+      const range = 16
+      const canvas = document.createElement("canvas")
+      canvas.width = size
+      canvas.height = size
+      const context = canvas.getContext("2d")
+      const image = context.createImageData(size, size)
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const u = (x / (size - 1)) * 2 - 1
+          const v = (y / (size - 1)) * 2 - 1
+          const r2 = (u * u + v * v) / 2
+          const at = (y * size + x) * 4
+          image.data[at] = Math.round((0.5 + (u * r2 * shift) / range) * 255)
+          image.data[at + 1] = Math.round((0.5 + (v * r2 * shift) / range) * 255)
+          image.data[at + 2] = 128
+          image.data[at + 3] = 255
+        }
+      }
+      context.putImageData(image, 0, 0)
+      document.getElementById("barrel").setAttribute("href", canvas.toDataURL("image/png"))
+    </script>
+  </body>
+</html>

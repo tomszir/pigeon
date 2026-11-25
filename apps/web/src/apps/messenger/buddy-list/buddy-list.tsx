@@ -450,7 +450,7 @@ export function BuddyList(props: BuddyListProps) {
           }
         >
           <div class={classes(styles.emptyState, phone() && styles.phoneEmpty)}>
-            <img src={brand('pigeon-48')} alt="" width="48" height="48" />
+            <img src={brand('messenger-48')} alt="" width="48" height="48" />
             <strong>No friends yet</strong>
             <p class={styles.emptyText}>
               There's no directory on Pigeon. Send a friend an invite, and they can open it even
