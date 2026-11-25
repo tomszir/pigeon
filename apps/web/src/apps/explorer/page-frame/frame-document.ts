@@ -1,6 +1,8 @@
 // The document a sanitized page is shown in (docs/pigeonhtml.md): no doctype, so
 // quirks mode; a CSP that loads nothing but inline styles, the page's own images and the fonts
 // below; and a base stylesheet that maps the era's font names to Pigeon's bundled clones.
+// The site's own policy (public/_headers) applies on top, since a blank frame inherits its
+// parent's, so it has to allow these styles, images and fonts too.
 import monoFont from '../../../fonts/vera-sans-mono.ttf?url'
 import sansFont from '../../../fonts/wine-tahoma.ttf?url'
 import { type PageView, viewStylesheet } from './view.ts'

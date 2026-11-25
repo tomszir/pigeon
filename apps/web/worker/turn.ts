@@ -43,10 +43,21 @@ export async function visitorTag(request: Request, secret: string): Promise<stri
 /** Browsers stall on port 53 (DNS), so Cloudflare advises leaving those addresses out. */
 const usable = (url: string) => !/:53(\?|$)/.test(url)
 
+/**
+ * What the site's static files get from public/_headers, which Cloudflare doesn't add to a
+ * Worker's own responses: JSON is only ever JSON, and loads nothing if opened as a page.
+ */
+const SAFE_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+  'referrer-policy': 'no-referrer',
+}
+
 const json = (body: unknown, status: number, maxAge = 0) =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
+      ...SAFE_HEADERS,
       'content-type': 'application/json',
       'cache-control': maxAge > 0 ? `private, max-age=${maxAge}` : 'no-store',
     },

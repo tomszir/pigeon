@@ -4,7 +4,7 @@
 import { devices, expect, type Page, test } from '@playwright/test'
 import { MEDIUM, viewStylesheet } from '../src/apps/explorer/page-frame/view.ts'
 
-/** Anything the page's Content Security Policy refused, which would mean the frame broke. */
+/** Anything the site's or the frame's Content Security Policy refused: the page would break. */
 function blockedLoads(page: Page): string[] {
   const blocked: string[] = []
   page.on('console', (message) => {
