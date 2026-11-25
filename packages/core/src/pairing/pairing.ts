@@ -27,17 +27,23 @@ interface Common {
   readonly now: () => number
   /** The identity this device speaks for, and its device log, when it isn't the first device. */
   readonly speaker?: (() => Speaker | undefined) | undefined
+  /**
+   * The device log you already keep for someone, so a friend back from a recovery is checked
+   * against it, and a device their recovery took off their list is refused (decision 0027).
+   */
+  readonly knownLog?: ((id: PeerId) => Promise<DeviceLog | undefined>) | undefined
 }
 
 const speakerFields = (common: Common): Speaker => common.speaker?.() ?? {}
 
 /** Who a pair-request or pair-offer is from, or undefined when its claim doesn't hold. */
 async function friendFrom(
-  crypto: Crypto,
+  common: Common,
   device: PeerId,
   body: { readonly handle: string } & Speaker,
 ): Promise<NewFriend | undefined> {
-  const id = await speakerIdentity(crypto, device, body)
+  const known = await common.knownLog?.(body.identity ?? device)
+  const id = await speakerIdentity(common.crypto, device, body, known)
   if (id === undefined) return undefined
   return {
     id,
@@ -82,7 +88,7 @@ export async function hostInvite(options: HostInviteOptions): Promise<() => Prom
   const off = listen(options.crypto, room, (from, sender, body) => {
     if (done || sender === signer.id || !('code' in body) || body.code !== code) return
     if (body.type === 'pair-request') {
-      void friendFrom(options.crypto, sender, body).then((friend) => {
+      void friendFrom(options, sender, body).then((friend) => {
         if (friend === undefined || friend.id === self || options.refuse?.(friend.id) === true)
           return
         asked.set(from, { device: sender, friend })
@@ -182,7 +188,7 @@ export async function openInvite(options: OpenInviteOptions): Promise<OpenResult
     }
     if (body.type !== 'pair-offer') return
     void (async () => {
-      const friend = await friendFrom(options.crypto, sender, body)
+      const friend = await friendFrom(options, sender, body)
       if (friend === undefined) return
       // The link carries the identity's fingerprint, whichever of its devices answers.
       const print = await fingerprint(options.crypto, friend.id)

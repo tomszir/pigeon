@@ -325,10 +325,17 @@ export function MyDevices(props: MyDevicesProps) {
           </div>
         </GroupBox>
       </Show>
+      <Show when={props.messenger.waitingForList()}>
+        <p class={styles.muted}>
+          Recovered. Pair with a friend who knew you before, and their Pigeon hands back your whole
+          list; until then, no device can be linked here.
+        </p>
+      </Show>
       <Show when={!first() && props.messenger.deviceStatus() === 'active'}>
         <p class={styles.muted}>
-          Devices are linked and removed on your first device, the one this Pigeon began on. Keep it
-          safe: whoever has it manages your devices.
+          Devices are linked and removed on the device that manages your list: your first device,
+          unless your recovery key moved that to another. Keep it safe: whoever has it manages your
+          devices.
         </p>
       </Show>
       <GroupBox legend="My devices">
@@ -348,12 +355,16 @@ export function MyDevices(props: MyDevicesProps) {
                     {device.here ? ' (this device)' : ''}
                   </strong>
                   <span class={styles.muted}>
-                    {device.first
-                      ? 'Your first device, where this Pigeon began'
-                      : `Linked ${new Date(device.addedAt ?? 0).toLocaleDateString()}`}
+                    {device.writer
+                      ? device.first
+                        ? 'Your first device, which manages your list'
+                        : 'Manages your list'
+                      : device.first
+                        ? 'Your first device, where this Pigeon began'
+                        : `Linked ${new Date(device.addedAt ?? 0).toLocaleDateString()}`}
                   </span>
                 </div>
-                <Show when={first() && !device.first}>
+                <Show when={first() && !device.writer}>
                   <Show
                     when={confirming() === device.id}
                     fallback={

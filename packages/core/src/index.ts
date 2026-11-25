@@ -27,6 +27,10 @@ export type {
   DeviceInfo,
   DeviceLog,
   DeviceState,
+  Epoch,
+  KeptDevice,
+  RecoverEntry,
+  RecoveryKey,
 } from './devices/device-log.ts'
 export {
   appendDeviceEntry,
@@ -35,10 +39,15 @@ export {
   everDevices,
   FIRST_DEVICE_NAME,
   isDeviceLog,
+  isTailLog,
   MAX_DEVICE_NAME_LENGTH,
+  MAX_KEPT_DEVICES,
   mergeDeviceLogs,
+  recoverDeviceLog,
+  setRecoveryKey,
   speakerIdentity,
   verifyDeviceLog,
+  verifyOwnTail,
 } from './devices/device-log.ts'
 export type { Json } from './encoding/canonical.ts'
 export { canonicalBytes } from './encoding/canonical.ts'
@@ -111,6 +120,12 @@ export type {
   OpenStep,
 } from './pairing/pairing.ts'
 export { hostInvite, openInvite } from './pairing/pairing.ts'
+export type { RecoveryCode, RecoveryCodeError } from './recovery/recovery-code.ts'
+export {
+  decodeRecoveryCode,
+  encodeRecoveryCode,
+  RECOVERY_SEED_BYTES,
+} from './recovery/recovery-code.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
 export { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from './testing/testing.ts'

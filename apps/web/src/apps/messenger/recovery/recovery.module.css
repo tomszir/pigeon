@@ -1,0 +1,57 @@
+/* The recovery key windows: the code in big letters, then fields and buttons like Link a Device. */
+
+.data {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text {
+  margin: 0;
+  line-height: 14px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.error {
+  margin: 0;
+  color: var(--pg-text-error);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.phone .buttons {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* The code is copied by hand: monospaced, in groups, wrapping between them. */
+.code {
+  margin: 4px 0;
+  font: 700 14px / 20px var(--pg-font-mono);
+  letter-spacing: 0.06em;
+  word-spacing: 0.4em;
+}
+
+.warning {
+  margin: 0;
+  color: var(--pg-text-error);
+}

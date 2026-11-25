@@ -6,6 +6,7 @@ The words Pigeon uses for its own things.
 - **Carrier**: a peer holding a sealed letter for someone else.
 - **Device**: one browser's key. Several devices can be one person, on a device log.
 - **Device log**: the signed chain of entries saying which devices speak for an identity.
+- **Epoch**: a stretch of a device log between recoveries; a recovery key starts the next one.
 - **Fingerprint**: 16 hex characters from a peer's key, compared out loud or on screen when pairing.
 - **Changelog.txt**: the release notes on the desktop, written for the people using Pigeon, newest first.
 - **Coo**: the opt-in bot that runs in your own tab.
@@ -21,4 +22,5 @@ The words Pigeon uses for its own things.
 - **Petname**: what you call a contact, which only you see.
 - **PigeonHTML**: the 2000s-only HTML/CSS subset pages are written in.
 - **Pigeonweb**: all the `pigeon://` pages together.
+- **Recovery key**: a key kept on paper or in a file that brings your Pigeon back with every device lost, and outranks every device.
 - **Stage**: the logical screen everything is drawn on, at the chosen resolution (1024×768 unless changed).
