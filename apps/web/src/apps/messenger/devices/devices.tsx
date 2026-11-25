@@ -125,6 +125,8 @@ export interface JoinDeviceProps {
   messenger: Messenger
   /** A link from the address bar, if that's how it came. */
   incoming?: Invite | undefined
+  /** You already chose to link to `incoming` (before leaving the old Pigeon): don't ask again. */
+  confirmed?: boolean
   sleep: (ms: number) => Promise<void>
   /** Linked: Pigeon starts again as the identity it joined. */
   onLinked: () => void
@@ -138,6 +140,8 @@ export interface JoinDeviceProps {
 
 type Join =
   | { readonly kind: 'enter'; readonly error?: string }
+  /** Opened from a link: asks before linking, since anyone can send one. */
+  | { readonly kind: 'arrived'; readonly target: Invite }
   | { readonly kind: 'looking' }
   | { readonly kind: 'offer'; readonly offer: DeviceOffer }
   | { readonly kind: 'done' }
@@ -172,7 +176,11 @@ const FAILURES: Readonly<Record<string, string>> = {
 export function JoinDevice(props: JoinDeviceProps) {
   const phone = useLayout() === 'phone'
   const [typed, setTyped] = createSignal('')
-  const [view, setView] = createSignal<Join>({ kind: 'enter' })
+  const [view, setView] = createSignal<Join>(
+    props.incoming === undefined || props.confirmed === true
+      ? { kind: 'enter' }
+      : { kind: 'arrived', target: props.incoming },
+  )
   let giveUp: () => void = () => undefined
 
   const join = async (target: Invite) => {
@@ -234,7 +242,7 @@ export function JoinDevice(props: JoinDeviceProps) {
     }
     props.onLeave(props.messenger, target)
   }
-  if (props.incoming !== undefined) void join(props.incoming)
+  if (props.incoming !== undefined && props.confirmed === true) void join(props.incoming)
 
   const submit = () => {
     const target = decodeDeviceLink(typed())
@@ -276,6 +284,25 @@ export function JoinDevice(props: JoinDeviceProps) {
               </span>
             </form>
           </GroupBox>
+        </Match>
+        <Match when={view().kind === 'arrived' && (view() as Join & { kind: 'arrived' })}>
+          {(arrived) => (
+            <GroupBox legend="Link to my other device">
+              <div class={styles.column}>
+                <p class={styles.text}>
+                  This link makes this browser one of another Pigeon's devices, with its name and
+                  friends. Whoever has that Pigeon sees everything you do here.
+                </p>
+                <p class={styles.text}>
+                  Link only if it came from your own other device, showing Link a Device now.
+                </p>
+                <div class={styles.buttons}>
+                  <Button label="&Link" isDefault onClick={() => void join(arrived().target)} />
+                  <Button label="Cancel" onClick={props.onClose} />
+                </div>
+              </div>
+            </GroupBox>
+          )}
         </Match>
         <Match when={view().kind === 'looking'}>
           <p class={styles.text}>Looking for your other device...</p>

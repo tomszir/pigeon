@@ -14,7 +14,7 @@ export const YOUR_DEVICES = `
 <p>Linking is done in person, with both devices in front of you. The new device must be a Pigeon with no friends of its own yet, since it takes on yours. If it already has some, because you started Pigeon on both, <b>Link to My Other Device</b> on it offers to <b>leave</b> that Pigeon first: if it's on no other device, its friends who are online are told you left, everything on it is forgotten, and the link goes ahead. Check the code first: it's only tried once the old Pigeon is gone. Add those friends again from the Pigeon you keep.</p>
 ${steps([
   '<b>On the device that manages your list</b>, open Pigeon Messenger and choose <b>File</b>, <b>Link a Device</b>. It shows a code, a link and a QR code, good for 10 minutes.',
-  '<b>On the new device</b>, choose <b>File</b>, <b>Link to My Other Device</b>, and type the code or paste the link. On a phone, scanning the QR code opens the link.',
+  '<b>On the new device</b>, choose <b>File</b>, <b>Link to My Other Device</b>, and type the code or paste the link. On a phone, scanning the QR code opens the link; choose <b>Link</b> once you see it is from your own device.',
   '<b>Compare the numbers.</b> Both screens show the same <b>6-digit number</b>. If they differ, someone else answered: cancel.',
   '<b>Choose Link</b> on the device that manages your list. You can give the new device a name first, such as "Phone".',
   "<b>The new device becomes you.</b> It receives your name, your friends and their secrets, your blocked list and your friends' lists of devices, then starts again as you. Your chats aren't copied: they catch up from your friends, and from your other devices, as each comes online.",
