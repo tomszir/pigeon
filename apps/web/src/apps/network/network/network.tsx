@@ -38,6 +38,11 @@ export interface NetworkMessenger {
 export interface NetworkProps {
   /** Undefined while the Messenger starts, or when it can't. */
   messenger: NetworkMessenger | undefined
+  /**
+   * The official Lighthouses: labelled so, and only ever turned off and on again, never removed,
+   * since finding their addresses again would be hard.
+   */
+  official: readonly LighthouseAddress[]
   relayOnly: boolean | undefined
   onRelayOnly: (on: boolean) => void
   onClose: () => void
@@ -107,14 +112,6 @@ function createChecks(messenger: () => NetworkMessenger | undefined) {
 
 type Checks = ReturnType<typeof createChecks>
 
-function Dot(props: { ok: boolean }) {
-  return (
-    <svg class={styles.dot} width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-      <circle cx="5" cy="5" r="4" class={props.ok ? styles.dotOk : styles.dotBad} />
-    </svg>
-  )
-}
-
 function StatusLine(props: { status: Status | undefined; others: number; short: boolean }) {
   const text = (): string => {
     const status = props.status
@@ -138,9 +135,6 @@ function StatusLine(props: { status: Status | undefined; others: number; short: 
       )}
       role="status"
     >
-      <Show when={props.status !== undefined && props.status.kind !== 'checking'}>
-        <Dot ok={ok()} />
-      </Show>
       {text()}
     </span>
   )
@@ -201,7 +195,11 @@ function RightNow(props: { messenger: NetworkMessenger; checks: Checks }) {
 const ABOUT_LIGHTHOUSES =
   'It can’t open your mail, or tell whose it is from its tags. It does see your IP address, when you connect, and which tags you ask for. While it watches, it can tell which addresses exchange mail, though not who they are.'
 
-function Lighthouses(props: { messenger: NetworkMessenger; checks: Checks }) {
+function Lighthouses(props: {
+  messenger: NetworkMessenger
+  checks: Checks
+  official: readonly LighthouseAddress[]
+}) {
   const phone = useLayout() === 'phone'
   const [typed, setTyped] = createSignal('')
   const [problem, setProblem] = createSignal('')
@@ -236,12 +234,25 @@ function Lighthouses(props: { messenger: NetworkMessenger; checks: Checks }) {
   }
   const remove = (id: string) =>
     void props.messenger.setLighthouses(list().filter((address) => address.id !== id))
+  const enable = (address: LighthouseAddress) => {
+    void props.messenger.setLighthouses([...list(), address])
+    void props.checks.check(address)
+  }
   const last = () => list().length <= 1
+  const isOfficial = (id: string) => props.official.some((address) => address.id === id)
+  /** Your Lighthouses in order, then any official one you've turned off, there to turn on. */
+  const rows = () => [
+    ...list().map((address) => ({ address, on: true })),
+    ...props.official
+      .filter((address) => !list().some((other) => other.id === address.id))
+      .map((address) => ({ address, on: false })),
+  ]
 
-  const rows: () => JSX.Element = () => (
+  const rowList: () => JSX.Element = () => (
     <ul class={styles.list} aria-label="Your Lighthouses">
-      <For each={list()}>
-        {(address) => {
+      <For each={rows()}>
+        {(row) => {
+          const address = row.address
           const status = () => props.checks.statuses()[address.id]
           return (
             <li class={styles.row} data-lighthouse={address.id}>
@@ -250,34 +261,60 @@ function Lighthouses(props: { messenger: NetworkMessenger; checks: Checks }) {
                 alt=""
                 width={phone ? 32 : 22}
                 height={phone ? 32 : 22}
-                class={classes(status()?.kind === 'failed' && styles.dim)}
+                class={classes((!row.on || status()?.kind === 'failed') && styles.dim)}
               />
               <div class={styles.about}>
-                <span class={styles.name}>{address.name}</span>
+                <span class={styles.name}>
+                  {address.name}
+                  <Show when={isOfficial(address.id)}>
+                    <span class={styles.badge}>Official</span>
+                  </Show>
+                </span>
                 <span class={styles.muted}>
                   {phone || props.checks.prints()[address.id] === undefined
                     ? host(address)
                     : `${host(address)} · ${props.checks.prints()[address.id]}`}
                 </span>
-                <StatusLine status={status()} others={others(address.id)} short={phone} />
+                <Show
+                  when={row.on}
+                  fallback={
+                    <span class={styles.status}>
+                      {phone ? 'Turned off' : 'Turned off: friends don’t leave your mail here.'}
+                    </span>
+                  }
+                >
+                  <StatusLine status={status()} others={others(address.id)} short={phone} />
+                </Show>
               </div>
               <Show
-                when={phone}
+                when={!isOfficial(address.id)}
                 fallback={
-                  <Button label="Re&move" disabled={last()} onClick={() => remove(address.id)} />
+                  <Button
+                    label={row.on ? '&Disable' : '&Enable'}
+                    disabled={row.on && last()}
+                    onClick={() => (row.on ? remove(address.id) : enable(address))}
+                    class={phone ? styles.toggleKey : undefined}
+                  />
                 }
               >
-                <button
-                  type="button"
-                  class={styles.removeKey}
-                  aria-label={`Remove ${address.name}`}
-                  disabled={last()}
-                  onClick={() => remove(address.id)}
+                <Show
+                  when={phone}
+                  fallback={
+                    <Button label="Re&move" disabled={last()} onClick={() => remove(address.id)} />
+                  }
                 >
-                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                    <path d="M4 4 L14 14 M14 4 L4 14" />
-                  </svg>
-                </button>
+                  <button
+                    type="button"
+                    class={styles.removeKey}
+                    aria-label={`Remove ${address.name}`}
+                    disabled={last()}
+                    onClick={() => remove(address.id)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                      <path d="M4 4 L14 14 M14 4 L4 14" />
+                    </svg>
+                  </button>
+                </Show>
               </Show>
             </li>
           )
@@ -325,7 +362,7 @@ function Lighthouses(props: { messenger: NetworkMessenger; checks: Checks }) {
               <p class={styles.text}>
                 Friends leave mail for you here while you’re offline. It’s left at all of them.
               </p>
-              {rows()}
+              {rowList()}
               <Show when={last()}>
                 <p class={styles.muted}>Keep at least one, so friends can leave your mail.</p>
               </Show>
@@ -342,10 +379,10 @@ function Lighthouses(props: { messenger: NetworkMessenger; checks: Checks }) {
               Friends leave mail for you here while you’re offline, sealed so only your devices can
               open it. Mail is left at all of them, so one being down loses nothing.
             </p>
-            {rows()}
+            {rowList()}
             <p class={styles.muted}>
               <Show when={last()} fallback="">
-                Keep at least one, so friends have somewhere to leave your mail.{' '}
+                Keep at least one on, so friends have somewhere to leave your mail.{' '}
               </Show>
               What each says it runs is its own word. Its key is what Pigeon checks, on every reply.
             </p>
@@ -401,7 +438,9 @@ export function Network(props: NetworkProps) {
         fallback={
           <div class={styles.stack}>
             <Show when={props.messenger} fallback={waiting()}>
-              {(messenger) => <Lighthouses messenger={messenger()} checks={checks} />}
+              {(messenger) => (
+                <Lighthouses messenger={messenger()} checks={checks} official={props.official} />
+              )}
             </Show>
             <RelaySetting {...props} short />
             <AboutToggle />
@@ -416,7 +455,13 @@ export function Network(props: NetworkProps) {
               label: 'Lighthouses',
               content: () => (
                 <Show when={props.messenger} fallback={waiting()}>
-                  {(messenger) => <Lighthouses messenger={messenger()} checks={checks} />}
+                  {(messenger) => (
+                    <Lighthouses
+                      messenger={messenger()}
+                      checks={checks}
+                      official={props.official}
+                    />
+                  )}
                 </Show>
               ),
             },

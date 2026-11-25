@@ -53,6 +53,7 @@ import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
+import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
 export interface Programs extends ShellProps {
   readonly openReadme: () => void
@@ -120,6 +121,7 @@ export function createPrograms(
       content: (window) => (
         <Network
           messenger={host.messenger()}
+          official={OFFICIAL_LIGHTHOUSES}
           relayOnly={host.messenger()?.settings().relayOnly}
           onRelayOnly={(on) => void setRelayOnly(on)}
           onClose={window.close}

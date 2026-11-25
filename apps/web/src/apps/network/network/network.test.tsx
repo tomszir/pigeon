@@ -37,13 +37,18 @@ function fakeMessenger(start: readonly LighthouseAddress[], answering: (id: stri
 
 function show(
   messenger: NetworkMessenger | undefined,
-  options: { relayOnly?: boolean | undefined; phone?: boolean } = {},
+  options: {
+    relayOnly?: boolean | undefined
+    phone?: boolean
+    official?: readonly LighthouseAddress[]
+  } = {},
 ) {
   const onRelayOnly = vi.fn()
   render(() => (
     <LayoutContext.Provider value={options.phone === true ? 'phone' : 'desktop'}>
       <Network
         messenger={messenger}
+        official={options.official ?? []}
         relayOnly={'relayOnly' in options ? options.relayOnly : false}
         onRelayOnly={onRelayOnly}
         onClose={() => undefined}
@@ -144,6 +149,33 @@ describe('Network', () => {
     await flush()
     expect(list()).toEqual([worker])
     expect((screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+  })
+
+  it('labels the official Lighthouses, which are turned off and on, never removed', async () => {
+    const { messenger, list } = fakeMessenger([worker, node], () => true)
+    show(messenger, { official: [worker] })
+    await flush()
+    const rows = () => screen.getAllByRole('listitem')
+    expect(rows()[0]?.textContent).toContain('Official')
+    expect(rows()[1]?.textContent).not.toContain('Official')
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
+    await flush()
+    // Off, but still listed, to turn back on with one click.
+    expect(list()).toEqual([node])
+    expect(rows()).toHaveLength(2)
+    expect(rows()[1]?.textContent).toContain('Turned off')
+    fireEvent.click(screen.getByRole('button', { name: 'Enable' }))
+    await flush()
+    expect(list()).toEqual([node, worker])
+  })
+
+  it('keeps the last one on: an official one can’t be turned off when it’s all there is', async () => {
+    show(fakeMessenger([worker], () => true).messenger, { official: [worker] })
+    await flush()
+    expect((screen.getByRole('button', { name: 'Disable' }) as HTMLButtonElement).disabled).toBe(
       true,
     )
   })

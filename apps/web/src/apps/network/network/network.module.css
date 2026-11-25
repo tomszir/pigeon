@@ -88,18 +88,6 @@
   width: 100%;
 }
 
-.dot {
-  flex: none;
-}
-
-.dotOk {
-  fill: #4caf3c;
-}
-
-.dotBad {
-  fill: var(--pg-text-error);
-}
-
 .status {
   display: flex;
   align-items: center;
@@ -185,4 +173,23 @@
 
 .error:empty {
   display: none;
+}
+
+/* Beside an official Lighthouse's name. */
+.badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--pg-field-border);
+  border-radius: 3px;
+  background: var(--pg-field);
+  color: var(--pg-text-muted);
+  font-weight: 400;
+  font-size: 11px;
+  vertical-align: 1px;
+}
+
+/* On the Pocket: Disable and Enable, as tall as the remove key. */
+.toggleKey {
+  flex: none;
+  min-height: 44px;
 }
