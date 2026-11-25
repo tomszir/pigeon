@@ -8,6 +8,8 @@ import type { DeviceLog } from '../devices/device-log.ts'
 import { base32Encode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
+import type { LighthouseAddress } from '../lighthouse/address.ts'
+import { type SealingKey, verifySealingKey } from '../mail/mail.ts'
 import {
   type Body,
   MAX_MESSAGE_BYTES,
@@ -53,6 +55,16 @@ export type PairEvent =
   | { readonly type: 'offline' }
   /** The friend, already online, changed their handle: a later `hello` with another one. */
   | { readonly type: 'renamed'; readonly handle: string }
+  /**
+   * One of the friend's devices said its sealing key (checked: signed by that very device) or
+   * where to leave mail. Said on each hello; the Messenger keeps the newest.
+   */
+  | {
+      readonly type: 'keys'
+      readonly device: PeerId
+      readonly sealing?: SealingKey
+      readonly lighthouses?: readonly LighthouseAddress[]
+    }
   | { readonly type: 'presence'; readonly presence: Presence }
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
@@ -107,6 +119,10 @@ export interface PairSessionOptions {
   readonly profile?: (() => ProfileChange | undefined) | undefined
   /** Another of your devices said its name and personal message. */
   readonly onProfile?: ((change: ProfileChange) => void) | undefined
+  /** This device's sealing key, said in every hello, so mail for it can be sealed to it. */
+  readonly sealing?: (() => SealingKey | undefined) | undefined
+  /** Where to leave mail for this Pigeon, said in every hello. */
+  readonly lighthouses?: (() => readonly LighthouseAddress[]) | undefined
   /** This run's id, said in every hello. */
   readonly instance?: string | undefined
   /** A hello signed with this device's own key came from another run: a copied profile. */
@@ -163,6 +179,11 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     avatar: options.avatar?.() ?? AVATAR_VERSION,
     devices: true,
     ...(options.instance === undefined ? {} : { instance: options.instance }),
+    ...((sealing) => (sealing === undefined ? {} : { sealing }))(options.sealing?.()),
+    ...((lighthouses) =>
+      lighthouses === undefined || lighthouses.length === 0 ? {} : { lighthouses })(
+      options.lighthouses?.(),
+    ),
   })
   const accepts =
     options.accepts ?? ((device: PeerId) => (device === friend ? 'friend' : undefined))
@@ -248,6 +269,28 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   let merging = Promise.resolve()
   /** The handle in the friend's last hello. */
   let heardHandle: string | undefined
+  /**
+   * What a hello says about mail: a sealing key counts only if signed by the very device that
+   * sent the hello, so nobody can hand out a key for a device that isn't theirs.
+   */
+  async function heardKeys(from: Link, body: Extract<Body, { type: 'hello' }>) {
+    const device = deviceOf.get(from)
+    if (device === undefined || (body.sealing === undefined && body.lighthouses === undefined))
+      return
+    const sealing =
+      body.sealing !== undefined &&
+      body.sealing.device === device &&
+      (await verifySealingKey(crypto, body.sealing))
+        ? body.sealing
+        : undefined
+    options.onEvent({
+      type: 'keys',
+      device,
+      ...(sealing === undefined ? {} : { sealing }),
+      ...(body.lighthouses === undefined ? {} : { lighthouses: body.lighthouses }),
+    })
+  }
+
   const handlers: {
     [T in Body['type']]?: (from: Link, body: Extract<Body, { type: T }>, at: number) => void
   } = {
@@ -268,6 +311,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         options.onEvent({ type: 'renamed', handle: body.handle })
       heardHandle = body.handle
       if (firstHere) options.onEvent({ type: 'met', room })
+      void heardKeys(from, body)
     },
     presence: (_from, body, at) => {
       if (at < presenceAt) return

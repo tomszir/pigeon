@@ -7,12 +7,16 @@ import { base32Decode, base32Encode, utf8Decode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
+import { isLighthouseAddress, type LighthouseAddress } from '../lighthouse/address.ts'
+import { isSealingKey, type SealingKey } from '../mail/mail.ts'
 import { isPairSecret } from '../pairing/pair-rooms.ts'
 import { err, ok, type Result } from '../result/result.ts'
 
 export const MAX_MESSAGE_BYTES = 64 * 1024
 export const MAX_HANDLE_LENGTH = 32
 export const MAX_PERSONAL_MESSAGE_LENGTH = 120
+/** Lighthouses a Pigeon may name in its hello: where friends leave its mail. */
+export const MAX_LIGHTHOUSES = 4
 
 export type Status = 'online' | 'away' | 'busy'
 
@@ -21,7 +25,9 @@ export type Body =
    * `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. `devices`:
    * this Pigeon knows device logs; those before it don't say so. `instance`: a
    * random id for this run of Pigeon, so a device that hears its own key with another one knows
-   * it's open somewhere else too.
+   * it's open somewhere else too. `sealing`: this device's sealing key, signed by it, which
+   * mail for it is sealed to. `lighthouses`: where to leave mail for this Pigeon. Pigeons that
+   * don't know either leave them out, and ignore them when others send them.
    */
   | {
       readonly type: 'hello'
@@ -29,6 +35,8 @@ export type Body =
       readonly avatar?: number
       readonly devices?: boolean
       readonly instance?: string
+      readonly sealing?: SealingKey
+      readonly lighthouses?: readonly LighthouseAddress[]
     }
   /** Your device log: which devices speak for you. Sent before hello by an identity with one. */
   | { readonly type: 'device-log'; readonly log: DeviceLog }
@@ -125,7 +133,12 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
         (b['avatar'] as number) >= 1 &&
         (b['avatar'] as number) <= 255)) &&
     (b['devices'] === undefined || b['devices'] === true) &&
-    (b['instance'] === undefined || isInstance(b['instance'])),
+    (b['instance'] === undefined || isInstance(b['instance'])) &&
+    (b['sealing'] === undefined || isSealingKey(b['sealing'])) &&
+    (b['lighthouses'] === undefined ||
+      (Array.isArray(b['lighthouses']) &&
+        b['lighthouses'].length <= MAX_LIGHTHOUSES &&
+        b['lighthouses'].every(isLighthouseAddress))),
   'device-log': (b) => isDeviceLog(b['log']),
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&

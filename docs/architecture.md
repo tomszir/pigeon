@@ -96,9 +96,10 @@ apps/
                 every page shares.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
-                (app/programs.tsx). start-messenger.ts makes or loads the identity
+                (app/programs.tsx). start-messenger.ts makes or loads the identity and this device's sealing key
                 and builds the Messenger; address-invite.ts reads an invite link
-                from the address bar once and removes it; whats-new.ts decides
+                from the address bar once and removes it; official-lighthouses.ts lists the Lighthouses a new Pigeon
+                leaves its mail at; whats-new.ts decides
                 whether this visit says Pigeon was updated.
   lighthouse/   The Node Lighthouse (docs/lighthouse.md): @pigeon/lighthouse
                 run from one config file. config/ reads and checks it; platform/ is core's

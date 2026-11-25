@@ -3,8 +3,10 @@ import {
   decodeDeviceLink,
   decodeInvite,
   fakeCrypto,
+  fakeSealCrypto,
   fakeSigner,
   flush,
+  type LighthouseAddress,
   pairRoom,
   pairRoomOn,
 } from '@pigeon/core'
@@ -37,7 +39,13 @@ type Network = ReturnType<typeof createMemoryNetwork>
 function messenger(
   network: Network,
   name: string,
-  options: { store?: Store; clock?: Clock; events?: MessengerEvents; seed?: number } = {},
+  options: {
+    store?: Store
+    clock?: Clock
+    events?: MessengerEvents
+    seed?: number
+    lighthouses?: readonly LighthouseAddress[]
+  } = {},
 ) {
   const transport = network.transport()
   const store = options.store ?? createMemoryStore()
@@ -52,6 +60,9 @@ function messenger(
       clock: options.clock ?? fakeClock(),
       random: (length) => new Uint8Array(length).fill(options.seed ?? name.length),
       inviteBase: 'https://pigeon.test/',
+      // Each device's own sealing key, the same across its restarts, as a stored one would be.
+      seal: { crypto: fakeSealCrypto(), sealer: fakeSealCrypto().sealer(name) },
+      ...(options.lighthouses === undefined ? {} : { lighthouses: options.lighthouses }),
       ...(options.events === undefined ? {} : { events: options.events }),
     }),
   }))
@@ -65,6 +76,16 @@ async function pair(
 ) {
   const a = await messenger(network, 'rook', { clock, ...(events.a ? { events: events.a } : {}) })
   const b = await messenger(network, 'mika', { clock, ...(events.b ? { events: events.b } : {}) })
+  await pairWith(a, b, by)
+  return { a, b, clock }
+}
+
+/** Rook (`a`) invites Mika (`b`), who agrees: friends, through the invite handshake. */
+async function pairWith(
+  a: Awaited<ReturnType<typeof messenger>>,
+  b: Awaited<ReturnType<typeof messenger>>,
+  by: 'link' | 'code' = 'link',
+) {
   await a.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
   await b.messenger.setProfile({ handle: 'Mika', status: 'away', message: 'brb' })
   await a.messenger.newInvite()
@@ -81,7 +102,6 @@ async function pair(
   expect(a.messenger.friends()).toEqual([])
   expect(await opened.offer.confirm(never)).toBe(true)
   await flush()
-  return { a, b, clock }
 }
 
 const only = (list: readonly FriendView[]) => {
@@ -643,6 +663,39 @@ describe('your devices', () => {
     expect(phoneAgain.messenger.deviceStatus()).toBe('removed')
     expect(only(mika.messenger.friends()).devices).toBe(1)
     expect(laptop.messenger.devices().map((view) => view.here)).toEqual([true])
+  })
+
+  it('hears where to leave a friend’s mail, and each of their devices’ sealing keys', async () => {
+    const network = createMemoryNetwork()
+    const official = (n: string): LighthouseAddress => ({
+      id: fakeSigner(n).id,
+      name: n,
+      url: `wss://${n}.example/`,
+    })
+    const clock = fakeClock(NOON)
+    const a = await messenger(network, 'rook', { clock, lighthouses: [official('worker')] })
+    const b = await messenger(network, 'mika', { clock, lighthouses: [official('second')] })
+    await pairWith(a, b)
+    const mikaId = only(a.messenger.friends()).id
+    expect(a.messenger.lighthouses()).toEqual([official('worker')])
+    const book = await a.messenger.mailBook(mikaId)
+    expect(book.lighthouses).toEqual([official('second')])
+    expect(Object.keys(book.keys)).toEqual([b.messenger.device])
+
+    // Mika moves her mail: Rook hears at once, while they're both online.
+    await b.messenger.setLighthouses([official('elsewhere'), official('elsewhere')])
+    await flush()
+    expect((await a.messenger.mailBook(mikaId)).lighthouses).toEqual([official('elsewhere')])
+  })
+
+  it('keeps your own other devices’ sealing keys under your own id', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await flush()
+    const book = await laptop.messenger.mailBook(laptop.messenger.self)
+    expect(Object.keys(book.keys)).toContain(phone.messenger.device)
   })
 
   it('keeps your name and personal message in step on your devices', async () => {

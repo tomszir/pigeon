@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Signer } from '../identity/crypto.ts'
 import { pairRoom } from '../identity/identity.ts'
+import type { LighthouseAddress } from '../lighthouse/address.ts'
+import { bindSealingKey, type SealingKey } from '../mail/mail.ts'
 import { encodePairSecret, PAIR_SECRET_BYTES } from '../pairing/pair-rooms.ts'
-import { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from '../testing/testing.ts'
+import {
+  createMemoryNetwork,
+  fakeCrypto,
+  fakeSealCrypto,
+  fakeSigner,
+  flush,
+} from '../testing/testing.ts'
 import type { Transport } from '../transport/transport.ts'
 import { appendMessage, type ChatLog, emptyLog } from './chat-log.ts'
 import { type PairEvent, type PairSession, startPairSession } from './pair-session.ts'
@@ -68,6 +76,56 @@ describe('pair sessions', () => {
     await open(network.transport(), mika, rook, undefined, () => 2)
     await flush()
     expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 2, current: true })
+  })
+
+  it('hears a device’s own signed sealing key and its Lighthouses, and no one else’s', async () => {
+    const network = createMemoryNetwork()
+    const seal = fakeSealCrypto()
+    const name = await pairRoom(fakeCrypto, rook.id, mika.id)
+    const lighthouse: LighthouseAddress = {
+      id: fakeSigner('lighthouse').id,
+      name: 'Lighthouse',
+      url: 'wss://lighthouse.example/',
+    }
+    const start = async (self: Signer, friend: Signer, sealing: () => SealingKey | undefined) => {
+      const events: PairEvent[] = []
+      startPairSession({
+        crypto: fakeCrypto,
+        signer: self,
+        friend: friend.id,
+        chat: name,
+        rooms: [await network.transport().join(name)],
+        handle: () => 'Someone',
+        presence: () => ({ status: 'online', message: '' }),
+        log: emptyLog(name),
+        now: () => 1,
+        sealing,
+        lighthouses: () => [lighthouse],
+        onEvent: (event) => events.push(event),
+      })
+      return events
+    }
+    const rookKey = await bindSealingKey(rook, seal.sealer('rook'))
+    const mikaEvents = await start(mika, rook, () => undefined)
+    await start(rook, mika, () => rookKey)
+    await flush()
+    expect(mikaEvents).toContainEqual({
+      type: 'keys',
+      device: rook.id,
+      sealing: rookKey,
+      lighthouses: [lighthouse],
+    })
+
+    // Rook hands out a key bound to some other device: it's dropped, the Lighthouses still heard.
+    const other = await bindSealingKey(fakeSigner('elsewhere'), seal.sealer('elsewhere'))
+    const network2Events = await start(mika, rook, () => undefined)
+    await start(rook, mika, () => other)
+    await flush()
+    expect(network2Events.filter((event) => event.type === 'keys').at(-1)).toEqual({
+      type: 'keys',
+      device: rook.id,
+      lighthouses: [lighthouse],
+    })
   })
 
   it('hears a new handle from a friend who is already online', async () => {

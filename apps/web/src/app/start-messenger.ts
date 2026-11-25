@@ -13,11 +13,21 @@ import {
   randomBytes,
   signerFor,
 } from '../platform/crypto/browser-crypto.ts'
+import {
+  createWebSealCrypto,
+  generateSealingKey,
+  isStoredSealingKey,
+  type StoredSealingKey,
+  sealerFor,
+} from '../platform/crypto/seal-crypto.ts'
 import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
 import { createBrowserTransport } from '../platform/transport/browser-transport.ts'
+import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
 export const IDENTITY = 'identity'
+/** This device's sealing key, made beside its signing key and as unreadable. */
+export const SEALING_KEY = 'sealingKey'
 /** Set once Pigeon has asked the browser to keep its storage, so it asks only once. */
 const ASKED_TO_KEEP = 'askedToKeepStorage'
 
@@ -43,6 +53,11 @@ export async function startMessenger(
     identity = await generateIdentity()
     await store.set(IDENTITY, identity)
   }
+  let sealing = await store.get(SEALING_KEY)
+  if (!isStoredSealingKey(sealing)) {
+    sealing = await generateSealingKey()
+    await store.set(SEALING_KEY, sealing)
+  }
   // Asked when the identity is made, and once for identities made before Pigeon asked.
   if (persistent && (await store.get(ASKED_TO_KEEP)) !== true) {
     await store.set(ASKED_TO_KEEP, true)
@@ -58,6 +73,8 @@ export async function startMessenger(
     inviteBase: `${location.origin}${location.pathname}`,
     ...(deviceName === undefined ? {} : { deviceName }),
     events,
+    seal: { crypto: createWebSealCrypto(), sealer: sealerFor(sealing as StoredSealingKey) },
+    lighthouses: OFFICIAL_LIGHTHOUSES,
   })
   return { ok: true, messenger, persistent }
 }
