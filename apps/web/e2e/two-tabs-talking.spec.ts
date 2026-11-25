@@ -38,10 +38,13 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await later(rook)
   await rookMessenger.getByRole('button', { name: 'Add a Friend' }).click()
   const addFriend = rook.getByRole('dialog', { name: 'Add a Friend' })
+  // A live code is on its own tab; invite links come first.
+  await addFriend.getByRole('tab', { name: 'Quick code' }).click()
   await expect(addFriend.locator('[data-invite-code]')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)
-  await expect(addFriend.getByRole('img', { name: 'Invite link as a QR code' })).toBeVisible()
-  await addFriend.getByRole('button', { name: 'Copy link' }).click()
-  const link = String(await rook.evaluate('navigator.clipboard.readText()'))
+  const firstCode = (await addFriend.locator('[data-invite-code]').textContent()) ?? ''
+  await expect(addFriend.getByRole('img', { name: 'Invite code as a QR code' })).toBeVisible()
+  const link =
+    (await addFriend.locator('[data-invite-link]').getAttribute('data-invite-link')) ?? ''
   expect(link).toMatch(/#i\/[a-z2-7]{21}$/)
 
   // Mika opens the link in a browser of her own; the link vouches for Rook's fingerprint.
@@ -104,11 +107,11 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await expect(samAdd).toContainText('Looking for whoever made')
   await samAdd.getByRole('button', { name: 'Cancel' }).click()
   await rookChat.getByRole('button', { name: 'Close' }).click()
-  await addFriend.getByRole('button', { name: 'Make a new invite' }).click()
+  // Used, the quick code has changed by itself.
+  await expect(addFriend.locator('[data-invite-code]')).not.toHaveText(firstCode)
   const code = (await addFriend.locator('[data-invite-code]').textContent()) ?? ''
-  await samAdd
-    .getByRole('textbox', { name: 'Type a code or paste a link:' })
-    .fill(code.toLowerCase())
+  await samAdd.getByRole('tab', { name: 'Have an invite?' }).click()
+  await samAdd.getByRole('textbox', { name: 'Code or link:' }).fill(code.toLowerCase())
   await samAdd.getByRole('button', { name: 'Open' }).click()
   await expect(samAdd).toContainText('Rook wants to be your friend.')
   await expect(samAdd).toContainText('Check it before you add them')

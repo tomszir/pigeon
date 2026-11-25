@@ -123,3 +123,36 @@
 .phone .actions > .error {
   grid-column: 1 / -1;
 }
+
+/* Requests you sent through friends' links. */
+.asks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* Quick code: what it's for, then the code beside its picture. */
+.quick {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.phone .quick .muted {
+  text-align: center;
+}

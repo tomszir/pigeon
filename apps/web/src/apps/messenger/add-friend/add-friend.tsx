@@ -1,25 +1,30 @@
-// Add a Friend: share your invite (a code to type, a link, its QR code), or open one a friend
-// sent. Opening one asks the inviter who they are and shows their fingerprint; nothing is agreed
-// until you choose Add.
+// Add a Friend: make invite links that wait at your Lighthouses, share a live code, or open one
+// a friend sent. A code asks the inviter, online now, who they are; a link finds their card at
+// the Lighthouses and leaves a request for them to answer whenever they're next on. Nothing is
+// agreed until both of you say so.
 import {
   decodeInvite,
+  decodeInviteLink,
   formatFingerprint,
   formatInviteCode,
   type Invite,
   type OpenStep,
   type PeerId,
 } from '@pigeon/core'
-import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
+import { Tabs } from '../../../ui/tabs/tabs.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { Connecting, type StepState } from '../connecting/connecting.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
+import { InviteLinks, timeLeft, waitingCount } from '../invite-links/invite-links.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
+import type { OpenedLink, SentAsk } from '../service/invite-links.ts'
 import type { Messenger, FriendOffer as Offer } from '../service/service.ts'
 import styles from './add-friend.module.css'
 
@@ -27,10 +32,13 @@ import styles from './add-friend.module.css'
 export const ANSWER_TIMEOUT_MS = 45_000
 export const CONFIRM_TIMEOUT_MS = 20_000
 
+/** What the address bar brought: a live invite's code, or a link through Lighthouses. */
+export type IncomingInvite = Invite | { readonly link: string }
+
 export interface AddFriendProps {
   messenger: Messenger
   /** A link opened from the address bar. */
-  incoming?: Invite | undefined
+  incoming?: IncomingInvite | undefined
   copyText: (text: string) => Promise<boolean>
   sleep: (ms: number) => Promise<void>
   onOpenConversation: (id: PeerId) => void
@@ -39,7 +47,16 @@ export interface AddFriendProps {
   now?: () => number
 }
 
-type Failure = 'no-answer' | 'impostor' | 'no-confirm' | 'blocked'
+type Failure =
+  | 'no-answer'
+  | 'impostor'
+  | 'no-confirm'
+  | 'blocked'
+  | 'link-not-found'
+  | 'link-closed'
+  | 'link-expired'
+  | 'link-unsent'
+  | 'link-no-lighthouse'
 
 type View =
   | { readonly kind: 'share' }
@@ -52,6 +69,10 @@ type View =
   | { readonly kind: 'offer'; readonly offer: Offer }
   | { readonly kind: 'adding'; readonly offer: Offer; readonly startedAt: number }
   | { readonly kind: 'failed'; readonly failure: Failure }
+  | { readonly kind: 'link-looking' }
+  | { readonly kind: 'link-offer'; readonly opened: Extract<OpenedLink, { ok: true }> }
+  | { readonly kind: 'link-asking'; readonly name: string }
+  | { readonly kind: 'link-asked'; readonly name: string }
 
 const FAILURES: Record<Failure, string> = {
   'no-answer':
@@ -62,6 +83,15 @@ const FAILURES: Record<Failure, string> = {
     'This invite is from someone you blocked. To add them, unblock them first in Contacts, Blocked People.',
   'no-confirm':
     "Your friend's Pigeon stopped answering before it added you. Ask them for a new invite and try again.",
+  'link-not-found':
+    "Pigeon couldn't find this invite at the Lighthouses. Check you have the whole link, or ask your friend for a new one.",
+  'link-closed':
+    'This invite link is closed: it was used up, or your friend closed it. Ask them for a new one.',
+  'link-expired': 'This invite link has run out. Ask your friend for a new one.',
+  'link-unsent':
+    "Pigeon couldn't leave your request at your friend's Lighthouses. Check your connection and try again.",
+  'link-no-lighthouse':
+    "Your friend's answer would come to your Lighthouses, and yours all need a pass. Add one that doesn't in Network, then try again.",
 }
 
 export function AddFriend(props: AddFriendProps) {
@@ -116,6 +146,7 @@ export function AddFriend(props: AddFriendProps) {
       return
     }
     if (opened.error === 'own') {
+      setTab('enter')
       setView({ kind: 'share' })
       setTypedError("That's your own invite. Send it to a friend instead.")
       return
@@ -130,6 +161,59 @@ export function AddFriend(props: AddFriendProps) {
             : 'no-answer',
     })
   }
+
+  /** Finds a link's card at the Lighthouses and shows who made it. */
+  const openLink = async (text: string) => {
+    setTypedError('')
+    setView({ kind: 'link-looking' })
+    const opened = await props.messenger.openInviteLink(text)
+    if (view().kind !== 'link-looking') return
+    if (opened.ok) {
+      setView({ kind: 'link-offer', opened })
+      return
+    }
+    switch (opened.error) {
+      case 'own':
+        setTab('enter')
+        setView({ kind: 'share' })
+        setTypedError("That's your own invite link. Send it to a friend instead.")
+        return
+      case 'friend':
+        setTab('enter')
+        setView({ kind: 'share' })
+        setTypedError("You're already friends with whoever made that link.")
+        return
+      case 'malformed':
+        setTab('enter')
+        setView({ kind: 'share' })
+        setTypedError("That link isn't whole. Paste all of it.")
+        return
+      case 'closed':
+        setView({ kind: 'failed', failure: 'link-closed' })
+        return
+      case 'expired':
+        setView({ kind: 'failed', failure: 'link-expired' })
+        return
+      default:
+        setView({ kind: 'failed', failure: 'link-not-found' })
+    }
+  }
+
+  const ask = async (opened: Extract<OpenedLink, { ok: true }>) => {
+    const name = opened.card.name
+    setView({ kind: 'link-asking', name })
+    const sent = await props.messenger.askThroughLink(opened)
+    if (view().kind !== 'link-asking') return
+    if (sent === 'sent') setView({ kind: 'link-asked', name })
+    else
+      setView({
+        kind: 'failed',
+        failure: sent === 'no-lighthouse' ? 'link-no-lighthouse' : 'link-unsent',
+      })
+  }
+
+  const openIncoming = (incoming: IncomingInvite) =>
+    'link' in incoming ? void openLink(incoming.link) : void open(incoming)
 
   const add = async (offer: Offer) => {
     setView({ kind: 'adding', offer, startedAt: now() })
@@ -156,12 +240,18 @@ export function AddFriend(props: AddFriendProps) {
     if (current.kind === 'offer') void current.offer.cancel()
   })
 
+  /** Which tab shows, kept while a link or code is looked up and you come back. */
+  const [tab, setTab] = createSignal<'links' | 'code' | 'enter'>('links')
+
   onMount(() => {
-    if (props.incoming !== undefined && hasName()) void open(props.incoming)
-    else if (hasName() && props.messenger.invite() === undefined) void props.messenger.newInvite()
+    if (props.incoming !== undefined && hasName()) openIncoming(props.incoming)
   })
 
   const submit = () => {
+    if (decodeInviteLink(typed()).ok || typed().includes('#a/')) {
+      void openLink(typed())
+      return
+    }
     const invite = decodeInvite(typed())
     if (!invite.ok) {
       setTypedError('Type the 8-character code, or paste the whole link.')
@@ -170,23 +260,74 @@ export function AddFriend(props: AddFriendProps) {
     void open(invite.value)
   }
 
-  const copy = async (what: 'code' | 'link') => {
-    const text = what === 'code' ? props.messenger.inviteCode() : props.messenger.inviteLink()
+  const copyCode = async () => {
+    const text = props.messenger.inviteCode()
     if (text === undefined) return
     const done = await props.copyText(text)
-    setCopied(done ? `${what === 'code' ? 'Code' : 'Link'} copied.` : 'Select it and copy it.')
+    setCopied(done ? 'Code copied.' : 'Select it and copy it.')
   }
 
   const saveName = (handle: string, message: string) =>
     void props.messenger.setProfile({ ...props.messenger.profile(), handle, message }).then(() => {
-      if (props.incoming !== undefined) void open(props.incoming)
-      else if (props.messenger.invite() === undefined) void props.messenger.newInvite()
+      if (props.incoming !== undefined) openIncoming(props.incoming)
     })
 
   const current = <K extends View['kind']>(kind: K) => {
     const shown = view()
     return shown.kind === kind ? (shown as Extract<View, { kind: K }>) : undefined
   }
+
+  const links = () => (
+    <InviteLinks messenger={props.messenger} copyText={props.copyText} phone={phone} now={now} />
+  )
+
+  const codeBox = () => (
+    <QuickCode
+      messenger={props.messenger}
+      phone={phone}
+      now={now}
+      copied={copied()}
+      onCopy={() => void copyCode()}
+      onNew={() => {
+        setCopied('')
+        void props.messenger.newInvite()
+      }}
+    />
+  )
+
+  const enter = () => (
+    <div class={styles.column}>
+      <p class={styles.text}>
+        A friend sent you an invite link, or is reading you a code: paste or type it here.
+      </p>
+      <form
+        class={styles.column}
+        onSubmit={(event) => {
+          event.preventDefault()
+          submit()
+        }}
+      >
+        <TextField
+          label="&Code or link:"
+          stacked={phone}
+          value={typed()}
+          onInput={(text) => {
+            setTyped(text)
+            setTypedError('')
+          }}
+        />
+        <div class={styles.actions}>
+          <Button label="&Open" type="submit" isDefault disabled={typed().trim() === ''} />
+          <span class={styles.error} role="alert">
+            {typedError()}
+          </span>
+        </div>
+      </form>
+      <SentAsks messenger={props.messenger} now={now} />
+    </div>
+  )
+
+  const waiting = () => waitingCount(props.messenger)
 
   return (
     <div class={classes(styles.addFriend, phone && styles.phone)}>
@@ -195,82 +336,21 @@ export function AddFriend(props: AddFriendProps) {
           <ProfileForm handle="" message="" first onSave={saveName} />
         </Match>
         <Match when={view().kind === 'share'}>
-          <GroupBox legend="Invite a friend">
-            <Show
-              when={props.messenger.inviteCode()}
-              fallback={
-                <div class={styles.column}>
-                  <p class={styles.text}>Your last invite was used or has run out.</p>
-                  <Button
-                    label="&Make a new invite"
-                    onClick={() => void props.messenger.newInvite()}
-                  />
-                </div>
-              }
-            >
-              {(code) => (
-                <div class={styles.share}>
-                  <QrCode
-                    text={props.messenger.inviteLink() ?? ''}
-                    label="Invite link as a QR code"
-                    scale={4}
-                  />
-                  <div class={styles.column}>
-                    <p class={styles.text}>
-                      Tell a friend this code, send them the link, or let them scan the picture. It
-                      works once, for 30 minutes, while Pigeon is open here.
-                    </p>
-                    <p class={styles.code} data-selectable data-invite-code>
-                      {code()}
-                    </p>
-                    <div class={styles.actions}>
-                      <Button label="Copy &code" isDefault onClick={() => void copy('code')} />
-                      <Button label="Copy &link" onClick={() => void copy('link')} />
-                      <Button
-                        label={phone ? '&New invite' : '&New'}
-                        onClick={() => {
-                          setCopied('')
-                          void props.messenger.newInvite()
-                        }}
-                      />
-                    </div>
-                    <span class={styles.note} aria-live="polite">
-                      {copied()}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </Show>
-            <p class={styles.fingerprint}>
-              Your fingerprint:{' '}
-              <code data-selectable>{formatFingerprint(props.messenger.selfFingerprint)}</code>
-            </p>
-          </GroupBox>
-          <GroupBox legend="Got an invite?">
-            <form
-              class={styles.column}
-              onSubmit={(event) => {
-                event.preventDefault()
-                submit()
-              }}
-            >
-              <TextField
-                label="&Type a code or paste a link:"
-                stacked={phone}
-                value={typed()}
-                onInput={(text) => {
-                  setTyped(text)
-                  setTypedError('')
-                }}
-              />
-              <div class={styles.actions}>
-                <Button label="&Open" type="submit" disabled={typed().trim() === ''} />
-                <span class={styles.error} role="alert">
-                  {typedError()}
-                </span>
-              </div>
-            </form>
-          </GroupBox>
+          <Tabs
+            label="Add a Friend"
+            fill={phone}
+            initial={tab()}
+            onSelect={(id) => setTab(id as 'links' | 'code' | 'enter')}
+            tabs={[
+              {
+                id: 'links',
+                label: waiting() > 0 ? `Invite links (${waiting()})` : 'Invite links',
+                content: links,
+              },
+              { id: 'code', label: 'Quick code', content: codeBox },
+              { id: 'enter', label: phone ? 'Have one?' : 'Have an invite?', content: enter },
+            ]}
+          />
         </Match>
         <Match when={current('looking')}>
           {(shown) => {
@@ -386,6 +466,66 @@ export function AddFriend(props: AddFriendProps) {
             )
           }}
         </Match>
+        <Match when={current('link-looking')}>
+          <MessageBox kind="information" buttons={[{ label: 'Cancel', onClick: back }]}>
+            <p>Looking for the invite at the Lighthouses...</p>
+          </MessageBox>
+        </Match>
+        <Match when={current('link-offer')}>
+          {(shown) => {
+            const { card, fingerprint } = shown().opened
+            return (
+              <MessageBox
+                kind="information"
+                picture={
+                  <FriendAvatar
+                    messenger={props.messenger}
+                    id={card.identity}
+                    name={card.name}
+                    size={64}
+                  />
+                }
+                buttons={[
+                  {
+                    label: '&Ask to be friends',
+                    isDefault: true,
+                    onClick: () => void ask(shown().opened),
+                  },
+                  { label: 'Cancel', onClick: back },
+                ]}
+              >
+                <p>
+                  This link is from <strong>{card.name}</strong>. Their fingerprint is{' '}
+                  <code data-selectable>{fingerprint}</code>, and it matches the link.
+                </p>
+                <p>
+                  They'll see your request the next time they open Pigeon, and you'll be friends
+                  once they add you. Neither of you has to be online at the same time.
+                </p>
+              </MessageBox>
+            )
+          }}
+        </Match>
+        <Match when={current('link-asking')}>
+          {(shown) => (
+            <MessageBox kind="information" buttons={[{ label: 'Cancel', onClick: back }]}>
+              <p>Leaving your request for {shown().name}...</p>
+            </MessageBox>
+          )}
+        </Match>
+        <Match when={current('link-asked')}>
+          {(shown) => (
+            <MessageBox
+              kind="information"
+              buttons={[{ label: 'OK', isDefault: true, onClick: props.onClose }]}
+            >
+              <p>
+                Your request is waiting for <strong>{shown().name}</strong>. Pigeon tells you when
+                they add you, even if you've closed it in the meantime and opened it again.
+              </p>
+            </MessageBox>
+          )}
+        </Match>
         <Match when={current('failed')}>
           {(shown) => (
             <MessageBox
@@ -400,6 +540,105 @@ export function AddFriend(props: AddFriendProps) {
           )}
         </Match>
       </Switch>
+    </div>
+  )
+}
+
+const ASK_STATES: Record<SentAsk['state'], string> = {
+  waiting: 'waiting for them',
+  declined: 'they said no',
+  closed: 'the link had closed',
+  busy: 'too many were waiting on the link; ask again later',
+}
+
+/** Requests you sent through friends' links, until each is answered and forgotten. */
+function SentAsks(props: { messenger: Messenger; now: () => number }) {
+  const asks = () => props.messenger.sentAsks()
+  return (
+    <Show when={asks().length > 0}>
+      <ul class={styles.asks} aria-label="Requests you sent">
+        <For each={asks()}>
+          {(sent) => (
+            <li class={styles.ask}>
+              <span>
+                <strong>{sent.name}</strong>: {ASK_STATES[sent.state]}
+                {sent.state === 'waiting' && sent.expires > props.now()
+                  ? ` (link ends in ${timeLeft(sent.expires - props.now())})`
+                  : ''}
+              </span>
+              <Button
+                label={sent.state === 'waiting' ? 'Stop waiting' : 'OK'}
+                onClick={() => void props.messenger.forgetAsk(sent.secret)}
+              />
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
+}
+
+/**
+ * A live code for a friend who's with you, or on the phone: read out, or scanned. It changes
+ * after each use and every 30 minutes, made afresh whenever this tab shows none.
+ */
+function QuickCode(props: {
+  messenger: Messenger
+  phone: boolean
+  now: () => number
+  copied: string
+  onCopy: () => void
+  onNew: () => void
+}) {
+  const [tick, setTick] = createSignal(0)
+  const timer = setInterval(() => setTick((n) => n + 1), 15_000)
+  onCleanup(() => clearInterval(timer))
+  createEffect(() => {
+    if (props.messenger.profile().handle !== '' && props.messenger.invite() === undefined)
+      void props.messenger.newInvite()
+  })
+  const changesIn = () => {
+    tick()
+    const current = props.messenger.invite()
+    return current === undefined ? '' : timeLeft(current.expiresAt - props.now())
+  }
+  return (
+    <div class={styles.quick}>
+      <p class={styles.text}>
+        For someone with you or on the phone: read out the code, or let them scan it. It changes
+        after each use and every 30 minutes. To send an invite, make a link instead.
+      </p>
+      <Show
+        when={props.messenger.inviteCode()}
+        fallback={<p class={styles.muted}>Making a code...</p>}
+      >
+        {(code) => (
+          <div class={styles.share} data-invite-link={props.messenger.inviteLink()}>
+            <QrCode
+              text={props.messenger.inviteLink() ?? ''}
+              label="Invite code as a QR code"
+              scale={props.phone ? 5 : 4}
+            />
+            <div class={styles.column}>
+              <p class={styles.code} data-selectable data-invite-code>
+                {code()}
+              </p>
+              <p class={styles.muted}>Changes in {changesIn()}</p>
+              <div class={styles.actions}>
+                <Button label="Copy &code" isDefault onClick={props.onCopy} />
+                <Button label="&New code" onClick={props.onNew} />
+              </div>
+              <span class={styles.note} aria-live="polite">
+                {props.copied}
+              </span>
+            </div>
+          </div>
+        )}
+      </Show>
+      <p class={styles.fingerprint}>
+        Your fingerprint:{' '}
+        <code data-selectable>{formatFingerprint(props.messenger.selfFingerprint)}</code>
+      </p>
     </div>
   )
 }

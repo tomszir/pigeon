@@ -17,6 +17,7 @@ import {
   type ProfileChange,
   type SealingKey,
 } from '@pigeon/core'
+import { isOtherLink, type OtherLink } from './invite-links.ts'
 
 /** Your Lighthouse list, and when it was changed on the device that changed it. */
 export interface LighthousesChange {
@@ -30,7 +31,12 @@ export interface SelfNews {
   readonly keys: readonly SealingKey[]
   readonly profile?: ProfileChange | undefined
   readonly lighthouses?: LighthousesChange | undefined
+  /** Invite links the sending device made, so your other devices can show and close them. */
+  readonly invites?: readonly OtherLink[] | undefined
 }
+
+/** At most this many invite links from one device. */
+export const MAX_SELF_INVITES = 64
 
 /** At most this many sealing keys, a few more than anyone has devices. */
 export const MAX_SELF_KEYS = 32
@@ -41,6 +47,7 @@ export const selfNewsBody = (news: SelfNews): Json =>
     keys: news.keys,
     ...(news.profile === undefined ? {} : { profile: news.profile }),
     ...(news.lighthouses === undefined ? {} : { lighthouses: news.lighthouses }),
+    ...(news.invites === undefined ? {} : { invites: news.invites }),
   }) as unknown as Json
 
 const isTime = (value: unknown): value is number =>
@@ -90,5 +97,8 @@ export function readSelfNews(identity: PeerId, body: unknown): SelfNews | undefi
     keys,
     profile: readProfile(fields['profile']),
     lighthouses: readLighthouses(fields['lighthouses']),
+    invites: Array.isArray(fields['invites'])
+      ? fields['invites'].filter(isOtherLink).slice(0, MAX_SELF_INVITES)
+      : undefined,
   }
 }

@@ -14,7 +14,7 @@ import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
 import { localPageFinder, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
 import type { KeptView } from '../apps/explorer/page-frame/view.ts'
 import { HELP_HOME, HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
-import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
+import { AddFriend, type IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
 import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
 import {
@@ -63,7 +63,7 @@ export interface Programs extends ShellProps {
   readonly openHomeScreen: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
-  readonly openAddFriend: (incoming?: Invite) => void
+  readonly openAddFriend: (incoming?: IncomingInvite) => void
   /** Link to My Other Device, perhaps from a link in the address bar. */
   readonly openJoinDevice: (incoming?: Invite) => void
   readonly sample: Accessor<boolean>
@@ -241,13 +241,13 @@ export function createPrograms(
   const openConversation = (contactId: string) =>
     sample() ? openSampleConversation(contactId) : openFriendConversation(contactId)
 
-  const openAddFriend = (incoming?: Invite) => {
+  const openAddFriend = (incoming?: IncomingInvite) => {
     // A link from the address bar replaces whatever the window was showing.
     if (incoming !== undefined) api.close('add-friend')
     api.open('add-friend', {
       title: 'Add a Friend',
       icon: tangoIcon('contact-new', 16),
-      bounds: { x: 232, y: 90, width: 560, height: 440 },
+      bounds: { x: 232, y: 80, width: 560, height: 480 },
       controls: { maximize: false },
       content: (window) => (
         <Show

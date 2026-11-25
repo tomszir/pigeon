@@ -80,6 +80,12 @@ import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
+import {
+  type InviteLinks,
+  type LinkFriend,
+  loadInviteLinks,
+  type OpenedLink,
+} from './invite-links.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
@@ -211,6 +217,8 @@ export interface MessengerDeps {
 
 /** How often a running Messenger looks for mail. */
 export const MAIL_EVERY_MS = 10 * 60 * 1000
+/** How often mail is looked for while a link of yours is open, or a request you sent waits. */
+export const INVITE_MAIL_EVERY_MS = 30 * 1000
 
 /**
  * What a friend's devices said about their mail: each device's sealing key, and the Lighthouses
@@ -465,6 +473,8 @@ export async function createMessenger(deps: MessengerDeps) {
           head: () => ({ epoch: devices.epoch(), seq: devices.own().entries.length }),
           stopped: () => closed,
         })
+  /** Invite links through Lighthouses, once friends are loaded. */
+  let inviteLinks: InviteLinks | undefined
 
   /**
    * Who `id` is to mail: their pair secret, the sealing keys of their devices still on their
@@ -490,11 +500,13 @@ export async function createMessenger(deps: MessengerDeps) {
   async function takeLetter(source: Source, letter: Letter): Promise<boolean> {
     if (closed) return false
     if (letter.kind === 'self') return source.sender === self && takeSelfNews(letter)
+    if (letter.kind === 'invite' || letter.kind === 'invite-answer')
+      return inviteLinks?.take(source, letter) ?? Promise.resolve(false)
     if (letter.kind !== 'farewell') return false
-    const view = friend(source.sender)
+    const view = friend(letter.sender)
     if (view === undefined) return true
-    if (devices.classify(source.sender, letter.from) !== 'friend') return false
-    if (view.removedYouAt === undefined) handlers.unfriended(source.sender, { type: 'unfriended' })
+    if (devices.classify(letter.sender, letter.from) !== 'friend') return false
+    if (view.removedYouAt === undefined) handlers.unfriended(letter.sender, { type: 'unfriended' })
     return true
   }
 
@@ -531,15 +543,12 @@ export async function createMessenger(deps: MessengerDeps) {
     const log = devices.own()
     const profile = profileChange()
     const list = lighthousesChange()
+    const invites = inviteLinks?.shared()
     void (async () => {
-      const book = await mailBook(self)
-      const keys = [
-        ...(ownSealing === undefined ? [] : [ownSealing]),
-        ...Object.values(book.keys).filter((key) => devices.isOwnOther(key.device)),
-      ]
+      const keys = await ownKeys()
       const to = await selfRecipient()
       if (to !== undefined) {
-        const news = { log, keys, profile, lighthouses: list }
+        const news = { log, keys, profile, lighthouses: list, invites }
         await mailbox.send('self', to, selfNewsBody(news), { supersede: true })
       }
       const off = removed.filter((device) => !devices.isOwnOther(device))
@@ -569,6 +578,7 @@ export async function createMessenger(deps: MessengerDeps) {
         await heardKeys(self, { type: 'keys', device: key.device, sealing: key })
     if (news.profile !== undefined) await takeProfile(news.profile)
     if (news.lighthouses !== undefined) await takeLighthouses(news.lighthouses)
+    if (news.invites !== undefined) await inviteLinks?.takeShared(letter.from, news.invites)
     return true
   }
 
@@ -596,6 +606,8 @@ export async function createMessenger(deps: MessengerDeps) {
     await store.set(KEYS.lighthousesChangedAt, changedAt)
     for (const session of sessions.values()) session.announce()
     selfSession?.announce()
+    // Each open link's card names where requests go now.
+    void inviteLinks?.refresh().catch(() => undefined)
   }
 
   /** Your Lighthouse list from another of your devices: the newest change wins. */
@@ -641,7 +653,8 @@ export async function createMessenger(deps: MessengerDeps) {
             replyTo: waiting,
           })
       await mailbox.resend()
-      const heard = await mailbox.fetch(lighthouses(), [...sources.values()], takeLetter, lookAt)
+      const all = [...sources.values(), ...(inviteLinks?.sources() ?? [])]
+      const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
       // A farewell every device of theirs has a receipt for was heard: nothing more to say.
       // One that only expired wasn't, and goes on being said in person.
       for (const id of heard)
@@ -1069,6 +1082,63 @@ export async function createMessenger(deps: MessengerDeps) {
     const log = await store.get(KEYS.log(record.id))
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
   }
+
+  /** Sealing keys of your devices on your list, this one's included. */
+  async function ownKeys() {
+    const book = await mailBook(self)
+    return [
+      ...(ownSealing === undefined ? [] : [ownSealing]),
+      ...Object.values(book.keys).filter((key) => devices.isOwnOther(key.device)),
+    ]
+  }
+
+  /** A friend through an invite link, either way round: saved with all a link says of them. */
+  async function befriendByLink(found: LinkFriend) {
+    const view = await addFriend({
+      id: found.id,
+      handle: found.handle,
+      addedAt: clock.now(),
+      secret: found.secret,
+      moved: true,
+    })
+    await devices.loadFriend(found.id)
+    await devices.takeFriend(found.id, found.deviceLog)
+    for (const key of found.keys)
+      await heardKeys(found.id, { type: 'keys', device: key.device, sealing: key })
+    if (found.lighthouses.length > 0)
+      await heardKeys(found.id, { type: 'keys', device: found.id, lighthouses: found.lighthouses })
+    await saveFriends()
+    await meet(found.id)
+    events.onPaired?.(view)
+  }
+
+  if (mailbox !== undefined && deps.seal !== undefined && makeClient !== undefined)
+    inviteLinks = await loadInviteLinks({
+      crypto,
+      seal: deps.seal.crypto,
+      signer,
+      self,
+      store,
+      now: clock.now,
+      random: deps.random,
+      mailbox,
+      client: (address) => lighthouseClient(address) as LighthouseClient,
+      official: deps.lighthouses ?? [],
+      lighthouses,
+      inviteBase: deps.inviteBase,
+      name: () => profile().handle,
+      deviceLog: devices.own,
+      active: () => devices.status() === 'active',
+      ownKeys,
+      knownLog,
+      isFriend: (id) => friend(id) !== undefined,
+      isBlocked,
+      newSecret,
+      befriend: befriendByLink,
+      friendRecipient: (id) => recipient(id, friend(id)?.secret),
+      changed: () => tellOwnDevices(),
+      stopped: () => closed,
+    })
   /** A removed friend heard: in person, or by receipt for the farewell left in their mailbox. */
   async function farewellHeard(id: PeerId) {
     // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
@@ -1208,6 +1278,8 @@ export async function createMessenger(deps: MessengerDeps) {
     if (changedAt !== undefined) await store.set(KEYS.profileChangedAt, changedAt)
     if (first) await connect()
     else for (const session of sessions.values()) session.announce()
+    // Each open link's card shows the name you go by now.
+    if (renamed && !first) void inviteLinks?.refresh().catch(() => undefined)
     // The code's host answers with the name it was started with.
     const current = invite()
     if (renamed && !first && current !== undefined) await host(current)
@@ -1232,6 +1304,8 @@ export async function createMessenger(deps: MessengerDeps) {
   let lastStatus = devices.status()
   /** Tells everyone about a change to your device log, and acts on what it means here. */
   async function ownChanged() {
+    // Each open link's card says your list as it is now.
+    void inviteLinks?.refresh().catch(() => undefined)
     for (const session of [...sessions.values(), ...farewellSessions.values()]) {
       session.recheck()
       session.shareDevices()
@@ -1259,6 +1333,7 @@ export async function createMessenger(deps: MessengerDeps) {
   }
   await connect()
   if (unsharedLighthouses) tellOwnDevices()
+  void inviteLinks?.resume().catch(() => undefined)
 
   async function disconnect() {
     await stopHosting?.()
@@ -1656,6 +1731,15 @@ export async function createMessenger(deps: MessengerDeps) {
       await checkMail().catch(() => undefined)
     }
   })()
+  // More often while a link of yours is open or a request you sent waits, so two people online
+  // together pair within a minute.
+  void (async () => {
+    while (!closed) {
+      await clock.sleep(INVITE_MAIL_EVERY_MS)
+      if (closed) return
+      if (inviteLinks?.waiting() === true) await checkMail().catch(() => undefined)
+    }
+  })()
 
   // Rooms are renamed each UTC day, with both joined around midnight.
   void (async () => {
@@ -1743,6 +1827,29 @@ export async function createMessenger(deps: MessengerDeps) {
       tellOwnDevices()
     },
     selfFingerprint,
+    /** Invite links this device made, with who asked through each. */
+    inviteLinks: () => inviteLinks?.links() ?? [],
+    /** Invite links your other devices made. */
+    inviteLinksElsewhere: () => inviteLinks?.elsewhere() ?? [],
+    /** Requests you sent through someone's link, waiting for their answer. */
+    sentAsks: () => inviteLinks?.asks() ?? [],
+    /** Makes an invite link; undefined when this Pigeon can't reach Lighthouses. */
+    makeInviteLink: (options: { lifetime: number; uses: number }) =>
+      inviteLinks?.make(options) ??
+      Promise.resolve({ ok: false as const, error: 'not-stored' as const }),
+    cancelInviteLink: (secret: string) => inviteLinks?.cancel(secret) ?? Promise.resolve(),
+    approveRequest: (secret: string, identity: PeerId) =>
+      inviteLinks?.approve(secret, identity) ?? Promise.resolve(false),
+    declineRequest: (secret: string, identity: PeerId) =>
+      inviteLinks?.decline(secret, identity) ?? Promise.resolve(),
+    /** Looks up someone's invite link at the Lighthouses. */
+    openInviteLink: (text: string): Promise<OpenedLink> =>
+      inviteLinks?.open(text) ??
+      Promise.resolve({ ok: false as const, error: 'not-found' as const }),
+    /** Asks to be friends through a link opened with `openInviteLink`. */
+    askThroughLink: (opened: Extract<OpenedLink, { ok: true }>) =>
+      inviteLinks?.ask(opened) ?? Promise.resolve('not-sent' as const),
+    forgetAsk: (secret: string) => inviteLinks?.forgetAsk(secret) ?? Promise.resolve(),
     /** Where friends leave mail for this Pigeon. */
     lighthouses,
     /** Changes where mail is left for you, and says so to friends and your other devices. */

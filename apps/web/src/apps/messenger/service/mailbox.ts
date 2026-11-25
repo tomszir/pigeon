@@ -9,6 +9,8 @@ import {
   base32Encode,
   type Crypto,
   dropHashes,
+  inviteAnswerTag,
+  inviteAskTag,
   isLighthouseAddress,
   isSealingKey,
   type Json,
@@ -50,11 +52,18 @@ const KEYS = {
   seen: 'mail-seen',
 } as const
 
+/**
+ * Which tags a secret makes: a mailbox's (the pair or self secret's, for the recipient and day),
+ * an invite's requests (from its secret), or one request's answers (from its reply secret).
+ */
+export type TagScheme = 'mail' | 'invite-ask' | 'invite-answer'
+
 /** Someone to send to: where their mail goes and what it's sealed to. */
 export interface Recipient {
   readonly identity: PeerId
-  /** The pair or self secret their tags come from, base32. */
+  /** The secret their tags come from, base32: the pair or self secret unless `tags` says. */
   readonly secret: string
+  readonly tags?: TagScheme | undefined
   readonly keys: readonly SealingKey[]
   readonly lighthouses: readonly LighthouseAddress[]
 }
@@ -73,9 +82,15 @@ interface Outgoing {
 
 /** Whose mail to look for: a sender, the secret their tags to you come from, and what they send. */
 export interface Source {
-  readonly sender: PeerId
+  /** Undefined for anyone: requests through an invite come from people not met yet. */
+  readonly sender: PeerId | undefined
   readonly secret: string
+  readonly tags?: TagScheme | undefined
   readonly kinds: readonly MailKind[]
+  /** Blobs bigger than this are skipped unread. */
+  readonly maxBytes?: number | undefined
+  /** At most this many blobs are got each fetch. */
+  readonly maxItems?: number | undefined
   /**
    * Where to send receipts: the sender's devices and Lighthouses, if known. Asked each time, as
    * a key heard while fetching (from your own other devices, say) can make it known.
@@ -111,7 +126,16 @@ export interface Mailbox {
     kind: Exclude<MailKind, 'receipt'>,
     to: Recipient,
     body: Json,
-    options?: { readonly supersede?: boolean },
+    options?: {
+      readonly supersede?: boolean
+      /** Put once and not kept: nothing waits for its receipts. */
+      readonly once?: boolean
+      /**
+       * The devices whose receipts it waits for, when not all it's sealed to: only the device that
+       * asked through an invite link can fetch the answer, so only its receipt can come.
+       */
+      readonly waitFor?: readonly PeerId[]
+    },
   ): Promise<boolean>
   /** Puts again what's waited long enough for its receipts, and forgets what expired. */
   resend(): Promise<void>
@@ -138,6 +162,20 @@ export interface Mailbox {
 const secretBytes = (secret: string): Uint8Array | undefined => {
   const bytes = base32Decode(secret)
   return bytes.ok ? bytes.value : undefined
+}
+
+/** The tag mail to `identity` under `secret` waits under on `date`, by `scheme`. */
+async function tagFor(
+  crypto: Crypto,
+  scheme: TagScheme | undefined,
+  secret: string,
+  identity: PeerId,
+  date: string,
+): Promise<string | undefined> {
+  if (scheme === 'invite-ask') return inviteAskTag(crypto, secret, date)
+  if (scheme === 'invite-answer') return inviteAnswerTag(crypto, secret, date)
+  const bytes = secretBytes(secret)
+  return bytes === undefined ? undefined : mailTag(crypto, bytes, identity, date)
 }
 
 const isRecipient = (value: unknown): value is Recipient => {
@@ -197,8 +235,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
     to: Recipient,
     devices: readonly SealingKey[],
   ): Promise<boolean> {
-    const secret = secretBytes(to.secret)
-    if (secret === undefined || devices.length === 0) return false
+    if (secretBytes(to.secret) === undefined || devices.length === 0) return false
     const at = now()
     const date = utcDate(at)
     const sealed = await sealMail(
@@ -208,7 +245,8 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
       devices,
     )
     if (!sealed.ok) return false
-    const tag = await mailTag(crypto, secret, to.identity, date)
+    const tag = await tagFor(crypto, to.tags, to.secret, to.identity, date)
+    if (tag === undefined) return false
     const drops = await dropHashes(crypto, sealed.value)
     let stored = false
     for (const lighthouse of to.lighthouses) {
@@ -265,6 +303,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
         if (deps.stopped()) return false
         const id = newId()
         const stored = await put(kind, id, body, to, to.keys)
+        if (options?.once === true) return stored
         const at = now()
         const reaches = new Set(to.keys.map((key) => key.device))
         const letters = (await outbox()).filter(
@@ -279,7 +318,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           kind,
           body,
           to,
-          waiting: to.keys.map((key) => key.device),
+          waiting: options?.waitFor ?? to.keys.map((key) => key.device),
           sentAt: at,
           // Put nowhere yet: tried again at the next check, not days later.
           putAt: stored ? at : 0,
@@ -328,6 +367,8 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           drop: string
         }[] = []
         const reached: Record<string, { cursor: number; at: number }> = {}
+        // Blobs got per source this fetch, for its `maxItems`.
+        const got = new Map<Source, number>()
         for (const lighthouse of lighthouses) {
           if (deps.stopped()) return completed
           const last = fetched[lighthouse.id] ?? { cursor: 0, at: at - LOOK_BACK_DAYS * DAY }
@@ -335,15 +376,15 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           const tags = new Map<string, { source: Source; date: string }>()
           for (const date of datesBetween(last.at, at))
             for (const source of sources) {
-              const secret = secretBytes(source.secret)
-              if (secret === undefined) continue
-              tags.set(await mailTag(crypto, secret, deps.self, date), { source, date })
+              const tag = await tagFor(crypto, source.tags, source.secret, deps.self, date)
+              if (tag !== undefined) tags.set(tag, { source, date })
             }
           if (tags.size === 0) continue
           const client = deps.client(lighthouse)
           const all = [...tags.keys()]
           let cursor = last.cursor
           let reachable = true
+          let heldBack = false
           // In chunks a Lighthouse takes in one list; each read to its end from the last cursor,
           // so the cursor kept is the furthest any reached.
           for (let start = 0; start < all.length && reachable; start += MAX_LIST_TAGS) {
@@ -363,19 +404,30 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
               for (const item of listed.value.items) {
                 const where = tags.get(item.tag)
                 if (where === undefined) continue
-                const got = await client.request({ type: 'get', id: item.id })
-                if (!got.ok || got.value.type !== 'blob') {
+                const { maxBytes, maxItems } = where.source
+                if (maxBytes !== undefined && item.size > maxBytes) continue
+                const count = got.get(where.source) ?? 0
+                if (maxItems !== undefined && count >= maxItems) {
+                  // Read next time: the cursor isn't moved past what was left for later.
+                  heldBack = true
+                  continue
+                }
+                got.set(where.source, count + 1)
+                const blob = await client.request({ type: 'get', id: item.id })
+                if (!blob.ok || blob.value.type !== 'blob') {
                   // Read again next time: the cursor isn't moved past what couldn't be got.
                   reachable = false
                   break
                 }
                 const dayOf = Date.parse(`${where.date}T00:00:00Z`)
-                const open = await openMail(crypto, deps.seal, deps.sealer, got.value.blob, {
+                const open = await openMail(crypto, deps.seal, deps.sealer, blob.value.blob, {
                   to: deps.self,
                   kinds: where.source.kinds,
                   dates: [utcDate(dayOf - DAY), where.date, utcDate(dayOf + DAY)],
                 })
-                if (!open.ok || open.value.letter.sender !== where.source.sender) continue
+                const { sender } = where.source
+                if (!open.ok || (sender !== undefined && open.value.letter.sender !== sender))
+                  continue
                 opened.push({ client, id: item.id, source: where.source, ...open.value })
               }
               if (!reachable) break
@@ -384,7 +436,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             }
             cursor = Math.max(cursor, chunkCursor)
           }
-          if (reachable) reached[lighthouse.id] = { cursor, at }
+          if (reachable && !heldBack) reached[lighthouse.id] = { cursor, at }
         }
         if (deps.stopped()) return completed
         await look?.(opened.map(({ source, letter }) => ({ source, letter })))
