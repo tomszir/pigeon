@@ -55,8 +55,9 @@ test('two people who are never online together become friends through a link', a
   await expect(addFriend.getByRole('list', { name: 'Your invite links' })).toBeVisible({
     timeout: 60_000,
   })
-  const link = String(await rook.evaluate('navigator.clipboard.readText()'))
-  expect(link).toMatch(/#a\/[a-z2-7]{52}$/)
+  const copied = String(await rook.evaluate('navigator.clipboard.readText()'))
+  expect(copied).toMatch(/^Rook invites you to Pigeon!\nhttp\S+#a\/[a-z2-7]{52}$/)
+  const link = copied.slice(copied.indexOf('\n') + 1)
   await rook.close()
 
   const mikaContext = await browser.newContext()

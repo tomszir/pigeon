@@ -122,7 +122,7 @@ function Tray(props: {
             title={spec().label()}
             onClick={() => props.onToggle()}
           >
-            <img src={brand('pigeon-16')} alt="" width="16" height="16" />
+            <img src={brand('bell-16')} alt="" width="16" height="16" />
             <Show when={spec().count() > 0}>
               <span class={styles.trayBadge} aria-hidden="true">
                 {spec().count() > 99 ? '99+' : spec().count()}

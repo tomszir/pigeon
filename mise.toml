@@ -56,3 +56,7 @@ run = "pnpm --filter web e2e"
 [tasks.deploy]
 description = "Build and deploy to pigeon.tomszir.com (the maintainer runs this, never an agent)"
 run = "pnpm --filter web deploy"
+
+[tasks.share-card]
+description = "Render assets/brand/share-card.html into apps/web/public/share-card.png, the link preview picture"
+run = "pnpm --filter web exec node share-card.ts"

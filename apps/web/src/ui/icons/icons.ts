@@ -36,7 +36,12 @@ export const TANGO_ICONS = [
 ] as const
 
 export const BRAND_ICONS = [
+  'bell-16',
   'buzz-22',
+  'messenger-16',
+  'messenger-22',
+  'messenger-32',
+  'messenger-48',
   'paper-plane-24',
   'pigeon-16',
   'pigeon-24',

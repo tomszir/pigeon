@@ -3,7 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
-    <title>Pigeon</title>
+    <title>Pigeon: the internet of 2003, if peer-to-peer had won</title>
+    <!-- What search engines and link previews show. A link's invite sits after its "#", which
+         a browser never sends to a server, so an invite link previews as this page does. -->
+    <meta name="description" content="Pigeon is a whole 2003 desktop in your browser, from a world where peer-to-peer won: chat with your friends in Pigeon Messenger and browse the Pigeonweb in Pigeon Explorer. No account, no cloud." />
+    <link rel="canonical" href="https://pigeon.tomszir.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Pigeon" />
+    <meta property="og:url" content="https://pigeon.tomszir.com/" />
+    <meta property="og:title" content="Pigeon: the internet of 2003, if peer-to-peer had won" />
+    <meta property="og:description" content="A 2003 desktop in your browser: chat with your friends in Pigeon Messenger and browse the Pigeonweb in Pigeon Explorer. Got an invite link? Open it to add the friend who sent it." />
+    <meta property="og:image" content="https://pigeon.tomszir.com/share-card.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A Pigeon window on a desktop of green hills, through an old CRT: the internet of 2003, if peer-to-peer had won, with Pigeon Messenger and Pigeon Explorer." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Pigeon",
+        "url": "https://pigeon.tomszir.com/",
+        "description": "A 2003 desktop in your browser, where peer-to-peer won: Pigeon Messenger for your friends and Pigeon Explorer for the Pigeonweb.",
+        "applicationCategory": "CommunicationApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and WebRTC",
+        "image": "https://pigeon.tomszir.com/share-card.png",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <link rel="icon" href="/favicon.ico" />
     <!-- Added to an iPhone's Home Screen, Pigeon opens as its own app, whose storage Safari's
          7-day limit doesn't clear. -->
@@ -14,6 +43,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p>Pigeon is a whole 2003 desktop in your browser, from a world where peer-to-peer won: chat
+        with your friends in Pigeon Messenger and browse the Pigeonweb in Pigeon Explorer. It needs
+        JavaScript to run.</p>
+    </noscript>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>
 </html>

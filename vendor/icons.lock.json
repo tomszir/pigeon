@@ -294,6 +294,26 @@
     },
     {
       "source": "brand",
+      "icon": "bell-16"
+    },
+    {
+      "source": "brand",
+      "icon": "messenger-16"
+    },
+    {
+      "source": "brand",
+      "icon": "messenger-22"
+    },
+    {
+      "source": "brand",
+      "icon": "messenger-32"
+    },
+    {
+      "source": "brand",
+      "icon": "messenger-48"
+    },
+    {
+      "source": "brand",
       "icon": "pigeon-16"
     },
     {
