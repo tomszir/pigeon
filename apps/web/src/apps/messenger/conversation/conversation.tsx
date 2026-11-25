@@ -1,9 +1,10 @@
 // A conversation window's insides: menus, toolbar, the "To:" line, the transcript (ending in
 // the "is writing" line while the friend types) and the compose box. It draws what it is given; sample-conversation and live-conversation
 // decide what that is.
-import { createSignal, type JSX } from 'solid-js'
+import { createSignal, type JSX, Show } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { brandIcon, tangoIcon } from '../../../ui/icons/icons.ts'
+import { useLayout } from '../../../ui/layout/layout.ts'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
@@ -42,6 +43,7 @@ export interface ConversationProps {
 }
 
 export function Conversation(props: ConversationProps) {
+  const phone = useLayout() === 'phone'
   const [draft, setDraft] = createSignal('')
   const withTyping = (): readonly TranscriptEntry[] =>
     props.typing === ''
@@ -97,17 +99,23 @@ export function Conversation(props: ConversationProps) {
         ]}
       />
       <Toolbar label="Conversation actions">
-        <ToolbarButton icon={tangoIcon('contact-new', 22)} label="&Invite" disabled />
-        <ToolbarButton icon={tangoIcon('mail-attachment', 22)} label="Send &Files" disabled />
-        <ToolbarSeparator />
+        {/* What isn't built yet sits greyed on the desktop, as the era's toolbars did; on the
+            phone's narrow screen it would only crowd out what works. */}
+        <Show when={!phone}>
+          <ToolbarButton icon={tangoIcon('contact-new', 22)} label="&Invite" disabled />
+          <ToolbarButton icon={tangoIcon('mail-attachment', 22)} label="Send &Files" disabled />
+          <ToolbarSeparator />
+        </Show>
         <ToolbarButton
           icon={brandIcon('buzz-22')}
           label="&Buzz!"
           disabled={!props.canBuzz}
           onClick={props.onBuzz}
         />
-        <ToolbarButton icon={tangoIcon('internet-mail', 22)} label="Le&tters" disabled />
-        <ToolbarButton icon={tangoIcon('internet-web-browser', 22)} label="&Homepage" disabled />
+        <Show when={!phone}>
+          <ToolbarButton icon={tangoIcon('internet-mail', 22)} label="Le&tters" disabled />
+          <ToolbarButton icon={tangoIcon('internet-web-browser', 22)} label="&Homepage" disabled />
+        </Show>
       </Toolbar>
       <div class={styles.header}>
         {props.avatar}

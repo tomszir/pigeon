@@ -5,6 +5,8 @@
   height: var(--pg-statusbar);
   padding: 2px 1px;
   box-shadow: var(--pg-frame-statusbar);
+  /* The body type of the layout it is in: 11px on the desktop, 13px on the phone. */
+  font: var(--pg-type-body);
 }
 
 .field {

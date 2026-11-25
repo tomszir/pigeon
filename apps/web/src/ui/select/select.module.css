@@ -38,9 +38,10 @@
 .arrow {
   flex-shrink: 0;
   align-self: stretch;
-  width: 17px;
+  /* Square and finger-wide where taps need it (the phone's 44px fields); XP's 17px elsewhere. */
+  width: max(17px, calc(var(--pg-touch-target) - 2px));
   margin: 1px;
-  background: url("../../icons/xp/dropdown.svg") no-repeat center / 17px 100%;
+  background: url("../../icons/xp/dropdown.svg") no-repeat center / 100% 100%;
 }
 
 .select:hover .arrow {
@@ -65,7 +66,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  max-height: 200px;
+  max-height: max(200px, calc(var(--pg-touch-target) * 6));
   overflow-y: auto;
   border: 1px solid #000000;
   background: var(--pg-field);
@@ -73,6 +74,10 @@
 }
 
 .option {
+  display: flex;
+  align-items: center;
+  /* A finger tall on the phone, where each choice is tapped. */
+  min-height: max(15px, var(--pg-touch-target));
   padding: 1px 4px;
   line-height: 15px;
   white-space: nowrap;

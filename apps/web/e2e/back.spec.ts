@@ -6,6 +6,15 @@ import { devices, expect, type Page, test } from '@playwright/test'
 /** The browser's own Back, as a phone's back gesture or key presses it. */
 const back = (page: Page) => page.goBack({ waitUntil: 'commit' })
 
+/**
+ * Opens Pigeon on the desktop and waits for Read Me, which a first visit opens once Pigeon's
+ * storage is open: before then it could open between a test's steps.
+ */
+async function openDesktop(page: Page) {
+  await page.goto('/')
+  await expect(page.getByRole('dialog', { name: 'Read Me.txt - Pigeon Reader' })).toBeVisible()
+}
+
 /** Pigeon's address is still the one it was opened at, so Back hasn't left the site. */
 async function stillHere(page: Page) {
   await expect(page).toHaveURL(/localhost|127\.0\.0\.1/)
@@ -14,7 +23,7 @@ async function stillHere(page: Page) {
 test('on the desktop, Back goes back a page and closes menus, but not windows', async ({
   page,
 }) => {
-  await page.goto('/')
+  await openDesktop(page)
   await page.getByRole('button', { name: 'Pigeon menu' }).click()
   await expect(page.getByRole('menuitem', { name: /Pigeon Explorer/ }).first()).toBeVisible()
   await back(page)
@@ -55,7 +64,7 @@ test('on the desktop, Back goes back a page and closes menus, but not windows', 
 test('going to the page already showing adds no step, and an invite link adds none', async ({
   page,
 }) => {
-  await page.goto('/')
+  await openDesktop(page)
   await page.getByRole('button', { name: 'Pigeon menu' }).click()
   await page
     .getByRole('menuitem', { name: /Pigeon Explorer/ })
@@ -72,7 +81,7 @@ test('going to the page already showing adds no step, and an invite link adds no
 })
 
 test('a desktop menu left open closes when the screen turns into the Pocket', async ({ page }) => {
-  await page.goto('/')
+  await openDesktop(page)
   await page.getByRole('button', { name: 'Pigeon menu' }).click()
   await page.setViewportSize({ width: 412, height: 839 })
   await expect(page.getByRole('region', { name: 'Today' })).toBeVisible()

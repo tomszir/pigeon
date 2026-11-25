@@ -127,7 +127,9 @@ export function PhoneShell(props: PhoneShellProps) {
   }
   const showingHome = () => home() || current() === undefined
 
-  // A window coming to the front (opened, or raised by a buzz) takes the screen from Today.
+  // A window coming to the front (opened, or raised by a buzz) takes the screen from Today, and
+  // the balloon showing goes with it: on a screen this small it would cover the window's own
+  // buttons, and whatever it said was about the screen just left.
   createEffect(
     on(
       () => props.desktop.active,
@@ -135,6 +137,7 @@ export function PhoneShell(props: PhoneShellProps) {
         if (active !== null && active !== previous) {
           setHome(false)
           setMenuOpen(false)
+          if (props.notice !== null) props.onCloseNotice()
         }
       },
       { defer: true },
