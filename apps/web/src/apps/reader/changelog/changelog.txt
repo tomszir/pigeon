@@ -6,14 +6,22 @@
 
 0.7.0, 25 November 2026
 ----------------------------------------------
-  * Cover the whole screen while Pigeon is in
-    another tab.
-  * Leave a Pigeon with friends to link it to
-    another.
-  * Show a friend's new name while they're
-    online.
-  * Keep your name in step on all your
-    devices.
+  * Started Pigeon on your phone and your
+    computer separately? Now you can make
+    them one. Choose File, Link to My Other
+    Device on the one you'll give up, and it
+    offers to leave that Pigeon first: its
+    friends are told you left, it's wiped,
+    and it links to the one you keep.
+  * Change your name or personal message on
+    one device and your other devices take
+    it too, the next time they're online
+    together.
+  * Friends now see your new name as soon as
+    you change it, not after reconnecting.
+  * Pigeon open in another tab? That tab now
+    says so across the whole screen, with
+    one button to use Pigeon there instead.
 
 0.6.0, 25 November 2026
 ----------------------------------------------
