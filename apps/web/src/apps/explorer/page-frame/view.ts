@@ -91,10 +91,15 @@ const ONE_COLUMN = [
   'font[size="1"]{font-size:small!important}',
 ].join('\n')
 
+/** Where marked, a link fills a finger's height (tap-targets.ts). */
+export const TAP_TARGET = 'data-pg-tap'
+const TAP_TARGETS = `[${TAP_TARGET}] a[href]{display:block!important;min-height:44px!important;padding:12px 0!important}`
+
 /** Explorer's stylesheet for a view, written after the base one. */
 export function viewStylesheet(view: PageView, phone: boolean): string {
   const rules: string[] = []
   if (view.mode === 'one-column') rules.push(ONE_COLUMN)
+  if (view.mode === 'one-column' && phone) rules.push(TAP_TARGETS)
   else if (phone) rules.push(`html{min-width:${DESKTOP_WIDTH}px}`)
   const { zoom } = TEXT_SIZES[view.text]
   if (zoom !== 1) rules.push(`html{zoom:${zoom}}`)
