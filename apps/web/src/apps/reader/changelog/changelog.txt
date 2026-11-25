@@ -4,6 +4,40 @@
      `---'       version, newest first
 ==============================================
 
+0.8.0, 25 November 2026
+----------------------------------------------
+  * Write to a friend who's offline and your
+    message waits for them as a letter, left
+    at a Lighthouse until they're back. Under
+    each message Pigeon says where it is, and
+    a tick once they have it.
+  * Invite links work while you're offline
+    too. A friend opens your link, and you're
+    friends the next time you open Pigeon.
+  * Your other devices catch up on what you
+    wrote, even if they're never online at the
+    same time as the one you wrote it on.
+  * Remove a friend who's offline and they're
+    told the next time they open Pigeon.
+  * A new Network window shows the Lighthouses
+    Pigeon uses, and lets you add or remove
+    them. Anyone can run one, at home or as a
+    Cloudflare Worker.
+  * Each chat in the list shows its last
+    message, when it came, and how many you
+    haven't read.
+  * The Pocket has a home screen, and the
+    desktop tells you when a message comes in.
+  * A Pigeon link shared in another app shows
+    a little card, and the Messenger has an
+    icon of its own.
+  * Returning visitors aren't welcomed as if
+    they were new.
+  * Safer: fixes from a security review of
+    Pigeon. A device link now asks before it
+    links this browser to anyone. The details
+    are in Pigeon's security advisories.
+
 0.7.1, 25 November 2026
 ----------------------------------------------
   * Fixed: after removing a friend who was
