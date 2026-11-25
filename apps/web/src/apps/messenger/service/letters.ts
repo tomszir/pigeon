@@ -100,6 +100,8 @@ export interface LettersDeps {
   readonly connected: (friend: PeerId) => boolean
   /** Who they are to mail, under their pair secret; undefined when they can't be mailed. */
   readonly recipient: (friend: PeerId) => Promise<Recipient | undefined>
+  /** Your own other devices, under the self secret: each letter's copy goes to them. */
+  readonly ownDevices: () => Promise<Recipient | undefined>
   /** Merges entries into the chat with a sync's checks; false when there's no chat to merge into. */
   readonly takeEntries: (friend: PeerId, entries: readonly LogEntry[]) => Promise<boolean>
 }
@@ -210,6 +212,15 @@ export function createLetters(deps: LettersDeps) {
           id,
           onStored: (stored) => where.push(...stored.map((address) => address.name)),
         })
+        // A copy for your other devices, so the chat there has what you wrote here even when
+        // the friend is never online with them.
+        const own = await deps.ownDevices()
+        if (own !== undefined && !deps.stopped())
+          await deps.mailbox.send('letter', own, {
+            log: chat.id,
+            entries,
+            friend,
+          } as unknown as Json)
         // Closed meanwhile: it may not be queued, so it isn't counted as mailed.
         if (deps.stopped()) return
         const sent: SentLetter = {
@@ -306,7 +317,13 @@ export function createLetters(deps: LettersDeps) {
      * Takes a letter in: its entries go into the chat. True once it's been looked at; false
      * when there's no chat to take it into yet, so it's left for the next look.
      */
-    async take(friend: PeerId, letter: Letter, through: LighthouseAddress): Promise<boolean> {
+    async take(
+      friend: PeerId,
+      letter: Letter,
+      through: LighthouseAddress,
+      /** A copy from another of your devices: your own words, not something that came to you. */
+      own = false,
+    ): Promise<boolean> {
       const chat = deps.chat(friend)
       if (chat === undefined) return true
       const body = letter.body as { log?: unknown; entries?: unknown }
@@ -317,7 +334,7 @@ export function createLetters(deps: LettersDeps) {
       const now = new Set(deps.chat(friend)?.entries.map((entry) => entry.sig) ?? [])
       const arrived = entries.filter((entry) => !had.has(entry.sig) && now.has(entry.sig))
       // Not waited on: this runs inside a mailbox fetch.
-      if (arrived.length > 0)
+      if (arrived.length > 0 && !own)
         void update(friend, (letters) => ({
           ...letters,
           arrived: {

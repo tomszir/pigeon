@@ -509,8 +509,16 @@ export async function createMessenger(deps: MessengerDeps) {
   ): Promise<boolean> {
     if (closed) return false
     if (letter.kind === 'letter') {
+      if (letters === undefined) return true
+      // A copy of a letter another of your devices sent: into the chat with that friend.
+      if (letter.sender === self) {
+        if (source.sender !== self || !devices.isOwnOther(letter.from)) return false
+        const to = (letter.body as { friend?: unknown })?.friend
+        if (typeof to !== 'string' || friend(to) === undefined) return true
+        return letters.take(to, letter, through, true)
+      }
       // Only from a device on their list, and only into a chat with them.
-      if (friend(letter.sender) === undefined || letters === undefined) return true
+      if (friend(letter.sender) === undefined) return true
       if (devices.classify(letter.sender, letter.from) !== 'friend') return false
       return letters.take(letter.sender, letter, through)
     }
@@ -645,7 +653,7 @@ export async function createMessenger(deps: MessengerDeps) {
         sources.set(self, {
           sender: self,
           secret: selfSecret,
-          kinds: ['self', 'receipt'],
+          kinds: ['self', 'receipt', 'letter'],
           replyTo: () => selfRecipient(),
         })
       for (const view of friendList()) {
@@ -1147,6 +1155,7 @@ export async function createMessenger(deps: MessengerDeps) {
       // Nobody to write to once they've removed you.
       recipient: async (id) =>
         friend(id)?.removedYouAt === undefined ? recipient(id, friend(id)?.secret) : undefined,
+      ownDevices: () => selfRecipient(),
       takeEntries: async (id, entries) => {
         const session = sessions.get(id)
         if (session === undefined) return false
