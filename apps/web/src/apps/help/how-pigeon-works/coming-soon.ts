@@ -1,4 +1,4 @@
-// Chapter 7: what's planned and not built (docs/protocol.md, Letters and pigeon:// addresses).
+// Chapter 7: what's planned and not built yet: mutual friends carrying letters, pages, files, groups.
 
 import { pre } from '../page/page.ts'
 import { figure, NOT_BUILT, steps } from './frame.ts'
@@ -6,13 +6,13 @@ import { figure, NOT_BUILT, steps } from './frame.ts'
 export const COMING_SOON = `
 <p class="lead"><i>Pigeon is still being built. Everything on this page is planned and not built yet. You'll see some of it greyed out in the menus already.</i></p>
 
-<h2>Letters ${NOT_BUILT}</h2>
-<p>Today a message reaches your friend only when you are both online. Letters will change that: a letter is sealed so only your friend can open it, and a <b>carrier</b>, a friend you both have who happens to be online, or the <b>Lighthouse</b>, an always-on Pigeon, holds it until your friend comes back.</p>
+<h2>Letters carried by friends ${NOT_BUILT}</h2>
+<p>A message you write while a friend is away already goes as a <b>letter</b>: sealed so only their devices can open it, and left at their <b>Lighthouses</b> until they're back. Later, a <b>carrier</b>, a friend you both have who happens to be online, will be able to carry it too, so it gets through even when no Lighthouse can be reached.</p>
 ${steps([
-  'You write to Mika while she is offline and choose <b>Seal a letter</b>.',
-  'Your Pigeon seals it to Mika and hands it to a carrier who is online.',
-  'The carrier keeps it, unable to read it, for up to 30 days.',
-  'When Mika comes online, the carrier delivers it, and drops it once Mika signs that she has it.',
+  'You write to Mika while she is offline. Pigeon seals it to Mika.',
+  'Alex, a friend of you both, is online: your Pigeon hands the letter to Alex as well as to the Lighthouses.',
+  'Alex keeps it, unable to read it, for up to 30 days.',
+  'When Mika and Alex are next online together, Alex delivers it, and drops it once Mika signs that she has it.',
 ])}
 <br>
 ${figure(
@@ -37,7 +37,6 @@ ${figure(
 <h2>And more</h2>
 <ul>
 <li><b>Files</b> ${NOT_BUILT}: sending pictures and files to a friend.</li>
-<li><b>Invites that wait</b> ${NOT_BUILT}: a link your friend can open while you're offline.</li>
 <li><b>Groups</b> ${NOT_BUILT}: rooms for a few friends at once.</li>
 </ul>
 `

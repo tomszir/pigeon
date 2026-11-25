@@ -88,7 +88,6 @@ export function Conversation(props: ConversationProps) {
                 onSelect: props.onBuzz,
               },
               { label: 'Send a &File...', disabled: true },
-              { label: 'S&eal a letter', disabled: true },
               ...(props.actions === undefined || props.actions.length === 0
                 ? []
                 : [{ kind: 'separator' } as const, ...props.actions]),
@@ -148,7 +147,6 @@ export function Conversation(props: ConversationProps) {
             onClick={send}
             class={styles.sendButton}
           />
-          <Button label="S&eal letter" disabled />
         </div>
       </div>
       <StatusBar fields={[{ content: props.status, grow: true }]} />
