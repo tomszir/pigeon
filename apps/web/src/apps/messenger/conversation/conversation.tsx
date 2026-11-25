@@ -1,6 +1,6 @@
 // A conversation window's insides: menus, toolbar, the "To:" line, the transcript (ending in
-// the "is writing" line while the friend types) and the compose box. It draws what it is given; sample-conversation and live-conversation
-// decide what that is.
+// the "is writing" line while the friend types) and the compose box. It draws what it is given;
+// live-conversation decides what that is.
 import { createSignal, type JSX, Show } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { brandIcon, tangoIcon } from '../../../ui/icons/icons.ts'
@@ -36,7 +36,7 @@ export interface ConversationProps {
   onSend: (text: string) => void
   onDraft?: (text: string) => void
   onBuzz: () => void
-  /** File, Save Conversation As...: the chat as a .txt. Absent for the sample. */
+  /** File, Save Conversation As...: the chat as a .txt. */
   onSaveAs?: (() => void) | undefined
   onClose: () => void
   onAbout: () => void

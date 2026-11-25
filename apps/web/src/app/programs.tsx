@@ -14,7 +14,11 @@ import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
 import { localPageFinder, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
 import type { KeptView } from '../apps/explorer/page-frame/view.ts'
 import { HELP_HOME, HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
-import { AddFriend, type IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
+import {
+  AddFriend,
+  type AddFriendTab,
+  type IncomingInvite,
+} from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
 import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
 import {
@@ -30,8 +34,6 @@ import {
   type RecoveryKit,
   UseRecoveryKey,
 } from '../apps/messenger/recovery/recovery.tsx'
-import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample.ts'
-import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
 import {
@@ -63,10 +65,9 @@ export interface Programs extends ShellProps {
   readonly openHomeScreen: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
-  readonly openAddFriend: (incoming?: IncomingInvite) => void
+  readonly openAddFriend: (incoming?: IncomingInvite, tab?: AddFriendTab) => void
   /** Link to My Other Device, perhaps from a link in the address bar. */
   readonly openJoinDevice: (incoming?: Invite) => void
-  readonly sample: Accessor<boolean>
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
 }
@@ -97,11 +98,9 @@ export function createPrograms(
   api: ShellApi,
   env: ShellEnv,
   host: MessengerHost,
-  startWithSample: boolean,
   /** An iPhone in a Safari tab, whose storage lasts 7 days: Add to Home Screen.txt is shown. */
   needsHomeScreen = false,
 ): Programs {
-  const [sample, setSample] = createSignal(startWithSample)
   // Your own pixel pigeon, for the Pigeon menu's header, once the Messenger is up.
   const [selfPicture, setSelfPicture] = createSignal<Icon | undefined>()
   createEffect(() => {
@@ -191,27 +190,6 @@ export function createPrograms(
   }
   const conversationWindow = (contactId: string) => `conversation:${contactId}`
 
-  const openSampleConversation = (contactId: string) => {
-    const conversation = sampleConversation(contactId)
-    if (conversation === undefined) return
-    api.open(`sample:${contactId}`, {
-      title: `${conversation.name} - Conversation (sample)`,
-      taskTitle: `${conversation.name} (sample)`,
-      icon: brandIcon('pigeon-16'),
-      bounds: cascade(),
-      resizable: true,
-      content: (window) => (
-        <SampleConversation
-          conversation={conversation}
-          self={SAMPLE_SELF.name}
-          onBuzz={window.buzz}
-          onClose={window.close}
-          onAbout={openAbout}
-        />
-      ),
-    })
-  }
-
   const openFriendConversation = (id: PeerId) => {
     const messenger = host.messenger()
     const friend = messenger?.friend(id)
@@ -238,12 +216,11 @@ export function createPrograms(
     })
   }
 
-  const openConversation = (contactId: string) =>
-    sample() ? openSampleConversation(contactId) : openFriendConversation(contactId)
+  const openConversation = (contactId: string) => openFriendConversation(contactId)
 
-  const openAddFriend = (incoming?: IncomingInvite) => {
-    // A link from the address bar replaces whatever the window was showing.
-    if (incoming !== undefined) api.close('add-friend')
+  const openAddFriend = (incoming?: IncomingInvite, tab?: AddFriendTab) => {
+    // A link from the address bar, or a tab asked for, replaces whatever the window was showing.
+    if (incoming !== undefined || tab !== undefined) api.close('add-friend')
     api.open('add-friend', {
       title: 'Add a Friend',
       icon: tangoIcon('contact-new', 16),
@@ -258,12 +235,10 @@ export function createPrograms(
             <AddFriend
               messenger={messenger()}
               incoming={incoming}
+              tab={tab}
               copyText={host.copyText}
               sleep={host.sleep}
-              onOpenConversation={(id) => {
-                setSample(false)
-                openFriendConversation(id)
-              }}
+              onOpenConversation={openFriendConversation}
               onClose={window.close}
             />
           )}
@@ -606,10 +581,7 @@ export function createPrograms(
   const muted = (friend: FriendView) => host.messenger()?.muted(friend.id) === true
   const messengerEvents: MessengerEvents = {
     // Someone answered your invite: their chat opens, starting with "... became friends".
-    onPaired: (friend: FriendView) => {
-      setSample(false)
-      openFriendConversation(friend.id)
-    },
+    onPaired: (friend: FriendView) => openFriendConversation(friend.id),
     onOnline: (friend) => {
       if (muted(friend)) return
       notifyFrom(friend, { title: friend.name, body: 'has just come online.' })
@@ -639,7 +611,7 @@ export function createPrograms(
     onBuzz: (friend) => {
       // Muted: the buzz is in the chat, but nothing shakes or vibrates.
       if (muted(friend)) return
-      if (!sample()) openFriendConversation(friend.id)
+      openFriendConversation(friend.id)
       api.buzz(conversationWindow(friend.id))
     },
   }
@@ -667,13 +639,10 @@ export function createPrograms(
       controls: { maximize: false },
       content: (window) => (
         <BuddyList
-          sample={sample()}
           messenger={host.messenger()}
           problem={host.problem()}
-          onShowSample={() => setSample(true)}
-          onHideSample={() => setSample(false)}
           onOpenConversation={openConversation}
-          onAddFriend={() => openAddFriend()}
+          onAddFriend={(tab) => openAddFriend(undefined, tab)}
           menuFor={friendMenu}
           onBlockedPeople={openBlocked}
           onMyDevices={openMyDevices}
@@ -843,8 +812,7 @@ export function createPrograms(
     id === 'link-device' ||
     id === 'join-device' ||
     id === 'my-devices' ||
-    id.startsWith('conversation:') ||
-    id.startsWith('sample:')
+    id.startsWith('conversation:')
 
   return {
     phone: {
@@ -854,10 +822,7 @@ export function createPrograms(
           problem={host.problem()}
           now={env.now}
           onOpenMessenger={openMessenger}
-          onOpenConversation={(id) => {
-            setSample(false)
-            openFriendConversation(id)
-          }}
+          onOpenConversation={openFriendConversation}
           onAddFriend={() => openAddFriend()}
         />
       ),
@@ -912,7 +877,6 @@ export function createPrograms(
     openConversation,
     openAddFriend,
     openJoinDevice,
-    sample,
     messengerEvents,
   }
 }

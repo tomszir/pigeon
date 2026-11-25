@@ -61,7 +61,7 @@ Not planned: a blockchain. Nothing in Pigeon needs strangers to agree on one glo
 
 ## Current state
 
-M1 is built. The desktop boots offline with Read Me open; the Messenger shows the real, empty state, and `?demo` (or "See a sample conversation") plays the Desktop board's sample, labelled as such. Letters, Shared Files and Pigeon Explorer open an in-world "still being built" message. Window positions and settings live in memory only until M2 adds storage.
+M1 is built. The desktop boots offline with Read Me open; the Messenger shows the real, empty state; the Desktop board's sample conversation it once offered is gone, so everything on screen is real. Letters, Shared Files and Pigeon Explorer open an in-world "still being built" message. Window positions and settings live in memory only until M2 adds storage.
 
 M2 is built, pending its done check across two real networks. Each visitor gets a WebCrypto identity kept in IndexedDB; Add a Friend shares a one-use invite as a code to type, a short link and a QR code, and adds a friend only after showing who answered and their fingerprint; the Messenger lists real friends with presence, and conversations carry messages, buzzes and "is writing" (shown as the transcript's last line) over Trystero, note when the friend comes online or goes offline, and keep chats and catch them up between visits. The sample is still there, labelled as such. `mise run e2e` pairs and chats two isolated browsers over the public relays. Shell settings and window positions still live in memory only. On phones Pigeon runs on the Kestrel Pocket ([0019](decisions/0019-the-kestrel-pocket-phone-layout.md)).
 

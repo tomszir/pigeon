@@ -75,6 +75,8 @@ test('going to the page already showing adds no step, and an invite link adds no
   await explorer.getByRole('button', { name: 'Home' }).click()
   // An invite link followed in this tab: a new entry, taken out of the address at once.
   await page.evaluate("location.hash = '#i/not-an-invite'")
+  // Pigeon takes it out of the address once it has read it; Back before then races it.
+  await expect(page).not.toHaveURL(/#i\//)
   await back(page)
   await back(page)
   await expect(page).toHaveURL('about:blank')

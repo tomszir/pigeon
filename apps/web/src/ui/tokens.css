@@ -37,6 +37,8 @@
   --pg-text-own: #0a2a8f;
   --pg-text-error: #c13b12;
   --pg-text-ok: #2f6a1f;
+  /* An unread count on a row, an icon or a key: white on it reads at 4.5:1. */
+  --pg-badge: #c4501a;
   --pg-link: #0033cc;
   --pg-link-hover: #e8743b;
   --pg-selection: #316ac5;

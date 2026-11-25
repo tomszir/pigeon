@@ -39,8 +39,6 @@ render(() => {
   const { api, Shell } = createShell(env)
   const [messenger, setMessenger] = createSignal<Messenger | undefined>(undefined)
   const [problem, setProblem] = createSignal<string | undefined>(undefined)
-  // ?demo opens the Desktop board's sample conversation.
-  const sample = new URLSearchParams(window.location.search).has('demo')
   const homeScreen = needsHomeScreen()
   const incoming = takeInviteFromAddress()
   // A link from Link a Device on your other device.
@@ -57,15 +55,10 @@ render(() => {
       restart: () => location.reload(),
       startOver: (target) => startOver(target),
     },
-    sample,
     homeScreen,
   )
 
   if (linking !== undefined) programs.openJoinDevice(linking)
-  if (sample) {
-    programs.openMessenger()
-    programs.openConversation('mika')
-  }
 
   const showInvite = (invite: IncomingInvite | undefined) => {
     if (invite === undefined) return

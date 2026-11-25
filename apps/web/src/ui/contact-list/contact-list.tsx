@@ -17,6 +17,17 @@ export interface ContactRow {
   readonly note?: string
   /** Their pixel pigeon, when the list shows pictures; undefined while it's worked out. */
   readonly avatar?: AvatarTraits | undefined
+  /**
+   * A second line, under the name, in rows with pictures: the last message, or what they're
+   * doing ("typing..."), set in bold when it's unread.
+   */
+  readonly preview?: { readonly text: string; readonly kind?: 'typing' | 'unread' } | undefined
+  /** When the last message was, shown at the row's right end: "21:03", "Mon", "Nov 3". */
+  readonly time?: string | undefined
+  /** Messages from them you haven't read, as a badge under the time. */
+  readonly unread?: number | undefined
+  /** Not a friend yet: you asked, and they haven't added you. Drawn as an empty frame. */
+  readonly pending?: boolean | undefined
 }
 
 export interface ContactGroup {
@@ -172,20 +183,58 @@ export function ContactList(props: ContactListProps) {
                               />
                             }
                           >
-                            <Avatar
-                              traits={contact.avatar}
-                              size={24}
-                              name={contact.name}
-                              decorative
-                              status={DOT[contact.presence]}
-                            />
+                            <Show
+                              when={!contact.pending}
+                              fallback={<span class={styles.pending} aria-hidden="true" />}
+                            >
+                              <Avatar
+                                traits={contact.avatar}
+                                size={24}
+                                name={contact.name}
+                                decorative
+                                status={DOT[contact.presence]}
+                              />
+                            </Show>
                           </Show>
-                          <span>
-                            {contact.name}
-                            <Show when={contact.note}>
-                              {(note) => <span class={styles.note}> {note()}</span>}
+                          <span class={styles.text}>
+                            <span class={styles.name}>
+                              {contact.name}
+                              <Show when={contact.note}>
+                                {(note) => <span class={styles.note}> {note()}</span>}
+                              </Show>
+                            </span>
+                            <Show when={props.pictures && contact.preview}>
+                              {(preview) => (
+                                <span
+                                  class={classes(
+                                    styles.preview,
+                                    preview().kind === 'typing' && styles.typing,
+                                    preview().kind === 'unread' && styles.unreadText,
+                                  )}
+                                >
+                                  {preview().text}
+                                </span>
+                              )}
                             </Show>
                           </span>
+                          <Show when={props.pictures && (contact.time || contact.unread)}>
+                            <span class={styles.end}>
+                              <span
+                                class={classes(
+                                  styles.time,
+                                  (contact.unread ?? 0) > 0 && styles.fresh,
+                                )}
+                              >
+                                {contact.time}
+                              </span>
+                              <Show when={(contact.unread ?? 0) > 0}>
+                                <span class={styles.badge}>
+                                  {(contact.unread ?? 0) > 99 ? '99+' : contact.unread}
+                                  <span class={styles.hidden}> unread</span>
+                                </span>
+                              </Show>
+                            </span>
+                          </Show>
                         </button>
                       )}
                     </For>
