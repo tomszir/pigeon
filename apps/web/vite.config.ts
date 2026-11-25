@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import { devPort } from './ports.ts'
+import { siteHeaders } from './site-headers.ts'
 
 /** The version release-please keeps in the root package.json. */
 const { version } = JSON.parse(
@@ -24,18 +25,22 @@ export default defineConfig({
   server: {
     port: devPort,
     strictPort: true,
+    // The production headers (public/_headers) in development too, its Content Security Policy
+    // included, so nothing that only works without it gets far.
+    headers: siteHeaders(),
     proxy:
       turnFrom === 'off'
         ? {}
         : { '/api/turn': { target: turnFrom, changeOrigin: true, secure: true } },
   },
+  preview: { headers: siteHeaders() },
   define: {
     __PIGEON_VERSION__: JSON.stringify(version),
     __PIGEON_COMMIT__: JSON.stringify(commit),
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.{ts,tsx}', 'worker/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'worker/**/*.test.ts', 'site-headers.test.ts'],
     setupFiles: ['src/test-setup.ts'],
   },
 })

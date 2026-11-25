@@ -67,6 +67,19 @@ describe('handleTurn', () => {
     expect(JSON.stringify(body)).not.toContain('secret-token')
   })
 
+  it('sends the safe headers the static files get, refusals included', async () => {
+    for (const response of [
+      await handleTurn(get(), env, cloudflare()),
+      await handleTurn(get(), {}, cloudflare()),
+    ]) {
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+      expect(response.headers.get('content-security-policy')).toBe(
+        "default-src 'none'; frame-ancestors 'none'",
+      )
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer')
+    }
+  })
+
   it('refuses other sites, other methods, and says when it is not set up', async () => {
     const fetchImpl = cloudflare()
     expect((await handleTurn(get({ 'sec-fetch-site': 'cross-site' }), env, fetchImpl)).status).toBe(
