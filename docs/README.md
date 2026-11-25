@@ -19,6 +19,7 @@ Pigeon: a serverless peer-to-peer messenger and "Pigeonweb" inside an XP-era fak
 - [design.md](design.md): the XP-era design system, where the canvas lives, and the asset rules.
 - [pigeonhtml.md](pigeonhtml.md): the 2000s-only HTML/CSS subset Pigeonweb pages are limited to.
 - [protocol.md](protocol.md): identities, rooms, messages, letters and pigeon:// addresses.
+- [flows.md](flows.md): the protocol's handshakes and state machines drawn in ASCII, which Help shows too.
 - [roadmap.md](roadmap.md): the milestones and what "done" means for each.
 - [glossary.md](glossary.md): the project's own words.
 - [../vendor/VENDOR.md](../vendor/VENDOR.md): where the vendored fonts, icons and wallpapers come from and how to update them.
