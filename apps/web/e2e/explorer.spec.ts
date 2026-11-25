@@ -191,4 +191,34 @@ test.describe('on the Pocket', () => {
     expect(new Set(starts).size).toBe(1)
     expect(centred).toBeGreaterThan(100)
   })
+
+  test('links standing alone in One Column are rows a finger can hit', async ({ page }) => {
+    await page.goto('/')
+    const keys = page.getByRole('navigation', { name: 'Pocket keys' })
+    await keys.getByRole('button', { name: 'Right soft key: Menu' }).tap()
+    await page
+      .getByRole('menuitem', { name: /Pigeon Explorer/ })
+      .first()
+      .tap()
+    const explorer = page.getByRole('region', { name: 'Pigeon Explorer' })
+    const address = explorer.getByRole('textbox', { name: 'Address' })
+    await address.fill('pigeon://help/protocol/')
+    await address.press('Enter')
+    const frame = page.frameLocator('iframe')
+    await frame.getByRole('link', { name: 'Devices' }).first().tap()
+    // The footer's three links, one under another: each a full row, none overlapping.
+    const rows = await frame
+      .locator('table.nav a')
+      .evaluateAll((links) => links.map((link) => link.getBoundingClientRect().toJSON()))
+    expect(rows.length).toBe(3)
+    for (const row of rows) expect(row.height).toBeGreaterThanOrEqual(44)
+    for (let i = 1; i < rows.length; i++)
+      expect(rows[i]?.top ?? 0).toBeGreaterThanOrEqual(rows[i - 1]?.bottom ?? 0)
+    // A link inside a sentence (the start page's 'New to Pigeon?') stays in its line.
+    await explorer.getByRole('button', { name: 'Home' }).tap()
+    const inline = await frame
+      .getByRole('link', { name: 'Pigeon Help' })
+      .evaluate((link) => link.getBoundingClientRect().height)
+    expect(inline).toBeLessThan(30)
+  })
 })
