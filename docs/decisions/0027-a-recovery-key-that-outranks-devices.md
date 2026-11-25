@@ -1,0 +1,24 @@
+# 0027: A recovery key that outranks devices
+
+A recovery key, kept on paper or in a file behind a passphrase, can make any device the one that manages your list, even when every device is gone, and nothing a device does can stop it.
+
+- Status: accepted
+- Date: 2026-11-25
+
+## Context
+
+[0024](0024-a-signed-list-of-devices.md) lets only the first device change your device list. Lose it and the list is frozen; lose every device and you're a new identity, with friends who no longer know you. M13's done check needs the opposite: with both of Toms's devices lost, he comes back as Toms. There's no server to vouch for him, so the proof has to be something only he holds. And it has to settle the case 0024's reviews kept breaking: two keys that can both change the list, used at once, with no one to say which came first.
+
+## Decision
+
+- **One key, made with the identity.** A new identity makes a recovery key alongside its first device's key, of the same kind (Ed25519, or P-256 where the browser lacks it). Its public half goes in the device log, signed by the first device. Its private half is shown once and never kept by Pigeon: as a printable code in groups of four letters, holding the key, the identity's id, the key's epoch and a checksum, and, if you choose, as a file sealed with a passphrase (PBKDF2-SHA256 at 600,000 rounds into AES-256-GCM, all WebCrypto, no new dependency). An identity from before this gets the offer once, by balloon, and from the File menu until it has one.
+- **It never speaks for you.** It signs no messages, joins no rooms and isn't a device. It signs one thing: a `recover` entry.
+- **`recover` starts a new epoch.** Signed by the current recovery key, it names the epoch it starts, the device that now writes the log, the devices it keeps (with their names), and the next recovery key. Every other device, the old writer included, is removed for good, and the writer's entries from the epoch before no longer count. The identity's `PeerId` doesn't change: it stays the first device's key, now only a name.
+- **The recovery key outranks every device.** A copy of the log at a later epoch replaces one at an earlier epoch, whatever the earlier one says or how long it is. Within an epoch, the writer's chain works as in 0024. If one key signs two `recover` entries for the same epoch, the one with the lower signature wins, so everyone settles on the same one. A thief with your first device can do nothing your recovery key can't undo.
+- **Only the key replaces itself.** A device can set a recovery key only while its epoch has none. After that, the next key comes only from a `recover` entry signed by the current one. To replace a leaked key while you still have your devices, you recover onto the device that writes the log and keep the others. Recovering onto another device you hold is also how you hand the first device's role to it.
+- **Friends come back by pairing again.** A recovered device has the identity and nothing else: no friends, no pair secrets, no chats. Pairing with a friend again carries the new log. When their Pigeon sees a friend it already knows, with a log that checks out at a later epoch, it updates that friend in place: same chat, petname and history, with the new pair secret replacing the old. Importing an export file (M13) brings friends and pair secrets back in one go, and the recovered device then sends its log in every pair room.
+- **Old messages keep their author.** A device removed by a `recover` is treated like any removed device: what it sent before the `recover`'s time still counts, and nothing after.
+
+## Consequences
+
+Losing every device no longer means losing who you are, and a stolen laptop can be taken back without a server. The recovery key is now the thing to keep safe: whoever holds it can take your identity, and you can't revoke it without using it. Lose the paper and the file and you can never make another; your devices go on as in 0024. A recovered device has to find its friends again, one pairing at a time, unless you have an export file. Until a friend has seen the new log, they still trust the devices you lost, which still hold your pair secrets. That's the gap a thief has, and pairing again closes it. A friend whose copy of your log is older than the key that was used can't check the `recover` and keeps the old list until they get the epochs in between. A `recover`'s time is the recovering device's clock, so its cut-off between counted and ignored messages is only as true as that clock. The printed code is long, since it also carries the identity's id: about 27 groups of four for an Ed25519 identity, and more for P-256. Letting several devices manage the list at once is still ruled out.
