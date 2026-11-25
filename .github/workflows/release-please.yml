@@ -15,6 +15,10 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       # A token of the author's lets pushes to the release PR run CI; GITHUB_TOKEN alone can't.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,3 +64,15 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -qam 'docs: draft the release notes' -m 'Docs: none'
           git push origin "HEAD:$BRANCH"
+
+  # Each release's Lighthouse image, built from the released commit (docs/lighthouse.md).
+  lighthouse-image:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/lighthouse-image.yml
+    with:
+      ref: ${{ needs.release-please.outputs.sha }}
+      version: ${{ needs.release-please.outputs.tag_name }}

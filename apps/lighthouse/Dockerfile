@@ -1,4 +1,6 @@
-# A Pigeon Lighthouse (decision 0037). Build from the repository root:
+# A Pigeon Lighthouse (decision 0037). Each release publishes it as
+# ghcr.io/tomszir/pigeon-lighthouse (.github/workflows/lighthouse-image.yml). Build from the
+# repository root:
 #   docker build -f apps/lighthouse/Dockerfile -t pigeon-lighthouse .
 # Run with a folder holding lighthouse.json; the key and the mail are kept there too:
 #   docker run -v ./lighthouse:/data -p 8787:8787 pigeon-lighthouse
@@ -13,6 +15,9 @@ RUN pnpm install --frozen-lockfile --prod --filter lighthouse...
 COPY packages/core/src packages/core/src
 COPY packages/lighthouse/src packages/lighthouse/src
 COPY apps/lighthouse/src apps/lighthouse/src
+# The commit it was built from, which the Lighthouse says in its hello as its own claim.
+ARG PIGEON_BUILD=
+ENV PIGEON_BUILD=$PIGEON_BUILD
 WORKDIR /app/apps/lighthouse
 RUN mkdir /data && chown node /data
 USER node

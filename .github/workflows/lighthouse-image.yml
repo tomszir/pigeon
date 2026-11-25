@@ -1,0 +1,61 @@
+name: lighthouse-image
+
+# Builds the Lighthouse's Docker image (decision 0037, docs/lighthouse.md) and pushes it to
+# GitHub's container registry as ghcr.io/<owner>/pigeon-lighthouse, tagged with the release's
+# version and `latest`. release-please runs it for each release; it can also be run by hand,
+# which tags the image `edge` with the commit, for trying a Lighthouse before a release.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to build
+        type: string
+        required: true
+      version:
+        description: The release's tag, v0.8.0
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: tags
+        env:
+          VERSION: ${{ inputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          image="ghcr.io/${OWNER,,}/pigeon-lighthouse"
+          VERSION="${VERSION#v}"
+          if [ -n "$VERSION" ]; then
+            echo "tags=$image:$VERSION,$image:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$image:edge,$image:sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+          echo "build=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/lighthouse/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: PIGEON_BUILD=${{ steps.tags.outputs.build }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.tags.outputs.build }}
+            org.opencontainers.image.description=A Pigeon Lighthouse: holds sealed mail for Pigeons that are offline
+            org.opencontainers.image.licenses=MIT
