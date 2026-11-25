@@ -85,6 +85,15 @@ export {
   parseLighthouseAddress,
 } from './lighthouse/address.ts'
 export type {
+  ClientError,
+  ClientOptions,
+  LighthouseClient,
+  LighthouseSocket,
+  OpenSocket,
+  SocketEvents,
+} from './lighthouse/client.ts'
+export { createLighthouseClient, MAX_WAITING } from './lighthouse/client.ts'
+export type {
   LighthouseError,
   LighthouseFrame,
   LighthouseReply,
