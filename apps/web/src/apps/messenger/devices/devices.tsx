@@ -125,6 +125,11 @@ export interface JoinDeviceProps {
   sleep: (ms: number) => Promise<void>
   /** Linked: Pigeon starts again as the identity it joined. */
   onLinked: () => void
+  /**
+   * Left this Pigeon: forget everything here, then link to `target` (decision 0035), as long as
+   * `left` is still the Messenger running in this tab.
+   */
+  onLeave: (left: Messenger, target: Invite) => void
   onClose: () => void
 }
 
@@ -134,6 +139,12 @@ type Join =
   | { readonly kind: 'offer'; readonly offer: DeviceOffer }
   | { readonly kind: 'done' }
   | { readonly kind: 'failed'; readonly text: string }
+  | { readonly kind: 'taken'; readonly target: Invite; readonly text: string }
+  | { readonly kind: 'leave'; readonly target: Invite }
+  | { readonly kind: 'leaving' }
+
+/** How long leaving waits for friends who are online to hear goodbye. */
+export const LEAVE_TIMEOUT_MS = 10_000
 
 const FAILURES: Readonly<Record<string, string>> = {
   stopped:
@@ -141,6 +152,10 @@ const FAILURES: Readonly<Record<string, string>> = {
   impostor: "Whoever answered isn't the Pigeon in the link. Nothing was linked.",
   'has-friends':
     "This Pigeon already has friends of its own. Only a Pigeon with none can be linked, since it takes on the other one's.",
+  'has-devices':
+    'This Pigeon is already someone’s. Only a new Pigeon can be linked, since it becomes the other one.',
+  waiting:
+    'This Pigeon was recovered and is waiting for a friend to hand back its list. Linking it now would lose the recovery.',
   own: "That's this device's own code.",
 }
 
@@ -158,6 +173,10 @@ export function JoinDevice(props: JoinDeviceProps) {
       void props.sleep(45_000).then(resolve)
     })
     const joined = await props.messenger.joinIdentity(target, stopped)
+    if (!joined.ok && (joined.error === 'has-friends' || joined.error === 'has-devices')) {
+      setView({ kind: 'taken', target, text: FAILURES[joined.error] ?? '' })
+      return
+    }
     if (!joined.ok) {
       setView({ kind: 'failed', text: FAILURES[joined.error] ?? 'Nothing was linked.' })
       return
@@ -180,6 +199,20 @@ export function JoinDevice(props: JoinDeviceProps) {
     void props.sleep(1500).then(props.onLinked)
   }
   onCleanup(() => giveUp())
+  const leave = async (target: Invite) => {
+    setView({ kind: 'leaving' })
+    try {
+      await props.messenger.leave(props.sleep(LEAVE_TIMEOUT_MS))
+    } catch (error) {
+      console.error(error)
+      setView({
+        kind: 'failed',
+        text: 'Something went wrong while leaving. Some friends may have been told; nothing here was forgotten.',
+      })
+      return
+    }
+    props.onLeave(props.messenger, target)
+  }
   if (props.incoming !== undefined) void join(props.incoming)
 
   const submit = () => {
@@ -247,6 +280,59 @@ export function JoinDevice(props: JoinDeviceProps) {
         </Match>
         <Match when={view().kind === 'done'}>
           <p class={styles.text}>Linked. Pigeon is starting again as you.</p>
+        </Match>
+        <Match when={view().kind === 'taken' && (view() as Join & { kind: 'taken' })}>
+          {(taken) => (
+            <div class={styles.column}>
+              <p class={styles.text}>{taken().text}</p>
+              <p class={styles.muted}>
+                To use the other one here instead, leave this Pigeon: it's forgotten in this
+                browser, and this browser links to the other one.
+              </p>
+              <div class={styles.buttons}>
+                <Button
+                  label="&Leave This Pigeon and Link..."
+                  onClick={() => setView({ kind: 'leave', target: taken().target })}
+                />
+                <Button label="Close" isDefault onClick={props.onClose} />
+              </div>
+            </div>
+          )}
+        </Match>
+        <Match when={view().kind === 'leave' && (view() as Join & { kind: 'leave' })}>
+          {(leaving) => (
+            <GroupBox legend="Leave this Pigeon">
+              <div class={styles.column}>
+                <Show
+                  when={!props.messenger.leavingTells()}
+                  fallback={
+                    <p class={styles.warning}>
+                      This forgets everything in this browser: its name, friends and chats. Its
+                      friends who are online now are told you left, the rest see it go quiet. Add
+                      them again from the Pigeon you keep. Sure?
+                    </p>
+                  }
+                >
+                  <p class={styles.warning}>
+                    This forgets everything in this browser: its name, friends and chats. This
+                    Pigeon is on other devices or in another browser too, which keep it, so its
+                    friends aren't told. Sure?
+                  </p>
+                </Show>
+                <p class={styles.muted}>
+                  The code is tried once this Pigeon is gone, so check it came from your other
+                  device.
+                </p>
+                <div class={styles.buttons}>
+                  <Button label="Leave and Link" onClick={() => void leave(leaving().target)} />
+                  <Button label="Cancel" isDefault onClick={props.onClose} />
+                </div>
+              </div>
+            </GroupBox>
+          )}
+        </Match>
+        <Match when={view().kind === 'leaving'}>
+          <p class={styles.text}>Telling your friends you left...</p>
         </Match>
         <Match when={view().kind === 'failed' && (view() as { text: string }).text}>
           {(text) => (

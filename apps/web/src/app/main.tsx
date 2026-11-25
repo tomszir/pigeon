@@ -54,7 +54,7 @@ render(() => {
       sleep: browserClock.sleep,
       // Linked: start again as the identity this device now speaks for.
       restart: () => location.reload(),
-      startOver: () => startOver(),
+      startOver: (target) => startOver(target),
     },
     sample,
     homeScreen,
@@ -135,6 +135,8 @@ render(() => {
   // waits behind a screen that says so, and "Use Pigeon Here" moves Pigeon over.
   const ELSEWHERE = 'Pigeon is open in another tab.'
   const lock = browserTabLock(async () => {
+    // Forgetting this Pigeon (0035) finishes, reload and all, before another tab may have it.
+    if (startingOver !== undefined) await startingOver.catch(() => undefined)
     await stopMessenger()
     setProblem('Pigeon moved to another tab.')
     offerHere('Pigeon moved to another tab')
@@ -152,13 +154,33 @@ render(() => {
       },
     })
 
-  // "Make This a New Device" on a copied profile: forget everything here and link it again.
+  // "Make This a New Device" on a copied profile, or leaving this Pigeon for another (0035):
+  // forget everything here and link it again, to the other one's code if there is one.
   const JOIN_ON_START = 'joinOnStart'
-  const startOver = async () => {
-    if (storage === undefined) return
+  const isInvite = (value: unknown): value is Invite =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Invite).code === 'string' &&
+    ['string', 'undefined'].includes(typeof (value as Invite).fingerprint)
+  let startingOver: Promise<void> | undefined
+  const startOver = (target?: Invite) => {
+    // Only the tab running Pigeon may forget it; one that let go would clear another's store.
+    if (storage === undefined || messenger() === undefined || startingOver !== undefined)
+      return Promise.resolve()
+    startingOver = forgetAndLink(storage, target)
+    return startingOver
+  }
+  const forgetAndLink = async (opened: NonNullable<typeof storage>, target?: Invite) => {
     await stopMessenger()
-    await storage.store.clear()
-    await storage.store.set(JOIN_ON_START, true)
+    await opened.store.clear()
+    const join =
+      target === undefined
+        ? true
+        : {
+            code: target.code,
+            ...(target.fingerprint === undefined ? {} : { fingerprint: target.fingerprint }),
+          }
+    await opened.store.set(JOIN_ON_START, join)
     location.reload()
   }
 
@@ -167,10 +189,12 @@ render(() => {
       await tellWhatsNew(opened.store).catch((error: unknown) => console.error(error))
       if (opened.persistent)
         await hintHomeScreen(opened.store).catch((error: unknown) => console.error(error))
-      if ((await opened.store.get(JOIN_ON_START)) === true) {
-        await opened.store.delete(JOIN_ON_START)
-        programs.openJoinDevice()
-      }
+    }
+    // Also when Pigeon moves here from another tab after the reload: whichever tab runs it first.
+    const join = await opened.store.get(JOIN_ON_START)
+    if (join !== undefined) {
+      await opened.store.delete(JOIN_ON_START)
+      programs.openJoinDevice(isInvite(join) ? join : undefined)
     }
     const started = await startMessenger(programs.messengerEvents, opened, sayNoRelay, deviceName())
     if (!started.ok) {

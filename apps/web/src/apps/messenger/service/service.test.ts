@@ -628,6 +628,55 @@ describe('your devices (decision 0024)', () => {
     })
   })
 
+  it('leaves a Pigeon with friends by telling them, so it can be linked (decision 0035)', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const rookId = only(mika.messenger.friends()).id
+    expect(await laptop.messenger.leave(never)).toBe(0)
+    expect(laptop.messenger.friends()).toEqual([])
+    expect(mika.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
+    const linking = await mika.messenger.startLink()
+    const target = decodeDeviceLink(linking?.link ?? '')
+    if (!target.ok) throw new Error('bad link')
+    // Its own link is never a reason to leave it.
+    const own = decodeDeviceLink((await laptop.messenger.startLink())?.link ?? '')
+    if (!own.ok) throw new Error('bad link')
+    expect(await laptop.messenger.joinIdentity(own.value, never)).toEqual({
+      ok: false,
+      error: 'own',
+    })
+    await laptop.messenger.cancelLink()
+    // With nobody left it could be linked; the app forgets everything first all the same.
+    const joined = await laptop.messenger.joinIdentity(target.value, never)
+    expect(joined.ok).toBe(true)
+    if (joined.ok) await joined.offer.cancel()
+  })
+
+  it('stops waiting to say goodbye to a friend who is offline', async () => {
+    const network = createMemoryNetwork()
+    const { a, b } = await pair(network)
+    b.transport.disconnect()
+    await flush()
+    expect(await a.messenger.leave(Promise.resolve())).toBe(1)
+    expect(a.messenger.friends()).toEqual([])
+  })
+
+  it("tells nobody when leaving a Pigeon that's on other devices too", async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await flush()
+    expect(await phone.messenger.leave(never)).toBe(0)
+    expect(phone.messenger.friends()).toHaveLength(1)
+    expect(mika.messenger.friends()[0]?.removedYouAt).toBeUndefined()
+    const linking = await mika.messenger.startLink()
+    const target = decodeDeviceLink(linking?.link ?? '')
+    if (!target.ok) throw new Error('bad link')
+    expect(await laptop.messenger.joinIdentity(target.value, never)).toMatchObject({ ok: false })
+  })
+
   it('leaves a stolen phone nothing once the first device removes it', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
@@ -713,6 +762,16 @@ describe('a copied profile (decision 0028)', () => {
     expect(twins).toBe(2)
     // Mika only ever hears from her friend.
     expect(mika.messenger.twin()).toBe(false)
+  })
+
+  it('tells no friend when a copy leaves, since the other copy keeps the Pigeon (0035)', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook, b: mika } = await pair(network)
+    const copy = await messenger(network, 'rook', { store: rook.store, seed: 99 })
+    await flush()
+    expect(copy.messenger.leavingTells()).toBe(false)
+    expect(await copy.messenger.leave(never)).toBe(0)
+    expect(only(mika.messenger.friends()).removedYouAt).toBeUndefined()
   })
 })
 
@@ -808,6 +867,11 @@ describe('the recovery key (decision 0027)', () => {
     expect(await back.messenger.startLink()).toBeUndefined()
     // Nor can the waiting tail be wiped: not by the next key, nor by linking or another identity.
     expect(back.messenger.canJoin()).toBe(false)
+    // Nor offered to leave for another Pigeon (0035): it refuses before any code is used.
+    expect(await back.messenger.joinIdentity({ code: 'anything' }, never)).toEqual({
+      ok: false,
+      error: 'waiting',
+    })
     expect(await back.messenger.recoverIdentity(rook, 2, next, fakeSigner('k3').id)).toBe('waiting')
     expect(await back.messenger.recoverIdentity(fakeSigner('someone').id, 1, key, next.id)).toBe(
       'waiting',

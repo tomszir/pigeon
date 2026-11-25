@@ -181,8 +181,11 @@ export function BuddyList(props: BuddyListProps) {
                   props.onLinkDevice === undefined,
                 onSelect: () => props.onLinkDevice?.(),
               },
-              // Only a Pigeon with nobody on it yet can become another one.
-              ...(live()?.canJoin() === true && props.onJoinDevice !== undefined
+              // A Pigeon with nobody on it becomes another one; one with friends or devices is
+              // offered to leave first (decision 0035). Never while a recovery waits (0030).
+              ...(live() !== undefined &&
+              live()?.waitingForList() !== true &&
+              props.onJoinDevice !== undefined
                 ? [{ label: 'Link to My &Other Device...', onSelect: () => props.onJoinDevice?.() }]
                 : []),
               // The recovery key (decision 0027): made once on the first device, used anywhere.
