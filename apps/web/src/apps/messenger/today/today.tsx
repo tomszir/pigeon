@@ -1,21 +1,38 @@
-// The Pocket's Today screen, shown at start and on the home key: who you are, who's around,
-// what's new and your live invite, each a 44px row that opens where it says.
-import { createSignal, For, onCleanup, Show } from 'solid-js'
-import { brand, tango } from '../../../ui/icons/icons.ts'
-import { Marquee } from '../../../ui/marquee/marquee.tsx'
+// The Pocket's Today screen, its home: the greeting with your programs under it, as a phone's
+// home screen has them, then what happened while you were away (new messages, people waiting
+// for you, friends who just added you), then who's online now. Each is a finger-sized target.
+import { For, Show } from 'solid-js'
+import { brand, type Icon, tango } from '../../../ui/icons/icons.ts'
 import wallpaper from '../../../wallpapers/hills-800x600.jpg'
+import type { AddFriendTab } from '../add-friend/add-friend.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
+import { badgeText, NotificationList, type Notifications } from '../notifications/notifications.tsx'
 import type { Messenger } from '../service/service.ts'
 import styles from './today.module.css'
+
+/** A program on the home screen, with how many things wait in it. */
+export interface HomeApp {
+  readonly id: string
+  readonly label: string
+  readonly icon: Icon
+  readonly onOpen: () => void
+  readonly badge?: (() => number) | undefined
+}
 
 export interface TodayProps {
   messenger: Messenger | undefined
   /** Why Pigeon can't run here, when it can't. */
   problem?: string | undefined
-  now: () => Date
+  /** The time, ticking: for the greeting and when each thing happened. */
+  time: () => Date
+  notifications: Notifications
+  apps: readonly HomeApp[]
   onOpenMessenger: () => void
   onOpenConversation: (id: string) => void
-  onAddFriend: () => void
+  /** Add a Friend, on its Invite Links tab, where requests wait. */
+  onOpenRequests: () => void
+  /** Add a Friend on one of its tabs: a link to send, a quick code, or one you were sent. */
+  onAddFriend: (tab: AddFriendTab) => void
 }
 
 const GREETINGS = [
@@ -33,20 +50,12 @@ export function greeting(date: Date): string {
 }
 
 export function Today(props: TodayProps) {
-  const [time, setTime] = createSignal(props.now())
-  const timer = setInterval(() => setTime(props.now()), 30_000)
-  onCleanup(() => clearInterval(timer))
-
+  const time = () => props.time()
   const name = () => props.messenger?.profile().handle ?? ''
   const online = () => props.messenger?.friends().filter((friend) => friend.online) ?? []
-  const unread = () => props.messenger?.friends().filter((friend) => friend.unread > 0) ?? []
-  const minutesLeft = () => {
-    const invite = props.messenger?.invite()
-    if (invite === undefined) return 0
-    return Math.max(1, Math.ceil((invite.expiresAt - time().getTime()) / 60_000))
-  }
   const date = () =>
     time().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const away = () => props.notifications.items()
 
   return (
     <div class={styles.today}>
@@ -56,6 +65,31 @@ export function Today(props: TodayProps) {
           {greeting(time())}
           {name() === '' ? '' : `, ${name()}`}
         </p>
+        <nav class={styles.apps} aria-label="Programs">
+          <For each={props.apps}>
+            {(app) => {
+              const count = () => app.badge?.() ?? 0
+              return (
+                <button
+                  type="button"
+                  class={styles.app}
+                  aria-label={count() > 0 ? `${app.label}, ${count()} waiting` : app.label}
+                  onClick={() => app.onOpen()}
+                >
+                  <span class={styles.tile} aria-hidden="true">
+                    <img src={app.icon.src} alt="" width="32" height="32" />
+                    <Show when={count() > 0}>
+                      <span class={styles.badge}>{badgeText(count())}</span>
+                    </Show>
+                  </span>
+                  <span class={styles.label} aria-hidden="true">
+                    {app.label}
+                  </span>
+                </button>
+              )
+            }}
+          </For>
+        </nav>
       </div>
       <Show
         when={props.messenger}
@@ -63,120 +97,83 @@ export function Today(props: TodayProps) {
       >
         {(messenger) => (
           <div class={styles.rows}>
-            <button type="button" class={styles.row} onClick={() => props.onOpenMessenger()}>
-              <Show
-                when={name() !== ''}
-                fallback={<img src={brand('pigeon-32')} alt="" width="32" height="32" />}
-              >
-                <FriendAvatar
-                  messenger={messenger()}
-                  id={messenger().self}
-                  name="You"
-                  size={32}
-                  decorative
-                />
-              </Show>
-              <Show
-                when={name() !== ''}
-                fallback={
-                  <span class={styles.text}>
-                    <strong>Choose your name</strong>
-                    <Marquee class={styles.muted}>Friends see it when you invite them.</Marquee>
-                  </span>
-                }
-              >
+            <Show when={name() === ''}>
+              <button type="button" class={styles.row} onClick={() => props.onOpenMessenger()}>
+                <img src={brand('pigeon-32')} alt="" width="32" height="32" />
                 <span class={styles.text}>
-                  <strong>{name()}</strong>
-                  <Marquee class={styles.muted}>
-                    {messenger().profile().message || 'No personal message'}
-                  </Marquee>
+                  <strong>Choose your name</strong>
+                  <span class={styles.muted}>Friends see it when you invite them.</span>
                 </span>
-              </Show>
-            </button>
-            <button type="button" class={styles.row} onClick={() => props.onOpenMessenger()}>
-              <img
-                class={styles.small}
-                src={brand(online().length > 0 ? 'presence-16-online' : 'presence-16-offline')}
-                alt=""
-                width="16"
-                height="16"
-              />
-              <span class={styles.text}>
-                <Show
-                  when={online().length > 0}
-                  fallback={
-                    messenger().friends().length === 0 ? 'No friends yet' : 'No friends online'
-                  }
-                >
-                  <span>
-                    <strong>
-                      {online().length} {online().length === 1 ? 'friend' : 'friends'} online:
-                    </strong>{' '}
-                    {online()
-                      .map((friend) => friend.name)
-                      .join(', ')}
-                  </span>
-                </Show>
-              </span>
-            </button>
-            <For each={unread()}>
-              {(friend) => (
+              </button>
+            </Show>
+
+            <Show when={away().length > 0}>
+              <div class={styles.heading}>
+                <h2 class={styles.title}>While you were away ({away().length})</h2>
                 <button
                   type="button"
-                  class={`${styles.row} ${styles.news}`}
-                  onClick={() => props.onOpenConversation(friend.id)}
+                  class={styles.clear}
+                  onClick={() => props.notifications.clear()}
                 >
-                  <FriendAvatar
-                    messenger={messenger()}
-                    id={friend.id}
-                    name={friend.name}
-                    size={32}
-                    decorative
-                  />
+                  Clear all
+                </button>
+              </div>
+              <NotificationList
+                notifications={props.notifications}
+                messenger={messenger()}
+                now={time().getTime()}
+                onOpenConversation={props.onOpenConversation}
+                onOpenRequests={props.onOpenRequests}
+              />
+            </Show>
+
+            <Show when={online().length > 0}>
+              <h2 class={`${styles.title} ${styles.onlineTitle}`}>
+                Online now ({online().length})
+              </h2>
+              <ul class={styles.online} aria-label="Friends online now">
+                <For each={online()}>
+                  {(friend) => (
+                    <li>
+                      <button
+                        type="button"
+                        class={styles.friend}
+                        onClick={() => props.onOpenConversation(friend.id)}
+                      >
+                        <FriendAvatar
+                          messenger={messenger()}
+                          id={friend.id}
+                          name={friend.name}
+                          size={64}
+                          decorative
+                        />
+                        <span class={styles.friendName}>{friend.name}</span>
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+
+            <Show when={name() !== '' && away().length === 0 && online().length === 0}>
+              <Show
+                when={messenger().friends().length === 0}
+                fallback={
+                  <p class={styles.caughtUp}>
+                    <img src={tango('face-smile', 22)} alt="" width="22" height="22" />
+                    All caught up. None of your friends is online right now.
+                  </p>
+                }
+              >
+                <button type="button" class={styles.row} onClick={() => props.onAddFriend('links')}>
+                  <img src={tango('contact-new', 32)} alt="" width="32" height="32" />
                   <span class={styles.text}>
-                    <strong>
-                      {friend.unread} new from {friend.name}
-                    </strong>
-                    <Marquee class={styles.muted}>
-                      {
-                        friend.log.entries.filter((entry) => entry.author === friend.id).at(-1)
-                          ?.text
-                      }
-                    </Marquee>
+                    <strong>Invite your first friend</strong>
+                    <span class={styles.muted}>Send a link, or show a quick code</span>
                   </span>
                 </button>
-              )}
-            </For>
-            <button type="button" class={styles.row} onClick={() => props.onAddFriend()}>
-              <img
-                class={styles.icon22}
-                src={tango('contact-new', 22)}
-                alt=""
-                width="22"
-                height="22"
-              />
-              <Show
-                when={messenger().inviteCode()}
-                fallback={<span class={styles.text}>Invite a friend</span>}
-              >
-                {(code) => (
-                  <span class={styles.text}>
-                    <span>
-                      Invite code <strong class={styles.code}>{code()}</strong>
-                    </span>
-                    <Marquee class={styles.muted}>
-                      works once, {minutesLeft()} {minutesLeft() === 1 ? 'minute' : 'minutes'} left
-                    </Marquee>
-                  </span>
-                )}
               </Show>
-            </button>
-            <p class={styles.note}>
-              <img src={tango('network-transmit-receive', 16)} alt="" width="16" height="16" />
-              {online().length > 0
-                ? `Direct to ${online().length} ${online().length === 1 ? 'peer' : 'peers'}. Nothing goes through a server.`
-                : 'Nothing goes through a server: friends connect straight to you.'}
-            </p>
+            </Show>
           </div>
         )}
       </Show>

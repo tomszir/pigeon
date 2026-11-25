@@ -31,6 +31,14 @@
   bottom: 40px;
 }
 
+/* The tray's list opens straight above Pigeon's icon in it. */
+.trayHost {
+  position: absolute;
+  z-index: 1002;
+  right: 4px;
+  bottom: 32px;
+}
+
 /* Behind the monitor: a black room, lit only by the backdrop shader and the screen. */
 .room {
   position: fixed;

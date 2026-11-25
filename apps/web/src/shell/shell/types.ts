@@ -151,6 +151,15 @@ export interface SoftKey {
 }
 
 /** What the phone layout needs from app/ beyond the menu. */
+/** Pigeon's own icon in the desktop's tray: how many things wait, and the list it opens. */
+export interface TraySpec {
+  readonly count: () => number
+  /** What the icon says to a screen reader and in its tooltip. */
+  readonly label: () => string
+  /** The list it opens above the tray; `close` closes it. */
+  readonly flyout: (close: () => void) => JSX.Element
+}
+
 export interface PhoneSpec {
   /** The Today screen, shown at start and on the home key. */
   readonly home: () => JSX.Element

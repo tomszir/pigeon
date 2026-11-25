@@ -7,7 +7,7 @@ import {
   type Invite,
   type PeerId,
 } from '@pigeon/core'
-import { type Accessor, createEffect, createSignal, on, Show } from 'solid-js'
+import { type Accessor, createEffect, createSignal, on, onCleanup, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
@@ -30,12 +30,16 @@ import {
 } from '../apps/messenger/friend-dialogs/friend-dialogs.tsx'
 import { LiveConversation } from '../apps/messenger/live-conversation/live-conversation.tsx'
 import {
+  createNotifications,
+  NotificationFlyout,
+} from '../apps/messenger/notifications/notifications.tsx'
+import {
   MakeRecoveryKey,
   type RecoveryKit,
   UseRecoveryKey,
 } from '../apps/messenger/recovery/recovery.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
-import { Today } from '../apps/messenger/today/today.tsx'
+import { type HomeApp, Today } from '../apps/messenger/today/today.tsx'
 import {
   ExportData,
   ImportData,
@@ -51,7 +55,7 @@ import { openWithPassphrase, sealWithPassphrase } from '../platform/crypto/passp
 import { generateRecoveryKey, recoverySigner } from '../platform/crypto/recovery-key.ts'
 import { browserFiles } from '../platform/files/browser-files.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
-import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
+import type { Launcher, ShellApi, ShellEnv, TraySpec } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
@@ -579,13 +583,51 @@ export function createPrograms(
     )
   }
   const muted = (friend: FriendView) => host.messenger()?.muted(friend.id) === true
+
+  // Messages get one balloon at a time: at most one every 10 seconds, and what comes meanwhile is
+  // folded into one ("Mika and Ren: 3 new messages"), so a busy evening isn't a stream of them.
+  // Every message is in the tray's list and on Today anyway.
+  const MESSAGE_BALLOON_GAP_MS = 10_000
+  let lastMessageBalloon = 0
+  let held: { friend: FriendView; text: string }[] = []
+  let flushing: ReturnType<typeof setTimeout> | undefined
+  const sayMessages = () => {
+    flushing = undefined
+    const waiting = held
+    held = []
+    const first = waiting[0]
+    if (first === undefined) return
+    lastMessageBalloon = Date.now()
+    if (waiting.length === 1) {
+      notifyFrom(first.friend, { title: `${first.friend.name} says:`, body: first.text })
+      return
+    }
+    const names = [...new Set(waiting.map((message) => message.friend.name))]
+    const who =
+      names.length === 1
+        ? names[0]
+        : names.length === 2
+          ? `${names[0]} and ${names[1]}`
+          : `${names[0]}, ${names[1]} and ${names.length - 2} more`
+    const one = names.length === 1
+    api.notify({
+      title: who ?? '',
+      icon: one ? (birds.get(first.friend.id) ?? friendIcon) : brandIcon('pigeon-16'),
+      body: `${waiting.length} new messages. Click to read.`,
+      onClick: one ? () => openFriendConversation(first.friend.id) : openMessenger,
+    })
+  }
+  const holdMessage = (friend: FriendView, text: string) => {
+    held.push({ friend, text })
+    if (flushing !== undefined) return
+    const wait = Math.max(0, lastMessageBalloon + MESSAGE_BALLOON_GAP_MS - Date.now())
+    flushing = setTimeout(sayMessages, wait)
+  }
+  onCleanup(() => clearTimeout(flushing))
   const messengerEvents: MessengerEvents = {
     // Someone answered your invite: their chat opens, starting with "... became friends".
     onPaired: (friend: FriendView) => openFriendConversation(friend.id),
-    onOnline: (friend) => {
-      if (muted(friend)) return
-      notifyFrom(friend, { title: friend.name, body: 'has just come online.' })
-    },
+    // Coming online is on Today and in the buddy list: a balloon each time would be noise.
     onDeviceRemoved: () =>
       api.notify({
         title: 'This device was removed',
@@ -606,7 +648,7 @@ export function createPrograms(
       }),
     onMessage: (friend, entry) => {
       if (muted(friend) || api.isActive(conversationWindow(friend.id))) return
-      notifyFrom(friend, { title: `${friend.name} says:`, body: entry.text.slice(0, 120) })
+      holdMessage(friend, entry.text.slice(0, 120))
     },
     onBuzz: (friend) => {
       // Muted: the buzz is in the chat, but nothing shakes or vibrates.
@@ -805,6 +847,73 @@ export function createPrograms(
     onOpen: openAbout,
   }
 
+  // The time, ticking, for lists that say when things happened.
+  const [clock, setClock] = createSignal(env.now())
+  const ticking = setInterval(() => setClock(env.now()), 30_000)
+  onCleanup(() => clearInterval(ticking))
+  /** What happened while you were away: Today's list, and the tray's on the desktop. */
+  const notifications = createNotifications(host.messenger, () => clock().getTime())
+
+  // The Pocket's home screen: these programs, with what waits in each.
+  const unreadCount = () =>
+    host
+      .messenger()
+      ?.friends()
+      .reduce((sum, friend) => sum + friend.unread, 0) ?? 0
+  const requestCount = () =>
+    host
+      .messenger()
+      ?.inviteLinks()
+      .reduce(
+        (sum, link) => sum + link.requests.filter((request) => request.state === 'waiting').length,
+        0,
+      ) ?? 0
+  const homeApps: readonly HomeApp[] = [
+    {
+      id: 'messenger',
+      label: 'Messenger',
+      icon: messenger.icon32,
+      onOpen: openMessenger,
+      badge: unreadCount,
+    },
+    { id: 'explorer', label: 'Explorer', icon: explorer.icon32, onOpen: explorer.onOpen },
+    {
+      id: 'add-friend',
+      label: 'Add Friend',
+      icon: addFriend.icon32,
+      onOpen: () => openAddFriend(undefined, requestCount() > 0 ? 'links' : undefined),
+      badge: requestCount,
+    },
+    { id: 'network', label: 'Network', icon: network.icon32, onOpen: network.onOpen },
+    { id: 'readme', label: 'Read Me', icon: readme.icon32, onOpen: readme.onOpen },
+    { id: 'help', label: 'Help', icon: help.icon32, onOpen: help.onOpen },
+    { id: 'settings', label: 'Settings', icon: settings.icon32, onOpen: settings.onOpen },
+    { id: 'letters', label: 'Letters', icon: letters.icon32, onOpen: letters.onOpen },
+  ]
+
+  /** Pigeon's icon in the desktop's tray: the same list as Today, in a flyout. */
+  const tray: TraySpec = {
+    count: notifications.count,
+    label: () => {
+      const n = notifications.count()
+      return n === 0 ? 'Pigeon: nothing new' : `Pigeon: ${n} new`
+    },
+    flyout: (close) => (
+      <Show when={host.messenger()}>
+        {(messenger) => (
+          <NotificationFlyout
+            notifications={notifications}
+            messenger={messenger()}
+            now={clock().getTime()}
+            onOpenConversation={openFriendConversation}
+            onOpenRequests={() => openAddFriend(undefined, 'links')}
+            onClose={close}
+          />
+        )}
+      </Show>
+    ),
+  }
+
   /** The windows the Messenger key stands for on the phone. */
   const messengerWindow = (id: string) =>
     id === 'messenger' ||
@@ -820,10 +929,13 @@ export function createPrograms(
         <Today
           messenger={host.messenger()}
           problem={host.problem()}
-          now={env.now}
+          time={clock}
+          notifications={notifications}
+          apps={homeApps}
           onOpenMessenger={openMessenger}
           onOpenConversation={openFriendConversation}
-          onAddFriend={() => openAddFriend()}
+          onOpenRequests={() => openAddFriend(undefined, 'links')}
+          onAddFriend={(tab) => openAddFriend(undefined, tab)}
         />
       ),
       news: () => {
@@ -860,6 +972,7 @@ export function createPrograms(
       trash,
     ],
     quickLaunch: [messenger, readme],
+    tray,
     menu: {
       programs: [messenger, explorer, readme, addFriend],
       places: [{ ...letters, label: 'My Letters' }, files, source],

@@ -1,0 +1,163 @@
+/* While you were away: one row per thing, the time and its count in a column at the end. */
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60px;
+  padding: 6px 12px;
+  border: 0;
+  border-top: 1px solid var(--pg-separator);
+  background: transparent;
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  text-align: left;
+}
+
+.row:focus-visible,
+.row:active {
+  outline: none;
+  background: var(--pg-selection);
+  color: var(--pg-selection-text);
+}
+
+.request {
+  background: #fff4d6;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.preview {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}
+
+.row:focus-visible .muted,
+.row:active .muted,
+.row:focus-visible .time,
+.row:active .time {
+  color: inherit;
+}
+
+/* The time, with the count under it, in a column of their own: a badge never moves the time. */
+.end {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  align-self: flex-start;
+  gap: 4px;
+  min-width: 44px;
+  padding-top: 2px;
+}
+
+.time {
+  color: var(--pg-text-muted);
+  font-size: 12px;
+}
+
+.rowBadge {
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--pg-badge);
+  color: #ffffff;
+  font: 700 12px / 20px var(--pg-font-ui);
+  text-align: center;
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* On the desktop: the buddy list's size, rows 4px apart. */
+.compact .row {
+  min-height: 0;
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+.compact .end {
+  min-width: 32px;
+}
+
+.compact .time {
+  font-size: 11px;
+}
+
+.compact .rowBadge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+/* The tray's flyout: a white panel with a blue band, as the era's tray menus had. */
+.flyout {
+  width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--pg-frame-blue-dark);
+  border-radius: 6px 6px 0 0;
+  background: var(--pg-field);
+  box-shadow: var(--pg-shadow-popup);
+}
+
+.flyout:focus {
+  outline: none;
+}
+
+.flyoutHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: var(--pg-grad-title-active);
+  color: var(--pg-title-text);
+  font: var(--pg-type-body-strong);
+}
+
+.flyoutClear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: var(--pg-type-body);
+  text-decoration: underline;
+}
+
+.nothing {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--pg-text-muted);
+}
