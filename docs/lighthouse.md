@@ -34,13 +34,14 @@ On start it prints its address, `pigeon://lighthouse/<key>?url=...&name=...`, wh
 
 ## In Docker
 
-Build from the repository root, and run it with a folder holding `lighthouse.json`; its key and mail are kept in that folder too.
+Each release publishes the image as `ghcr.io/tomszir/pigeon-lighthouse`, tagged with its version and `latest` (`.github/workflows/lighthouse-image.yml`, run by release-please; running it by hand tags `edge`). Run it with a folder holding `lighthouse.json`; its key and mail are kept in that folder too, and the folder must be writable by the container's `node` user (uid 1000).
 
 ```sh
-docker build -f apps/lighthouse/Dockerfile -t pigeon-lighthouse .
 docker run -d --name lighthouse --restart unless-stopped \
-  -v "$PWD/lighthouse:/data" -p 127.0.0.1:8787:8787 pigeon-lighthouse
+  -v "$PWD/lighthouse:/data" -p 127.0.0.1:8787:8787 ghcr.io/tomszir/pigeon-lighthouse:latest
 ```
+
+To build it yourself, from the repository root: `docker build -f apps/lighthouse/Dockerfile -t pigeon-lighthouse .`. The Lighthouse says its version, and the commit it was built from, in its `hello`.
 
 ## In a homelab, through Tailscale Funnel
 

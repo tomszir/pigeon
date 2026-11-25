@@ -1,6 +1,7 @@
 // A Pigeon Lighthouse (decision 0037): node src/main.ts --config lighthouse.json
 // Holds sealed mail for anyone who uses it, says its address on start, and sweeps out expired
 // mail every hour.
+import { readFileSync } from 'node:fs'
 import { formatLighthouseAddress } from '@pigeon/core'
 import { createLighthouse } from '@pigeon/lighthouse'
 import { readConfig } from './config/config.ts'
@@ -8,8 +9,14 @@ import { createNodeCrypto, loadSigner } from './platform/node-crypto.ts'
 import { startServer } from './server/server.ts'
 import { createSqliteStore } from './store/sqlite-store.ts'
 
-export const VERSION = '0.1.0'
 const HOUR = 60 * 60 * 1000
+/** Pigeon's version, which the Lighthouse is released with; the image's commit, when built. */
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
+const BUILD = process.env['PIGEON_BUILD']
 
 const at = process.argv.indexOf('--config')
 const config = await readConfig(at < 0 ? 'lighthouse.json' : (process.argv[at + 1] ?? ''))
@@ -21,7 +28,12 @@ const lighthouse = createLighthouse({
   store,
   now: Date.now,
   name: config.name,
-  software: { name: 'pigeon-lighthouse', version: VERSION },
+  // The Lighthouse's own claim (0037): nothing relies on it, but it says which build this is.
+  software: {
+    name: 'pigeon-lighthouse',
+    version: VERSION,
+    ...(BUILD === undefined || BUILD === '' ? {} : { build: BUILD }),
+  },
   pass: config.pass,
   limits: config.limits,
 })
