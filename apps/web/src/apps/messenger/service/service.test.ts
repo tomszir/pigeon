@@ -1,4 +1,5 @@
 import {
+  createLighthouseClient,
   createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
@@ -7,9 +8,11 @@ import {
   fakeSigner,
   flush,
   type LighthouseAddress,
+  type LighthouseClient,
   pairRoom,
   pairRoomOn,
 } from '@pigeon/core'
+import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
 import { createRoot } from 'solid-js'
 import { describe, expect, it } from 'vitest'
 import type { Clock } from '../../../platform/clock/clock.ts'
@@ -45,6 +48,7 @@ function messenger(
     events?: MessengerEvents
     seed?: number
     lighthouses?: readonly LighthouseAddress[]
+    lighthouse?: TestLighthouse
   } = {},
 ) {
   const transport = network.transport()
@@ -63,9 +67,52 @@ function messenger(
       // Each device's own sealing key, the same across its restarts, as a stored one would be.
       seal: { crypto: fakeSealCrypto(), sealer: fakeSealCrypto().sealer(name) },
       ...(options.lighthouses === undefined ? {} : { lighthouses: options.lighthouses }),
+      ...(options.lighthouse === undefined
+        ? {}
+        : {
+            lighthouses: [options.lighthouse.address],
+            lighthouseClient: options.lighthouse.client,
+          }),
       ...(options.events === undefined ? {} : { events: options.events }),
     }),
   }))
+}
+
+interface TestLighthouse {
+  readonly address: LighthouseAddress
+  readonly client: () => LighthouseClient
+}
+
+/** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
+function testLighthouse(clock: Clock): TestLighthouse {
+  const signer = fakeSigner('test-lighthouse')
+  const lighthouse = createLighthouse({
+    signer,
+    crypto: fakeCrypto,
+    store: createMailStore(),
+    now: clock.now,
+    name: 'Test Lighthouse',
+    software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+  })
+  let n = 0
+  return {
+    address: { id: signer.id, name: 'Test Lighthouse', url: 'wss://lighthouse.test/' },
+    client: () =>
+      createLighthouseClient({
+        address: { id: signer.id, name: 'Test Lighthouse', url: 'wss://lighthouse.test/' },
+        crypto: fakeCrypto,
+        random: (length) => new Uint8Array(length).fill(++n % 250),
+        sleep: () => new Promise(() => undefined),
+        open: (_url, events) => {
+          const connection = lighthouse.connect('203.0.113.7')
+          void Promise.resolve().then(events.onOpen)
+          return {
+            send: (text) => void connection.receive(text).then(events.onMessage),
+            close: () => events.onClose(),
+          }
+        },
+      }),
+  }
 }
 
 async function pair(
@@ -177,6 +224,38 @@ describe('the Messenger service', () => {
     expect(await opened).toEqual({ ok: false, error: 'stopped' })
     await a.messenger.unblock(mikaId)
     expect(a.messenger.blocked()).toEqual([])
+  })
+
+  it('leaves a farewell in an offline friend’s mailbox, heard without meeting again', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const a = await messenger(network, 'rook', { clock, lighthouse })
+    const b = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(a, b)
+    const mikaId = only(a.messenger.friends()).id
+    const rookId = only(b.messenger.friends()).id
+    // Mika's Pigeon closes; Rook removes her while she's away.
+    await b.messenger.close()
+    b.transport.disconnect()
+    await flush()
+    await a.messenger.remove(mikaId, { block: false })
+    await flush(400)
+    expect(await a.store.get('farewells')).toEqual([
+      expect.objectContaining({ id: mikaId, mailed: true }),
+    ])
+    // Mika opens Pigeon on a network where she can't meet Rook: only her mailbox has it.
+    a.transport.disconnect()
+    const back = await messenger(createMemoryNetwork(), 'mika', {
+      clock,
+      lighthouse,
+      store: b.store,
+    })
+    await flush(800)
+    expect(back.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
+    // Her receipt reaches Rook's mailbox, and his farewell stops waiting.
+    await a.messenger.checkMail()
+    expect(await a.store.get('farewells')).toEqual([])
   })
 
   it('tells a removed friend who was offline once they come back', async () => {

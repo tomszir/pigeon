@@ -32,7 +32,9 @@ import {
   isSealingKey,
   isTailLog,
   type Json,
+  type Letter,
   type LighthouseAddress,
+  type LighthouseClient,
   type LinkRequest,
   type LogEntry,
   MAX_HANDLE_LENGTH,
@@ -73,6 +75,7 @@ import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
+import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import {
   isBlockedRecords,
   isChatLog,
@@ -115,6 +118,8 @@ export interface FarewellRecord {
   readonly id: PeerId
   readonly secret?: string | undefined
   readonly moved?: boolean | undefined
+  /** Left in their mailbox too: their receipt says it was heard, as meeting them would. */
+  readonly mailed?: boolean | undefined
 }
 
 export interface MessengerSettings {
@@ -191,7 +196,15 @@ export interface MessengerDeps {
   readonly seal?: { readonly crypto: SealCrypto; readonly sealer: Sealer } | undefined
   /** The Lighthouses a Pigeon uses until it's told otherwise: the official ones. */
   readonly lighthouses?: readonly LighthouseAddress[] | undefined
+  /**
+   * A client for a Lighthouse (one each; the Messenger keeps them). Without it, or without
+   * `seal`, no mail goes through Lighthouses and goodbyes wait to be said in person.
+   */
+  readonly lighthouseClient?: ((address: LighthouseAddress) => LighthouseClient) | undefined
 }
+
+/** How often a running Messenger looks for mail. */
+export const MAIL_EVERY_MS = 10 * 60 * 1000
 
 /**
  * What a friend's devices said about their mail: each device's sealing key, and the Lighthouses
@@ -378,6 +391,104 @@ export async function createMessenger(deps: MessengerDeps) {
     if (JSON.stringify(next) === JSON.stringify(book)) return
     mailBooks.set(id, next)
     await store.set(KEYS.mailBook(id), next)
+  }
+
+  // Mail through Lighthouses, when this Pigeon can seal and reach them.
+  const lighthouseClients = new Map<string, LighthouseClient>()
+  const makeClient = deps.lighthouseClient
+  const mailbox: Mailbox | undefined =
+    deps.seal === undefined || makeClient === undefined
+      ? undefined
+      : createMailbox({
+          crypto,
+          seal: deps.seal.crypto,
+          sealer: deps.seal.sealer,
+          signer,
+          self,
+          store,
+          now: clock.now,
+          random: deps.random,
+          // Kept per key, URL and pass: an address a friend names never takes over the
+          // connection to a Lighthouse of your own with the same key.
+          client: (address) => {
+            const key = `${address.id} ${address.url} ${address.pass ?? ''}`
+            let client = lighthouseClients.get(key)
+            if (client === undefined) {
+              client = makeClient(address)
+              lighthouseClients.set(key, client)
+            }
+            return client
+          },
+          head: () => ({ epoch: devices.epoch(), seq: devices.own().entries.length }),
+          stopped: () => closed,
+        })
+
+  /**
+   * Who `id` is to mail: their pair secret, the sealing keys of their devices still on their
+   * list, and their Lighthouses (the official ones, if they never said). Undefined when there's
+   * no secret or no key to seal to.
+   */
+  async function recipient(id: PeerId, secret: string | undefined): Promise<Recipient | undefined> {
+    if (secret === undefined) return undefined
+    const book = await mailBook(id)
+    const keys = Object.values(book.keys).filter(
+      (key) => devices.classify(id, key.device) === 'friend',
+    )
+    if (keys.length === 0) return undefined
+    const lighthouses = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
+    return { identity: id, secret, keys, lighthouses }
+  }
+
+  /**
+   * A farewell by mail counts only from a device on that friend's list as this device knows
+   * it; one from a device it doesn't know yet is left, to be looked at again when it's put
+   * again. From someone you've removed too, it's simply heard.
+   */
+  async function takeLetter(source: Source, letter: Letter): Promise<boolean> {
+    if (closed || letter.kind !== 'farewell') return false
+    const view = friend(source.sender)
+    if (view === undefined) return true
+    if (devices.classify(source.sender, letter.from) !== 'friend') return false
+    if (view.removedYouAt === undefined) handlers.unfriended(source.sender, { type: 'unfriended' })
+    return true
+  }
+
+  /** Looks for mail at this Pigeon's Lighthouses, puts again what waits, and acts on what came. */
+  let checking: Promise<void> | undefined
+  function checkMail(): Promise<void> {
+    if (mailbox === undefined || closed) return Promise.resolve()
+    checking ??= (async () => {
+      const sources = new Map<PeerId, Source>()
+      for (const view of friendList()) {
+        if (view.secret === undefined || view.removedYouAt !== undefined) continue
+        sources.set(view.id, {
+          sender: view.id,
+          secret: view.secret,
+          kinds: ['farewell', 'receipt'],
+          replyTo: await recipient(view.id, view.secret),
+        })
+      }
+      // Friends you removed: their receipts for your farewell come under the same secret, and
+      // so does a farewell of theirs if they removed you too.
+      for (const waiting of await mailbox.waitingOn())
+        if (!sources.has(waiting.identity))
+          sources.set(waiting.identity, {
+            sender: waiting.identity,
+            secret: waiting.secret,
+            kinds: ['receipt', 'farewell'],
+            replyTo: waiting,
+          })
+      await mailbox.resend()
+      const heard = await mailbox.fetch(lighthouses(), [...sources.values()], takeLetter)
+      // A farewell every device of theirs has a receipt for was heard: nothing more to say.
+      // One that only expired wasn't, and goes on being said in person.
+      for (const id of heard)
+        if (farewells.some((record) => record.id === id && record.mailed === true))
+          await farewellHeard(id)
+    })().finally(() => {
+      checking = undefined
+    })
+    return checking
   }
 
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
@@ -796,6 +907,23 @@ export async function createMessenger(deps: MessengerDeps) {
     const log = await store.get(KEYS.log(record.id))
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
   }
+  /** A removed friend heard: in person, or by receipt for the farewell left in their mailbox. */
+  async function farewellHeard(id: PeerId) {
+    // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
+    if (closed) return
+    farewells = farewells.filter((other) => other.id !== id)
+    await store.set(KEYS.farewells, farewells)
+    // Heard in person: the mailbox stops putting it again.
+    await mailbox?.forget(id)
+    const session = farewellSessions.get(id)
+    farewellSessions.delete(id)
+    if (session !== undefined) {
+      forget(session)
+      await session.close()
+    }
+    saidFarewells()
+  }
+
   // Telling a removed friend: a session of its own that says unfriend once they're there.
   async function sayFarewell(record: FarewellRecord) {
     const { id } = record
@@ -816,16 +944,7 @@ export async function createMessenger(deps: MessengerDeps) {
       now: clock.now,
       onEvent: (event) => {
         if (event.type !== 'online') return
-        void session.unfriend().then(async () => {
-          // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
-          if (closed) return
-          farewells = farewells.filter((other) => other.id !== id)
-          await store.set(KEYS.farewells, farewells)
-          farewellSessions.delete(id)
-          forget(session)
-          await session.close()
-          saidFarewells()
-        })
+        void session.unfriend().then(() => farewellHeard(id))
       },
     })
     farewellSessions.set(id, session)
@@ -850,6 +969,8 @@ export async function createMessenger(deps: MessengerDeps) {
     })
     await saveFriends()
     await store.delete(KEYS.log(id))
+    // Who they are to mail, before their devices are forgotten: the farewell is sealed to them.
+    const mailTo = view.removedYouAt === undefined ? await recipient(id, view.secret) : undefined
     await devices.forgetFriend(id)
     if (options.block && !isBlocked(id)) {
       setBlocked([...blocked(), { id, handle: view.handle, at: clock.now() }])
@@ -857,13 +978,17 @@ export async function createMessenger(deps: MessengerDeps) {
     }
     // They removed you first: there's nobody to tell.
     if (view.removedYouAt === undefined) {
+      // Kept before anything is sent, so a tab that closes now still owes the farewell.
+      const mailed = mailbox !== undefined && mailTo !== undefined
       const record: FarewellRecord = {
         id,
         ...(view.secret === undefined ? {} : { secret: view.secret }),
         ...(view.moved === true ? { moved: true } : {}),
+        ...(mailed ? { mailed: true } : {}),
       }
       farewells = [...farewells.filter((other) => other.id !== id), record]
       await store.set(KEYS.farewells, farewells)
+      if (mailed) void mailbox.send('farewell', mailTo, {}).catch(() => undefined)
       await sayFarewell(record)
     }
   }
@@ -963,6 +1088,7 @@ export async function createMessenger(deps: MessengerDeps) {
     if (profile().handle !== '') await Promise.all(farewells.map((record) => sayFarewell(record)))
     const stored = await store.get(KEYS.invite)
     if (isHostedInvite(stored)) await host(stored)
+    void checkMail().catch(() => undefined)
   }
   await connect()
 
@@ -1187,7 +1313,8 @@ export async function createMessenger(deps: MessengerDeps) {
     await store.set(KEYS.blocked, blockedList)
     // The profile is the other device's now; this one's old change time no longer applies.
     await store.delete(KEYS.profileChangedAt)
-    // Nothing of a Pigeon left behind is said as this one.
+    // Nothing of a Pigeon left behind is said as this one, and none of its mail is looked for.
+    for (const key of ['mail-outbox', 'mail-fetched', 'mail-seen']) await store.delete(key)
     await store.set(KEYS.farewells, [])
     for (const [id, friendLog] of logs)
       if (
@@ -1255,6 +1382,7 @@ export async function createMessenger(deps: MessengerDeps) {
   /** Stops everything: no rooms, no sessions, no link or invite hosting. */
   async function close() {
     closed = true
+    for (const client of lighthouseClients.values()) client.close()
     await cancelLink()
     await disconnect()
     const leaving = selfSession
@@ -1351,6 +1479,15 @@ export async function createMessenger(deps: MessengerDeps) {
     }
   }
 
+  // Mail is looked for every few minutes while the Messenger runs, as well as on start.
+  void (async () => {
+    while (!closed) {
+      await clock.sleep(MAIL_EVERY_MS)
+      if (closed) return
+      await checkMail().catch(() => undefined)
+    }
+  })()
+
   // Rooms are renamed each UTC day, with both joined around midnight.
   void (async () => {
     while (!closed) {
@@ -1442,6 +1579,8 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     /** What `id`'s devices (your own, under your own id) said about their mail. */
     mailBook,
+    /** Looks for mail now, rather than at the next few-minute check. */
+    checkMail,
     profile,
     async setProfile(next: Profile) {
       const handle = next.handle.trim().slice(0, MAX_HANDLE_LENGTH)
