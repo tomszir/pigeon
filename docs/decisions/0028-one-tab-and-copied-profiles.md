@@ -2,7 +2,7 @@
 
 Pigeon runs in one tab of a browser at a time, and a device that hears its own key from another run of Pigeon says it's open somewhere else and offers to become a new device.
 
-- Status: accepted
+- Status: accepted; the second tab's balloon is now a screen over the whole desktop with the same offer ([design.md](../design.md#devices))
 - Date: 2026-11-25
 
 ## Context

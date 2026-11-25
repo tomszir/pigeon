@@ -91,6 +91,14 @@ export interface ShellApi {
   readonly settings: () => Settings
   readonly setSettings: (settings: Settings) => void
   readonly shutDown: () => void
+  /** Covers the whole screen while Pigeon runs in another tab, or clears it (decision 0028). */
+  readonly setElsewhere: (elsewhere: ElsewhereSpec | undefined) => void
+}
+
+/** What the screen says while another tab has Pigeon, and how to move it here. */
+export interface ElsewhereSpec {
+  readonly title: string
+  readonly onTakeOver: () => void
 }
 
 /**

@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
 import { brandIcon } from '../../ui/icons/icons.ts'
-import type { Launcher, WindowHandle, WindowSpec } from '../shell/types.ts'
+import type { ElsewhereSpec, Launcher, WindowHandle, WindowSpec } from '../shell/types.ts'
 import { PhoneShell, softKeyPath } from './phone-shell.tsx'
 
 const icon = brandIcon('pigeon-16')
@@ -18,7 +18,7 @@ const launcher = (id: string, label: string, extra: Partial<Launcher> = {}): Lau
 
 const box = { x: 0, y: 0, width: 100, height: 100 }
 
-function setup(touch = true) {
+function setup(touch = true, elsewhere?: ElsewhereSpec) {
   const messenger = launcher('messenger', 'Pigeon Messenger')
   const addFriend = vi.fn()
   const readme = launcher('readme', 'Read Me')
@@ -72,6 +72,7 @@ function setup(touch = true) {
       onShutDown={() => undefined}
       asleep={false}
       onWake={() => undefined}
+      elsewhere={elsewhere}
       handle={handle}
     />
   ))
@@ -103,6 +104,23 @@ describe('PhoneShell', () => {
     expect(key('Home: Today').getAttribute('aria-current')).toBe('page')
     expect(key('Left soft key: Messenger')).toBeTruthy()
     expect(key('Right soft key: Menu')).toBeTruthy()
+  })
+
+  it('covers the screen and stills the keys while Pigeon runs in another tab', () => {
+    const onTakeOver = vi.fn()
+    const { addFriend, messenger } = setup(true, {
+      title: 'Pigeon is open in another tab',
+      onTakeOver,
+    })
+    expect(screen.getByRole('alertdialog', { name: 'Pigeon is open in another tab' })).toBeTruthy()
+    // The keys are still there under the screen, hidden from the accessibility tree by it.
+    fireEvent.click(screen.getByRole('button', { name: 'Messenger', hidden: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Menu', hidden: true }))
+    expect(messenger.onOpen).not.toHaveBeenCalled()
+    expect(addFriend).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.click(key('Use Pigeon Here'))
+    expect(onTakeOver).toHaveBeenCalledOnce()
   })
 
   it('opens a program from the left soft key, then changes the key for that window', () => {

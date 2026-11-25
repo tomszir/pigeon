@@ -1,0 +1,78 @@
+/* Pigeon open in another tab: the era's locked-computer blue, dark bands above and below. */
+
+.elsewhere {
+  position: absolute;
+  inset: 0;
+  /* Over the windows, the taskbar (1000), balloons and the menu (1002). */
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: #5a7edc;
+  color: #ffffff;
+}
+
+.band {
+  flex: 0 0 72px;
+  background: #00309c;
+}
+
+.band:first-child {
+  border-bottom: 2px solid #8fb2ff;
+}
+
+.band:last-child {
+  border-top: 2px solid #f58b2a;
+}
+
+.middle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 32px;
+  background: radial-gradient(circle at 30% 40%, #7da2ec 0%, #5a7edc 45%, #3c63c8 100%);
+}
+
+.words {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 360px;
+}
+
+.title {
+  margin: 0;
+  font: 700 20px / 24px var(--pg-font-ui);
+  text-shadow: 1px 1px 2px rgb(0 0 0 / 40%);
+}
+
+.text {
+  margin: 0;
+  font: 400 13px / 18px var(--pg-font-ui);
+}
+
+/* The Pocket: stacked, centred, the button a finger wide. */
+.phone .band {
+  flex-basis: 40px;
+}
+
+.phone .middle {
+  flex-direction: column;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.phone .words {
+  align-items: stretch;
+}
+
+.phone .title {
+  font-size: 18px;
+}
+
+.phone .text {
+  font-size: 15px;
+  line-height: 20px;
+}

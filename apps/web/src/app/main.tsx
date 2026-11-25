@@ -132,7 +132,7 @@ render(() => {
   }
 
   // One tab at a time (decision 0028): another tab's Pigeon is the same device, so this one
-  // waits, and "Use it here" moves Pigeon over.
+  // waits behind a screen that says so, and "Use Pigeon Here" moves Pigeon over.
   const ELSEWHERE = 'Pigeon is open in another tab.'
   const lock = browserTabLock(async () => {
     await stopMessenger()
@@ -141,11 +141,10 @@ render(() => {
   })
   let storage: { readonly store: Store; readonly persistent: boolean } | undefined
   const offerHere = (title: string) =>
-    api.notify({
+    api.setElsewhere({
       title,
-      icon: tangoIcon('dialog-information', 16),
-      body: 'Only one tab runs Pigeon at a time. Use it here?',
-      onClick: () => {
+      onTakeOver: () => {
+        api.setElsewhere(undefined)
         void lock.takeOver().then(() => {
           setProblem(undefined)
           if (storage !== undefined) void run(storage, false)
@@ -194,7 +193,7 @@ render(() => {
       storage = opened
       if (!(await lock.tryHold())) {
         setProblem(ELSEWHERE)
-        offerHere(ELSEWHERE)
+        offerHere('Pigeon is open in another tab')
         return
       }
       await run(opened, true)
