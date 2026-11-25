@@ -16,3 +16,11 @@
 .field label {
   color: #4a4a4a;
 }
+
+/* In the Pocket's command row, the field is one item among the buttons. */
+.compact {
+  flex-grow: 1;
+  min-width: 0;
+  padding: 0;
+  border-bottom: none;
+}

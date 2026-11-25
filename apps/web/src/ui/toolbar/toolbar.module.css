@@ -29,6 +29,14 @@
   padding: 0 5px;
 }
 
+.iconOnly {
+  min-width: var(--pg-touch-target);
+}
+
+.iconOnly span {
+  display: none;
+}
+
 .toolbarButton:not(:disabled):hover,
 .toolbarButton:focus-visible {
   outline: none;

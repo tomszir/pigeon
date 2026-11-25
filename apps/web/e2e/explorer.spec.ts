@@ -88,6 +88,19 @@ test.describe('on the Pocket', () => {
       .tap()
     const explorer = page.getByRole('region', { name: 'Pigeon Explorer' })
     await expect(explorer.getByRole('button', { name: 'Home' })).toBeInViewport()
+    // One command row: Back, Forward, the address, Refresh and Home side by side, no Go.
+    const row = explorer.getByRole('toolbar', { name: 'Navigation' })
+    const tops = await row.evaluate((toolbar) =>
+      [...toolbar.querySelectorAll('button, input')].map((item) =>
+        Math.round(item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2),
+      ),
+    )
+    expect(new Set(tops).size).toBe(1)
+    await expect(row.getByRole('button', { name: 'Go' })).toHaveCount(0)
+    await page.screenshot({
+      path: test.info().outputPath('pocket-header.png'),
+      clip: { x: 0, y: 0, width: 412, height: 260 },
+    })
     await browse(page, explorer)
     expect(blocked).toEqual([])
   })
