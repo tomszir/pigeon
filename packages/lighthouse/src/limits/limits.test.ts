@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addressRange, createLimitCounter, DEFAULT_LIMITS, type Limits } from './limits.ts'
+import {
+  addressRange,
+  createLimitCounter,
+  DEFAULT_LIMITS,
+  type Limits,
+  roomForConnection,
+} from './limits.ts'
 
 describe('address ranges', () => {
   it('count IPv4 by address and IPv6 by its /64', () => {
@@ -78,5 +84,60 @@ describe('the limit counter', () => {
     expect(counter.allowRead('a', 0)).toBe(true)
     expect(counter.allowRead('a', 1)).toBe(false)
     expect(counter.allowRead('a', 60_000)).toBe(true)
+  })
+
+  it('caps IPv6 reads per /48, before tracking any more of its /64s', () => {
+    const counter = createLimitCounter(limits({ readsPerMinutePer48: 2, maxRanges: 4 }))
+    expect(counter.allowRead('2001:db8:1:1::/64', 0)).toBe(true)
+    expect(counter.allowRead('2001:db8:1:2::/64', 0)).toBe(true)
+    // A /48 past its cap takes up no more places with fresh /64s...
+    for (let n = 3; n < 20; n++) expect(counter.allowRead(`2001:db8:1:${n}::/64`, 0)).toBe(false)
+    // ...so everyone else still finds room.
+    expect(counter.allowRead('2001:db8:2:1::/64', 0)).toBe(true)
+    expect(counter.allowRead('203.0.113.7', 0)).toBe(true)
+    expect(counter.allowRead('2001:db8:1:3::/64', 60_000)).toBe(true)
+  })
+
+  it('counts every frame per minute, per range and per IPv6 /48', () => {
+    const counter = createLimitCounter(limits({ framesPerMinute: 2, framesPerMinutePer48: 3 }))
+    expect(counter.allowFrame('a', 0)).toBe(true)
+    expect(counter.allowFrame('a', 1)).toBe(true)
+    expect(counter.allowFrame('a', 2)).toBe(false)
+    expect(counter.allowFrame('a', 60_000)).toBe(true)
+    expect(counter.allowFrame('2001:db8:1:1::/64', 0)).toBe(true)
+    expect(counter.allowFrame('2001:db8:1:1::/64', 0)).toBe(true)
+    expect(counter.allowFrame('2001:db8:1:2::/64', 0)).toBe(true)
+    expect(counter.allowFrame('2001:db8:1:3::/64', 0)).toBe(false)
+  })
+
+  it('takes back a put that stored nothing, but only in the window it was counted in', () => {
+    const counter = createLimitCounter(
+      limits({ putsPerHour: 1, bytesPerHour: 10, blobsPerTagPerDay: 1, totalPutsPerHour: 1 }),
+    )
+    expect(counter.allowPut('a', 't', 10, 0)).toBe(true)
+    counter.refundPut('a', 't', 10, 0)
+    expect(counter.allowPut('a', 't', 10, 1)).toBe(true)
+    expect(counter.allowPut('a', 't', 10, 2)).toBe(false)
+    // A refund after the hour turned changes nothing of the new hour's counts.
+    expect(counter.allowPut('b', 'u', 1, HOUR)).toBe(true)
+    counter.refundPut('a', 't', 10, 2)
+    expect(counter.allowPut('c', 'v', 1, HOUR + 1)).toBe(false)
+  })
+
+  it('keeps per-tag counts apart however many pairs it tracks', () => {
+    const counter = createLimitCounter(limits({ blobsPerTagPerDay: 1 }))
+    for (let n = 0; n < 200; n++) expect(counter.allowPut(`r${n}`, `t${n}`, 1, 0)).toBe(true)
+    expect(counter.allowPut('r1', 't1', 1, 0)).toBe(false)
+  })
+})
+
+describe('connection room', () => {
+  it('caps connections in total, per range and per IPv6 /48', () => {
+    const caps = limits({ maxConnections: 10, connectionsPerRange: 2, connectionsPer48: 4 })
+    expect(roomForConnection(caps, { total: 0, range: 0, wide: 0 })).toBe(true)
+    expect(roomForConnection(caps, { total: 9, range: 1, wide: 3 })).toBe(true)
+    expect(roomForConnection(caps, { total: 10, range: 0, wide: 0 })).toBe(false)
+    expect(roomForConnection(caps, { total: 3, range: 2, wide: 2 })).toBe(false)
+    expect(roomForConnection(caps, { total: 4, range: 1, wide: 4 })).toBe(false)
   })
 })

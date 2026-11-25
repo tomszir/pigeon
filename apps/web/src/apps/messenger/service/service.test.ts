@@ -132,7 +132,10 @@ function testLighthouse(clock: Clock): TestLighthouse {
           open.add(close)
           void Promise.resolve().then(events.onOpen)
           return {
-            send: (text) => void connection.receive(text).then(events.onMessage),
+            send: (text) =>
+              void connection
+                .receive(text)
+                .then((reply) => (reply === undefined ? close() : events.onMessage(reply))),
             close,
           }
         },

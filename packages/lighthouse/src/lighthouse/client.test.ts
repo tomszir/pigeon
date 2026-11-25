@@ -39,7 +39,10 @@ function setup(
     return {
       send(text) {
         if (relay.mute) return
-        void connection.receive(relay.rewrite?.(text) ?? text).then(events.onMessage)
+        // Unanswered is closed, as the runners close it.
+        void connection
+          .receive(relay.rewrite?.(text) ?? text)
+          .then((reply) => (reply === undefined ? events.onClose() : events.onMessage(reply)))
       },
       close: () => events.onClose(),
     }

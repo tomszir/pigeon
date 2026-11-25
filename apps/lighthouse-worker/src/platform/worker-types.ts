@@ -12,8 +12,10 @@ export interface DurableObjectState {
     setAlarm(at: number): Promise<void>
     getAlarm(): Promise<number | null>
   }
-  acceptWebSocket(socket: WebSocket): void
-  getWebSockets(): WebSocket[]
+  /** Takes a socket on, hibernating while idle; `tags` are what getWebSockets can ask by. */
+  acceptWebSocket(socket: WebSocket, tags?: string[]): void
+  /** The sockets taken on and still open, or only those with `tag`. */
+  getWebSockets(tag?: string): WebSocket[]
 }
 
 /** A WebSocket the runtime hibernates: what it keeps with the socket while it sleeps. */
