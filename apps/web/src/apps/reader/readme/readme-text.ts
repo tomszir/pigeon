@@ -41,7 +41,10 @@ UNDER THE HOOD
 LIGHTHOUSES
   When a friend is away, a Lighthouse
   holds what you leave for them, sealed so
-  only their devices can open it. It keeps
+  only their devices can open it. Your own
+  devices leave each other what changed
+  there too: your name, your devices and
+  your Lighthouses. It keeps
   no names and nothing it can read, for 30
   days at most. It does see your address
   when you connect. Network, on the

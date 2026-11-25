@@ -76,8 +76,11 @@ export interface Source {
   readonly sender: PeerId
   readonly secret: string
   readonly kinds: readonly MailKind[]
-  /** Where to send receipts: the sender's devices and Lighthouses, if known. */
-  readonly replyTo?: Recipient | undefined
+  /**
+   * Where to send receipts: the sender's devices and Lighthouses, if known. Asked each time, as
+   * a key heard while fetching (from your own other devices, say) can make it known.
+   */
+  readonly replyTo?: Recipient | (() => Promise<Recipient | undefined>) | undefined
 }
 
 export interface MailboxDeps {
@@ -99,8 +102,17 @@ export interface MailboxDeps {
 }
 
 export interface Mailbox {
-  /** Seals a letter to `to`'s devices and puts it at their Lighthouses; true if one took it. */
-  send(kind: Exclude<MailKind, 'receipt'>, to: Recipient, body: Json): Promise<boolean>
+  /**
+   * Seals a letter to `to`'s devices and puts it at their Lighthouses; true if one took it.
+   * With `supersede`, it takes the place of letters of the same kind to them that still wait
+   * only on devices this one goes to: it says all they did.
+   */
+  send(
+    kind: Exclude<MailKind, 'receipt'>,
+    to: Recipient,
+    body: Json,
+    options?: { readonly supersede?: boolean },
+  ): Promise<boolean>
   /** Puts again what's waited long enough for its receipts, and forgets what expired. */
   resend(): Promise<void>
   /**
@@ -108,13 +120,14 @@ export interface Mailbox {
    * `take`, which says whether it counted. One that counted is taken once, dropped, and
    * answered with a receipt, again each time it's put again, in case the receipt was lost. One
    * that didn't (from a device not on its sender's list as this device knows it, say) is left,
-   * to be looked at again when it's put again. Says whose letters every device has now
-   * receipted.
+   * to be looked at again when it's put again. `look`, if given, sees every letter opened at a
+   * Lighthouse before any is taken. Says whose letters every device has now receipted.
    */
   fetch(
     lighthouses: readonly LighthouseAddress[],
     sources: readonly Source[],
     take: (source: Source, letter: Letter) => Promise<boolean>,
+    look?: (letters: readonly { source: Source; letter: Letter }[]) => Promise<void>,
   ): Promise<readonly PeerId[]>
   /** Who an outgoing letter still waits on receipts from: senders whose receipts to look for. */
   waitingOn(): Promise<readonly Recipient[]>
@@ -247,13 +260,20 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
   }
 
   return {
-    send: (kind, to, body) =>
+    send: (kind, to, body, options) =>
       serial(async () => {
         if (deps.stopped()) return false
         const id = newId()
         const stored = await put(kind, id, body, to, to.keys)
         const at = now()
-        const letters = await outbox()
+        const reaches = new Set(to.keys.map((key) => key.device))
+        const letters = (await outbox()).filter(
+          (letter) =>
+            options?.supersede !== true ||
+            letter.kind !== kind ||
+            letter.to.identity !== to.identity ||
+            !letter.waiting.every((device) => reaches.has(device)),
+        )
         letters.push({
           id,
           kind,
@@ -287,7 +307,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
         if (!deps.stopped()) await saveOutbox(next)
       }),
 
-    fetch: (lighthouses, sources, take) =>
+    fetch: (lighthouses, sources, take, look) =>
       serial(async () => {
         const completed: PeerId[] = []
         const fetchedStored = await store.get(KEYS.fetched)
@@ -297,6 +317,17 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             : {}
         const taken = await seen()
         const at = now()
+        // Everything waiting, at every Lighthouse, is opened first and acted on after, so what a
+        // letter means can depend on all of them (a removal, say), never on which Lighthouse
+        // was asked first or the order one happened to list them in.
+        const opened: {
+          client: LighthouseClient
+          id: string
+          source: Source
+          letter: Letter
+          drop: string
+        }[] = []
+        const reached: Record<string, { cursor: number; at: number }> = {}
         for (const lighthouse of lighthouses) {
           if (deps.stopped()) return completed
           const last = fetched[lighthouse.id] ?? { cursor: 0, at: at - LOOK_BACK_DAYS * DAY }
@@ -339,33 +370,13 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
                   break
                 }
                 const dayOf = Date.parse(`${where.date}T00:00:00Z`)
-                const opened = await openMail(crypto, deps.seal, deps.sealer, got.value.blob, {
+                const open = await openMail(crypto, deps.seal, deps.sealer, got.value.blob, {
                   to: deps.self,
                   kinds: where.source.kinds,
                   dates: [utcDate(dayOf - DAY), where.date, utcDate(dayOf + DAY)],
                 })
-                if (!opened.ok || opened.value.letter.sender !== where.source.sender) continue
-                const { letter, drop } = opened.value
-                const key = `${letter.sender} ${letter.id}`
-                if (letter.kind === 'receipt') {
-                  const body = letter.body as { for?: unknown }
-                  if (
-                    taken[key] === undefined &&
-                    typeof body?.for === 'string' &&
-                    (await received(letter.sender, letter.from, body.for))
-                  )
-                    completed.push(letter.sender)
-                  taken[key] = at
-                } else {
-                  const counted = taken[key] !== undefined || (await take(where.source, letter))
-                  // One that didn't count is left, to be looked at again when it's put again.
-                  if (!counted) continue
-                  taken[key] = at
-                  // Again for a letter put again: its last receipt may have been lost.
-                  if (where.source.replyTo !== undefined)
-                    await receipt(where.source.replyTo, letter.id)
-                }
-                await client.request({ type: 'drop', id: item.id, key: drop })
+                if (!open.ok || open.value.letter.sender !== where.source.sender) continue
+                opened.push({ client, id: item.id, source: where.source, ...open.value })
               }
               if (!reachable) break
               chunkCursor = listed.value.cursor
@@ -373,10 +384,36 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             }
             cursor = Math.max(cursor, chunkCursor)
           }
-          if (reachable) fetched[lighthouse.id] = { cursor, at }
+          if (reachable) reached[lighthouse.id] = { cursor, at }
         }
         if (deps.stopped()) return completed
-        await store.set(KEYS.fetched, fetched)
+        await look?.(opened.map(({ source, letter }) => ({ source, letter })))
+        for (const { client, id: blobId, source, letter, drop } of opened) {
+          if (deps.stopped()) return completed
+          const key = `${letter.sender} ${letter.id}`
+          if (letter.kind === 'receipt') {
+            const body = letter.body as { for?: unknown }
+            if (
+              taken[key] === undefined &&
+              typeof body?.for === 'string' &&
+              (await received(letter.sender, letter.from, body.for))
+            )
+              completed.push(letter.sender)
+            taken[key] = at
+          } else {
+            const counted = taken[key] !== undefined || (await take(source, letter))
+            // One that didn't count is left, to be looked at again when it's put again.
+            if (!counted) continue
+            taken[key] = at
+            // Again for a letter put again: its last receipt may have been lost.
+            const { replyTo } = source
+            const to = typeof replyTo === 'function' ? await replyTo() : replyTo
+            if (to !== undefined) await receipt(to, letter.id)
+          }
+          await client.request({ type: 'drop', id: blobId, key: drop })
+        }
+        if (deps.stopped()) return completed
+        await store.set(KEYS.fetched, { ...fetched, ...reached })
         await store.set(KEYS.seen, taken)
         return completed
       }),

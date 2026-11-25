@@ -73,6 +73,7 @@ import {
   type Transport,
   untilPairDaysChange,
   verifyDeviceLog,
+  verifySealingKey,
 } from '@pigeon/core'
 import { batch, createSignal } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
@@ -80,6 +81,7 @@ import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
+import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
   isBlockedRecords,
   isChatLog,
@@ -244,6 +246,8 @@ const KEYS = {
   recoveryReminded: 'recoveryReminded',
   /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
   lighthouses: 'lighthouses',
+  /** When the Lighthouse list was last changed here, so the newest wins on your devices. */
+  lighthousesChangedAt: 'lighthousesChangedAt',
   /** What a friend's devices (or your own, under your own id) said about their mail. */
   mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,
@@ -376,6 +380,26 @@ export async function createMessenger(deps: MessengerDeps) {
       ? storedLighthouses
       : (deps.lighthouses ?? []),
   )
+  const storedLighthousesAt = await store.get(KEYS.lighthousesChangedAt)
+  let lighthousesChangedAt =
+    typeof storedLighthousesAt === 'number' && Number.isSafeInteger(storedLighthousesAt)
+      ? storedLighthousesAt
+      : 0
+  // A list changed before your devices shared theirs has no time: it counts as changed now, and
+  // is said to your other devices once this Pigeon is running, so it isn't lost to theirs.
+  const unsharedLighthouses =
+    lighthousesChangedAt === 0 &&
+    Array.isArray(storedLighthouses) &&
+    storedLighthouses.every(isLighthouseAddress)
+  if (unsharedLighthouses) {
+    lighthousesChangedAt = clock.now()
+    await store.set(KEYS.lighthousesChangedAt, lighthousesChangedAt)
+  }
+  /** Your Lighthouse list for your other devices, once it's been changed from the default. */
+  const lighthousesChange = (): LighthousesChange | undefined =>
+    lighthousesChangedAt === 0 || lighthouses().length === 0
+      ? undefined
+      : { list: lighthouses(), changedAt: lighthousesChangedAt }
   const mailOptions = { sealing: () => ownSealing, lighthouses }
   const mailBooks = new Map<PeerId, MailBook>()
   async function mailBook(id: PeerId): Promise<MailBook> {
@@ -386,15 +410,29 @@ export async function createMessenger(deps: MessengerDeps) {
     mailBooks.set(id, book)
     return book
   }
-  /** A device of `id`'s said its sealing key or Lighthouses: the newest is kept. */
-  async function heardKeys(id: PeerId, event: Extract<PairEvent, { type: 'keys' }>) {
+  /**
+   * A device of `id`'s said its sealing key or Lighthouses: the newest is kept. True when the
+   * sealing key is one this device didn't have.
+   */
+  let keysQueue: Promise<unknown> = Promise.resolve()
+  function heardKeys(id: PeerId, event: Extract<PairEvent, { type: 'keys' }>): Promise<boolean> {
+    // One at a time, so two heard together (in the self room and by mail) both stick.
+    const next = keysQueue.then(() => keepKeys(id, event))
+    keysQueue = next.catch(() => undefined)
+    return next
+  }
+  async function keepKeys(
+    id: PeerId,
+    event: Extract<PairEvent, { type: 'keys' }>,
+  ): Promise<boolean> {
     const book = await mailBook(id)
     const keys =
       event.sealing === undefined ? book.keys : { ...book.keys, [event.device]: event.sealing }
     const next: MailBook = { keys, lighthouses: event.lighthouses ?? book.lighthouses }
-    if (JSON.stringify(next) === JSON.stringify(book)) return
+    if (JSON.stringify(next) === JSON.stringify(book)) return false
     mailBooks.set(id, next)
     await store.set(KEYS.mailBook(id), next)
+    return JSON.stringify(keys[event.device]) !== JSON.stringify(book.keys[event.device])
   }
 
   // Mail through Lighthouses, when this Pigeon can seal and reach them.
@@ -450,12 +488,122 @@ export async function createMessenger(deps: MessengerDeps) {
    * again. From someone you've removed too, it's simply heard.
    */
   async function takeLetter(source: Source, letter: Letter): Promise<boolean> {
-    if (closed || letter.kind !== 'farewell') return false
+    if (closed) return false
+    if (letter.kind === 'self') return source.sender === self && takeSelfNews(letter)
+    if (letter.kind !== 'farewell') return false
     const view = friend(source.sender)
     if (view === undefined) return true
     if (devices.classify(source.sender, letter.from) !== 'friend') return false
     if (view.removedYouAt === undefined) handlers.unfriended(source.sender, { type: 'unfriended' })
     return true
+  }
+
+  /**
+   * Your own other devices to mail: the self secret, the sealing keys of your devices still on
+   * your list (or of `only` those devices), and every Lighthouse on this device's list and the
+   * one your other devices last said.
+   */
+  async function selfRecipient(only?: readonly PeerId[]): Promise<Recipient | undefined> {
+    const secret = devices.selfSecret()
+    if (secret === undefined) return undefined
+    const book = await mailBook(self)
+    const keys = Object.values(book.keys).filter(
+      (key) =>
+        key.device !== signer.id &&
+        (only === undefined ? devices.isOwnOther(key.device) : only.includes(key.device)),
+    )
+    if (keys.length === 0) return undefined
+    const all = [...lighthouses(), ...book.lighthouses]
+    const where = all.filter((address, i) => all.findIndex((o) => o.id === address.id) === i)
+    return { identity: self, secret, keys, lighthouses: where }
+  }
+
+  /**
+   * Leaves your other devices what changed here: your device log, name and Lighthouse list as
+   * they are now, and the sealing keys of your devices, so one that was offline catches up when
+   * it opens. Each takes the place of the last one still waiting. `removed`, devices a change
+   * made here has just taken off your list, get the device log alone, so they hear and stop.
+   * Sent in the background: nothing waits on the Lighthouses.
+   */
+  function tellOwnDevices(removed: readonly PeerId[] = []) {
+    if (mailbox === undefined || closed || devices.status() !== 'active') return
+    // Everything as it is now, before anything waits, so two sent close together each say theirs.
+    const log = devices.own()
+    const profile = profileChange()
+    const list = lighthousesChange()
+    void (async () => {
+      const book = await mailBook(self)
+      const keys = [
+        ...(ownSealing === undefined ? [] : [ownSealing]),
+        ...Object.values(book.keys).filter((key) => devices.isOwnOther(key.device)),
+      ]
+      const to = await selfRecipient()
+      if (to !== undefined) {
+        const news = { log, keys, profile, lighthouses: list }
+        await mailbox.send('self', to, selfNewsBody(news), { supersede: true })
+      }
+      const off = removed.filter((device) => !devices.isOwnOther(device))
+      const gone = off.length === 0 ? undefined : await selfRecipient(off)
+      if (gone !== undefined) await mailbox.send('self', gone, selfNewsBody({ log, keys: [] }))
+    })().catch(() => undefined)
+  }
+
+  /**
+   * News from another of your devices. The device log in it is signed by whoever wrote it, so
+   * it's merged first, whoever brought it: a device linked or removed while this one was away
+   * then counts as it should. The rest counts only from a device on that list.
+   */
+  async function takeSelfNews(letter: Letter): Promise<boolean> {
+    const news = readSelfNews(self, letter.body)
+    // Nothing that could ever be taken: dropped, so it isn't fetched again.
+    if (news === undefined) return true
+    await takeOwnLog(news.log)
+    if (closed || !devices.isOwnOther(letter.from)) return false
+    if (devices.status() !== 'active') return true
+    for (const key of news.keys)
+      if (
+        key.device !== signer.id &&
+        devices.isOwnOther(key.device) &&
+        (await verifySealingKey(crypto, key))
+      )
+        await heardKeys(self, { type: 'keys', device: key.device, sealing: key })
+    if (news.profile !== undefined) await takeProfile(news.profile)
+    if (news.lighthouses !== undefined) await takeLighthouses(news.lighthouses)
+    return true
+  }
+
+  /**
+   * Before any letter is taken: the device logs in your devices' news, merged, so a removal
+   * counts for every letter fetched with it, whichever came first.
+   */
+  async function lookAt(letters: readonly { source: Source; letter: Letter }[]) {
+    for (const { source, letter } of letters) {
+      if (closed) return
+      if (source.sender !== self || letter.kind !== 'self') continue
+      const news = readSelfNews(self, letter.body)
+      if (news !== undefined) await takeOwnLog(news.log)
+    }
+  }
+
+  /** Keeps a Lighthouse list and says it to everyone; `changedAt` when it was changed. */
+  async function saveLighthouses(next: readonly LighthouseAddress[], changedAt: number) {
+    const unique = next.filter(
+      (address, i) => next.findIndex((other) => other.id === address.id) === i,
+    )
+    lighthousesChangedAt = changedAt
+    setLighthousesSignal(unique)
+    await store.set(KEYS.lighthouses, unique)
+    await store.set(KEYS.lighthousesChangedAt, changedAt)
+    for (const session of sessions.values()) session.announce()
+    selfSession?.announce()
+  }
+
+  /** Your Lighthouse list from another of your devices: the newest change wins. */
+  async function takeLighthouses(change: LighthousesChange) {
+    if (change.changedAt <= lighthousesChangedAt) return
+    // A time far ahead would outrank every later change, even after its device is removed.
+    if (change.changedAt > clock.now() + PROFILE_CLOCK_SLACK_MS) return
+    await saveLighthouses(change.list, change.changedAt)
   }
 
   /** Looks for mail at this Pigeon's Lighthouses, puts again what waits, and acts on what came. */
@@ -464,6 +612,15 @@ export async function createMessenger(deps: MessengerDeps) {
     if (mailbox === undefined || closed) return Promise.resolve()
     checking ??= (async () => {
       const sources = new Map<PeerId, Source>()
+      // Your own other devices, under the self secret: what they changed, and their receipts.
+      const selfSecret = devices.selfSecret()
+      if (selfSecret !== undefined && devices.status() === 'active')
+        sources.set(self, {
+          sender: self,
+          secret: selfSecret,
+          kinds: ['self', 'receipt'],
+          replyTo: () => selfRecipient(),
+        })
       for (const view of friendList()) {
         if (view.secret === undefined || view.removedYouAt !== undefined) continue
         sources.set(view.id, {
@@ -484,7 +641,7 @@ export async function createMessenger(deps: MessengerDeps) {
             replyTo: waiting,
           })
       await mailbox.resend()
-      const heard = await mailbox.fetch(lighthouses(), [...sources.values()], takeLetter)
+      const heard = await mailbox.fetch(lighthouses(), [...sources.values()], takeLetter, lookAt)
       // A farewell every device of theirs has a receipt for was heard: nothing more to say.
       // One that only expired wasn't, and goes on being said in person.
       for (const id of heard)
@@ -615,7 +772,7 @@ export async function createMessenger(deps: MessengerDeps) {
       const view = friend(id)
       if (view !== undefined) events.onOnline?.(view)
     },
-    keys: (id, event) => void heardKeys(id, event),
+    keys: (id, event) => void heardKeys(id, event).catch(() => undefined),
     renamed: (id, event) => {
       const current = state.friends[id]
       if (current === undefined || current.handle === event.handle) return
@@ -1018,8 +1175,13 @@ export async function createMessenger(deps: MessengerDeps) {
       ...twinOptions,
       ...mailOptions,
       // Your own other devices: their sealing keys and Lighthouses, kept under your own id.
+      // One heard for the first time (a device just linked, say) is passed on by mail, so a
+      // device that's away can write to it.
       onEvent: (event) => {
-        if (event.type === 'keys') void heardKeys(self, event)
+        if (event.type === 'keys')
+          void heardKeys(self, event)
+            .then((added) => (added ? tellOwnDevices() : undefined))
+            .catch(() => undefined)
       },
       accepts: (device) => (devices.isOwnOther(device) ? 'friend' : undefined),
       authors: () => new Set(),
@@ -1096,6 +1258,7 @@ export async function createMessenger(deps: MessengerDeps) {
     void checkMail().catch(() => undefined)
   }
   await connect()
+  if (unsharedLighthouses) tellOwnDevices()
 
   async function disconnect() {
     await stopHosting?.()
@@ -1287,6 +1450,7 @@ export async function createMessenger(deps: MessengerDeps) {
     setLinking(undefined)
     await startSelfSession()
     await ownChanged()
+    tellOwnDevices()
     return 'linked'
   }
 
@@ -1538,6 +1702,7 @@ export async function createMessenger(deps: MessengerDeps) {
     async commitRecoveryKey(key: PeerId): Promise<boolean> {
       if (!(await devices.commitRecoveryKey(key))) return false
       await ownChanged()
+      tellOwnDevices()
       return true
     },
     /**
@@ -1551,8 +1716,11 @@ export async function createMessenger(deps: MessengerDeps) {
         .filter((device) => device.here || keepOthers)
         .map((device) => ({ device: device.id, name: device.name }))
       if (here === undefined) return false
+      const before = devices.devices().map((device) => device.id)
       if (!(await devices.recoverHere(key, keep, next))) return false
       await ownChanged()
+      // Devices the recovery left off are told, so they stop talking.
+      tellOwnDevices(before)
       return true
     },
     recoverIdentity,
@@ -1564,23 +1732,24 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     /** Takes a device off your list, from the first device. */
     async removeDevice(id: PeerId) {
-      if (await devices.change('remove', id)) await ownChanged()
+      if (!(await devices.change('remove', id))) return
+      await ownChanged()
+      // The removed device is told too, so it stops talking even if it's never in the self room.
+      tellOwnDevices([id])
     },
     async renameDevice(id: PeerId, name: string) {
-      if (name.trim() !== '' && (await devices.change('name', id, name))) await ownChanged()
+      if (name.trim() === '' || !(await devices.change('name', id, name))) return
+      await ownChanged()
+      tellOwnDevices()
     },
     selfFingerprint,
     /** Where friends leave mail for this Pigeon. */
     lighthouses,
     /** Changes where mail is left for you, and says so to friends and your other devices. */
     async setLighthouses(next: readonly LighthouseAddress[]) {
-      const unique = next.filter(
-        (address, i) => next.findIndex((other) => other.id === address.id) === i,
-      )
-      setLighthousesSignal(unique)
-      await store.set(KEYS.lighthouses, unique)
-      for (const session of sessions.values()) session.announce()
-      selfSession?.announce()
+      // Later than any change this device has seen, even with a clock that's behind.
+      await saveLighthouses(next, Math.max(clock.now(), lighthousesChangedAt + 1))
+      tellOwnDevices()
     },
     /** What `id`'s devices (your own, under your own id) said about their mail. */
     mailBook,
@@ -1605,7 +1774,10 @@ export async function createMessenger(deps: MessengerDeps) {
       // Later than any change this device has seen, even with a clock that's behind.
       const at = named ? Math.max(clock.now(), profileChangedAt + 1) : undefined
       await saveProfile({ ...next, handle, message }, at)
-      if (named) selfSession?.announce()
+      if (named) {
+        selfSession?.announce()
+        tellOwnDevices()
+      }
     },
     friends: friendList,
     friend,

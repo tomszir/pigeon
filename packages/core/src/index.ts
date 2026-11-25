@@ -155,6 +155,7 @@ export type {
 } from './messages/envelope.ts'
 export {
   MAX_HANDLE_LENGTH,
+  MAX_LIGHTHOUSES,
   MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
   openEnvelope,

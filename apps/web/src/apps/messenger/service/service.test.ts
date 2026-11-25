@@ -20,6 +20,8 @@ import { createMemoryStore, type Store } from '../../../platform/storage/storage
 import { createMessenger, type FriendView, type MessengerEvents, MUTED_FOREVER } from './service.ts'
 
 const never = new Promise<void>(() => undefined)
+/** Every test Pigeon's random draws so far, so no two draws are the same. */
+let draws = 0
 
 function fakeClock(start = 1_000_000): Clock & { tick(ms: number): Promise<void> } {
   let time = start
@@ -62,7 +64,14 @@ function messenger(
       store,
       transport,
       clock: options.clock ?? fakeClock(),
-      random: (length) => new Uint8Array(length).fill(options.seed ?? name.length),
+      // Known bytes, but a new draw each time, even after a restart, as ids taken once need.
+      random: (length) => {
+        const bytes = new Uint8Array(length).fill(options.seed ?? name.length)
+        draws += 1
+        bytes[0] = draws % 256
+        bytes[1] = Math.floor(draws / 256) % 256
+        return bytes
+      },
       inviteBase: 'https://pigeon.test/',
       // Each device's own sealing key, the same across its restarts, as a stored one would be.
       seal: { crypto: fakeSealCrypto(), sealer: fakeSealCrypto().sealer(name) },
@@ -81,6 +90,8 @@ function messenger(
 interface TestLighthouse {
   readonly address: LighthouseAddress
   readonly client: () => LighthouseClient
+  /** While down, it closes every connection and takes no new one. */
+  down(value: boolean): void
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
@@ -95,7 +106,13 @@ function testLighthouse(clock: Clock): TestLighthouse {
     software: { name: 'pigeon-lighthouse', version: '0.0.0' },
   })
   let n = 0
+  let isDown = false
+  const open = new Set<() => void>()
   return {
+    down(value) {
+      isDown = value
+      if (value) for (const close of [...open]) close()
+    },
     address: { id: signer.id, name: 'Test Lighthouse', url: 'wss://lighthouse.test/' },
     client: () =>
       createLighthouseClient({
@@ -104,11 +121,19 @@ function testLighthouse(clock: Clock): TestLighthouse {
         random: (length) => new Uint8Array(length).fill(++n % 250),
         sleep: () => new Promise(() => undefined),
         open: (_url, events) => {
+          if (isDown) {
+            void Promise.resolve().then(events.onClose)
+            return { send: () => undefined, close: () => undefined }
+          }
           const connection = lighthouse.connect('203.0.113.7')
+          const close = () => {
+            if (open.delete(close)) events.onClose()
+          }
+          open.add(close)
           void Promise.resolve().then(events.onOpen)
           return {
             send: (text) => void connection.receive(text).then(events.onMessage),
-            close: () => events.onClose(),
+            close,
           }
         },
       }),
@@ -625,8 +650,10 @@ async function linkDevice(
   from: Awaited<ReturnType<typeof messenger>>,
   name: string,
   clock: Clock,
+  lighthouse?: TestLighthouse,
 ) {
-  const fresh = await messenger(network, name, { clock })
+  const options = { clock, ...(lighthouse === undefined ? {} : { lighthouse }) }
+  const fresh = await messenger(network, name, options)
   const linking = await from.messenger.startLink()
   if (linking === undefined) throw new Error('could not start linking')
   const target = decodeDeviceLink(linking.link)
@@ -642,10 +669,197 @@ async function linkDevice(
   await fresh.messenger.close()
   await flush()
   // Started again, this browser is the identity it was linked to.
-  const started = await messenger(network, name, { clock, store: fresh.store })
+  const started = await messenger(network, name, { ...options, store: fresh.store })
   await flush()
   return { device: started, status }
 }
+
+/** Rook's laptop and phone, linked, both leaving and fetching mail at one Lighthouse. */
+async function laptopAndPhone() {
+  const network = createMemoryNetwork()
+  const clock = fakeClock(NOON)
+  const lighthouse = testLighthouse(clock)
+  const laptop = await messenger(network, 'rook', { clock, lighthouse })
+  await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+  const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+  await flush()
+  return { network, clock, lighthouse, laptop, phone }
+}
+
+/** The phone's Pigeon closes and its network goes: it meets nobody until it opens again. */
+async function away(device: Awaited<ReturnType<typeof messenger>>) {
+  await device.messenger.close()
+  device.transport.disconnect()
+  await flush()
+}
+
+describe('your devices through the self mailbox', () => {
+  it('catches a phone that was offline up on your name and Lighthouses', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    await away(phone)
+    await clock.tick(1000)
+    await laptop.messenger.setProfile({ ...laptop.messenger.profile(), handle: 'Toms' })
+    const second: LighthouseAddress = {
+      id: fakeSigner('second').id,
+      name: 'Second',
+      url: 'wss://second.example/',
+    }
+    await laptop.messenger.setLighthouses([lighthouse.address, second])
+    await flush(400)
+
+    // The phone opens where it can't meet the laptop: only its mailbox has the news.
+    laptop.transport.disconnect()
+    const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(800)
+    expect(back.messenger.profile().handle).toBe('Toms')
+    expect(back.messenger.lighthouses()).toEqual([lighthouse.address, second])
+    // Its receipts reach the laptop, which stops putting the news again.
+    await laptop.messenger.checkMail()
+    expect(await laptop.store.get('mail-outbox')).toEqual([])
+  })
+
+  it('keeps one snapshot waiting for a device that’s away, however often you change things', async () => {
+    const { clock, laptop, phone } = await laptopAndPhone()
+    await away(phone)
+    for (const handle of ['Toms', 'Toms Z.', 'Tom']) {
+      await clock.tick(1000)
+      await laptop.messenger.setProfile({ ...laptop.messenger.profile(), handle })
+      await flush(200)
+    }
+    const outbox = (await laptop.store.get('mail-outbox')) as { body: { profile?: unknown } }[]
+    expect(outbox).toHaveLength(1)
+    expect(outbox[0]?.body.profile).toMatchObject({ handle: 'Tom' })
+  })
+
+  it('shares a Lighthouse list changed before devices shared theirs, once', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const second: LighthouseAddress = {
+      id: fakeSigner('second').id,
+      name: 'Second',
+      url: 'wss://second.example/',
+    }
+    await away(phone)
+    await laptop.messenger.close()
+    // As a list kept by an older Pigeon: no time with it.
+    await laptop.store.set('lighthouses', [lighthouse.address, second])
+    await laptop.store.delete('lighthousesChangedAt')
+    await clock.tick(1000)
+    await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse, store: laptop.store })
+    await flush(400)
+    const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(800)
+    expect(back.messenger.lighthouses()).toEqual([lighthouse.address, second])
+  })
+
+  it('tells a removed phone that was offline, and it stops talking', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    await away(phone)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    laptop.transport.disconnect()
+    let removed = 0
+    const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+      events: { onDeviceRemoved: () => (removed += 1) },
+    })
+    await flush(800)
+    expect(back.messenger.deviceStatus()).toBe('removed')
+    expect(removed).toBe(1)
+  })
+
+  it('tells a phone that was away about a tablet linked meanwhile, and how to write to it', async () => {
+    const { network, clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    await away(phone)
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
+    await flush(400)
+    laptop.transport.disconnect()
+    tablet.transport.disconnect()
+    const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(800)
+    expect(back.messenger.devices().map((view) => view.id)).toContain(tablet.messenger.device)
+    const book = await back.messenger.mailBook(back.messenger.self)
+    expect(Object.keys(book.keys)).toContain(tablet.messenger.device)
+  })
+
+  it('takes nothing from a device removed, even when its letter is fetched before the removal', async () => {
+    const { network, clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
+    await flush(400)
+    await away(phone)
+    await away(tablet)
+    // The laptop removes the stolen phone while the Lighthouse is down: nothing is put yet.
+    lighthouse.down(true)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    lighthouse.down(false)
+    // The thief's Pigeon never fetches, so it never hears, and renames you to the tablet.
+    await phone.store.set('mail-fetched', {
+      [lighthouse.address.id]: { cursor: Number.MAX_SAFE_INTEGER, at: clock.now() },
+    })
+    await clock.tick(1000)
+    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(400)
+    expect(thief.messenger.deviceStatus()).toBe('active')
+    await thief.messenger.setProfile({ ...thief.messenger.profile(), handle: 'Thief' })
+    await flush(400)
+    // Only now is the removal put, after the thief's letter.
+    await laptop.messenger.checkMail()
+    await flush(400)
+    laptop.transport.disconnect()
+    const back = await messenger(createMemoryNetwork(), 'rook-tablet', {
+      clock,
+      lighthouse,
+      store: tablet.store,
+    })
+    await flush(800)
+    expect(back.messenger.devices().map((view) => view.id)).not.toContain(phone.messenger.device)
+    expect(back.messenger.profile().handle).toBe('Rook')
+  })
+
+  it('leaves a lost phone, once removed, nothing it can rename you with', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    await away(phone)
+    // The phone is lost: the laptop removes it, then the thief opens it and renames you.
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await laptop.messenger.close()
+    laptop.transport.disconnect()
+    await clock.tick(1000)
+    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await thief.messenger.setProfile({ ...thief.messenger.profile(), handle: 'Thief' })
+    await flush(400)
+    expect(thief.messenger.deviceStatus()).toBe('removed')
+    const again = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: laptop.store,
+    })
+    await flush(800)
+    expect(again.messenger.profile().handle).toBe('Rook')
+  })
+})
 
 describe('your devices', () => {
   it('links a phone to a laptop: Mika sees one Toms, and the phone’s message reaches the laptop', async () => {
