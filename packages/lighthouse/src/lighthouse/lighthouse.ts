@@ -49,11 +49,22 @@ export interface LighthouseOptions {
 export interface LighthouseConnection {
   /** One request frame in, one signed reply frame out. */
   receive(frame: string): Promise<string>
+  /**
+   * What the connection must remember to carry on: whether it said hello, and its nonce. A
+   * runner whose sockets sleep (the Worker's hibernating WebSockets) keeps it with the socket
+   * and hands it back to `connect` when the socket wakes.
+   */
+  saved(): SavedConnection
+}
+
+export interface SavedConnection {
+  readonly greeted: boolean
+  readonly nonce: string
 }
 
 export interface Lighthouse {
-  /** A connection from `address` (its IP address, used only for limits). */
-  connect(address: string): LighthouseConnection
+  /** A connection from `address` (its IP address, used only for limits), or one waking up. */
+  connect(address: string, saved?: SavedConnection): LighthouseConnection
   /** Deletes expired mail; the runner calls it now and then. */
   sweep(): Promise<number>
 }
@@ -163,11 +174,11 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
   }
 
   return {
-    connect(address) {
+    connect(address, saved) {
       const range = addressRange(address)
-      let greeted = false
+      let greeted = saved?.greeted ?? false
       /** The client's nonce from its hello: every reply after signs it (0037). */
-      let nonce = ''
+      let nonce = saved?.nonce ?? ''
       let pending = 0
       // One request at a time per connection, in the order they came.
       let queue = Promise.resolve()
@@ -196,6 +207,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
             pending -= 1
           })
         },
+        saved: () => ({ greeted, nonce }),
       }
     },
     sweep: () => store.expire(now()),

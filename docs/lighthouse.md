@@ -1,8 +1,8 @@
 # Running a Lighthouse
 
-How to run a Lighthouse, the peer that holds sealed mail for Pigeons that are offline: its config file, Docker, and reaching one in a homelab through Tailscale Funnel.
+How to run a Lighthouse, the peer that holds sealed mail for Pigeons that are offline: in Node from a config file, in Docker, in a homelab through Tailscale Funnel, and as a Cloudflare Worker.
 
-A Lighthouse holds mail it can't open or attribute ([0037](decisions/0037-the-lighthouse-and-its-mailbox.md)), so running one for your friends, or for anyone, trusts you with keeping mail until it's fetched and nothing more. The code is `packages/lighthouse` (the mailbox) and `apps/lighthouse` (the Node runner).
+A Lighthouse holds mail it can't open or attribute ([0037](decisions/0037-the-lighthouse-and-its-mailbox.md)), so running one for your friends, or for anyone, trusts you with keeping mail until it's fetched and nothing more. The code is `packages/lighthouse` (the mailbox and its SQL store) and two runners: `apps/lighthouse` (Node) and `apps/lighthouse-worker` (a Cloudflare Worker).
 
 ## The config file
 
@@ -53,3 +53,15 @@ The official homelab Lighthouse is reached this way (0037): Funnel gives it a pu
 4. Visit `https://<machine>.<tailnet>.ts.net/`: it shows the address to add in Pigeon.
 
 Funnel's proxy sets `X-Forwarded-For` to the visitor's address; with `trustForwardedFor` off, every visitor would count as `127.0.0.1`.
+
+## As a Cloudflare Worker
+
+The official Worker Lighthouse is `apps/lighthouse-worker`, at `lighthouse.pigeon.tomszir.com` (0037). One Durable Object is the Lighthouse: it keeps the mail in its SQLite, through the same SQL store the Node Lighthouse uses, and holds every client's WebSocket. Sockets hibernate while idle, so an idle connection keeps nothing running; each keeps its client's address, whether it said hello, and its nonce attached to it. The Worker in front passes the client's address from `CF-Connecting-IP` and drops any a client sends of its own. An hourly alarm sweeps expired mail while there's mail or a client, and stops when there's neither.
+
+Its name and URL are `vars` in `wrangler.jsonc`. Its key is the secret `LIGHTHOUSE_KEY`, made once and never replaced:
+
+1. `pnpm --filter lighthouse-worker make-key` prints a new key and the address it gives. Keep a copy of the key somewhere safe.
+2. `pnpm --filter lighthouse-worker exec wrangler secret put LIGHTHOUSE_KEY`, and paste it.
+3. `pnpm --filter lighthouse-worker deploy`. Deploying is the author's call, as the site's is.
+
+`pnpm --filter lighthouse-worker dev` runs it locally with `wrangler dev`, reading the key from `apps/lighthouse-worker/.dev.vars` (`LIGHTHOUSE_KEY=...`, and `LIGHTHOUSE_URL=ws://localhost:8787/`), which git ignores. Its limits count in the Durable Object's memory, and a hibernating object is evicted after a few idle seconds, so on a quiet Lighthouse they start again often: someone can put up to the hourly limits, pause, and put again. Only the store's size limit lasts, since it's counted from what's stored. Keeping counts in storage would write addresses down, which 0037 rules out, so the guard that lasts is a WAF rate limit on the route: in the Cloudflare dashboard, Security, WAF, Rate limiting rules, for `lighthouse.pigeon.tomszir.com`, a few hundred requests a minute per IP address, with a usage alert as the TURN route has (0022).

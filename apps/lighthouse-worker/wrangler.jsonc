@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The official Worker Lighthouse (decision 0037, docs/lighthouse.md): one Durable Object holds
+  // the mail in its SQLite and the WebSockets, which hibernate while idle. The Lighthouse's key is
+  // the secret LIGHTHOUSE_KEY (`pnpm --filter lighthouse-worker make-key` makes one), set once
+  // with `wrangler secret put LIGHTHOUSE_KEY` and never replaced: it is the Lighthouse's identity.
+  "name": "pigeon-lighthouse",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  "durable_objects": {
+    "bindings": [{ "name": "LIGHTHOUSE", "class_name": "LighthouseObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LighthouseObject"] }],
+  "vars": {
+    "LIGHTHOUSE_NAME": "Pigeon Lighthouse",
+    "LIGHTHOUSE_URL": "wss://lighthouse.pigeon.tomszir.com/"
+  },
+  "routes": [{ "pattern": "lighthouse.pigeon.tomszir.com", "custom_domain": true }]
+}

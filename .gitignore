@@ -12,3 +12,7 @@ playwright-report/
 apps/lighthouse/lighthouse.json
 apps/lighthouse/lighthouse.key
 apps/lighthouse/lighthouse.sqlite*
+
+# A Worker run locally: its secrets (wrangler dev) and state.
+.dev.vars
+.wrangler/

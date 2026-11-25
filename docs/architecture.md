@@ -35,8 +35,9 @@ packages/
                 (decision 0037). lighthouse/ answers each connection's request frames
                 with signed replies; store/ is the MailStore interface, a memory store,
                 and store-contract.ts, the tests every store runs (exported as
-                @pigeon/lighthouse/testing); limits/ counts puts per IPv4 address or
-                IPv6 /64, in memory only. The Node and Worker runners use it.
+                @pigeon/lighthouse/testing), and sql-store.ts, the MailStore over a
+                one-call SqlDatabase that both runners hand their SQLite in as; limits/
+                counts puts per IPv4 address or IPv6 /64, in memory only.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse. allowlists.ts holds the
                 tables, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
@@ -101,6 +102,13 @@ apps/
                 MailStore in SQLite (node:sqlite); server/ the WebSocket server (ws), one
                 connection per client, each frame one request. main.ts starts it.
                 Dockerfile builds it from the repository root.
+  lighthouse-worker/
+                The Worker Lighthouse (decision 0037, docs/lighthouse.md): index.ts sends
+                every request, with the client's address, to the one Durable Object;
+                object/ is that Durable Object, the mailbox on its SQLite with hibernating
+                WebSockets and an hourly sweep; platform/ is core's Crypto on the Workers
+                runtime and the few runtime types it uses, written out; scripts/make-key.ts
+                makes its key.
 ```
 
 ## Import rules

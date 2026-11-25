@@ -51,6 +51,24 @@ export function describeMailStore(name: string, make: () => Promise<MailStore> |
       expect(second.more).toBe(false)
     })
 
+    it('lists across more tags than one query can bind, still oldest first', async () => {
+      const store = await make()
+      const tag = (n: number) => `${String(n).padStart(4, '0')}${'t'.repeat(48)}`
+      // Blobs under tags far apart in the list, put out of the list's order.
+      for (const n of [210, 5, 150, 99, 0])
+        await store.put(
+          sampleBlob(n, { id: `${String(n).padStart(4, '0')}${'i'.repeat(48)}`, tag: tag(n) }),
+          0,
+        )
+      const tags = Array.from({ length: 220 }, (_, n) => tag(n))
+      const page = await store.list(tags, 0, 3, 0)
+      expect(page.items.map((item) => item.tag)).toEqual([tag(210), tag(5), tag(150)])
+      expect(page.more).toBe(true)
+      const rest = await store.list(tags, page.cursor, 3, 0)
+      expect(rest.items.map((item) => item.tag)).toEqual([tag(99), tag(0)])
+      expect(rest.more).toBe(false)
+    })
+
     it('pages past mail that expired between the blobs it lists', async () => {
       const store = await make()
       await store.put(sampleBlob(3, { tag: key(150) }), 0)
