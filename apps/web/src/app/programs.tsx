@@ -39,6 +39,7 @@ import {
   ImportData,
   type PassphraseSeal,
 } from '../apps/messenger/your-data/your-data.tsx'
+import { Network } from '../apps/network/network/network.tsx'
 import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
 import { HOME_SCREEN_TEXT } from '../apps/reader/home-screen/home-screen-text.ts'
 import { Reader } from '../apps/reader/reader/reader.tsx'
@@ -52,6 +53,7 @@ import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
+import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
 export interface Programs extends ShellProps {
   readonly openReadme: () => void
@@ -107,6 +109,25 @@ export function createPrograms(
     if (running === undefined) return
     void running.avatarOf(running.self).then((traits) => setSelfPicture(avatarIcon(traits, 32)))
   })
+
+  // Network: where friends leave your mail, and how this Pigeon connects.
+  const openNetwork = () =>
+    api.open('network', {
+      title: 'Network',
+      icon: tangoIcon('network-workgroup', 16),
+      bounds: { x: 272, y: 40, width: 500, height: 640 },
+      resizable: true,
+      controls: { maximize: false },
+      content: (window) => (
+        <Network
+          messenger={host.messenger()}
+          official={OFFICIAL_LIGHTHOUSES}
+          relayOnly={host.messenger()?.settings().relayOnly}
+          onRelayOnly={(on) => void setRelayOnly(on)}
+          onClose={window.close}
+        />
+      ),
+    })
 
   const openAbout = () =>
     api.open('about', {
@@ -799,6 +820,15 @@ export function createPrograms(
     icon32: tangoIcon('user-trash', 32),
     onOpen: later('Trash', ['The Trash is empty.']),
   }
+  const network: Launcher = {
+    id: 'network',
+    label: 'Network',
+    description: 'Lighthouses and connection',
+    icon16: tangoIcon('network-workgroup', 16),
+    icon22: tangoIcon('network-workgroup', 22),
+    icon32: tangoIcon('network-workgroup', 32),
+    onOpen: () => openNetwork(),
+  }
   const settings: Launcher = {
     id: 'settings',
     label: 'Settings',
@@ -870,12 +900,9 @@ export function createPrograms(
         return { label: 'Messenger', onPress: openMessenger }
       },
     },
-    connection: {
-      relayOnly: () => host.messenger()?.settings().relayOnly,
-      setRelayOnly: (on) => void setRelayOnly(on),
-    },
     desktopIcons: [
       messenger,
+      network,
       { ...readme, label: 'Read Me.txt' },
       { ...changelog, label: 'Changelog.txt' },
       ...iphone,
@@ -888,8 +915,8 @@ export function createPrograms(
     menu: {
       programs: [messenger, explorer, readme, addFriend],
       places: [{ ...letters, label: 'My Letters' }, files, source],
-      tools: [settings, help, changelog, ...iphone],
-      all: [about, explorer, messenger, readme, settings, changelog],
+      tools: [network, settings, help, changelog, ...iphone],
+      all: [about, explorer, messenger, network, readme, settings, changelog],
       user: () => {
         const name = host.messenger()?.profile().handle ?? ''
         return { name, picture: name === '' ? undefined : selfPicture() }

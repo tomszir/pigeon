@@ -38,12 +38,22 @@ UNDER THE HOOD
   storage ......... IndexedDB (local only)
   crypto .......... WebCrypto keypairs
 
+LIGHTHOUSES
+  When a friend is away, a Lighthouse
+  holds what you leave for them, sealed so
+  only their devices can open it. It keeps
+  no names and nothing it can read, for 30
+  days at most. It does see your address
+  when you connect. Network, on the
+  desktop, shows yours: Loft, Dovecote and
+  Perch unless you add your own.
+
 KNOWN LIMITS
   Some networks block direct connections;
   Pigeon then goes through a relay that
-  can't read your messages. File, Always
-  Go Through the Relay hides your address
-  from friends too.
+  can't read your messages. Always Go
+  Through the Relay, in Network, hides your
+  address from friends too.
   Only your first device links and removes
   devices. Keep it safe.
   On an iPhone, add Pigeon to the Home

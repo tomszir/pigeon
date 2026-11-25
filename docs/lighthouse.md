@@ -4,6 +4,20 @@ How to run a Lighthouse, the peer that holds sealed mail for Pigeons that are of
 
 A Lighthouse holds mail it can't open or attribute, so running one for your friends, or for anyone, trusts you with keeping mail until it's fetched and nothing more. The code is `packages/lighthouse` (the mailbox and its SQL store) and two runners: `apps/lighthouse` (Node) and `apps/lighthouse-worker` (a Cloudflare Worker).
 
+## What a Lighthouse stores, sees and can do
+
+**What it stores.** One record per piece of mail, and nothing else: its id (a hash of its contents), its tag, the sealed blob, its size and what it costs to keep, when it expires, and a hash for each recipient device's drop, with the drops already used. Mail is deleted once every recipient device has dropped its copy, or after 30 days at most. The store holds no names, identities, device keys, IP addresses or logs of who asked for what.
+
+**What it never has.** The blob is sealed to each recipient device's own key, so a Lighthouse can't open it. A tag is a keyed hash of a secret only the two ends hold, the recipient and the day, so it can't be traced back to anyone, and it changes every day. A client says nothing about itself when it connects: no name, no identity, no key of its own.
+
+**What it sees while it runs.** Each client's IP address, when it connects, how much it puts and fetches, and which tags it asks for. Addresses are counted in memory for the limits (per IPv4 address or IPv6 /64, an hour or a day at a time) and never written down. While it watches, a Lighthouse can tell that the address that put mail under a tag and the address that fetched it are talking, and that the same address comes back day after day; it can't tell who they are, unless someone who knows the tags tells its operator.
+
+**What's checked.** Every reply is signed with the Lighthouse's key over the exact request it answers and a nonce the client chose for the connection, so whoever relays the connection can't change a request and pass on the real answer, or replay one. Pigeon checks each reply against the key in the Lighthouse's address, so a Lighthouse can't be impersonated. Only a recipient device can drop its copy, since only it can open the drop value inside the blob. A personal Lighthouse can require a pass, part of its address, without which it answers only refusals.
+
+**What it can do wrong.** The worst a Lighthouse can do is withhold or lose mail. That's why mail is left at every Lighthouse on the recipient's list, and senders put it again every few days until each device's receipt comes. What a Lighthouse says it runs (its name, version and build) is only its own word; nothing in Pigeon relies on it.
+
+**The key file.** `lighthouse.key` (or the Worker's `LIGHTHOUSE_KEY` secret) is the Lighthouse's identity. Whoever has it can answer as that Lighthouse, though still not open anyone's mail. Keep it readable only by the Lighthouse, back it up with the mail, and never replace it: a new key is a new Lighthouse that everyone must add again.
+
 ## The config file
 
 One JSON file. `name` and `url` are needed; everything else has a default.

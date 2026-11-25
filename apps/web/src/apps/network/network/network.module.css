@@ -1,0 +1,195 @@
+/* Network: the relay setting, and the list of Lighthouses with how each answers. */
+
+.network {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px 6px 6px;
+  overflow: auto;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text {
+  margin: 0;
+  line-height: 15px;
+}
+
+.muted {
+  color: var(--pg-text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--pg-field-border);
+  background: var(--pg-field);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--pg-separator);
+}
+
+.row img {
+  image-rendering: pixelated;
+  flex: none;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 700;
+}
+
+.status {
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: var(--pg-text-error);
+  min-height: 15px;
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* On the Pocket: room around each group, and a full-width OK. */
+.phone {
+  gap: 12px;
+  padding: 12px;
+}
+
+.wide {
+  width: 100%;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ok {
+  color: #2f6a1f;
+}
+
+.bad {
+  color: #8a3a12;
+}
+
+/* A Lighthouse that isn't answering. */
+.dim {
+  opacity: 0.55;
+}
+
+.facts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 18px;
+}
+
+/* On the Pocket: an icon-only key a finger can hit. */
+.removeKey {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--pg-button-border);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff 0%, #f3f2ec 60%, #dcd8c8 100%);
+}
+
+.removeKey path {
+  fill: none;
+  stroke: #0a246a;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.removeKey:disabled {
+  opacity: 0.5;
+}
+
+.link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.wideButtons {
+  justify-content: stretch;
+}
+
+/* The address and Add on one row, as a desktop dialog has them; stacked on the Pocket. */
+.addRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.addRow > :first-child {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.addStacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.error:empty {
+  display: none;
+}
+
+/* Beside an official Lighthouse's name. */
+.badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--pg-field-border);
+  border-radius: 3px;
+  background: var(--pg-field);
+  color: var(--pg-text-muted);
+  font-weight: 400;
+  font-size: 11px;
+  vertical-align: 1px;
+}
+
+/* On the Pocket: Disable and Enable, as tall as the remove key. */
+.toggleKey {
+  flex: none;
+  min-height: 44px;
+}

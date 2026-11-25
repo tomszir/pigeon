@@ -55,11 +55,13 @@ Browsers connect directly over WebRTC. To find each other, they post small signe
 
 Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. Friends meet in a room named and locked by a secret only the two of them hold, renamed every day, so knowing two people's ids says nothing about when they talk. Several devices are one person through a device log your first device signs. The protocol is in [docs/protocol.md](docs/protocol.md).
 
-Honest P2P has a cost: today a friend has to be online for a message to arrive. Lighthouses are how Pigeon gets around it: peers anyone can run that hold mail sealed to a friend's devices until they're back, without being able to open it or say whom it's from. The Lighthouse itself runs today ([docs/lighthouse.md](docs/lighthouse.md) says how to run one); Pigeon doesn't send mail through it yet.
+Honest P2P has a cost: a friend has to be online for a message to arrive. Lighthouses are how Pigeon gets around it: peers anyone can run that hold mail sealed to a friend's devices until they're back, without being able to open it or say whom it's from. Removing a friend already goes through them, so a friend who's offline hears it when they next open Pigeon; letters come next. Pigeon leaves mail at the three official Lighthouses (Loft, a Cloudflare Worker, and Dovecote and Perch, run at home through Tailscale Funnel) unless told otherwise, and Network on the desktop shows yours, whether each answers, and lets you add your own. [docs/lighthouse.md](docs/lighthouse.md) says how to run one, and what it stores and sees.
 
 ## Privacy
 
 Pigeon keeps nothing on a server. The site is static files on Cloudflare, chats and keys stay in your browser's IndexedDB, and there is no analytics. The public relays see that a connection was arranged, not what was said. When two devices can't reach each other directly, as a phone on mobile data often can't, Cloudflare's TURN relay passes the encrypted packets along without being able to read them; Always Go Through the Relay uses it for everything, so friends never see your IP address. Clearing the site's data deletes your identity and chats for good.
+
+A Lighthouse stores only sealed mail it can't open, under tags that change daily and can't be traced to you, for 30 days at most, and nothing about who put or fetched it. While it runs it does see your IP address, when you connect, and which tags you ask for, so watching live it can tell which addresses exchange mail, though not who they are. Every reply it sends is signed, and checked against its key.
 
 ## Browser support
 

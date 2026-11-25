@@ -38,4 +38,6 @@ export interface JoinOptions {
 
 export interface Transport {
   join(name: RoomName, options?: JoinOptions): Promise<Room>
+  /** How many of the signaling relays it uses are reachable now, where it can tell. */
+  relays?(): { readonly reachable: number; readonly total: number }
 }

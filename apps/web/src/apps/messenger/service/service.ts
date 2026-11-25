@@ -7,6 +7,7 @@ import {
   avatarFor,
   bindSealingKey,
   type ChatLog,
+  type ClientError,
   type Crypto,
   canonicalBytes,
   type DeviceLog,
@@ -16,6 +17,7 @@ import {
   encodeInstance,
   encodeInviteLink,
   encodePairSecret,
+  err,
   fingerprint,
   formatInviteCode,
   hostInvite,
@@ -35,6 +37,7 @@ import {
   type Letter,
   type LighthouseAddress,
   type LighthouseClient,
+  type LighthouseSoftware,
   type LinkRequest,
   type LogEntry,
   MAX_HANDLE_LENGTH,
@@ -57,6 +60,7 @@ import {
   type ProfileChange,
   pairRoom,
   pairRoomsAt,
+  type Result,
   type RoomName,
   recoverDeviceLog,
   type SealCrypto,
@@ -396,6 +400,17 @@ export async function createMessenger(deps: MessengerDeps) {
   // Mail through Lighthouses, when this Pigeon can seal and reach them.
   const lighthouseClients = new Map<string, LighthouseClient>()
   const makeClient = deps.lighthouseClient
+  /** One client per key, URL and pass: an address a friend names never takes over yours. */
+  function lighthouseClient(address: LighthouseAddress): LighthouseClient | undefined {
+    if (makeClient === undefined) return undefined
+    const key = `${address.id} ${address.url} ${address.pass ?? ''}`
+    let client = lighthouseClients.get(key)
+    if (client === undefined) {
+      client = makeClient(address)
+      lighthouseClients.set(key, client)
+    }
+    return client
+  }
   const mailbox: Mailbox | undefined =
     deps.seal === undefined || makeClient === undefined
       ? undefined
@@ -408,17 +423,7 @@ export async function createMessenger(deps: MessengerDeps) {
           store,
           now: clock.now,
           random: deps.random,
-          // Kept per key, URL and pass: an address a friend names never takes over the
-          // connection to a Lighthouse of your own with the same key.
-          client: (address) => {
-            const key = `${address.id} ${address.url} ${address.pass ?? ''}`
-            let client = lighthouseClients.get(key)
-            if (client === undefined) {
-              client = makeClient(address)
-              lighthouseClients.set(key, client)
-            }
-            return client
-          },
+          client: (address) => lighthouseClient(address) as LighthouseClient,
           head: () => ({ epoch: devices.epoch(), seq: devices.own().entries.length }),
           stopped: () => closed,
         })
@@ -1581,6 +1586,17 @@ export async function createMessenger(deps: MessengerDeps) {
     mailBook,
     /** Looks for mail now, rather than at the next few-minute check. */
     checkMail,
+    /**
+     * Whether a Lighthouse answers, and what it says it runs: its own claim, which nothing in
+     * Pigeon relies on.
+     */
+    async checkLighthouse(
+      address: LighthouseAddress,
+    ): Promise<Result<LighthouseSoftware, ClientError | 'no-client'>> {
+      const client = lighthouseClient(address)
+      if (client === undefined) return err('no-client')
+      return client.hello()
+    },
     profile,
     async setProfile(next: Profile) {
       const handle = next.handle.trim().slice(0, MAX_HANDLE_LENGTH)
@@ -1594,6 +1610,8 @@ export async function createMessenger(deps: MessengerDeps) {
     friends: friendList,
     friend,
     onlineCount: () => friendList().filter((view) => view.online).length,
+    /** How many signaling relays are reachable now, where the transport can tell. */
+    relays: () => transport.relays?.(),
     invite,
     inviteLink: () => {
       const current = invite()
