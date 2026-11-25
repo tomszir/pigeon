@@ -115,6 +115,28 @@ export {
   sealReply,
 } from './lighthouse/protocol.ts'
 export type {
+  Letter,
+  LogHead,
+  MailExpected,
+  MailKind,
+  OpenError,
+  OpenedMail,
+  SealError,
+  SealedMail,
+  SealingKey,
+} from './mail/mail.ts'
+export {
+  bindSealingKey,
+  dropHashes,
+  isSealingKey,
+  mailTag,
+  openMail,
+  sealMail,
+  utcDate,
+  verifySealingKey,
+} from './mail/mail.ts'
+export type { SealCrypto, Sealer } from './mail/seal-crypto.ts'
+export type {
   Body,
   BodyType,
   DecodeError,
@@ -181,7 +203,13 @@ export {
 } from './recovery/recovery-code.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
-export { createMemoryNetwork, fakeCrypto, fakeSigner, flush } from './testing/testing.ts'
+export {
+  createMemoryNetwork,
+  fakeCrypto,
+  fakeSealCrypto,
+  fakeSigner,
+  flush,
+} from './testing/testing.ts'
 export type {
   ConnectionId,
   JoinOptions,
