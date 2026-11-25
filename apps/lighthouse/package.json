@@ -10,7 +10,7 @@
   "dependencies": {
     "@pigeon/core": "workspace:*",
     "@pigeon/lighthouse": "workspace:*",
-    "ws": "8.20.0"
+    "ws": "8.22.2"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
