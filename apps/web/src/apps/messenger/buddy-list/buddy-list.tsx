@@ -477,17 +477,20 @@ export function BuddyList(props: BuddyListProps) {
           </div>
         </Show>
       </div>
-      <div class={classes(styles.tasks, useLayout() === 'phone' && styles.phoneTasks)}>
-        <button
-          type="button"
-          class={styles.task}
-          disabled={live() === undefined}
-          onClick={() => props.onAddFriend()}
-        >
-          <img src={tango('contact-new', 22)} alt="" width="22" height="22" />
-          Add a Friend
-        </button>
-      </div>
+      {/* On the Pocket the left soft key is Add Friend already. */}
+      <Show when={!phone()}>
+        <div class={styles.tasks}>
+          <button
+            type="button"
+            class={styles.task}
+            disabled={live() === undefined}
+            onClick={() => props.onAddFriend()}
+          >
+            <img src={tango('contact-new', 22)} alt="" width="22" height="22" />
+            Add a Friend
+          </button>
+        </div>
+      </Show>
       <StatusBar
         fields={[
           {
