@@ -11,6 +11,8 @@ import {
   deviceState,
   emptyDeviceLog,
   everDevices,
+  fingerprint,
+  formatFingerprint,
   isDeviceLog,
   type LogEntry,
   mergeDeviceLogs,
@@ -38,7 +40,12 @@ export interface DeviceView extends DeviceInfo {
   readonly here: boolean
   /** The first device: the identity's own key, and the one that manages the list. */
   readonly first: boolean
+  /** The device's own key, as "3f9a 21c0", to tell devices apart; "" until it's worked out. */
+  readonly fingerprint: string
 }
+
+/** A device fingerprint is the first half of a friend's: enough to tell your few devices apart. */
+export const DEVICE_FINGERPRINT_LENGTH = 8
 
 export interface DevicesDeps {
   readonly crypto: Crypto
@@ -64,6 +71,21 @@ export async function loadDevices(deps: DevicesDeps) {
 
   const friendLogs = new Map<PeerId, DeviceLog>()
   const [friendLogsVersion, bump] = createSignal(0)
+
+  // Fingerprints are hashed once per device, then shown from here.
+  const prints = new Map<PeerId, string>()
+  const [printsVersion, bumpPrints] = createSignal(0)
+  const printOf = (id: PeerId) => {
+    printsVersion()
+    const known = prints.get(id)
+    if (known !== undefined) return known
+    prints.set(id, '')
+    void fingerprint(crypto, id).then((print) => {
+      prints.set(id, formatFingerprint(print.slice(0, DEVICE_FINGERPRINT_LENGTH)))
+      bumpPrints((n) => n + 1)
+    })
+    return ''
+  }
 
   const ownState = () => deviceState(own())
   const status = (): DeviceStatus => (ownState().active.has(signer.id) ? 'active' : 'removed')
@@ -101,6 +123,7 @@ export async function loadDevices(deps: DevicesDeps) {
         ...info,
         here: info.id === signer.id,
         first: info.id === self,
+        fingerprint: printOf(info.id),
       }))
     },
     /** Signs a change to your device log. Only the first device can; false otherwise. */
