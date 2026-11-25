@@ -9,7 +9,7 @@ How peers identify themselves, find each other, and exchange messages, letters a
 - A `PeerId` is 52 base32 characters for an Ed25519 key (32 bytes) or 104 for a raw P-256 point (65 bytes); the length says which. Core never holds keys: it signs through a `Signer` and verifies and hashes through `Crypto`, which the platform implements.
 - Handles are self-chosen, not unique, at most 32 characters; petnames are what you call a contact. Pairing shows a 16-hex-character fingerprint (the first 8 bytes of the id's SHA-256, spelled in fours) to compare.
 - Everyone's picture is a pixel pigeon drawn from their id ([design.md](design.md#avatars)). `hello` says which version of the drawing to use, so a newer version never changes the bird of someone who already has one.
-- The sealing (ECDH) keypair is made and announced in `hello` from M7, when async invites need it; letters use it too.
+- Each device's sealing (ECDH P-256) keypair is made and announced in `hello` from M16, bound to the device by its own signature, for mail sealed to devices ([0037](decisions/0037-the-lighthouse-and-its-mailbox.md)); invites (M7) and letters (M4) use it too.
 
 ## Devices
 
@@ -88,9 +88,15 @@ Removing a friend deletes them and your chat from this browser and sends `unfrie
 
 Chats and guestbooks are signed append-only logs: each author appends entries with a sequence number (1, 2, 3...) and a Lamport timestamp; each entry is signed together with the log's id, which for a chat is the old pair room's name. On `hello` peers exchange `log-sync` summaries (per author, the highest sequence held with no gaps) and answer with `log-entries` batches of what the other lacks. Merging is a sorted union by (Lamport, author, sequence); an entry that doesn't verify, or isn't by one of the pair, is dropped, and the first entry seen for a sequence wins. A message is at most 4000 characters. A message written while the friend is offline waits in your log and reaches them the next time you're both online; carrying it while you're apart is what letters (M4) add. Receipts and deletions are entries too.
 
+## Lighthouses and mail
+
+The design M16 builds ([0037](decisions/0037-the-lighthouse-and-its-mailbox.md)). A Lighthouse is a peer with an Ed25519 key, reached over WebSocket at an address `pigeon://lighthouse/<id>?url=...`; it signs every reply, and its `hello` carries `protocol` and `software`, shown as its own claim. A client's `hello` to it carries only `protocol`.
+
+Mail is a signed envelope (`room` `mail:<kind>`, the recipient's identity, the tag's date, a random id and the sender's device-log head) sealed with a random AES-256-GCM key, wrapped for each recipient device with ECDH and HKDF (info `pigeon/mail/wrap`). It's put under a tag, `HMAC-SHA256(pair or self secret, "pigeon/mail/v1/" + recipient identity + "/" + UTC date)`, with one drop hash per recipient device, for at most 30 days, at every Lighthouse on the recipient's list (said in `hello` as `lighthouses`, the official ones when unknown). Operations: `put`, `list` (exact tags and a cursor), `get`, `drop`. Each device that takes mail in drops its copy and puts a signed `receipt` back; senders put again until each device's receipt comes. Mail counts only from a device active on the sender's newest log, and a farewell from a device since removed is undone.
+
 ## Letters
 
-Sealed to the recipient (ephemeral ECDH + AES-GCM), signed by the sender, expiring after 30 days. Carriers (online mutual friends and the Lighthouse) store them opaque, deliver on reconnect, and drop them on a signed receipt. Limits: 50 letters or 20 MB per friend.
+Sealed to the recipient's devices as all mail is, signed by the sender, expiring after 30 days. Carriers (online mutual friends and Lighthouses) store them opaque, deliver on reconnect, and drop them on a receipt. Limits: 50 letters or 20 MB per friend. M4 adds one-time prekeys for forward secrecy.
 
 ## pigeon:// addresses
 

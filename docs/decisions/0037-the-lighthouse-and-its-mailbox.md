@@ -2,7 +2,7 @@
 
 A Lighthouse is a peer with its own key that holds mail sealed to devices under daily tags, so any Lighthouse, yours, the author's or a stranger's, can carry your mail without being able to read it, forge it or tie it to you.
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-25
 
 ## Context
@@ -23,7 +23,7 @@ Three review rounds of a larger draft shaped this one. They found that a mailbox
 - **What a client says.** A connection opens with a Lighthouse `hello` carrying only `protocol`: no name, no identity, no `instance`. Clients sign nothing to the Lighthouse; they check its signed replies.
 - **What a Lighthouse says about itself.** Its `hello` carries `protocol` and `software` (name, version and, for the author's releases, the build's hash). Settings shows it as the Lighthouse's own claim, since a server can't prove what it runs. Nothing in Pigeon's safety depends on it.
 - **One package, two runners.** `packages/lighthouse` holds the mailbox and its limits against a storage interface and no platform. `apps/lighthouse` runs it in Node with a WebSocket server and SQLite (`node:sqlite`), in Docker from one config file, for the homelab and for anyone. `apps/lighthouse-worker` runs it as a Cloudflare Worker, with Durable Objects sharded by tag and hibernating WebSockets, storing in their SQLite.
-- **The official Lighthouses** are run by the author: the Worker at `lighthouse.pigeon.tomszir.com` and a Node Lighthouse in the homelab. Pigeon ships with both and uses them by default; Settings lists your Lighthouses and lets you add or remove any, the official ones included. The UI says which Lighthouse carried what, as the brief's "Honest P2P" asks.
+- **The official Lighthouses** are run by the author: the Worker at `lighthouse.pigeon.tomszir.com` and a Node Lighthouse in the homelab. The homelab one is reached through Tailscale Funnel, which ends TLS on the homelab machine, so the tunnel carries encrypted traffic without seeing requests, keeps the home IP address out of the address, and keeps the two official Lighthouses from both being in Cloudflare's view. Pigeon ships with both and uses them by default; Settings lists your Lighthouses and lets you add or remove any, the official ones included. The UI says which Lighthouse carried what, as the brief's "Honest P2P" asks.
 
 ### Mail is sealed to devices
 
@@ -57,7 +57,7 @@ Said plainly on a privacy page in Read Me:
 - It sees each client's IP address, when it connects, how much it puts and fetches, and which tags it asks for.
 - While it watches, it can see that the address that put mail under a tag and the address that fetched it are talking, that one connection's tags belong together, and that the same address comes back day after day.
 - A Lighthouse can withhold or lose mail. Using two, and receipts, cover that.
-- The homelab Lighthouse is reached through a tunnel, and whoever runs the tunnel sees what the Lighthouse sees.
+- The homelab Lighthouse's tunnel (Tailscale Funnel) sees that connections are made and their addresses, not what's in them, since TLS ends on the homelab machine.
 
 ### The protocol version
 
@@ -86,7 +86,7 @@ Said plainly on a privacy page in Read Me:
 
 Removing a friend, removing a device, changing your name and changing your friends reach people and devices who are offline, and the later milestones have a mailbox to build on. Any Lighthouse can carry your mail, which is what makes a federation of Lighthouses run by strangers safe to join: the worst one can do is lose it.
 
-The costs: Pigeon does ECDH for each device it sends to. A Lighthouse watching live can see which addresses exchange mail and which tags go together, and the privacy page says so rather than promising more. A removed device keeps seeing that mail is waiting, and can put mail nobody acts on, until secrets are replaced in a later milestone; it can read mail only from friends who haven't heard of the removal. Pair mail isn't forward secret until M4: a device key stolen later opens mail still held for it. Running the official Lighthouses costs money and upkeep, and Cloudflare, which runs the Worker and perhaps the tunnel, sees what they see.
+The costs: Pigeon does ECDH for each device it sends to. A Lighthouse watching live can see which addresses exchange mail and which tags go together, and the privacy page says so rather than promising more. A removed device keeps seeing that mail is waiting, and can put mail nobody acts on, until secrets are replaced in a later milestone; it can read mail only from friends who haven't heard of the removal. Pair mail isn't forward secret until M4: a device key stolen later opens mail still held for it. Running the official Lighthouses costs money and upkeep, and Cloudflare sees what the Worker sees.
 
 Ruled out: tags and sealing from the same secret (a removed device could read and delete mail), clients in a public WebRTC room (their addresses would be public), a Lighthouse that knows its users' identities (it would learn the social graph by name), shared tag buckets (fetching your own mail gives them away), proof of work (it costs phones more than attackers), one drop per blob (the first device would take mail from the rest), and checking what code a Lighthouse runs (no server can prove it, so nothing relies on it).
 
