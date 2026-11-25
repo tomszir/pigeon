@@ -5,6 +5,7 @@
 // there the next time they meet.
 import {
   avatarFor,
+  bindSealingKey,
   type ChatLog,
   type Crypto,
   canonicalBytes,
@@ -25,10 +26,13 @@ import {
   type Invite,
   inviteCode,
   isDeviceLog,
+  isLighthouseAddress,
   isPairSecret,
   isPeerId,
+  isSealingKey,
   isTailLog,
   type Json,
+  type LighthouseAddress,
   type LinkRequest,
   type LogEntry,
   MAX_HANDLE_LENGTH,
@@ -53,6 +57,9 @@ import {
   pairRoomsAt,
   type RoomName,
   recoverDeviceLog,
+  type SealCrypto,
+  type Sealer,
+  type SealingKey,
   type Signer,
   type Status,
   selfRoomsAt,
@@ -177,7 +184,32 @@ export interface MessengerDeps {
   /** What to call this device in My Devices when it's linked: "Firefox on Linux". */
   readonly deviceName?: string
   readonly events?: MessengerEvents
+  /**
+   * This device's sealing key and the sealing it does, for mail sealed to devices. Without it
+   * the Messenger says no key and seals nothing, as before Lighthouses.
+   */
+  readonly seal?: { readonly crypto: SealCrypto; readonly sealer: Sealer } | undefined
+  /** The Lighthouses a Pigeon uses until it's told otherwise: the official ones. */
+  readonly lighthouses?: readonly LighthouseAddress[] | undefined
 }
+
+/**
+ * What a friend's devices said about their mail: each device's sealing key, and the Lighthouses
+ * that friend's Pigeon wants mail left at. Kept for every friend, and for your own devices.
+ */
+export interface MailBook {
+  readonly keys: Readonly<Record<PeerId, SealingKey>>
+  readonly lighthouses: readonly LighthouseAddress[]
+}
+
+const isMailBook = (value: unknown): value is MailBook =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as MailBook).keys === 'object' &&
+  (value as MailBook).keys !== null &&
+  Object.values((value as MailBook).keys).every(isSealingKey) &&
+  Array.isArray((value as MailBook).lighthouses) &&
+  (value as MailBook).lighthouses.every(isLighthouseAddress)
 
 export type Messenger = Awaited<ReturnType<typeof createMessenger>>
 
@@ -193,6 +225,10 @@ const KEYS = {
   profileChangedAt: 'profileChangedAt',
   /** Set once the balloon reminding you to make a recovery key has been shown. */
   recoveryReminded: 'recoveryReminded',
+  /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
+  lighthouses: 'lighthouses',
+  /** What a friend's devices (or your own, under your own id) said about their mail. */
+  mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,
 } as const
 
@@ -313,6 +349,37 @@ export async function createMessenger(deps: MessengerDeps) {
       : { handle: profile().handle, message: profile().message, changedAt: profileChangedAt }
   const selfFingerprint = await fingerprint(crypto, self)
 
+  // Mail sealed to devices: this device's sealing key, signed by it, and where to leave mail
+  // for this Pigeon, both said in every hello; and what friends' devices said of theirs.
+  const ownSealing =
+    deps.seal === undefined ? undefined : await bindSealingKey(signer, deps.seal.sealer)
+  const storedLighthouses = await store.get(KEYS.lighthouses)
+  const [lighthouses, setLighthousesSignal] = createSignal<readonly LighthouseAddress[]>(
+    Array.isArray(storedLighthouses) && storedLighthouses.every(isLighthouseAddress)
+      ? storedLighthouses
+      : (deps.lighthouses ?? []),
+  )
+  const mailOptions = { sealing: () => ownSealing, lighthouses }
+  const mailBooks = new Map<PeerId, MailBook>()
+  async function mailBook(id: PeerId): Promise<MailBook> {
+    const known = mailBooks.get(id)
+    if (known !== undefined) return known
+    const stored = await store.get(KEYS.mailBook(id))
+    const book = isMailBook(stored) ? stored : { keys: {}, lighthouses: [] }
+    mailBooks.set(id, book)
+    return book
+  }
+  /** A device of `id`'s said its sealing key or Lighthouses: the newest is kept. */
+  async function heardKeys(id: PeerId, event: Extract<PairEvent, { type: 'keys' }>) {
+    const book = await mailBook(id)
+    const keys =
+      event.sealing === undefined ? book.keys : { ...book.keys, [event.device]: event.sealing }
+    const next: MailBook = { keys, lighthouses: event.lighthouses ?? book.lighthouses }
+    if (JSON.stringify(next) === JSON.stringify(book)) return
+    mailBooks.set(id, next)
+    await store.set(KEYS.mailBook(id), next)
+  }
+
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
   type Mutable<T> = { -readonly [K in keyof T]: T[K] }
   const [state, setState] = createStore<{ friends: Record<PeerId, Mutable<FriendView>> }>({
@@ -432,6 +499,7 @@ export async function createMessenger(deps: MessengerDeps) {
       const view = friend(id)
       if (view !== undefined) events.onOnline?.(view)
     },
+    keys: (id, event) => void heardKeys(id, event),
     renamed: (id, event) => {
       const current = state.friends[id]
       if (current === undefined || current.handle === event.handle) return
@@ -570,6 +638,7 @@ export async function createMessenger(deps: MessengerDeps) {
     setState('friends', id, 'devices', devices.friendDeviceCount(id))
     const session = startPairSession({
       ...deviceOptions(id),
+      ...mailOptions,
       crypto,
       signer,
       friend: id,
@@ -735,6 +804,7 @@ export async function createMessenger(deps: MessengerDeps) {
     await devices.loadFriend(id)
     const session: PairSession = startPairSession({
       ...deviceOptions(id),
+      ...mailOptions,
       crypto,
       signer,
       friend: id,
@@ -816,7 +886,11 @@ export async function createMessenger(deps: MessengerDeps) {
       log: emptyLog(selfChat),
       now: clock.now,
       ...twinOptions,
-      onEvent: () => undefined,
+      ...mailOptions,
+      // Your own other devices: their sealing keys and Lighthouses, kept under your own id.
+      onEvent: (event) => {
+        if (event.type === 'keys') void heardKeys(self, event)
+      },
       accepts: (device) => (devices.isOwnOther(device) ? 'friend' : undefined),
       authors: () => new Set(),
       deviceLog: devices.own,
@@ -1354,6 +1428,20 @@ export async function createMessenger(deps: MessengerDeps) {
       if (name.trim() !== '' && (await devices.change('name', id, name))) await ownChanged()
     },
     selfFingerprint,
+    /** Where friends leave mail for this Pigeon. */
+    lighthouses,
+    /** Changes where mail is left for you, and says so to friends and your other devices. */
+    async setLighthouses(next: readonly LighthouseAddress[]) {
+      const unique = next.filter(
+        (address, i) => next.findIndex((other) => other.id === address.id) === i,
+      )
+      setLighthousesSignal(unique)
+      await store.set(KEYS.lighthouses, unique)
+      for (const session of sessions.values()) session.announce()
+      selfSession?.announce()
+    },
+    /** What `id`'s devices (your own, under your own id) said about their mail. */
+    mailBook,
     profile,
     async setProfile(next: Profile) {
       const handle = next.handle.trim().slice(0, MAX_HANDLE_LENGTH)
