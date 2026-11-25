@@ -179,6 +179,23 @@ describe('the Messenger service', () => {
     expect(await a.store.get('farewells')).toEqual([])
   })
 
+  it('starts again with a farewell still owed, and says it once they are back', async () => {
+    const network = createMemoryNetwork()
+    const { a, b, clock } = await pair(network)
+    const mikaId = only(a.messenger.friends()).id
+    const rookId = only(b.messenger.friends()).id
+    b.transport.disconnect()
+    await flush()
+    await a.messenger.remove(mikaId, { block: false })
+    await a.messenger.close()
+    // Reloaded before Mika heard: it has to start, not fail on the farewell it owes.
+    const again = await messenger(network, 'rook', { store: a.store, clock })
+    expect(again.messenger.friends()).toEqual([])
+    const back = await messenger(network, 'mika', { store: b.store, clock })
+    await flush()
+    expect(back.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
+  })
+
   it('pairs by invite link and then sees the friend online, with presence', async () => {
     const paired: string[] = []
     const { a, b } = await pair(createMemoryNetwork(), {
