@@ -400,6 +400,12 @@ export async function createMessenger(deps: MessengerDeps) {
       const view = friend(id)
       if (view !== undefined) events.onOnline?.(view)
     },
+    renamed: (id, event) => {
+      const current = state.friends[id]
+      if (current === undefined || current.handle === event.handle) return
+      setState('friends', id, { handle: event.handle, name: nameOf(event.handle, current.petname) })
+      void saveFriends()
+    },
     offline: (id) => {
       setState('friends', id, { online: false, typing: false })
       note(id, 'offline')
