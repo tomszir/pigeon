@@ -22,6 +22,7 @@ async function open(
   friend: Signer,
   log?: ChatLog,
   avatar?: () => number,
+  handle?: () => string,
 ) {
   const name = await pairRoom(fakeCrypto, self.id, friend.id)
   const events: PairEvent[] = []
@@ -32,7 +33,7 @@ async function open(
     friend: friend.id,
     chat: name,
     rooms: [await transport.join(name)],
-    handle: () => (self === rook ? 'Rook' : 'Mika'),
+    handle: handle ?? (() => (self === rook ? 'Rook' : 'Mika')),
     presence: () => ({ status: 'online', message: '' }),
     ...(avatar === undefined ? {} : { avatar }),
     log: current,
@@ -67,6 +68,22 @@ describe('pair sessions', () => {
     await open(network.transport(), mika, rook, undefined, () => 2)
     await flush()
     expect(a.events[0]).toEqual({ type: 'online', handle: 'Mika', avatar: 2, current: true })
+  })
+
+  it('hears a new handle from a friend who is already online', async () => {
+    const network = createMemoryNetwork()
+    const a = await open(network.transport(), rook, mika)
+    let name = 'Mika'
+    const b = await open(network.transport(), mika, rook, undefined, undefined, () => name)
+    await flush()
+    name = 'Mika M.'
+    b.session.announce()
+    await flush()
+    expect(a.events).toContainEqual({ type: 'renamed', handle: 'Mika M.' })
+    // Presence alone, or the same handle again, isn't a rename.
+    b.session.announce()
+    await flush()
+    expect(a.events.filter((event) => event.type === 'renamed')).toHaveLength(1)
   })
 
   it('sees each other come online, chat, type, buzz and go offline', async () => {

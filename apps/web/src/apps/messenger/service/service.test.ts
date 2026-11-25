@@ -90,6 +90,18 @@ const only = (list: readonly FriendView[]) => {
 }
 
 describe('the Messenger service', () => {
+  it('shows a friend’s new name while they are online, and keeps it', async () => {
+    const network = createMemoryNetwork()
+    const { a, b, clock } = await pair(network)
+    const mikaId = only(a.messenger.friends()).id
+    await b.messenger.setProfile({ ...b.messenger.profile(), handle: 'Mika M.' })
+    await flush()
+    expect(a.messenger.friend(mikaId)?.handle).toBe('Mika M.')
+    expect(a.messenger.friend(mikaId)?.name).toBe('Mika M.')
+    const again = await messenger(network, 'rook', { store: a.store, clock })
+    expect(again.messenger.friend(mikaId)?.handle).toBe('Mika M.')
+  })
+
   it('renames and mutes a friend, and keeps both across a reload', async () => {
     const network = createMemoryNetwork()
     const { a, clock } = await pair(network)

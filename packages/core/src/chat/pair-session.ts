@@ -51,6 +51,8 @@ export type PairEvent =
       readonly current: boolean
     }
   | { readonly type: 'offline' }
+  /** The friend, already online, changed their handle: a later `hello` with another one. */
+  | { readonly type: 'renamed'; readonly handle: string }
   | { readonly type: 'presence'; readonly presence: Presence }
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
@@ -226,6 +228,8 @@ export function startPairSession(options: PairSessionOptions): PairSession {
 
   // Merges run one after another so two batches can't race on `log`.
   let merging = Promise.resolve()
+  /** The handle in the friend's last hello. */
+  let heardHandle: string | undefined
   const handlers: {
     [T in Body['type']]?: (from: Link, body: Extract<Body, { type: T }>, at: number) => void
   } = {
@@ -241,6 +245,10 @@ export function startPairSession(options: PairSessionOptions): PairSession {
           avatar: body.avatar ?? 1,
           current: body.devices === true,
         })
+      // `announce` sends hello again after a rename, on connections that are already open.
+      else if (body.handle !== heardHandle)
+        options.onEvent({ type: 'renamed', handle: body.handle })
+      heardHandle = body.handle
       if (firstHere) options.onEvent({ type: 'met', room })
     },
     presence: (_from, body, at) => {
