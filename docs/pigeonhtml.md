@@ -27,6 +27,11 @@ Interactive bits are server-side-include comments that Explorer draws, so pages 
 
 ## Enforcement
 
-`@pigeon/pigeonhtml` holds the allowlists as tables and exposes `sanitize` and `validate`. The page builder validates as you type and offers a "Valid PigeonHTML 1.0!" badge; Explorer and the Lighthouse sanitize every snapshot before rendering or mirroring it. Pages render without a doctype (quirks mode, on purpose) inside a sandboxed iframe with no scripts and a CSP that allows only the page's own images.
+`@pigeon/pigeonhtml` holds the allowlists as tables and exposes `sanitize` and `validate` ([0032](decisions/0032-explorer-on-this-computer-first.md)). Until the allowlists land, `sanitize` keeps only a page's text and `validate` reports that it isn't built yet.
+
+- `sanitize(source, urls)` returns `{ html, title, bytes, removed }`: the page with everything off the lists dropped (never escaped and kept), its title, its size in UTF-8 bytes to hold against the 100 KB budget, and what was taken out. `urls` belongs to whoever shows the page. `urls.image(src)` gives the URL to load an image from and `urls.link(href)` the address a link goes to, and either can return nothing, which drops the image or the link (keeping its text).
+- `validate(source)` returns the problems, each with the line and column where it starts, and is empty for a valid page.
+
+It parses with parse5, which reads a page as the browser that renders it will. The page builder validates as you type and offers a "Valid PigeonHTML 1.0!" badge. Explorer and the Lighthouse sanitize every page before rendering or mirroring it, pages bundled with Pigeon included. Pages render without a doctype (quirks mode, on purpose) in an iframe with `sandbox="allow-same-origin"` and never `allow-scripts`, under a CSP that allows inline styles and only the page's own images. Explorer reads link clicks from the frame and navigates itself.
 
 Modern engines won't reproduce IE6's exact bugs; quirks mode plus the subset gets the feel, and that is the goal.

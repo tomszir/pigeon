@@ -2,7 +2,7 @@
 
 Pigeonweb pages are written in PigeonHTML: HTML 4.01 Transitional and CSS 2.1, sanitized by allowlist, with no scripts.
 
-- Status: accepted
+- Status: accepted; [0032](0032-explorer-on-this-computer-first.md) parses with parse5 in place of `DOMParser`
 - Date: 2026-11-24
 
 ## Context
