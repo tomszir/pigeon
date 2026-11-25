@@ -37,7 +37,7 @@ type Network = ReturnType<typeof createMemoryNetwork>
 function messenger(
   network: Network,
   name: string,
-  options: { store?: Store; clock?: Clock; events?: MessengerEvents } = {},
+  options: { store?: Store; clock?: Clock; events?: MessengerEvents; seed?: number } = {},
 ) {
   const transport = network.transport()
   const store = options.store ?? createMemoryStore()
@@ -50,7 +50,7 @@ function messenger(
       store,
       transport,
       clock: options.clock ?? fakeClock(),
-      random: (length) => new Uint8Array(length).fill(name.length),
+      random: (length) => new Uint8Array(length).fill(options.seed ?? name.length),
       inviteBase: 'https://pigeon.test/',
       ...(options.events === undefined ? {} : { events: options.events }),
     }),
@@ -692,5 +692,26 @@ describe('your devices (decision 0024)', () => {
     await flush()
     expect(await laptop.messenger.confirmLink('Phone')).toBe('too-big')
     expect(laptop.messenger.devices()).toHaveLength(1)
+  })
+})
+
+describe('a copied profile (decision 0028)', () => {
+  it('notices the same device open in two places, and says so once on each', async () => {
+    const network = createMemoryNetwork()
+    let twins = 0
+    const { a: rook, b: mika } = await pair(network, { a: { onTwin: () => (twins += 1) } })
+    expect(rook.messenger.twin()).toBe(false)
+    // The same browser profile, copied: the same key and data, another run.
+    const copy = await messenger(network, 'rook', {
+      store: rook.store,
+      seed: 99,
+      events: { onTwin: () => (twins += 1) },
+    })
+    await flush()
+    expect(rook.messenger.twin()).toBe(true)
+    expect(copy.messenger.twin()).toBe(true)
+    expect(twins).toBe(2)
+    // Mika only ever hears from her friend.
+    expect(mika.messenger.twin()).toBe(false)
   })
 })

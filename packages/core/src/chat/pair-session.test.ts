@@ -298,3 +298,42 @@ describe('several devices (decision 0024)', () => {
     expect(rookLaptop.events).toEqual([])
   })
 })
+
+describe('a copied profile (decision 0028)', () => {
+  async function run(transport: Transport, instance: string, twins: string[]) {
+    const name = await pairRoom(fakeCrypto, rook.id, mika.id)
+    return startPairSession({
+      crypto: fakeCrypto,
+      signer: rook,
+      friend: mika.id,
+      chat: name,
+      rooms: [await transport.join(name)],
+      handle: () => 'Rook',
+      presence: () => ({ status: 'online', message: '' }),
+      log: emptyLog(name),
+      now: () => 1,
+      onEvent: () => undefined,
+      instance,
+      onTwin: () => twins.push(instance),
+    })
+  }
+
+  it('notices its own key in another run, on both sides', async () => {
+    const network = createMemoryNetwork()
+    const twins: string[] = []
+    await run(network.transport(), 'aaaaaaaa', twins)
+    await run(network.transport(), 'bbbbbbbb', twins)
+    await flush()
+    expect([...new Set(twins)].sort()).toEqual(['aaaaaaaa', 'bbbbbbbb'])
+  })
+
+  it('says nothing about a friend, or the same run', async () => {
+    const network = createMemoryNetwork()
+    const twins: string[] = []
+    await run(network.transport(), 'aaaaaaaa', twins)
+    await run(network.transport(), 'aaaaaaaa', twins)
+    await open(network.transport(), mika, rook)
+    await flush()
+    expect(twins).toEqual([])
+  })
+})

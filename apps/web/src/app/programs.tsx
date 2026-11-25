@@ -53,6 +53,8 @@ export interface MessengerHost {
   readonly sleep: (ms: number) => Promise<void>
   /** Starts Pigeon again, as a newly linked device must to become its identity. */
   readonly restart: () => void
+  /** Forgets everything here and starts again at Link to My Other Device (decision 0028). */
+  readonly startOver: () => Promise<void>
 }
 
 /** Things that come in later milestones say so, in the world's own voice. */
@@ -268,7 +270,12 @@ export function createPrograms(
       bounds: { x: 312, y: 150, width: 400, height: 320 },
       controls: { maximize: false },
       content: (window) => (
-        <MyDevices messenger={messenger} onLinkDevice={openLinkDevice} onClose={window.close} />
+        <MyDevices
+          messenger={messenger}
+          onLinkDevice={openLinkDevice}
+          onStartOver={() => void host.startOver()}
+          onClose={window.close}
+        />
       ),
     })
   }
@@ -446,6 +453,13 @@ export function createPrograms(
         title: 'This device was removed',
         icon: tangoIcon('dialog-warning', 16),
         body: 'Another of your devices took this one off your Pigeon. It keeps its chats, but talks to nobody now.',
+      }),
+    onTwin: () =>
+      api.notify({
+        title: 'This Pigeon is also open somewhere else',
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'Another browser has this device’s key, as a copied browser profile would. See My Devices to make this one a new device.',
+        onClick: openMyDevices,
       }),
     onUnfriended: (friend) =>
       notifyFrom(friend, {

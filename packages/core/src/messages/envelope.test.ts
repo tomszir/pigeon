@@ -11,6 +11,7 @@ describe('envelopes', () => {
     const bodies = [
       { type: 'hello', handle: 'Rook' },
       { type: 'hello', handle: 'Rook', avatar: 2 },
+      { type: 'hello', handle: 'Rook', devices: true, instance: 'abcdefgh234567' },
       { type: 'presence', status: 'away', message: 'brb' },
       { type: 'typing', active: true },
       { type: 'buzz' },
@@ -60,6 +61,7 @@ describe('envelopes', () => {
       await sealed({ type: 'hello', handle: '' }),
       await sealed({ type: 'hello', handle: 'Rook', avatar: 0 }),
       await sealed({ type: 'hello', handle: 'Rook', avatar: 1.5 }),
+      await sealed({ type: 'hello', handle: 'Rook', instance: 'not base32!' }),
       await sealed({ type: 'presence', status: 'asleep', message: '' }),
       await sealed({ type: 'buzz' }, 2),
       utf8Encode('not json'),

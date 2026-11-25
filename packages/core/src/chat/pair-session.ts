@@ -5,6 +5,7 @@
 
 import { AVATAR_VERSION } from '../avatar/avatar.ts'
 import type { DeviceLog } from '../devices/device-log.ts'
+import { base32Encode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
@@ -24,6 +25,11 @@ import {
   missingFrom,
   summarize,
 } from './chat-log.ts'
+
+/** Random bytes in a run's id (decision 0028): 16 base32 characters. */
+export const INSTANCE_BYTES = 10
+/** A run's id, said in every hello, from `INSTANCE_BYTES` random bytes. */
+export const encodeInstance = (random: Uint8Array): string => base32Encode(random)
 
 /** Room left in an envelope for everything around the entries. */
 const ENTRY_BATCH_BYTES = MAX_MESSAGE_BYTES - 4 * 1024
@@ -87,6 +93,10 @@ export interface PairSessionOptions {
   readonly deviceLog?: (() => DeviceLog | undefined) | undefined
   /** A device log arrived; resolves once it's been taken in, before anything after it is read. */
   readonly onDeviceLog?: ((log: DeviceLog) => Promise<void>) | undefined
+  /** This run's id, said in every hello (decision 0028). */
+  readonly instance?: string | undefined
+  /** A hello signed with this device's own key came from another run: a copied profile. */
+  readonly onTwin?: (() => void) | undefined
 }
 
 export interface PairSession {
@@ -131,6 +141,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     handle: options.handle(),
     avatar: options.avatar?.() ?? AVATAR_VERSION,
     devices: true,
+    ...(options.instance === undefined ? {} : { instance: options.instance }),
   })
   const accepts =
     options.accepts ?? ((device: PeerId) => (device === friend ? 'friend' : undefined))
@@ -291,6 +302,17 @@ export function startPairSession(options: PairSessionOptions): PairSession {
           if (body.type === 'device-log') {
             await options.onDeviceLog?.(body.log)
             recheck()
+            return
+          }
+          // Our own key, from a run that isn't this one: this device is open somewhere else.
+          if (opened.value.from === signer.id) {
+            if (
+              body.type === 'hello' &&
+              body.instance !== undefined &&
+              options.instance !== undefined &&
+              body.instance !== options.instance
+            )
+              options.onTwin?.()
             return
           }
           const who = accepts(opened.value.from)

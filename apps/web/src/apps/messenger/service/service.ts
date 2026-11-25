@@ -12,12 +12,14 @@ import {
   deviceState,
   emptyLog,
   encodeDeviceLink,
+  encodeInstance,
   encodeInviteLink,
   encodePairSecret,
   fingerprint,
   formatInviteCode,
   hostInvite,
   hostLink,
+  INSTANCE_BYTES,
   INVITE_CODE_BYTES,
   INVITE_LIFETIME_MS,
   type Invite,
@@ -151,6 +153,8 @@ export interface MessengerEvents {
   readonly onPaired?: (friend: FriendView) => void
   /** Another of your devices took this one off your list. */
   readonly onDeviceRemoved?: () => void
+  /** This device's key is open somewhere else too: a copied profile (decision 0028). Once a run. */
+  readonly onTwin?: () => void
   readonly onMessage?: (friend: FriendView, entry: LogEntry) => void
   readonly onBuzz?: (friend: FriendView) => void
   readonly onOnline?: (friend: FriendView) => void
@@ -249,6 +253,19 @@ export async function createMessenger(deps: MessengerDeps) {
       deps.transport.join(name, settings().relayOnly ? { ...options, relayOnly: true } : options),
   }
   const newSecret = () => encodePairSecret(deps.random(PAIR_SECRET_BYTES))
+
+  // A copied profile (decision 0028): this run's id goes in every hello, and our own key heard
+  // from another run means this device is open somewhere else too.
+  const instance = encodeInstance(deps.random(INSTANCE_BYTES))
+  const [twin, setTwin] = createSignal(false)
+  const twinOptions = {
+    instance,
+    onTwin: () => {
+      if (twin()) return
+      setTwin(true)
+      events.onTwin?.()
+    },
+  }
 
   const storedProfile = await store.get(KEYS.profile)
   const [profile, setProfileSignal] = createSignal<Profile>(
@@ -471,6 +488,7 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /** Session options about devices: who's who, and device logs both ways (decision 0024). */
   const deviceOptions = (id: PeerId) => ({
+    ...twinOptions,
     accepts: (device: PeerId) => devices.classify(id, device),
     authors: () => devices.authors(id),
     deviceLog: devices.own,
@@ -706,6 +724,7 @@ export async function createMessenger(deps: MessengerDeps) {
       presence: () => ({ status: profile().status, message: profile().message }),
       log: emptyLog(selfChat),
       now: clock.now,
+      ...twinOptions,
       onEvent: () => undefined,
       accepts: (device) => (devices.isOwnOther(device) ? 'friend' : undefined),
       authors: () => new Set(),
@@ -963,6 +982,8 @@ export async function createMessenger(deps: MessengerDeps) {
     /** Whether a chat entry is yours, from any of your devices. */
     isMine: devices.isMine,
     deviceStatus: devices.status,
+    /** This device's key was heard from another run: a copied profile (decision 0028). */
+    twin,
     devices: devices.devices,
     /** A first device with nobody on it: it can be linked to another identity. */
     canJoin: () =>
