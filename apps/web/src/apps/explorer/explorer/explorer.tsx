@@ -147,6 +147,9 @@ export function Explorer(props: ExplorerProps) {
     if (address !== undefined) navigate(address)
   }
   const isPage = () => shown().kind === 'page'
+  const keepAddressBar = (controls: AddressBarControls) => {
+    addressBar = controls
+  }
 
   /** A new view draws the page again in it. */
   const changeView = (next: PageView) => {
@@ -276,43 +279,82 @@ export function Explorer(props: ExplorerProps) {
     // biome-ignore lint/a11y/noStaticElementInteractions: shortcuts bubbling up from the window's controls; every one is also a menu item.
     <div class={styles.explorer} onKeyDown={onKeyDown}>
       <MenuBar label="Pigeon Explorer" menus={menus()} />
-      <Toolbar label="Navigation" class={styles.toolbar}>
-        <ToolbarButton
-          inline
-          icon={tangoIcon('go-previous', 22)}
-          label="Back"
-          disabled={!canGoBack(history())}
-          onClick={back}
-        />
-        <ToolbarButton
-          inline
-          icon={tangoIcon('go-next', 22)}
-          label="Forward"
-          disabled={!canGoForward(history())}
-          onClick={forward}
-        />
-        <ToolbarButton
-          inline
-          icon={tangoIcon('process-stop', 22)}
-          label="Stop"
-          disabled={!loading()}
-          onClick={stop}
-        />
-        <ToolbarButton
-          inline
-          icon={tangoIcon('view-refresh', 22)}
-          label="Refresh"
-          onClick={refresh}
-        />
-        <ToolbarButton inline icon={tangoIcon('go-home', 22)} label="Home" onClick={home} />
-      </Toolbar>
-      <AddressBar
-        address={shown().address}
-        onGo={go}
-        ref={(controls) => {
-          addressBar = controls
-        }}
-      />
+      <Show
+        when={phone}
+        fallback={
+          <>
+            <Toolbar label="Navigation" class={styles.toolbar}>
+              <ToolbarButton
+                inline
+                icon={tangoIcon('go-previous', 22)}
+                label="Back"
+                disabled={!canGoBack(history())}
+                onClick={back}
+              />
+              <ToolbarButton
+                inline
+                icon={tangoIcon('go-next', 22)}
+                label="Forward"
+                disabled={!canGoForward(history())}
+                onClick={forward}
+              />
+              <ToolbarButton
+                inline
+                icon={tangoIcon('process-stop', 22)}
+                label="Stop"
+                disabled={!loading()}
+                onClick={stop}
+              />
+              <ToolbarButton
+                inline
+                icon={tangoIcon('view-refresh', 22)}
+                label="Refresh"
+                onClick={refresh}
+              />
+              <ToolbarButton inline icon={tangoIcon('go-home', 22)} label="Home" onClick={home} />
+            </Toolbar>
+            <AddressBar address={shown().address} onGo={go} ref={keepAddressBar} />
+          </>
+        }
+      >
+        {/* The Pocket's one command row, as handheld browsers had: icons, and the address between them. */}
+        <Toolbar label="Navigation" class={styles.commandRow}>
+          <ToolbarButton
+            iconOnly
+            icon={tangoIcon('go-previous', 22)}
+            label="Back"
+            disabled={!canGoBack(history())}
+            onClick={back}
+          />
+          <ToolbarButton
+            iconOnly
+            icon={tangoIcon('go-next', 22)}
+            label="Forward"
+            disabled={!canGoForward(history())}
+            onClick={forward}
+          />
+          <AddressBar compact address={shown().address} onGo={go} ref={keepAddressBar} />
+          <Show
+            when={loading()}
+            fallback={
+              <ToolbarButton
+                iconOnly
+                icon={tangoIcon('view-refresh', 22)}
+                label="Refresh"
+                onClick={refresh}
+              />
+            }
+          >
+            <ToolbarButton
+              iconOnly
+              icon={tangoIcon('process-stop', 22)}
+              label="Stop"
+              onClick={stop}
+            />
+          </Show>
+          <ToolbarButton iconOnly icon={tangoIcon('go-home', 22)} label="Home" onClick={home} />
+        </Toolbar>
+      </Show>
       <div class={styles.pageArea} data-explorer-page={shown().kind}>
         <Show when={shown()} keyed>
           {(page) => {

@@ -21,6 +21,8 @@ export interface ToolbarButtonProps {
   pressed?: boolean | undefined
   /** Icon beside the label instead of above it. */
   inline?: boolean | undefined
+  /** The icon alone, its label kept for screen readers and as a tooltip, where room is short. */
+  iconOnly?: boolean | undefined
 }
 
 /** A flat 22px-icon button that gets an orange ring on hover and sinks when pressed. */
@@ -28,8 +30,13 @@ export function ToolbarButton(props: ToolbarButtonProps) {
   return (
     <button
       type="button"
-      class={classes(styles.toolbarButton, props.inline === true && styles.inline)}
+      class={classes(
+        styles.toolbarButton,
+        props.inline === true && styles.inline,
+        props.iconOnly === true && styles.iconOnly,
+      )}
       aria-label={plainText(props.label)}
+      title={props.iconOnly === true ? plainText(props.label) : undefined}
       aria-pressed={props.pressed}
       disabled={props.disabled}
       data-access-key={accessKeyOf(props.label)}

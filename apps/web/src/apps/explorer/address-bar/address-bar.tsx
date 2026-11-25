@@ -1,5 +1,6 @@
 // The address bar: type a pigeon:// address and press Enter or Go.
-import { createEffect, createSignal, on } from 'solid-js'
+import { createEffect, createSignal, on, Show } from 'solid-js'
+import { classes } from '../../../ui/classes/classes.ts'
 import { tangoIcon } from '../../../ui/icons/icons.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { ToolbarButton } from '../../../ui/toolbar/toolbar.tsx'
@@ -14,6 +15,8 @@ export interface AddressBarProps {
   /** The address showing; what's typed goes back to it whenever it changes. */
   address: string
   onGo: (typed: string) => void
+  /** Only the field, for the Pocket's one command row: its label hidden, and Enter does Go. */
+  compact?: boolean | undefined
   ref?: ((controls: AddressBarControls) => void) | undefined
 }
 
@@ -41,7 +44,7 @@ export function AddressBar(props: AddressBarProps) {
   return (
     <form
       ref={form}
-      class={styles.addressBar}
+      class={classes(styles.addressBar, props.compact === true && styles.compact)}
       onSubmit={(event) => {
         event.preventDefault()
         go()
@@ -52,8 +55,16 @@ export function AddressBar(props: AddressBarProps) {
         setTyped(props.address)
       }}
     >
-      <TextField class={styles.field} label="A&ddress" value={typed()} onInput={setTyped} />
-      <ToolbarButton inline icon={tangoIcon('go-jump', 22)} label="Go" onClick={go} />
+      <TextField
+        class={styles.field}
+        label="A&ddress"
+        labelHidden={props.compact}
+        value={typed()}
+        onInput={setTyped}
+      />
+      <Show when={props.compact !== true}>
+        <ToolbarButton inline icon={tangoIcon('go-jump', 22)} label="Go" onClick={go} />
+      </Show>
     </form>
   )
 }

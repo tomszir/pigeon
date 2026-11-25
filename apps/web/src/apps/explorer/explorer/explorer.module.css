@@ -10,6 +10,13 @@
   flex-wrap: wrap;
 }
 
+/* On the Pocket: one row that never wraps, the address taking what the buttons leave. */
+.commandRow {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 /* The page sits sunken in a white well, the frame or Explorer's own error page filling it. */
 .pageArea {
   flex-grow: 1;
