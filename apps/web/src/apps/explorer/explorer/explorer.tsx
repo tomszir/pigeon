@@ -1,7 +1,10 @@
 // Pigeon Explorer, the in-world web browser (decision 0032). For now it opens the pages that come
 // with Pigeon, "On this computer", and says nobody is hosting every other address until M5.
+
+import type { BackEntry } from '@pigeon/core'
 import { PAGE_BUDGET_BYTES, type PageUrls, sanitize } from '@pigeon/pigeonhtml'
-import { batch, createSignal, type JSX, Match, Show, Switch } from 'solid-js'
+import { batch, createSignal, type JSX, Match, onCleanup, Show, Switch } from 'solid-js'
+import { useBack } from '../../../ui/back/back.ts'
 import { brandIcon, type Icon, tangoIcon } from '../../../ui/icons/icons.ts'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
@@ -128,12 +131,35 @@ export function Explorer(props: ExplorerProps) {
     })
   }
 
-  const navigate = (address: string) => show(visit(history(), address))
-  const back = () => {
+  // The browser's Back goes back a page here too (decision 0034): one entry for each page behind
+  // the one showing. Explorer's own Back takes its entry out; Forward adds one again.
+  const backStack = useBack()
+  const behind: BackEntry[] = []
+  const stepBack = () => {
+    behind.pop()
     if (canGoBack(history())) show(goBack(history()))
   }
+  const addBehind = () => behind.push(backStack.push(stepBack))
+  onCleanup(() => {
+    for (const entry of behind.splice(0)) entry.done()
+  })
+
+  const navigate = (address: string) => {
+    const next = visit(history(), address)
+    // Going to the page already showing changes nothing, so it's no step to go back from.
+    const moved = next !== history()
+    show(next)
+    if (moved) addBehind()
+  }
+  const back = () => {
+    if (!canGoBack(history())) return
+    behind.pop()?.done()
+    show(goBack(history()))
+  }
   const forward = () => {
-    if (canGoForward(history())) show(goForward(history()))
+    if (!canGoForward(history())) return
+    show(goForward(history()))
+    addBehind()
   }
   const refresh = () => show(history())
   const home = () => navigate(HOME_ADDRESS)

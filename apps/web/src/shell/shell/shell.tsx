@@ -1,6 +1,7 @@
 // The desktop shell: holds the window-manager state from @pigeon/core and draws the stage, the
 // desktop, the windows, the taskbar, the menu and the tray. app/ creates it, fills the desktop and
 // menu, and hands programs the ShellApi.
+
 import {
   blurAll,
   closeWindow,
@@ -33,6 +34,7 @@ import {
   Show,
   Switch,
 } from 'solid-js'
+import { backStep, useBack } from '../../ui/back/back.ts'
 import { Balloon } from '../../ui/balloon/balloon.tsx'
 import { DesktopIcon } from '../../ui/desktop-icon/desktop-icon.tsx'
 import { brandIcon, tangoIcon } from '../../ui/icons/icons.ts'
@@ -245,6 +247,21 @@ export function createShell(env: ShellEnv): CreatedShell {
       setMenuOpen(false)
       if (refocus) menuButton?.focus()
     }
+
+    // Back closes the Pigeon menu while it's open (decision 0034).
+    const back = useBack()
+    const menuBack = backStep(back, () => closeMenu(true))
+    createEffect(() => (menuOpen() ? menuBack.open() : menuBack.close()))
+    // The desktop's menu isn't drawn on the Pocket, so it closes when the layout turns into one.
+    createEffect(
+      on(
+        () => layout().kind === 'phone',
+        (phone) => phone && setMenuOpen(false),
+      ),
+    )
+    // Asleep, Back wakes Pigeon, rather than stepping back behind the screen saver.
+    const sleepBack = backStep(back, wake)
+    createEffect(() => (running() ? sleepBack.close() : sleepBack.open()))
 
     // Ctrl+` steps through the open windows, back to front.
     const cycle = (event: KeyboardEvent) => {

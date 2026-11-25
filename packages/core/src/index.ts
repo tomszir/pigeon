@@ -8,6 +8,8 @@ export {
   describeAvatar,
   drawAvatar,
 } from './avatar/avatar.ts'
+export type { BackEntry, BackStack, HistoryPort } from './back/back-stack.ts'
+export { createBackStack } from './back/back-stack.ts'
 export type { ChatLog, LogEntry, LogSummary } from './chat/chat-log.ts'
 export {
   appendMessage,
