@@ -43,4 +43,18 @@ Static build deployed to Cloudflare Workers static assets at `pigeon.tomszir.com
 
 `apps/web/wrangler.jsonc` is the Worker: static assets from `dist`, the custom domain route, and `worker/`, whose one route, `/api/turn`, hands out 4-hour Cloudflare TURN credentials, tagged per visitor for the analytics. It needs the TURN key from Realtime → TURN Server: its id is `TURN_KEY_ID` under `vars` in `wrangler.jsonc` (a dashboard-only variable would be wiped by the next deploy), and its API token is the runtime secret `TURN_KEY_API_TOKEN`, which deploys keep. Build variables don't reach the running Worker, so the token can't go there; if the dashboard refuses to add a secret, `pnpm --filter web exec wrangler secret put TURN_KEY_API_TOKEN` sets it. Without both the route answers 503 and peers use STUN alone. `mise run deploy` does the same by hand, after `wrangler login`. Merging the release PR, and so deploying, is the maintainer's call, never an agent's.
 
+The Worker Lighthouse (`apps/lighthouse-worker`, see [lighthouse.md](lighthouse.md#as-a-cloudflare-worker)) is a second Worker, `pigeon-lighthouse`, deployed the same way on each release to `lighthouse.pigeon.tomszir.com`. Its build settings in the dashboard:
+
+| Setting        | Value                                                                 |
+| -------------- | --------------------------------------------------------------------- |
+| Git repository | `tomszir/pigeon`, production branch `release`                         |
+| Root directory | `apps/lighthouse-worker`                                              |
+| Build command  | `pnpm install --frozen-lockfile`                                      |
+| Deploy command | `pnpm exec wrangler deploy --var PIGEON_BUILD:$WORKERS_CI_COMMIT_SHA` |
+| Variables      | `NODE_VERSION` = `24` (build only)                                    |
+| Watch paths    | include `*`                                                           |
+| Preview builds | off: a preview would share the one Durable Object's mail              |
+
+`PIGEON_BUILD` makes the Lighthouse say in its hello which commit it was built from. Its key is the runtime secret `LIGHTHOUSE_KEY` (Settings, Variables and Secrets), which deploys keep. Keep a copy of it somewhere safe: a secret can't be read back, and a new key is a new Lighthouse that everyone must add again. A WAF rate limit on its hostname is what keeps its limits in force, since the Durable Object's memory, where they're counted, resets when Cloudflare evicts it.
+
 The version lives in the root `package.json` and is shown in About and Read Me, and Changelog.txt's newest section must match it (`__PIGEON_VERSION__`, with the build's commit as `__PIGEON_COMMIT__`). release-please (`release-please-config.json`, `.release-please-manifest.json`) keeps a release PR open on main; the workflow drafts Changelog.txt's section for it on the PR's branch (`scripts/release-notes.ts`); merging it tags `v<version>`, writes the GitHub release, and moves `release`. WebRTC and WebCrypto need a secure page, which the HTTPS site and `localhost` both are.
