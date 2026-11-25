@@ -47,7 +47,7 @@ apps/
                 Kestrel Pocket; Today itself comes from apps/messenger/today/).
                 createShell() returns the
                 ShellApi that app/ hands to programs.
-      apps/     One folder per app (messenger, reader, explorer, builder, letters, files), each
+      apps/     One folder per app (messenger, reader, explorer, help, builder, letters, files), each
                 holding one folder per component: apps/<app>/<component>/. The
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
@@ -56,7 +56,15 @@ apps/
                 a device is. messenger/devices/ draws Link a Device, Link to My
                 Other Device and My Devices. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
-                (Changelog.txt, the release notes, decision 0025).
+                (Changelog.txt, the release notes, decision 0025). help/ is
+                in-world Help, the PigeonHTML pages Explorer serves at
+                pigeon://help (decision 0032), with no window of its own:
+                help-pages/ exports HELP_PAGES, every page by address, for app/
+                to hand to Explorer; how-pigeon-works/ is the hand-written guide;
+                protocol-spec/ builds "The Pigeon Protocol" from docs/protocol.md,
+                flows.md and glossary.md, imported with ?raw, so it can't drift;
+                markdown/ is the small converter it uses, and page/ the parts
+                every page shares.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
                 (app/programs.tsx). start-messenger.ts makes or loads the identity
