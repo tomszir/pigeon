@@ -1,7 +1,12 @@
 import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
 import type { FriendView } from '../service/service.ts'
-import { clockTime, transcriptFor } from './live-conversation.tsx'
+import {
+  clockTime,
+  conversationFileName,
+  conversationText,
+  transcriptFor,
+} from './live-conversation.tsx'
 
 /** 18:38 local time today, so the expected clock text doesn't depend on the time zone. */
 const at = new Date(2026, 10, 24, 18, 38).getTime()
@@ -66,4 +71,40 @@ it('spells times like the taskbar clock', () => {
   expect(clockTime(new Date(2026, 0, 1, 0, 5).getTime())).toBe('12:05 AM')
   expect(clockTime(new Date(2026, 0, 1, 12, 0).getTime())).toBe('12:00 PM')
   expect(clockTime(new Date(2026, 0, 1, 9, 41).getTime())).toBe('9:41 AM')
+})
+
+describe('Save Conversation As (M13)', () => {
+  it('writes each message on a line with its day and time, and who wrote it', async () => {
+    const rook = fakeSigner('rook')
+    const mika = fakeSigner('mika')
+    let log = emptyLog('pair:x')
+    log = (await appendMessage(log, mika, 'prove it', at)).log
+    log = (await appendMessage(log, rook, 'ok', at)).log
+    const view = {
+      id: mika.id,
+      handle: 'Mika',
+      name: 'Mika',
+      addedAt: at,
+      fingerprint: '7f3a91c204bed817',
+      log,
+    } as FriendView
+    expect(conversationText(view, (author) => author === rook.id, 'Rook', at)).toBe(
+      [
+        'Conversation with Mika <7f3a 91c2 04be d817>',
+        'Saved from Pigeon on November 24, 2026 at 6:38 PM',
+        '',
+        'Rook and Mika became friends on November 24, 6:38 PM.',
+        '',
+        '[November 24, 6:38 PM] Mika: prove it',
+        '[November 24, 6:38 PM] Rook: ok',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('names the file after the friend, leaving out what file systems refuse', () => {
+    expect(conversationFileName('Mika')).toBe('Conversation with Mika.txt')
+    expect(conversationFileName('a/b:c?')).toBe('Conversation with abc.txt')
+    expect(conversationFileName('***')).toBe('Conversation with a friend.txt')
+  })
 })
