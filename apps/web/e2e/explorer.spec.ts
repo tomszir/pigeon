@@ -148,19 +148,34 @@ test.describe('on the Pocket', () => {
       '<div style="width:760px;padding:20px;border:2px solid">padded</div>',
       '<table width="760" cellpadding="10"><tr><td width="200">nav</td><td>text</td></tr></table>',
       '<div style="margin-left:210px">beside a column</div>',
+      '<table width="100%" id="nav"><tr><td align="left">&lt;&lt; Back</td><td align="center">Contents</td><td align="right">Next &gt;&gt;</td></tr></table>',
+      '<table><tr><td><center id="centred">centred</center></td></tr></table>',
       '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="900" height="300">',
     ].join('')
     const css = viewStylesheet({ mode: 'one-column', text: MEDIUM }, true)
     // No doctype, so quirks mode, as Explorer writes pages.
     await page.setContent(`<style>${css}</style>${markup}<pre>${long}</pre>`)
-    const { overflow, margin } = await page.locator('html').evaluate((html) => {
+    const { overflow, margin, starts, centred } = await page.locator('html').evaluate((html) => {
       const doc = html.ownerDocument
       return {
         overflow: html.scrollWidth - html.clientWidth,
         margin: doc.querySelectorAll('div')[2]?.getBoundingClientRect().left ?? 0,
+        // Where each nav link's text starts: the same place, not a staircase.
+        starts: [...doc.querySelectorAll('#nav td')].map((td) => {
+          const range = doc.createRange()
+          range.selectNodeContents(td)
+          return Math.round(range.getBoundingClientRect().left)
+        }),
+        centred: (() => {
+          const range = doc.createRange()
+          range.selectNodeContents(doc.getElementById('centred') ?? doc.body)
+          return range.getBoundingClientRect().left
+        })(),
       }
     })
     expect(overflow).toBeLessThanOrEqual(1)
     expect(margin).toBeLessThan(20)
+    expect(new Set(starts).size).toBe(1)
+    expect(centred).toBeGreaterThan(100)
   })
 })
