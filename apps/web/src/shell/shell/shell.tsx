@@ -219,6 +219,7 @@ export function createShell(env: ShellEnv): CreatedShell {
     isActive: (id) => desktop().active === id,
     buzz,
     notify: setNotice,
+    onPhone: () => layout().kind === 'phone',
     message,
     openDisplayProperties,
     settings,

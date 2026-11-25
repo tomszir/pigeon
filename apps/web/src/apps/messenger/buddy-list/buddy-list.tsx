@@ -45,7 +45,6 @@ export interface BuddyListProps {
   onImportData?: (() => void) | undefined
   /** File, Always Go Through the Relay: turns relay-only connections on or off. */
   onRelayOnly?: ((on: boolean) => void) | undefined
-  onCopyInvite: () => void
   onAbout: () => void
   onClose: () => void
 }
@@ -393,15 +392,6 @@ export function BuddyList(props: BuddyListProps) {
         >
           <img src={tango('contact-new', 22)} alt="" width="22" height="22" />
           Add a Friend
-        </button>
-        <button
-          type="button"
-          class={styles.task}
-          disabled={!named()}
-          onClick={() => props.onCopyInvite()}
-        >
-          <img src={tango('internet-mail', 22)} alt="" width="22" height="22" />
-          Copy invite link
         </button>
       </div>
       <StatusBar

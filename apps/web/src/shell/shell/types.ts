@@ -86,6 +86,8 @@ export interface ShellApi {
   readonly isActive: (id: WindowId) => boolean
   readonly buzz: (id: WindowId) => void
   readonly notify: (notice: Notice) => void
+  /** The Pocket's phone layout is showing, not the desktop. */
+  readonly onPhone: () => boolean
   readonly message: (message: MessageSpec) => void
   readonly openDisplayProperties: () => void
   readonly settings: () => Settings

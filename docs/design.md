@@ -40,7 +40,7 @@ The desktop shows Pigeon Messenger, Network, Read Me.txt, Changelog.txt, Letters
 
 The Messenger's File menu has Always Go Through the Relay, a check item that reconnects everything through the TURN relay and says so in a balloon; Network shows the same setting, so it isn't only in the Messenger. With it on and no relay to be had, Pigeon doesn't connect directly; a balloon says the relay can't be reached and where to turn the setting off.
 
-Balloons come from the tray, one at a time, and close themselves after 10 seconds. A balloon that does something, such as "Pigeon was updated to 0.4.0. See what's new?", does it when clicked anywhere but its close button, and its text is a button for the keyboard.
+Balloons come from the tray, one at a time, and close themselves after 10 seconds. A balloon that does something, such as "Pigeon was updated to 0.4.0. See what's new?", does it when clicked anywhere but its close button, and its text is a button for the keyboard. On the Pocket a balloon also closes when a window comes to the front, so it never covers that window's buttons. The first time Pigeon opens in a browser (no identity there yet) it opens Read Me.txt and a "Welcome to Pigeon" balloon; after that it opens straight to the desktop. On the Pocket, a conversation's toolbar shows only what works (Buzz!), and Explorer's One Column keeps a marquee on one line.
 
 ## Devices
 

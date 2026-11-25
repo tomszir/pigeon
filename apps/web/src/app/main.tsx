@@ -16,7 +16,7 @@ import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invite.ts'
 import { createBrowserEnv, deviceName, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
-import { startMessenger } from './start-messenger.ts'
+import { IDENTITY, startMessenger } from './start-messenger.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
 
 const root = document.getElementById('root')
@@ -61,7 +61,6 @@ render(() => {
     homeScreen,
   )
 
-  if (incoming === undefined && linking === undefined) programs.openReadme()
   if (linking !== undefined) programs.openJoinDevice(linking)
   if (sample) {
     programs.openMessenger()
@@ -261,6 +260,7 @@ render(() => {
         offerHere('Pigeon is open in another tab')
         return
       }
+      await welcomeIfFirst(opened.store)
       await run(opened, true)
     })
     .catch((error: unknown) => {
@@ -269,14 +269,23 @@ render(() => {
       console.error(error)
     })
 
-  api.notify({
-    title: 'Welcome to Pigeon',
-    icon: tangoIcon('dialog-information', 16),
-    body:
-      incoming === undefined
-        ? 'Have a look at Read Me.txt first, or open Pigeon Messenger to add a friend.'
-        : 'Someone sent you an invite. Pigeon is asking them who they are.',
-  })
+  /**
+   * The first time Pigeon opens in this browser (no identity yet): Read Me, and a balloon saying
+   * where to start. After that Pigeon opens straight to the desktop, as anyone's computer does.
+   */
+  async function welcomeIfFirst(store: Store) {
+    if ((await store.get(IDENTITY)) !== undefined) return
+    // On the Pocket, Today stays the first screen: the balloon points to Read Me instead.
+    if (incoming === undefined && linking === undefined && !api.onPhone()) programs.openReadme()
+    api.notify({
+      title: 'Welcome to Pigeon',
+      icon: tangoIcon('dialog-information', 16),
+      body:
+        incoming === undefined
+          ? 'Have a look at Read Me.txt first, or open Pigeon Messenger to add a friend.'
+          : 'Someone sent you an invite. Pigeon is asking them who they are.',
+    })
+  }
 
   return (
     <BackContext.Provider value={back}>

@@ -462,22 +462,6 @@ export function createPrograms(
     ),
   )
 
-  const copyInvite = async () => {
-    const messenger = host.messenger()
-    if (messenger === undefined) return
-    if (messenger.invite() === undefined) await messenger.newInvite()
-    const link = messenger.inviteLink()
-    if (link === undefined) return
-    const copied = await host.copyText(link)
-    api.notify({
-      title: copied ? 'Invite link copied' : 'Copy your invite link',
-      icon: tangoIcon('contact-new', 16),
-      body: copied
-        ? 'Paste it to one friend. It works once, while Pigeon is open here.'
-        : 'Your browser kept the clipboard to itself. Open Add a Friend and copy the link there.',
-    })
-  }
-
   // A friend's menu and the windows it opens (docs/design.md, "Friends").
   const now = () => env.now().getTime()
   const friendDialog = (
@@ -690,7 +674,6 @@ export function createPrograms(
           onHideSample={() => setSample(false)}
           onOpenConversation={openConversation}
           onAddFriend={() => openAddFriend()}
-          onCopyInvite={() => void copyInvite()}
           menuFor={friendMenu}
           onBlockedPeople={openBlocked}
           onMyDevices={openMyDevices}
