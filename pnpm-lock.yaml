@@ -182,8 +182,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/lighthouse
       ws:
-        specifier: 8.20.0
-        version: 8.20.0
+        specifier: 8.22.2
+        version: 8.22.2
     devDependencies:
       '@types/node':
         specifier: 24.19.2
@@ -1706,8 +1706,8 @@ packages:
       '@cloudflare/workers-types':
         optional: true
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -1718,8 +1718,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.21.0:
-    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
+  ws@8.22.2:
+    resolution: {integrity: sha512-/rEZ2ejown2N5gxVTHUu9bVVC7ttu0/Tgzf5hbTOixR3Fs7mbbXgn2DbdbcKgJOmpQMtrIUWivtYuVMnp/W/yA==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -2879,9 +2879,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  ws@8.20.0: {}
-
   ws@8.21.0: {}
+
+  ws@8.22.2: {}
 
   ws@8.23.0: {}
 
