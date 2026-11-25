@@ -227,6 +227,21 @@ describe('the Lighthouse', () => {
     expect(kinds.slice(MAX_PENDING)).toEqual(['error', 'error'])
   })
 
+  it('carries on a connection that slept, from what it saved', async () => {
+    const { lighthouse } = setup()
+    const first = lighthouse.connect('203.0.113.7')
+    await first.receive(encodeRequest({ req: 1, request: hello }))
+    expect(first.saved()).toEqual({ greeted: true, nonce: NONCE })
+    // The socket woke in a fresh instance: the same connection, from what it saved.
+    const woken = lighthouse.connect('203.0.113.7', first.saved())
+    const sent = encodeRequest({ req: 2, request: { type: 'list', tags: [key(1)], cursor: 0 } })
+    const opened = await openReply(fakeCrypto, signer.id, await woken.receive(sent), {
+      nonce: NONCE,
+      sent,
+    })
+    expect(opened.ok && opened.value.reply.type).toBe('listed')
+  })
+
   it('answers one connection’s requests in the order they came', async () => {
     const { lighthouse } = setup()
     const connection = lighthouse.connect('203.0.113.7')

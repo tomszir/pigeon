@@ -23,4 +23,5 @@ RUN mkdir /data && chown node /data
 USER node
 VOLUME /data
 EXPOSE 8787
-CMD ["node", "src/main.ts", "--config", "/data/lighthouse.json"]
+# node:sqlite is still marked experimental; its warning on every start says nothing useful.
+CMD ["node", "--disable-warning=ExperimentalWarning", "src/main.ts", "--config", "/data/lighthouse.json"]

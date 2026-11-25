@@ -1,0 +1,21 @@
+{
+  "name": "lighthouse-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "make-key": "node src/scripts/make-key.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@pigeon/core": "workspace:*",
+    "@pigeon/lighthouse": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.3"
+  }
+}
