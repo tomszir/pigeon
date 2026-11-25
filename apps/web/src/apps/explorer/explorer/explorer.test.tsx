@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@solidjs/testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import { Window } from '../../../ui/window/window.tsx'
 import { type LocalPage, localPageFinder } from '../local-pages/local-pages.ts'
+import type { KeptView } from '../page-frame/view.ts'
 import { Explorer } from './explorer.tsx'
 
 // Explorer is written against PigeonHTML's API, not whichever sanitizer is in place: this one
@@ -41,7 +42,7 @@ const PAGES = new Map<string, LocalPage>([
   ['pigeon://big', { title: 'Big', source: `<p>${'x'.repeat(101 * 1024)}</p>` }],
 ])
 
-function renderExplorer(start?: string) {
+function renderExplorer(start?: string, onViewChange?: (kept: KeptView) => void) {
   const copyText = vi.fn(async () => true)
   render(() => (
     <Window title="Pigeon Explorer" active bounds={{ x: 0, y: 0, width: 720, height: 560 }}>
@@ -50,6 +51,7 @@ function renderExplorer(start?: string) {
         findPage={localPageFinder(PAGES)}
         base="https://pigeon.test/"
         copyText={copyText}
+        onViewChange={onViewChange}
         onClose={() => {}}
         onAbout={() => {}}
       />
@@ -203,5 +205,32 @@ describe('Explorer', () => {
     const doc = await loadedFrame()
     doc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }))
     expect(address()).toBe('pigeon://home')
+  })
+
+  it('switches between One Column and Desktop Layout from View, drawing the page again', async () => {
+    const onViewChange = vi.fn()
+    renderExplorer(undefined, onViewChange)
+    const style = (doc: Document) =>
+      [...doc.querySelectorAll('style')].map((s) => s.textContent).join('')
+    expect(style(await loadedFrame())).not.toContain('display:block!important')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /One Column/ }))
+    expect(onViewChange).toHaveBeenLastCalledWith({ text: 2, desktop: 'one-column' })
+    await waitFor(async () =>
+      expect(style(await loadedFrame())).toContain('display:block!important'),
+    )
+    expect(screen.getByRole('status').textContent).toContain('One Column')
+  })
+
+  it('makes text larger and smaller with Ctrl+Plus and Ctrl+Minus', async () => {
+    const onViewChange = vi.fn()
+    renderExplorer(undefined, onViewChange)
+    await loadedFrame()
+    const explorer = document.querySelector('[data-explorer-page]') as HTMLElement
+    fireEvent.keyDown(explorer, { key: '+', ctrlKey: true })
+    expect(onViewChange).toHaveBeenLastCalledWith({ text: 3 })
+    fireEvent.keyDown(explorer, { key: '-', ctrlKey: true })
+    fireEvent.keyDown(explorer, { key: '-', ctrlKey: true })
+    expect(onViewChange).toHaveBeenLastCalledWith({ text: 1 })
   })
 })

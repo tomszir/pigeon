@@ -8,6 +8,7 @@
 import { onCleanup, onMount } from 'solid-js'
 import { frameDocument } from './frame-document.ts'
 import styles from './page-frame.module.css'
+import type { PageView } from './view.ts'
 
 /** Exactly this: never `allow-scripts`, and nothing that lets the page open or move anything. */
 export const FRAME_SANDBOX = 'allow-same-origin'
@@ -29,6 +30,9 @@ export interface PageFrameProps {
   imageUrls: readonly string[]
   /** What relative image URLs resolve against: the app's own address. */
   base: string
+  /** How the page is drawn (decision 0033), and whether on a phone. Read once, when it's written. */
+  view?: PageView | undefined
+  phone?: boolean | undefined
   /** A link was followed: a pigeon:// address. In-page "#name" links are handled here. */
   onNavigate: (address: string) => void
   /** The pointer is over a link (its address) or left it (undefined). */
@@ -97,7 +101,9 @@ export function PageFrame(props: PageFrameProps) {
     const doc = frame?.contentDocument
     if (frame === undefined || doc === null || doc === undefined) return
     doc.open()
-    doc.write(frameDocument(props.html, props.imageUrls, props.base))
+    const view =
+      props.view === undefined ? undefined : { view: props.view, phone: props.phone === true }
+    doc.write(frameDocument(props.html, props.imageUrls, props.base, view))
     doc.close()
     written = true
     // Writing drops a document's listeners, so they go on once the page is in.
