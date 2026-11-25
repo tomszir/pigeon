@@ -9,6 +9,8 @@ import {
 } from '@pigeon/core'
 import { type Accessor, createEffect, createSignal, on, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
+import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
+import { findLocalPage } from '../apps/explorer/local-pages/local-pages.ts'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
 import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
@@ -81,7 +83,6 @@ export interface MessengerHost {
 const LATER = {
   letters: ['Letters is still being built.', 'Sealed letters carried by friends arrive soon.'],
   files: ['Shared Files is still being built.', 'Sending files to friends arrives soon.'],
-  explorer: ['Pigeon Explorer is still being built.', 'Browsing pigeon:// pages arrives soon.'],
 } as const
 
 export function createPrograms(
@@ -675,6 +676,23 @@ export function createPrograms(
       ),
     })
 
+  /** Pigeon Explorer, at its start page (decision 0032). */
+  const openExplorer = () =>
+    api.open('explorer', {
+      title: 'Pigeon Explorer',
+      icon: tangoIcon('internet-web-browser', 16),
+      bounds: { x: 72, y: 24, width: 720, height: 560 },
+      resizable: true,
+      content: (window) => (
+        <Explorer
+          findPage={findLocalPage}
+          copyText={host.copyText}
+          onClose={window.close}
+          onAbout={openAbout}
+        />
+      ),
+    })
+
   const later = (title: string, text: readonly string[]) => () =>
     api.message({ title, kind: 'information', text })
 
@@ -692,7 +710,7 @@ export function createPrograms(
     description: 'Browse peer pages',
     icon16: tangoIcon('internet-web-browser', 16),
     icon32: tangoIcon('internet-web-browser', 32),
-    onOpen: later('Pigeon Explorer', LATER.explorer),
+    onOpen: openExplorer,
   }
   const readme: Launcher = {
     id: 'readme',

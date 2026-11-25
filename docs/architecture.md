@@ -56,7 +56,14 @@ apps/
                 a device is. messenger/devices/ draws Link a Device, Link to My
                 Other Device and My Devices. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
-                (Changelog.txt, the release notes, decision 0025). help/ is
+                (Changelog.txt, the release notes, decision 0025). explorer/ is
+                Pigeon Explorer (decision 0032): explorer/ (the window, history.ts
+                and address.ts for pigeon:// addresses), address-bar/, page-frame/
+                (the sandboxed frame, its CSP and base stylesheet), error-page/
+                ("page not hosted" and "too big"), and local-pages/, the pages
+                bundled with Pigeon as maps from address to page, looked up in
+                order. Bundled pages are PigeonHTML in .html files, which Biome
+                leaves alone since they're written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
                 pigeon://help (decision 0032), with no window of its own:
                 help-pages/ exports HELP_PAGES, every page by address, for app/

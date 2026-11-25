@@ -17,6 +17,7 @@ The words Pigeon uses for its own things.
 - **Lobby**: the opt-in public room of strangers who are online.
 - **Mirror**: a peer that keeps and serves a copy of someone's page.
 - **Monitor**: the beige Kestrel CRT drawn around the stage. Kestrel is a made-up maker.
+- **On this computer**: where Pigeon Explorer's status bar says a page came from when it's one bundled with Pigeon, such as the start page at `pigeon://home`.
 - **Pair room**: the private room two friends meet in, named and locked by their pair secret and renamed every UTC day.
 - **Pair secret**: 32 random bytes two friends share from pairing, which only they hold.
 - **Petname**: what you call a contact, which only you see.
