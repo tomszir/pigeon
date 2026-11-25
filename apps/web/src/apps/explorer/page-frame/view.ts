@@ -70,7 +70,8 @@ export const DESKTOP_WIDTH = 800
 
 /**
  * One Column, as Opera's Small-Screen Rendering did it: tables, cells and positioned or floated
- * boxes become plain blocks one under another, fixed widths, side margins and no-wrap go, images
+ * boxes become plain blocks one under another, fixed widths, side margins, no-wrap and cell
+ * alignment go, images
  * shrink to the screen, and the smallest font size is raised to one you can read. Colours, fonts, marquees and centering
  * stay. Preformatted text keeps its lines and scrolls sideways, so ASCII diagrams stay drawn.
  * Every rule is `!important`, since a page's own styles come later and would otherwise win.
@@ -79,6 +80,9 @@ const ONE_COLUMN = [
   'table,thead,tbody,tfoot,tr,td,th,caption,col,colgroup{display:block!important;width:auto!important;height:auto!important}',
   '*{position:static!important;float:none!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;white-space:normal!important}',
   'pre,xmp,listing,plaintext,pre *{white-space:pre!important}',
+  // Cells aligned left, centre and right side by side would stack into a staircase, so stacked
+  // cells start at the start; a <center> or <p align> inside one still centres.
+  'td,th{text-align:start!important}',
   // A side column's margin would squeeze the text once the column is stacked above it.
   'div,table,center{margin-left:0!important;margin-right:0!important}',
   'body{overflow-wrap:break-word!important;margin:8px!important}',
