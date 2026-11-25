@@ -13,5 +13,5 @@ const pkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', pair.privateKey
 const signer = await signerFromKey(pkcs8)
 console.log(`LIGHTHOUSE_KEY (secret, keep a copy):\n${pkcs8}\n`)
 console.log(
-  `Address:\n${formatLighthouseAddress({ id: signer.id, name: 'Pigeon Lighthouse', url: 'wss://lighthouse.pigeon.tomszir.com/' })}`,
+  `Address:\n${formatLighthouseAddress({ id: signer.id, name: 'Loft', url: 'wss://lighthouse.pigeon.tomszir.com/' })}`,
 )

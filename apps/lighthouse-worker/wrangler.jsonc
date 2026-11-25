@@ -12,7 +12,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LighthouseObject"] }],
   "vars": {
-    "LIGHTHOUSE_NAME": "Pigeon Lighthouse",
+    "LIGHTHOUSE_NAME": "Loft",
     "LIGHTHOUSE_URL": "wss://lighthouse.pigeon.tomszir.com/"
   },
   "routes": [{ "pattern": "lighthouse.pigeon.tomszir.com", "custom_domain": true }]
