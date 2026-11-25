@@ -27,7 +27,10 @@ packages/
                   in-memory network. Never used outside tests.
                 Letter rules and pigeon:// resolution arrive as their own folders.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
-                Pure; used by the web app and the Lighthouse.
+                Pure; used by the web app and the Lighthouse. allowlists.ts holds the
+                tables, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
+                allowlist, urls.ts the scheme check, and testing/ the tests' re-parse
+                audit and URL functions (docs/pigeonhtml.md).
 apps/
   web/          The site (Vite + Solid), served by a Cloudflare Worker.
     worker/     The Worker: static assets, and /api/turn, which hands out short-lived

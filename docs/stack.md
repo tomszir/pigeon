@@ -23,6 +23,7 @@ Tools, libraries and versions, and why each one is here.
 | trystero                                    | apps/web platform, lighthouse | signaling over Nostr + WebRTC data channels, behind the `Transport` interface ([0002](decisions/0002-trystero-behind-a-transport-interface.md)); its own identities are off, Pigeon signs everything |
 | wrangler                                    | apps/web deploy               | deploys `apps/web/dist` to Cloudflare Workers static assets, as tomszir.com does; its esbuild and workerd install scripts are allowed in `pnpm-workspace.yaml`                                       |
 | uqr                                         | apps/web messenger            | encodes invite links as QR codes (no dependencies, MIT); Pigeon draws the modules itself as whole-pixel SVG squares                                                                                  |
+| parse5                                      | packages/pigeonhtml           | parses pages as the browser that renders them will, for the PigeonHTML sanitizer and validator ([0032](decisions/0032-explorer-on-this-computer-first.md)); one dependency (entities), MIT           |
 
 No Yjs ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)), no CSS framework, no router, no state library. WebCrypto and IndexedDB are used directly. Adding any library is asked first (AGENTS.md).
 
