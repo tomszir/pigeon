@@ -14,7 +14,8 @@ export function takeDeviceLinkFromAddress(): Invite | undefined {
 function take(prefix: string, decode: typeof decodeInvite): Invite | undefined {
   const hash = location.hash.slice(1)
   if (!hash.startsWith(prefix)) return undefined
-  history.replaceState(null, '', `${location.pathname}${location.search}`)
+  // The entry's state stays: the back stack marks entries there (decision 0034).
+  history.replaceState(history.state, '', `${location.pathname}${location.search}`)
   const invite = decode(hash)
   return invite.ok ? invite.value : undefined
 }

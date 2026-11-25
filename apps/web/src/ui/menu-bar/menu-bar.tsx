@@ -1,5 +1,6 @@
-import { createSignal, For, Show } from 'solid-js'
+import { createEffect, createSignal, For, Show } from 'solid-js'
 import { AccessLabel, accessKeyOf, plainText } from '../access-key/access-key.tsx'
+import { backStep, useBack } from '../back/back.ts'
 import { classes } from '../classes/classes.ts'
 import { Menu, type MenuEntry } from '../menu/menu.tsx'
 import styles from './menu-bar.module.css'
@@ -31,6 +32,10 @@ export function MenuBar(props: { label: string; menus: readonly MenuBarMenu[] })
     setOpen(null)
     if (refocus && was !== null) buttons[was]?.focus()
   }
+
+  // Back closes an open menu (decision 0034); moving between menus is still one step.
+  const back = backStep(useBack(), () => close(true))
+  createEffect(() => (open() === null ? back.close() : back.open()))
 
   const onBarKeyDown = (event: KeyboardEvent, index: number) => {
     const actions: Record<string, () => void> = {

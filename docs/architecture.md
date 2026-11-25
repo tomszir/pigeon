@@ -22,6 +22,8 @@ packages/
       devices/    the signed device log that ties several devices to one identity
                   (decision 0024).
       windows/    window-manager state.
+      back/       the back stack: what the browser's Back closes next, kept in step
+                  with the browser's history through a small port (decision 0034).
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
                   in-memory network. Never used outside tests.
@@ -41,10 +43,12 @@ apps/
                 with a passphrase), files/ (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
                 (Trystero, with TURN servers from /api/turn), clock/, clipboard/, tab-lock/ (one tab at a time, with Web
-                Locks and a BroadcastChannel; decision 0028). Each is an interface plus a
+                Locks and a BroadcastChannel; decision 0028), back/ (core's back stack over
+                `history`, decision 0034). Each is an interface plus a
                 browser implementation; audio and files come later.
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
-                and tokens.css, the only global stylesheet.
+                and tokens.css, the only global stylesheet. back/ is the context that
+                hands the back stack to whatever Back can close.
       shell/    Stage and scaling, desktop, taskbar, Pigeon menu, tray and balloons,
                 the window layer and the phone layout (shell/phone-shell/, the
                 Kestrel Pocket; Today itself comes from apps/messenger/today/).

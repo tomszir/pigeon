@@ -1,6 +1,8 @@
 import type { Invite } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import { render } from 'solid-js/web'
+import { createBrowserBack } from '../platform/back/browser-back.ts'
+import { BackContext } from '../ui/back/back.ts'
 import '../ui/tokens.css'
 import type { Messenger } from '../apps/messenger/service/service.ts'
 import { copyText } from '../platform/clipboard/browser-clipboard.ts'
@@ -30,6 +32,8 @@ document.addEventListener('contextmenu', (event) => {
 })
 
 render(() => {
+  // Before the invite is read, so its own entry in the history is marked first (decision 0034).
+  const back = createBrowserBack()
   const env = createBrowserEnv()
   const { api, Shell } = createShell(env)
   const [messenger, setMessenger] = createSignal<Messenger | undefined>(undefined)
@@ -209,5 +213,9 @@ render(() => {
         : 'Someone sent you an invite. Pigeon is asking them who they are.',
   })
 
-  return <Shell {...programs} />
+  return (
+    <BackContext.Provider value={back}>
+      <Shell {...programs} />
+    </BackContext.Provider>
+  )
 }, root)

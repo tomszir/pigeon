@@ -1,4 +1,4 @@
-import type { Desktop, WindowId } from '@pigeon/core'
+import type { BackEntry, Desktop, WindowId } from '@pigeon/core'
 import {
   createEffect,
   createSignal,
@@ -10,6 +10,7 @@ import {
   onMount,
   Show,
 } from 'solid-js'
+import { useBack } from '../../ui/back/back.ts'
 import { Balloon } from '../../ui/balloon/balloon.tsx'
 import { brand, tangoIcon } from '../../ui/icons/icons.ts'
 import { LayoutContext } from '../../ui/layout/layout.ts'
@@ -230,6 +231,49 @@ export function PhoneShell(props: PhoneShellProps) {
   }
 
   const menuSections = () => [props.menu.programs, props.menu.places, props.menu.tools]
+
+  // Back steps back inside Pigeon (decision 0034): from the menu, then from the window in front
+  // to Today, and from Today out of Pigeon. Pages inside a window (Explorer's) come first.
+  const back = useBack()
+  let windowEntry: { readonly id: WindowId; readonly entry: BackEntry } | undefined
+  const leaveWindow = () => {
+    windowEntry?.entry.done()
+    windowEntry = undefined
+  }
+  createEffect(
+    on(
+      () => (showingHome() ? undefined : current()),
+      (front) => {
+        if (front === windowEntry?.id) return
+        leaveWindow()
+        if (front === undefined) return
+        const entry = back.push(() => {
+          windowEntry = undefined
+          props.handle(front).close()
+          setHome(true)
+        })
+        windowEntry = { id: front, entry }
+      },
+    ),
+  )
+  let menuEntry: BackEntry | undefined
+  createEffect(
+    on(menuOpen, (open) => {
+      if (open && menuEntry === undefined) {
+        menuEntry = back.push(() => {
+          menuEntry = undefined
+          closeMenu(true)
+        })
+      } else if (!open) {
+        menuEntry?.done()
+        menuEntry = undefined
+      }
+    }),
+  )
+  onCleanup(() => {
+    leaveWindow()
+    menuEntry?.done()
+  })
 
   return (
     <LayoutContext.Provider value="phone">
