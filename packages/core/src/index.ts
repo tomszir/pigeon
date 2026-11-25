@@ -57,6 +57,14 @@ export {
   verifyDeviceLog,
   verifyOwnTail,
 } from './devices/device-log.ts'
+export {
+  base32Decode,
+  base32Encode,
+  base64Decode,
+  base64Encode,
+  bytesEqual,
+  utf8Encode,
+} from './encoding/bytes.ts'
 export type { Json } from './encoding/canonical.ts'
 export { canonicalBytes } from './encoding/canonical.ts'
 export type { Crypto, Signer } from './identity/crypto.ts'
@@ -69,6 +77,43 @@ export {
   parsePeerId,
   peerIdFromPublicKey,
 } from './identity/identity.ts'
+export type { LighthouseAddress } from './lighthouse/address.ts'
+export {
+  formatLighthouseAddress,
+  isLighthouseAddress,
+  MAX_LIGHTHOUSE_NAME_LENGTH,
+  parseLighthouseAddress,
+} from './lighthouse/address.ts'
+export type {
+  LighthouseError,
+  LighthouseFrame,
+  LighthouseReply,
+  LighthouseRequest,
+  LighthouseSoftware,
+  ListedItem,
+  ReplyError,
+  ReplyTo,
+  SignedReply,
+} from './lighthouse/protocol.ts'
+export {
+  encodeRequest,
+  frameHash,
+  frameReq,
+  frameText,
+  isMailKey,
+  LIGHTHOUSE_PROTOCOL,
+  LIST_PAGE,
+  MAIL_KEY_BYTES,
+  MAX_BLOB_BYTES,
+  MAX_DROPS,
+  MAX_FRAME_BYTES,
+  MAX_LIST_TAGS,
+  MAX_MAIL_MS,
+  mailBlobId,
+  openReply,
+  parseRequest,
+  sealReply,
+} from './lighthouse/protocol.ts'
 export type {
   Body,
   BodyType,

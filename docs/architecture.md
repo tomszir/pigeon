@@ -21,6 +21,9 @@ packages/
                   a new device (link.ts, decision 0024).
       devices/    the signed device log that ties several devices to one identity
                   (decision 0024).
+      lighthouse/ what a Pigeon and a Lighthouse say (decision 0037): plain requests,
+                  replies signed by the Lighthouse over the request number, blob ids
+                  from their content, and pigeon://lighthouse addresses.
       windows/    window-manager state.
       back/       the back stack: what the browser's Back closes next, kept in step
                   with the browser's history through a small port (decision 0034).
@@ -28,6 +31,12 @@ packages/
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
                   in-memory network. Never used outside tests.
                 Letter rules and pigeon:// resolution arrive as their own folders.
+  lighthouse/   @pigeon/lighthouse: a Lighthouse's mailbox with no platform in it
+                (decision 0037). lighthouse/ answers each connection's request frames
+                with signed replies; store/ is the MailStore interface, a memory store,
+                and store-contract.ts, the tests every store runs (exported as
+                @pigeon/lighthouse/testing); limits/ counts puts per IPv4 address or
+                IPv6 /64, in memory only. The Node and Worker runners use it.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse. allowlists.ts holds the
                 tables, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and

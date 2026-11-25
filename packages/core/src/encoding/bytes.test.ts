@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { base32Decode, base32Encode, hexEncode, utf8Decode, utf8Encode } from './bytes.ts'
+import {
+  base32Decode,
+  base32Encode,
+  base64Decode,
+  base64Encode,
+  hexEncode,
+  utf8Decode,
+  utf8Encode,
+} from './bytes.ts'
 
 describe('utf8', () => {
   it('encodes every width of character', () => {
@@ -46,4 +54,31 @@ describe('base32', () => {
 
 it('hex-encodes with leading zeros', () => {
   expect(hexEncode(Uint8Array.from([0, 15, 255]))).toBe('000fff')
+})
+
+describe('base64', () => {
+  it('matches the standard spelling, padding and all', () => {
+    for (const [plain, encoded] of [
+      ['', ''],
+      ['f', 'Zg=='],
+      ['fo', 'Zm8='],
+      ['foo', 'Zm9v'],
+      ['foob', 'Zm9vYg=='],
+      ['fooba', 'Zm9vYmE='],
+      ['foobar', 'Zm9vYmFy'],
+    ] as const) {
+      expect(base64Encode(utf8Encode(plain))).toBe(encoded)
+      expect(base64Decode(encoded)).toEqual({ ok: true, value: utf8Encode(plain) })
+    }
+  })
+
+  it('round-trips every byte value', () => {
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i)
+    expect(base64Decode(base64Encode(bytes))).toEqual({ ok: true, value: bytes })
+  })
+
+  it('refuses what has another spelling or none', () => {
+    for (const bad of ['Zg', 'Zh==', 'Z===', 'Zm9v!A==', '=Zm9', 'Zg==Zg=='])
+      expect(base64Decode(bad).ok).toBe(false)
+  })
 })
