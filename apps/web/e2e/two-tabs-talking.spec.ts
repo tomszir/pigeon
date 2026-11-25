@@ -12,6 +12,14 @@ async function chooseName(scope: ReturnType<Page['getByRole']>, name: string) {
   await scope.getByRole('button', { name: 'OK' }).click()
 }
 
+/** Named in the buddy list, a new Pigeon is offered a recovery key (decision 0030): not now. */
+async function later(page: Page) {
+  const offer = page.getByRole('dialog', { name: 'Make a Recovery Key' })
+  await expect(offer).toContainText('a recovery key brings you back')
+  await offer.getByRole('button', { name: 'Later' }).click()
+  await expect(offer).toBeHidden()
+}
+
 async function fresh(context: BrowserContext, url = '/') {
   const page = await context.newPage()
   await page.goto(url)
@@ -27,6 +35,7 @@ test('two people pair by invite link and chat', async ({ browser }) => {
 
   const rookMessenger = await openMessenger(rook)
   await chooseName(rookMessenger, 'Rook')
+  await later(rook)
   await rookMessenger.getByRole('button', { name: 'Add a Friend' }).click()
   const addFriend = rook.getByRole('dialog', { name: 'Add a Friend' })
   await expect(addFriend.locator('[data-invite-code]')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)

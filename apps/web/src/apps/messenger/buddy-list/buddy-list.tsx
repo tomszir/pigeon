@@ -36,6 +36,10 @@ export interface BuddyListProps {
   onMyDevices?: (() => void) | undefined
   onLinkDevice?: (() => void) | undefined
   onJoinDevice?: (() => void) | undefined
+  /** File, Make a Recovery Key, Use My Recovery Key and Recover My Pigeon (decision 0027). */
+  onMakeRecoveryKey?: (() => void) | undefined
+  onUseRecoveryKey?: (() => void) | undefined
+  onRecoverPigeon?: (() => void) | undefined
   /** File, Export My Data and Import My Data (M13). */
   onExportData?: (() => void) | undefined
   onImportData?: (() => void) | undefined
@@ -171,12 +175,37 @@ export function BuddyList(props: BuddyListProps) {
                 label: 'Link a De&vice...',
                 // Only the first device links devices (decision 0024).
                 disabled:
-                  !named() || live()?.isFirstDevice() !== true || props.onLinkDevice === undefined,
+                  !named() ||
+                  live()?.isFirstDevice() !== true ||
+                  live()?.waitingForList() === true ||
+                  props.onLinkDevice === undefined,
                 onSelect: () => props.onLinkDevice?.(),
               },
               // Only a Pigeon with nobody on it yet can become another one.
               ...(live()?.canJoin() === true && props.onJoinDevice !== undefined
                 ? [{ label: 'Link to My &Other Device...', onSelect: () => props.onJoinDevice?.() }]
+                : []),
+              // The recovery key (decision 0027): made once on the first device, used anywhere.
+              ...(live()?.recoveryKey() === undefined &&
+              live()?.isFirstDevice() === true &&
+              live()?.nextEpoch() === 1 &&
+              named() &&
+              props.onMakeRecoveryKey !== undefined
+                ? [
+                    {
+                      label: 'Make a Recovery &Key...',
+                      onSelect: () => props.onMakeRecoveryKey?.(),
+                    },
+                  ]
+                : []),
+              ...(props.onRecoverPigeon !== undefined &&
+              (live()?.canJoin() === true || live()?.waitingForList() === true)
+                ? [{ label: 'Recover My &Pigeon...', onSelect: () => props.onRecoverPigeon?.() }]
+                : []),
+              ...(props.onUseRecoveryKey !== undefined &&
+              live()?.recoveryKey() !== undefined &&
+              live()?.waitingForList() !== true
+                ? [{ label: 'Use My Recovery &Key...', onSelect: () => props.onUseRecoveryKey?.() }]
                 : []),
               { kind: 'separator' },
               {

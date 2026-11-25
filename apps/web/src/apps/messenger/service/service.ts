@@ -27,6 +27,7 @@ import {
   isDeviceLog,
   isPairSecret,
   isPeerId,
+  isTailLog,
   type Json,
   type LinkRequest,
   type LogEntry,
@@ -50,6 +51,7 @@ import {
   pairRoom,
   pairRoomsAt,
   type RoomName,
+  recoverDeviceLog,
   type Signer,
   type Status,
   selfRoomsAt,
@@ -186,6 +188,8 @@ const KEYS = {
   /** Friends you removed who haven't been told yet. */
   farewells: 'farewells',
   settings: 'messengerSettings',
+  /** Set once the balloon reminding you to make a recovery key has been shown (0027). */
+  recoveryReminded: 'recoveryReminded',
   log: (id: PeerId) => `log:${id}`,
 } as const
 
@@ -198,6 +202,9 @@ export const inviteLink = (base: string, code: string, fingerprint: string): str
 export const EXPORT_KIND = 'pigeon-export'
 
 export type ImportResult = 'imported' | 'not-yours' | 'unreadable'
+
+/** Recovering onto this Pigeon: done, or why not (decision 0027). */
+export type RecoverResult = 'recovered' | 'own' | 'linked' | 'has-friends' | 'waiting' | 'refused'
 
 /** Linking a device from this one: the code it shows, and who asked, once someone has. */
 export interface LinkingState {
@@ -496,6 +503,7 @@ export async function createMessenger(deps: MessengerDeps) {
   const deviceOptions = (id: PeerId) => ({
     ...twinOptions,
     accepts: (device: PeerId) => devices.classify(id, device),
+    theirLog: () => devices.friendLog(id),
     authors: () => devices.authors(id),
     deviceLog: devices.own,
     onDeviceLog: async (log: DeviceLog) => {
@@ -536,6 +544,31 @@ export async function createMessenger(deps: MessengerDeps) {
       }
       return pairRoomsAt(crypto, place, clock.now())
     })
+    await syncRooms(session)
+  }
+
+  /**
+   * The log you keep for a friend, loaded from storage if their session never started (one who
+   * removed you, say): only a friend's own earlier log can vouch for their recovery (0027).
+   */
+  async function knownLog(id: PeerId): Promise<DeviceLog | undefined> {
+    if (friend(id) === undefined) return undefined
+    await devices.loadFriend(id)
+    return devices.friendLog(id)
+  }
+
+  /**
+   * After pairing: a new friend's session starts; one you already had, paired again as after
+   * their recovery, moves to the new secret's rooms and takes their new devices.
+   */
+  async function meet(id: PeerId) {
+    const session = sessions.get(id)
+    if (session === undefined) {
+      await startSession(id)
+      return
+    }
+    setState('friends', id, 'devices', devices.friendDeviceCount(id))
+    session.recheck()
     await syncRooms(session)
   }
 
@@ -599,6 +632,7 @@ export async function createMessenger(deps: MessengerDeps) {
       code: hosted.code,
       newSecret,
       speaker: devices.speaker,
+      knownLog,
       onPaired: (paired, secret) => void welcome(paired, secret),
       refuse: isBlocked,
     })
@@ -623,7 +657,7 @@ export async function createMessenger(deps: MessengerDeps) {
     })
     if (paired.devices !== undefined) await devices.takeFriend(paired.id, paired.devices)
     await saveFriends()
-    await startSession(paired.id)
+    await meet(paired.id)
     events.onPaired?.(view)
   }
 
@@ -801,8 +835,9 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   async function startLink(): Promise<LinkingState | undefined> {
-    // Only the first device puts devices on the list (decision 0024).
-    if (profile().handle === '' || !devices.isFirst()) return undefined
+    // Only the first device puts devices on the list (decision 0024), and not while a recovered
+    // one waits for its whole list: a new device couldn't check it (decision 0030).
+    if (profile().handle === '' || !devices.isFirst() || isTailLog(devices.own())) return undefined
     await cancelLink()
     const code = inviteCode(deps.random(INVITE_CODE_BYTES))
     const expiresAt = clock.now() + LINK_LIFETIME_MS
@@ -1011,13 +1046,79 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /**
+   * A Pigeon with nobody on it: no friends, and no devices of its own beyond naming itself (as
+   * committing a recovery key does). It can be linked to another identity, or recovered onto. A
+   * recovered device waiting for its list isn't: wiping it would lose the recovery (0030).
+   */
+  function emptyHere(): boolean {
+    if (friendList().length > 0) return false
+    const log = devices.own()
+    if (self !== signer.id || (log.epochs?.length ?? 0) > 0) return false
+    return log.entries.every((entry) => entry.kind === 'name' && entry.device === signer.id)
+  }
+
+  /** Stops everything: no rooms, no sessions, no link or invite hosting. */
+  async function close() {
+    closed = true
+    await cancelLink()
+    await disconnect()
+    const leaving = selfSession
+    selfSession = undefined
+    if (leaving !== undefined) {
+      forget(leaving)
+      await leaving.close()
+    }
+  }
+
+  /**
+   * Brings an identity back onto this empty Pigeon with its recovery key (decision 0027): this
+   * device writes its list from now on, every other device is removed, and `next` is the key
+   * from now on. Then the Messenger has to start again as that identity, with no friends: they
+   * come back by pairing again, or from an export.
+   */
+  async function recoverIdentity(
+    identity: PeerId,
+    epoch: number,
+    key: Signer,
+    next: PeerId,
+  ): Promise<RecoverResult> {
+    const own = devices.own()
+    if (isTailLog(own)) {
+      // Waiting for the whole list, the tail is the only copy of this recovery: only the same
+      // code again may sign over it, never a later key or another identity (decision 0030).
+      if (identity !== self || epoch !== own.from || friendList().length > 0) return 'waiting'
+    } else {
+      if (identity === self) return 'own'
+      if (!emptyHere()) return friendList().length > 0 ? 'has-friends' : 'linked'
+    }
+    const log = await recoverDeviceLog(
+      identity,
+      undefined,
+      key,
+      {
+        epoch,
+        writer: signer.id,
+        keep: [{ device: signer.id, name: deps.deviceName ?? 'Recovered device' }],
+        next,
+      },
+      clock.now(),
+    )
+    if (log === undefined) return 'refused'
+    await close()
+    await store.set(DEVICE_KEYS.deviceLog, log)
+    await store.set(DEVICE_KEYS.selfSecret, newSecret())
+    // Last: with `self` set, this browser is that identity from its next start.
+    await store.set(DEVICE_KEYS.self, identity)
+    return 'recovered'
+  }
+
+  /**
    * Links this device to the identity whose device showed `target`. Only a device with no
    * friends of its own can be linked, since it takes on the other's. Once confirmed, the
    * Messenger has to be started again to be that identity.
    */
   async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
-    if (self !== signer.id || devices.own().entries.length > 0) return { ok: false, error: 'own' }
-    if (friendList().length > 0) return { ok: false, error: 'has-friends' }
+    if (!emptyHere()) return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'own' }
     if (target.code === linking()?.code) return { ok: false, error: 'own' }
     const result = await openLink({
       crypto,
@@ -1073,8 +1174,9 @@ export async function createMessenger(deps: MessengerDeps) {
     twin,
     devices: devices.devices,
     /** A first device with nobody on it: it can be linked to another identity. */
-    canJoin: () =>
-      self === signer.id && devices.own().entries.length === 0 && friendList().length === 0,
+    canJoin: emptyHere,
+    /** Recovered, and waiting for an old friend to hand back the whole list (decision 0030). */
+    waitingForList: () => isTailLog(devices.own()),
     linking,
     startLink,
     confirmLink,
@@ -1084,6 +1186,38 @@ export async function createMessenger(deps: MessengerDeps) {
     importData,
     /** This is the first device, the only one that links and removes devices. */
     isFirstDevice: devices.isFirst,
+    /** Your recovery key's public half, while you have one (decision 0027). */
+    recoveryKey: devices.recoveryKey,
+    /** The epoch a recover with your current key would start. */
+    nextEpoch: () => devices.epoch() + 1,
+    /** Commits your list to a new recovery key, on the first device while it has none. */
+    async commitRecoveryKey(key: PeerId): Promise<boolean> {
+      if (!(await devices.commitRecoveryKey(key))) return false
+      await ownChanged()
+      return true
+    },
+    /**
+     * Uses your recovery key on this device, which is already you: it writes your list from now
+     * on, the others stay only if `keepOthers`, and `next` is the key from now on.
+     */
+    async recoverHere(key: Signer, keepOthers: boolean, next: PeerId): Promise<boolean> {
+      const here = devices.devices().find((device) => device.here)
+      const keep = devices
+        .devices()
+        .filter((device) => device.here || keepOthers)
+        .map((device) => ({ device: device.id, name: device.name }))
+      if (here === undefined) return false
+      if (!(await devices.recoverHere(key, keep, next))) return false
+      await ownChanged()
+      return true
+    },
+    recoverIdentity,
+    /** True the first time it's asked: whether to remind you to make a recovery key. */
+    async remindRecoveryOnce(): Promise<boolean> {
+      if ((await store.get(KEYS.recoveryReminded)) === true) return false
+      await store.set(KEYS.recoveryReminded, true)
+      return true
+    },
     /** Takes a device off your list, from the first device. */
     async removeDevice(id: PeerId) {
       if (await devices.change('remove', id)) await ownChanged()
@@ -1141,6 +1275,7 @@ export async function createMessenger(deps: MessengerDeps) {
         invite: target,
         until,
         speaker: devices.speaker,
+        knownLog,
         ...(onStep === undefined ? {} : { onStep }),
       })
       if (!result.ok) return result
@@ -1171,7 +1306,7 @@ export async function createMessenger(deps: MessengerDeps) {
             if (offer.friend.devices !== undefined)
               await devices.takeFriend(offer.friend.id, offer.friend.devices)
             await saveFriends()
-            await startSession(offer.friend.id)
+            await meet(offer.friend.id)
             return true
           },
         },
@@ -1248,16 +1383,6 @@ export async function createMessenger(deps: MessengerDeps) {
     goodbye() {
       for (const session of sessions.values()) session.goodbye()
     },
-    async close() {
-      closed = true
-      await cancelLink()
-      await disconnect()
-      const leaving = selfSession
-      selfSession = undefined
-      if (leaving !== undefined) {
-        forget(leaving)
-        await leaving.close()
-      }
-    },
+    close,
   }
 }

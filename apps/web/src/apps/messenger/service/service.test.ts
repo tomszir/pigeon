@@ -763,3 +763,147 @@ describe('export and import (M13)', () => {
     expect(mika.log.entries.map((entry) => entry.text)).toEqual(['one', 'two'])
   })
 })
+
+describe('the recovery key (decision 0027)', () => {
+  type Side = Awaited<ReturnType<typeof messenger>>
+  async function pairAgain(host: Side, guest: Side) {
+    await host.messenger.newInvite()
+    const invite = decodeInvite(host.messenger.inviteLink() ?? '')
+    if (!invite.ok) throw new Error('bad invite')
+    const opened = await guest.messenger.open(invite.value, never)
+    if (!opened.ok) throw new Error(opened.error)
+    expect(await opened.offer.confirm(never)).toBe(true)
+    await flush()
+  }
+
+  it('brings Rook back as Rook with every device lost, and Mika keeps one Rook', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const key = fakeSigner('rook-recovery-1')
+    const next = fakeSigner('rook-recovery-2')
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    expect(await laptop.messenger.commitRecoveryKey(key.id)).toBe(true)
+    expect(laptop.messenger.recoveryKey()).toBe(key.id)
+    // With an entry, so a friend on a Pigeon from before keeps the whole log, key and all.
+    expect((await laptop.store.get('deviceLog')) as { entries: unknown[] }).toMatchObject({
+      entries: [{ kind: 'name', device: laptop.messenger.device }],
+    })
+    // Only once: a thief with the laptop can't swap in a key of their own.
+    expect(await laptop.messenger.commitRecoveryKey(next.id)).toBe(false)
+    const mikaId = only(laptop.messenger.friends()).id
+    await laptop.messenger.send(mikaId, 'before the loss')
+    await flush()
+    const rook = laptop.messenger.self
+
+    // The laptop is lost. A new browser, nobody on it, takes the key.
+    const fresh = await messenger(network, 'rook-new', { clock })
+    expect(
+      await fresh.messenger.recoverIdentity(rook, laptop.messenger.nextEpoch(), key, next.id),
+    ).toBe('recovered')
+    const back = await messenger(network, 'rook-new', { clock, store: fresh.store })
+    expect(back.messenger.self).toBe(rook)
+    expect(back.messenger.isFirstDevice()).toBe(true)
+    // Until an old friend hands back the whole list, no device can be linked from here.
+    expect(back.messenger.waitingForList()).toBe(true)
+    expect(await back.messenger.startLink()).toBeUndefined()
+    // Nor can the waiting tail be wiped: not by the next key, nor by linking or another identity.
+    expect(back.messenger.canJoin()).toBe(false)
+    expect(await back.messenger.recoverIdentity(rook, 2, next, fakeSigner('k3').id)).toBe('waiting')
+    expect(await back.messenger.recoverIdentity(fakeSigner('someone').id, 1, key, next.id)).toBe(
+      'waiting',
+    )
+    await back.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+
+    // Pairing with Mika again: she knows him, and it's the same chat.
+    await pairAgain(back, mika)
+    const seen = only(mika.messenger.friends())
+    expect(seen.id).toBe(rook)
+    expect(seen.log.entries.map((entry) => entry.text)).toEqual(['before the loss'])
+    expect(seen.devices).toBe(1)
+    // Mika handed Rook his whole log back, so the recovered device knows its history.
+    expect(back.messenger.waitingForList()).toBe(false)
+    expect(back.messenger.recoveryKey()).toBe(next.id)
+    await back.messenger.send(only(back.messenger.friends()).id, 'it’s me again')
+    await flush()
+    expect(only(mika.messenger.friends()).log.entries.map((entry) => entry.text)).toEqual([
+      'before the loss',
+      'it’s me again',
+    ])
+    // The recovered device caught up on the chat from before, as Rook's own.
+    const onBack = only(back.messenger.friends())
+    expect(onBack.log.entries.map((entry) => entry.text)).toEqual([
+      'before the loss',
+      'it’s me again',
+    ])
+    expect(back.messenger.isMine(onBack.log.entries[0]?.author ?? '')).toBe(true)
+    // The lost laptop, should a thief open it, is nobody to Mika any more.
+    await laptop.messenger.send(mikaId, 'it is I, the thief')
+    await flush()
+    expect(only(mika.messenger.friends()).log.entries).toHaveLength(2)
+  })
+
+  async function lostAndRecovered() {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const key = fakeSigner('rook-recovery-1')
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    await laptop.messenger.commitRecoveryKey(key.id)
+    await flush()
+    const fresh = await messenger(network, 'rook-new', { clock })
+    await fresh.messenger.recoverIdentity(laptop.messenger.self, 1, key, fakeSigner('k2').id)
+    const back = await messenger(network, 'rook-new', { clock, store: fresh.store })
+    await back.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    return { network, clock, laptop, mika, back }
+  }
+
+  it('leaves the lost laptop unable to pair its way back to Mika', async () => {
+    const { laptop, mika, back } = await lostAndRecovered()
+    await pairAgain(back, mika)
+    const secret = only(mika.messenger.friends()).secret
+    // The thief, with the laptop, sends Mika a new invite: Mika's Pigeon refuses whoever answers.
+    await laptop.messenger.newInvite()
+    const invite = decodeInvite(laptop.messenger.inviteLink() ?? '')
+    if (!invite.ok) throw new Error('bad invite')
+    const opened = await mika.messenger.open(invite.value, flush(400))
+    expect(opened.ok).toBe(false)
+    expect(only(mika.messenger.friends()).secret).toBe(secret)
+  })
+
+  it('pairs again with a friend who had been removed by the lost device', async () => {
+    const { laptop, mika, back } = await lostAndRecovered()
+    await laptop.messenger.remove(only(laptop.messenger.friends()).id, { block: false })
+    await flush()
+    expect(only(mika.messenger.friends()).removedYouAt).toBeTypeOf('number')
+    await pairAgain(back, mika)
+    expect(only(mika.messenger.friends()).removedYouAt).toBeUndefined()
+    expect(only(mika.messenger.friends()).devices).toBe(1)
+  })
+
+  it('leaves a newly named Pigeon that made a key free to link or recover instead', async () => {
+    const network = createMemoryNetwork()
+    const fresh = await messenger(network, 'new-browser')
+    await fresh.messenger.setProfile({ handle: 'Toms', status: 'online', message: '' })
+    expect(await fresh.messenger.commitRecoveryKey(fakeSigner('its-key').id)).toBe(true)
+    expect(fresh.messenger.canJoin()).toBe(true)
+  })
+
+  it('is refused by a stranger, who never knew the identity it claims', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const thiefKey = fakeSigner('not-rooks-key')
+    const { a: laptop } = await pair(network, {}, 'link', clock)
+    const stranger = await messenger(network, 'kai', { clock })
+    await stranger.messenger.setProfile({ handle: 'Kai', status: 'online', message: '' })
+    const fake = await messenger(network, 'fake-rook', { clock })
+    expect(
+      await fake.messenger.recoverIdentity(laptop.messenger.self, 1, thiefKey, thiefKey.id),
+    ).toBe('recovered')
+    const posing = await messenger(network, 'fake-rook', { clock, store: fake.store })
+    await posing.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await posing.messenger.newInvite()
+    const invite = decodeInvite(posing.messenger.inviteLink() ?? '')
+    if (!invite.ok) throw new Error('bad invite')
+    const opened = await stranger.messenger.open(invite.value, flush(400))
+    expect(opened.ok).toBe(false)
+  })
+})

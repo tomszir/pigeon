@@ -93,6 +93,12 @@ export interface PairSessionOptions {
   readonly deviceLog?: (() => DeviceLog | undefined) | undefined
   /** A device log arrived; resolves once it's been taken in, before anything after it is read. */
   readonly onDeviceLog?: ((log: DeviceLog) => Promise<void>) | undefined
+  /**
+   * The friend's own device log as you keep it. Sent back to them when it holds a recovery, so a
+   * device brought back by its recovery key gets its whole log from the first friend it meets
+   * (decision 0027).
+   */
+  readonly theirLog?: (() => DeviceLog | undefined) | undefined
   /** This run's id, said in every hello (decision 0028). */
   readonly instance?: string | undefined
   /** A hello signed with this device's own key came from another run: a copied profile. */
@@ -186,13 +192,20 @@ export function startPairSession(options: PairSessionOptions): PairSession {
 
   const devicesBody = (): Body | undefined => {
     const devices = options.deviceLog?.()
-    return devices === undefined || devices.entries.length === 0
-      ? undefined
-      : { type: 'device-log', log: devices }
+    // A log with nothing in it says nothing a friend doesn't know.
+    const empty =
+      devices === undefined ||
+      (devices.entries.length === 0 &&
+        devices.recovery === undefined &&
+        (devices.epochs?.length ?? 0) === 0)
+    return empty || devices === undefined ? undefined : { type: 'device-log', log: devices }
   }
   const greet = (to: Link) => {
     const devices = devicesBody()
     if (devices !== undefined) sendTo(to, devices)
+    const theirs = options.theirLog?.()
+    if (theirs !== undefined && (theirs.epochs?.length ?? 0) > 0)
+      sendTo(to, { type: 'device-log', log: theirs })
     sendTo(to, hello())
     sendTo(to, { type: 'presence', ...options.presence() })
     sendTo(to, { type: 'log-sync', have: summarize(log) })

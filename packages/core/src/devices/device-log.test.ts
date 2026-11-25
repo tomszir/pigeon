@@ -9,8 +9,11 @@ import {
   everDevices,
   MAX_DEVICE_ENTRIES,
   mergeDeviceLogs,
+  recoverDeviceLog,
+  setRecoveryKey,
   speakerIdentity,
   verifyDeviceLog,
+  verifyOwnTail,
 } from './device-log.ts'
 
 const laptop = fakeSigner('toms-laptop')
@@ -120,5 +123,316 @@ describe('device logs', () => {
     expect(await speakerIdentity(fakeCrypto, phone.id, claim)).toBe(laptop.id)
     expect(await speakerIdentity(fakeCrypto, thief.id, claim)).toBe(undefined)
     expect(await speakerIdentity(fakeCrypto, laptop.id, {})).toBe(laptop.id)
+  })
+})
+
+describe('a recovery key (decision 0027)', () => {
+  const key = fakeSigner('recovery-key-1')
+  const nextKey = fakeSigner('recovery-key-2')
+  const newPhone = fakeSigner('toms-new-phone')
+
+  async function withKey() {
+    const log = await setRecoveryKey(
+      await append(start(), 'add', phone.id, 'Phone'),
+      laptop,
+      key.id,
+      1,
+    )
+    if (log === undefined) throw new Error('no key')
+    return log
+  }
+  async function recoverOnto(writer: string, known?: DeviceLog, signer = key, at = 10) {
+    const log = await recoverDeviceLog(
+      laptop.id,
+      known,
+      signer,
+      { epoch: 1, writer, keep: [{ device: writer, name: 'New phone' }], next: nextKey.id },
+      at,
+    )
+    if (log === undefined) throw new Error('no recover')
+    return log
+  }
+
+  it('is committed once, by the first device, and verifies', async () => {
+    const log = await withKey()
+    expect(await verifyDeviceLog(fakeCrypto, log)).toBe(true)
+    expect(deviceState(log).recoveryKey).toBe(key.id)
+    expect(await setRecoveryKey(log, laptop, thief.id, 2)).toBeUndefined()
+    const other = await append(start(), 'add', phone.id, 'Phone')
+    expect(await setRecoveryKey(other, phone, thief.id, 2)).toBeUndefined()
+  })
+
+  it('brings you back with every device gone: a friend completes the tail', async () => {
+    const known = await withKey()
+    const tail = await recoverOnto(newPhone.id)
+    expect(await verifyDeviceLog(fakeCrypto, tail)).toBe(false)
+    expect(await verifyOwnTail(fakeCrypto, tail)).toBe(true)
+    // Mika has the old log; the tail follows on from it.
+    const merged = await mergeDeviceLogs(fakeCrypto, known, tail)
+    expect(await verifyDeviceLog(fakeCrypto, merged)).toBe(true)
+    const state = deviceState(merged)
+    expect(ids(state.active)).toEqual([newPhone.id])
+    expect(state.writer).toBe(newPhone.id)
+    expect(state.recoveryKey).toBe(nextKey.id)
+    expect(state.removedAt.get(laptop.id)).toBe(10)
+    expect(everDevices(merged).has(phone.id)).toBe(true)
+    // And the recovered phone takes the whole log back.
+    expect(await mergeDeviceLogs(fakeCrypto, tail, merged)).toBe(merged)
+    expect(
+      await speakerIdentity(fakeCrypto, newPhone.id, { identity: laptop.id, devices: tail }, known),
+    ).toBe(laptop.id)
+    expect(
+      await speakerIdentity(fakeCrypto, newPhone.id, { identity: laptop.id, devices: tail }),
+    ).toBeUndefined()
+  })
+
+  it('outranks the first device: a thief with the laptop changes nothing that counts', async () => {
+    const known = await withKey()
+    const recovered = await mergeDeviceLogs(fakeCrypto, known, await recoverOnto(newPhone.id))
+    const stolen = await append(known, 'add', thief.id, 'Mine', 20)
+    const merged = await mergeDeviceLogs(fakeCrypto, recovered, stolen)
+    expect(ids(deviceState(merged).active)).toEqual([newPhone.id])
+    expect((await mergeDeviceLogs(fakeCrypto, stolen, recovered)).epochs).toHaveLength(1)
+    // The laptop can't write any more, nor can it set a key of its own.
+    expect(
+      (
+        await appendDeviceEntry(
+          fakeCrypto,
+          merged,
+          laptop,
+          { kind: 'add', device: thief.id, name: 'X' },
+          21,
+        )
+      ).ok,
+    ).toBe(false)
+    expect(await setRecoveryKey(merged, laptop, thief.id, 21)).toBeUndefined()
+  })
+
+  it('is refused when signed by any other key', async () => {
+    const known = await withKey()
+    const forged = await recoverOnto(thief.id, undefined, thief)
+    expect(await mergeDeviceLogs(fakeCrypto, known, forged)).toBe(known)
+    expect(
+      await speakerIdentity(fakeCrypto, thief.id, { identity: laptop.id, devices: forged }, known),
+    ).toBeUndefined()
+  })
+
+  it('settles two recoveries of one epoch the same way everywhere', async () => {
+    const known = await withKey()
+    const a = await mergeDeviceLogs(fakeCrypto, known, await recoverOnto(newPhone.id))
+    const b = await mergeDeviceLogs(
+      fakeCrypto,
+      known,
+      await recoverOnto(tablet.id, undefined, key, 11),
+    )
+    const ab = await mergeDeviceLogs(fakeCrypto, a, b)
+    const ba = await mergeDeviceLogs(fakeCrypto, b, a)
+    expect(deviceState(ab).writer).toBe(deviceState(ba).writer)
+  })
+
+  it('can’t be broken by a stolen first device writing to the epoch it lost', async () => {
+    const known = await withKey()
+    // Handed to the phone, which the recover keeps.
+    const handed = await recoverDeviceLog(
+      laptop.id,
+      known,
+      key,
+      { epoch: 1, writer: phone.id, keep: [{ device: phone.id, name: 'Phone' }], next: nextKey.id },
+      10,
+    )
+    if (handed === undefined) throw new Error('no handover')
+    // The thief, with the laptop, removes the phone in epoch 0, after the recovery.
+    const stolen = await append(known, 'remove', phone.id, undefined, 20)
+    for (const [first, second] of [
+      [stolen, handed],
+      [handed, stolen],
+    ] as const) {
+      const merged = await mergeDeviceLogs(fakeCrypto, first, second)
+      expect(await verifyDeviceLog(fakeCrypto, merged)).toBe(true)
+      expect(ids(deviceState(merged).active)).toEqual([phone.id])
+      expect(deviceState(merged).writer).toBe(phone.id)
+    }
+  })
+
+  it('leaves a recovered-away first device speaking for nobody', async () => {
+    const known = await mergeDeviceLogs(fakeCrypto, await withKey(), await recoverOnto(newPhone.id))
+    expect(await speakerIdentity(fakeCrypto, laptop.id, {}, known)).toBeUndefined()
+    // Nor can it pass off the old copy from before the recovery.
+    const old = await withKey()
+    expect(
+      await speakerIdentity(fakeCrypto, phone.id, { identity: laptop.id, devices: old }, known),
+    ).toBeUndefined()
+  })
+
+  it('keeps a recovered device from taking a whole log that isn’t from its key', async () => {
+    const tail = await recoverOnto(newPhone.id)
+    // The thief has the laptop's key, so can make a whole log of its own, with its own key.
+    const forgedKey = await setRecoveryKey(start(), laptop, thief.id, 1)
+    if (forgedKey === undefined) throw new Error('no key')
+    const forged = await recoverDeviceLog(
+      laptop.id,
+      forgedKey,
+      thief,
+      { epoch: 1, writer: thief.id, keep: [{ device: thief.id, name: 'Mine' }], next: thief.id },
+      5,
+    )
+    if (forged === undefined) throw new Error('no forgery')
+    expect(await verifyDeviceLog(fakeCrypto, forged)).toBe(true)
+    expect(await mergeDeviceLogs(fakeCrypto, tail, forged)).toBe(tail)
+    // The real one, through its key, it takes.
+    const real = await mergeDeviceLogs(fakeCrypto, await withKey(), tail)
+    expect(await mergeDeviceLogs(fakeCrypto, tail, real)).toBe(real)
+  })
+
+  it('stays inside its limit across epochs, cutting only history', async () => {
+    let log = await withKey()
+    for (let index = 0; index < 90; index += 1)
+      log = await append(log, 'name', phone.id, `Phone ${index}`)
+    const recovered = await mergeDeviceLogs(fakeCrypto, log, await recoverOnto(newPhone.id))
+    let grown = recovered
+    for (let index = 0; index < 30; index += 1) {
+      const result = await appendDeviceEntry(
+        fakeCrypto,
+        grown,
+        newPhone,
+        { kind: 'name', device: newPhone.id, name: `New ${index}` },
+        20 + index,
+      )
+      if (!result.ok) throw new Error(result.error)
+      grown = result.log
+    }
+    expect(grown.entries.length + (grown.epochs?.[0]?.entries.length ?? 0)).toBe(MAX_DEVICE_ENTRIES)
+    expect(grown.epochs?.[0]?.entries).toHaveLength(30)
+    expect(await verifyDeviceLog(fakeCrypto, grown)).toBe(true)
+  })
+
+  it('hands the writer’s role to a device you hold, keeping the others', async () => {
+    const known = await withKey()
+    const handed = await recoverDeviceLog(
+      laptop.id,
+      known,
+      key,
+      {
+        epoch: 1,
+        writer: phone.id,
+        keep: [
+          { device: phone.id, name: 'Phone' },
+          { device: laptop.id, name: 'Laptop' },
+        ],
+        next: nextKey.id,
+      },
+      5,
+    )
+    if (handed === undefined) throw new Error('no handover')
+    expect(await verifyDeviceLog(fakeCrypto, handed)).toBe(true)
+    expect(ids(deviceState(handed).active)).toEqual([laptop.id, phone.id].sort())
+    // The phone writes now, the laptop doesn't.
+    const added = await appendDeviceEntry(
+      fakeCrypto,
+      handed,
+      phone,
+      { kind: 'add', device: tablet.id, name: 'Tablet' },
+      6,
+    )
+    expect(added.ok).toBe(true)
+    if (added.ok) expect(await verifyDeviceLog(fakeCrypto, added.log)).toBe(true)
+    expect(
+      (
+        await appendDeviceEntry(
+          fakeCrypto,
+          handed,
+          laptop,
+          { kind: 'add', device: tablet.id, name: 'T' },
+          6,
+        )
+      ).ok,
+    ).toBe(false)
+    // An old key can't start the next epoch, only the one named last.
+    expect(
+      await recoverDeviceLog(
+        laptop.id,
+        handed,
+        key,
+        { epoch: 2, writer: laptop.id, keep: [{ device: laptop.id, name: 'L' }], next: key.id },
+        7,
+      ),
+    ).toBeUndefined()
+  })
+})
+
+describe('a replaced recovery key (decision 0031)', () => {
+  const k1 = fakeSigner('k1')
+  const k2 = fakeSigner('k2')
+  const k3 = fakeSigner('k3')
+  const finder = fakeSigner('finder')
+  const finderNext = fakeSigner('finder-next')
+
+  it('can’t start its epoch again once a later one is known, however its signature sorts', async () => {
+    const base = await setRecoveryKey(emptyDeviceLog(laptop.id), laptop, k1.id, 1)
+    if (base === undefined) throw new Error('no key')
+    const keep = [{ device: phone.id, name: 'Phone' }]
+    const e1 = await recoverDeviceLog(
+      laptop.id,
+      base,
+      k1,
+      { epoch: 1, writer: phone.id, keep, next: k2.id },
+      10,
+    )
+    if (e1 === undefined) throw new Error('no e1')
+    const e2 = await recoverDeviceLog(
+      laptop.id,
+      e1,
+      k2,
+      { epoch: 2, writer: phone.id, keep, next: k3.id },
+      20,
+    )
+    if (e2 === undefined) throw new Error('no e2')
+    const ownerSig = e2.epochs?.[0]?.recover.sig ?? ''
+    // Whoever found the old K1 paper tries until their epoch-1 recover signs lower.
+    for (let at = 100; at < 140; at += 1) {
+      const forged = await recoverDeviceLog(
+        laptop.id,
+        undefined,
+        k1,
+        {
+          epoch: 1,
+          writer: finder.id,
+          keep: [{ device: finder.id, name: 'Mine' }],
+          next: finderNext.id,
+        },
+        at,
+      )
+      if (forged === undefined) throw new Error('no forgery')
+      const whole = await recoverDeviceLog(
+        laptop.id,
+        base,
+        k1,
+        {
+          epoch: 1,
+          writer: finder.id,
+          keep: [{ device: finder.id, name: 'Mine' }],
+          next: finderNext.id,
+        },
+        at,
+      )
+      if (whole === undefined) throw new Error('no forgery')
+      if ((forged.epochs?.[0]?.recover.sig ?? '') > ownerSig) continue
+      for (const attempt of [forged, whole]) {
+        expect(await mergeDeviceLogs(fakeCrypto, e2, attempt)).toBe(e2)
+        expect(
+          await speakerIdentity(
+            fakeCrypto,
+            finder.id,
+            { identity: laptop.id, devices: attempt },
+            e2,
+          ),
+        ).toBeUndefined()
+      }
+      expect(
+        await speakerIdentity(fakeCrypto, phone.id, { identity: laptop.id, devices: e2 }, e2),
+      ).toBe(laptop.id)
+      return
+    }
+    throw new Error('no lower signature found')
   })
 })

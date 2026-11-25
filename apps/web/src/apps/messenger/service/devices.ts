@@ -11,14 +11,20 @@ import {
   deviceState,
   emptyDeviceLog,
   everDevices,
+  FIRST_DEVICE_NAME,
   fingerprint,
   formatFingerprint,
   isDeviceLog,
+  isTailLog,
+  type KeptDevice,
   type LogEntry,
   mergeDeviceLogs,
   type PeerId,
+  recoverDeviceLog,
   type Signer,
+  setRecoveryKey,
   verifyDeviceLog,
+  verifyOwnTail,
 } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import type { Clock } from '../../../platform/clock/clock.ts'
@@ -38,8 +44,10 @@ export type DeviceStatus = 'active' | 'removed'
 
 export interface DeviceView extends DeviceInfo {
   readonly here: boolean
-  /** The first device: the identity's own key, and the one that manages the list. */
+  /** The first device: the identity's own key, where this Pigeon began. */
   readonly first: boolean
+  /** The device that writes your list: the first device, or the one a recovery made it. */
+  readonly writer: boolean
   /** The device's own key, as "3f9a 21c0", to tell devices apart; "" until it's worked out. */
   readonly fingerprint: string
 }
@@ -59,10 +67,12 @@ export async function loadDevices(deps: DevicesDeps) {
   const storedSelf = await store.get(DEVICE_KEYS.self)
   const self: PeerId = typeof storedSelf === 'string' ? storedSelf : signer.id
   const storedLog = await store.get(DEVICE_KEYS.deviceLog)
+  // A device brought back by its recovery key holds a tail until a friend sends the whole log;
+  // it's checked from the key the tail names, which this device signed with (decision 0027).
+  const holds = (log: DeviceLog) =>
+    isTailLog(log) ? verifyOwnTail(crypto, log) : verifyDeviceLog(crypto, log)
   const own0 =
-    isDeviceLog(storedLog) &&
-    storedLog.identity === self &&
-    (await verifyDeviceLog(crypto, storedLog))
+    isDeviceLog(storedLog) && storedLog.identity === self && (await holds(storedLog))
       ? storedLog
       : emptyDeviceLog(self)
   const [own, setOwnSignal] = createSignal<DeviceLog>(own0)
@@ -105,8 +115,51 @@ export async function loadDevices(deps: DevicesDeps) {
     device: signer.id,
     own,
     status,
-    /** This is the first device, which alone links and removes devices. */
-    isFirst: () => signer.id === self,
+    /**
+     * This device writes your list, the only one that links and removes devices: the first
+     * device, or the one your recovery key made the writer (decision 0027).
+     */
+    isFirst: () => ownState().writer === signer.id,
+    /** The recovery key that can start the next epoch, if you've made one. */
+    recoveryKey: () => ownState().recoveryKey,
+    /** The epoch your list is in: 0 until a recovery. */
+    epoch: () => ownState().epoch,
+    /** Commits your list to a recovery key's public half. Only the first device, once. */
+    async commitRecoveryKey(key: PeerId): Promise<boolean> {
+      const committed = await setRecoveryKey(own(), signer, key, clock.now())
+      if (committed === undefined) return false
+      // A Pigeon from before recovery keys takes a log only when it has more entries, and then
+      // keeps it whole: renaming this device to its own name gives it one, so friends who haven't
+      // updated still keep the commitment for when they do (decision 0030).
+      const name = ownState().active.get(signer.id)?.name ?? FIRST_DEVICE_NAME
+      const named = await appendDeviceEntry(
+        crypto,
+        committed,
+        signer,
+        { kind: 'name', device: signer.id, name },
+        clock.now(),
+      )
+      await setOwn(named.ok ? named.log : committed)
+      return true
+    },
+    /**
+     * Signs a recover with the recovery key onto this device, which already speaks for you,
+     * keeping `keep` (decision 0027). False when the key isn't your current one.
+     */
+    async recoverHere(key: Signer, keep: readonly KeptDevice[], next: PeerId): Promise<boolean> {
+      const state = ownState()
+      if (isTailLog(own()) || state.recoveryKey !== key.id) return false
+      const log = await recoverDeviceLog(
+        self,
+        own(),
+        key,
+        { epoch: state.epoch + 1, writer: signer.id, keep, next },
+        clock.now(),
+      )
+      if (log === undefined) return false
+      await setOwn(log)
+      return true
+    },
     selfSecret: () => selfSecret,
     async setSelfSecret(secret: string) {
       selfSecret = secret
@@ -123,6 +176,7 @@ export async function loadDevices(deps: DevicesDeps) {
         ...info,
         here: info.id === signer.id,
         first: info.id === self,
+        writer: info.id === ownState().writer,
         fingerprint: printOf(info.id),
       }))
     },

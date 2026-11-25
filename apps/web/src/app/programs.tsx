@@ -1,7 +1,13 @@
 // What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
 // shell draws it and the apps fill the windows.
-import { formatFingerprint, type Invite, type PeerId } from '@pigeon/core'
-import { type Accessor, createEffect, createSignal, Show } from 'solid-js'
+import {
+  decodeRecoveryCode,
+  encodeRecoveryCode,
+  formatFingerprint,
+  type Invite,
+  type PeerId,
+} from '@pigeon/core'
+import { type Accessor, createEffect, createSignal, on, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
@@ -14,6 +20,11 @@ import {
   RenameFriend,
 } from '../apps/messenger/friend-dialogs/friend-dialogs.tsx'
 import { LiveConversation } from '../apps/messenger/live-conversation/live-conversation.tsx'
+import {
+  MakeRecoveryKey,
+  type RecoveryKit,
+  UseRecoveryKey,
+} from '../apps/messenger/recovery/recovery.tsx'
 import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample.ts'
 import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
@@ -27,7 +38,9 @@ import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
 import { HOME_SCREEN_TEXT } from '../apps/reader/home-screen/home-screen-text.ts'
 import { Reader } from '../apps/reader/reader/reader.tsx'
 import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
+import { createBrowserCrypto } from '../platform/crypto/browser-crypto.ts'
 import { openWithPassphrase, sealWithPassphrase } from '../platform/crypto/passphrase.ts'
+import { generateRecoveryKey, recoverySigner } from '../platform/crypto/recovery-key.ts'
 import { browserFiles } from '../platform/files/browser-files.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
@@ -330,6 +343,92 @@ export function createPrograms(
     })
   }
 
+  // The recovery key (decision 0027).
+  const recoveryCrypto = createBrowserCrypto()
+  const recoveryKit: RecoveryKit = {
+    generate: () => generateRecoveryKey(),
+    signer: (seed) => recoverySigner(seed),
+    encode: (code) => encodeRecoveryCode(recoveryCrypto, code),
+    decode: (text) => decodeRecoveryCode(recoveryCrypto, text),
+    files: browserFiles,
+    seal: passphraseSeal,
+  }
+  const keyIcon = tangoIcon('preferences-system', 16)
+  const openMakeRecoveryKey = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('make-recovery-key', {
+      title: 'Make a Recovery Key',
+      icon: keyIcon,
+      bounds: { x: 272, y: 100, width: 480, height: 420 },
+      controls: { maximize: false },
+      content: (window) => (
+        <MakeRecoveryKey messenger={messenger} kit={recoveryKit} onClose={window.close} />
+      ),
+    })
+  }
+  const openUseRecoveryKey = (mode: 'recover' | 'use') => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('use-recovery-key', {
+      title: mode === 'recover' ? 'Recover My Pigeon' : 'Use My Recovery Key',
+      icon: keyIcon,
+      bounds: { x: 282, y: 110, width: 480, height: 440 },
+      controls: { maximize: false },
+      content: (window) => (
+        <UseRecoveryKey
+          messenger={messenger}
+          kit={recoveryKit}
+          mode={mode}
+          onRecovered={host.restart}
+          onClose={window.close}
+        />
+      ),
+    })
+  }
+  // Right after a new Pigeon gets its name, the key is offered once; "Later" is fine, and a
+  // balloon on a later visit reminds you, once (decision 0027).
+  createEffect(
+    on(
+      () => {
+        const running = host.messenger()
+        return running === undefined ? undefined : ([running, running.profile().handle] as const)
+      },
+      (now, before) => {
+        if (now === undefined) return
+        const [running, handle] = now
+        const offerable =
+          handle !== '' &&
+          running.recoveryKey() === undefined &&
+          running.isFirstDevice() &&
+          running.nextEpoch() === 1
+        if (!offerable) return
+        if (before !== undefined && before[0] === running && before[1] === '') {
+          // Named while answering an invite: a balloon, so pairing isn't covered up.
+          if (!api.isOpen('add-friend')) openMakeRecoveryKey()
+          else
+            api.notify({
+              title: 'Make a recovery key',
+              icon: tangoIcon('dialog-information', 16),
+              body: 'If you lose every device, a recovery key brings your Pigeon back. Make one now?',
+              onClick: openMakeRecoveryKey,
+            })
+          return
+        }
+        if (before === undefined)
+          void running.remindRecoveryOnce().then((remind) => {
+            if (!remind) return
+            api.notify({
+              title: 'Make a recovery key',
+              icon: tangoIcon('dialog-information', 16),
+              body: 'If you lose every device, a recovery key brings your Pigeon back. Make one now?',
+              onClick: openMakeRecoveryKey,
+            })
+          })
+      },
+    ),
+  )
+
   const copyInvite = async () => {
     const messenger = host.messenger()
     if (messenger === undefined) return
@@ -564,6 +663,9 @@ export function createPrograms(
           onMyDevices={openMyDevices}
           onLinkDevice={openLinkDevice}
           onJoinDevice={() => openJoinDevice()}
+          onMakeRecoveryKey={openMakeRecoveryKey}
+          onUseRecoveryKey={() => openUseRecoveryKey('use')}
+          onRecoverPigeon={() => openUseRecoveryKey('recover')}
           onExportData={openExportData}
           onImportData={openImportData}
           onRelayOnly={(on) => void setRelayOnly(on)}

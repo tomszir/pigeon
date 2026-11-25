@@ -23,6 +23,11 @@ test('a second device is the same Rook, and its messages reach the first', async
   const laptopMessenger = await openMessenger(laptop)
   await laptopMessenger.getByRole('textbox', { name: 'Your name:' }).fill('Rook')
   await laptopMessenger.getByRole('button', { name: 'OK' }).click()
+  // The recovery key is offered once a new Pigeon has its name (decision 0030): later.
+  await laptop
+    .getByRole('dialog', { name: 'Make a Recovery Key' })
+    .getByRole('button', { name: 'Later' })
+    .click()
 
   // Mika and Rook become friends first, so the phone gets Mika when it's linked.
   await laptopMessenger.getByRole('button', { name: 'Add a Friend' }).click()
