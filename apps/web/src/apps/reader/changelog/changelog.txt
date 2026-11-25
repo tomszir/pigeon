@@ -4,6 +4,17 @@
      `---'       version, newest first
 ==============================================
 
+0.7.0, 25 November 2026
+----------------------------------------------
+  * Cover the whole screen while Pigeon is in
+    another tab.
+  * Leave a Pigeon with friends to link it to
+    another.
+  * Show a friend's new name while they're
+    online.
+  * Keep your name in step on all your
+    devices.
+
 0.6.0, 25 November 2026
 ----------------------------------------------
   * Tell your devices apart by fingerprint in
