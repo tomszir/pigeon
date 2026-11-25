@@ -19,8 +19,51 @@ export const sampleBlob = (
   ...extra,
 })
 
-export function describeMailStore(name: string, make: () => Promise<MailStore> | MailStore) {
+/**
+ * The contract, for the store `make` gives. A store that keeps mail across restarts passes
+ * `reopen`, which closes the store it's given and opens its database again as a new store.
+ */
+export function describeMailStore(
+  name: string,
+  make: () => Promise<MailStore> | MailStore,
+  reopen?: (store: MailStore) => Promise<MailStore> | MailStore,
+) {
   describe(`${name} (MailStore)`, () => {
+    it('keeps its total right through puts, replacements, drops and expiry', async () => {
+      const store = await make()
+      expect(await store.totalBytes()).toBe(0)
+      await store.put(sampleBlob(1, { cost: 10, expires: 50 }), 0)
+      await store.put(sampleBlob(2, { cost: 20, drops: [key(202)] }), 0)
+      await store.put(sampleBlob(3, { cost: 40 }), 0)
+      // Held already: nothing more is counted.
+      expect(await store.put(sampleBlob(3, { cost: 40 }), 0)).toBe('exists')
+      expect(await store.totalBytes()).toBe(70)
+      // An expired blob put again replaces the old one's cost with its own.
+      await store.put(sampleBlob(1, { cost: 15, expires: 500 }), 60)
+      expect(await store.totalBytes()).toBe(75)
+      await store.useDrop(key(2), key(202), 60)
+      expect(await store.totalBytes()).toBe(55)
+      // A drop that leaves copies to fetch keeps the blob, and its cost.
+      await store.useDrop(key(3), sampleBlob(3).drops[0] ?? '', 60)
+      expect(await store.totalBytes()).toBe(55)
+      expect(await store.expire(1000)).toBe(2)
+      expect(await store.totalBytes()).toBe(0)
+    })
+
+    if (reopen !== undefined)
+      it('still knows its total after a restart', async () => {
+        const store = await make()
+        await store.put(sampleBlob(1, { cost: 10 }), 0)
+        await store.put(sampleBlob(2, { cost: 20, drops: [key(202)] }), 0)
+        await store.useDrop(key(2), key(202), 0)
+        const again = await reopen(store)
+        expect(await again.totalBytes()).toBe(10)
+        await again.put(sampleBlob(3, { cost: 5 }), 0)
+        expect(await again.totalBytes()).toBe(15)
+        expect(await again.expire(1000)).toBe(2)
+        expect(await (await reopen(again)).totalBytes()).toBe(0)
+      })
+
     it('stores a blob once, and lists it under its tag in the order it came', async () => {
       const store = await make()
       expect(await store.put(sampleBlob(1), 0)).toBe('stored')

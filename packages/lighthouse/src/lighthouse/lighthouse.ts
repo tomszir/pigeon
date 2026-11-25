@@ -47,8 +47,12 @@ export interface LighthouseOptions {
 }
 
 export interface LighthouseConnection {
-  /** One request frame in, one signed reply frame out. */
-  receive(frame: string): Promise<string>
+  /**
+   * One request frame in, one signed reply frame out; or undefined once the client's address
+   * range has sent more frames than its limit allows, when the runner closes the connection
+   * unanswered.
+   */
+  receive(frame: string): Promise<string | undefined>
   /**
    * What the connection must remember to carry on: whether it said hello, and its nonce. A
    * runner whose sockets sleep (the Worker's hibernating WebSockets) keeps it with the socket
@@ -100,14 +104,25 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     if (request.expires <= at || request.expires > at + MAX_MAIL_MS) return error('malformed')
     const bytes = base64Decode(request.blob)
     if (!bytes.ok) return error('malformed')
-    const id = await mailBlobId(crypto, request.tag, request.blob, request.drops)
-    // A sender's retry finds it held: the same id, and the expiry it was first put with.
-    const held = await store.get(id, at)
-    if (held !== undefined) return { type: 'stored', id, expires: held.expires }
     const size = bytes.value.length
     const cost = blobCost(size, request.drops.length)
-    if ((await store.totalBytes()) + cost > limits.maxBytes) return error('full')
+    // The limits come first, so a refused put costs no hash and nothing from the store. That
+    // means a sender's retry of mail already held is refused too while its range is over a
+    // limit; it tries again later, as it would after any refusal.
     if (!counter.allowPut(range, request.tag, cost, at)) return error('limit')
+    const refund = () => counter.refundPut(range, request.tag, cost, at)
+    if ((await store.totalBytes()) + cost > limits.maxBytes) {
+      refund()
+      return error('full')
+    }
+    const id = await mailBlobId(crypto, request.tag, request.blob, request.drops)
+    // A sender's retry finds it held: the same id, and the expiry it was first put with. It
+    // stores nothing, so it isn't counted.
+    const held = await store.get(id, at)
+    if (held !== undefined) {
+      refund()
+      return { type: 'stored', id, expires: held.expires }
+    }
     const outcome = await store.put(
       {
         id,
@@ -122,6 +137,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     )
     if (outcome === 'exists') {
       // Put by someone else a moment ago: say what's actually held.
+      refund()
       const now = await store.get(id, at)
       if (now === undefined) return error('unknown')
       return { type: 'stored', id, expires: now.expires }
@@ -186,8 +202,18 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
       const reply = async (frame: string, req: number, body: LighthouseReply) =>
         sealReply(signer, now(), { req, nonce, request: await frameHash(crypto, frame) }, body)
 
+      /** Set once the range has sent more frames than it may: nothing more is answered. */
+      let over = false
+
       return {
         receive(frame) {
+          // Every frame is counted before it's parsed, hashed or answered, so none, not even one
+          // that's refused or can't be read, costs a signature beyond the range's budget. Past
+          // it the runner closes the connection rather than sign a refusal.
+          if (over || !counter.allowFrame(range, now())) {
+            over = true
+            return Promise.resolve(undefined)
+          }
           if (pending >= MAX_PENDING) return reply(frame, frameReq(frame), error('limit'))
           pending += 1
           const answered = queue.then(async () => {

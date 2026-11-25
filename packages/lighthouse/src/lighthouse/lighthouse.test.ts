@@ -14,6 +14,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import { blobCost, DEFAULT_LIMITS } from '../limits/limits.ts'
 import { createMemoryStore } from '../store/memory-store.ts'
+import type { MailStore } from '../store/store.ts'
 import { createLighthouse, type LighthouseOptions, MAX_PENDING } from './lighthouse.ts'
 
 const signer = fakeSigner('lighthouse')
@@ -22,6 +23,36 @@ const key = (n: number) => base32Encode(bytes(n))
 const hashOf = async (n: number) => base32Encode(await fakeCrypto.sha256(bytes(n)))
 const NOW = 1_000_000
 const NONCE = key(250)
+
+/** A reply, which every frame here should get rather than having its connection closed. */
+const must = (text: string | undefined): string => {
+  if (text === undefined) throw new Error('closed unanswered')
+  return text
+}
+
+/** A store that notes each call made to it, and a crypto that counts its hashes. */
+function watched() {
+  const calls: string[] = []
+  const inner = createMemoryStore()
+  const store = Object.fromEntries(
+    Object.entries(inner).map(([name, method]) => [
+      name,
+      (...args: unknown[]) => {
+        calls.push(name)
+        return (method as (...a: unknown[]) => unknown)(...args)
+      },
+    ]),
+  ) as unknown as MailStore
+  let hashes = 0
+  const crypto = {
+    ...fakeCrypto,
+    sha256: (data: Uint8Array) => {
+      hashes += 1
+      return fakeCrypto.sha256(data)
+    },
+  }
+  return { store, crypto, calls, hashes: () => hashes }
+}
 
 function setup(extra: Partial<LighthouseOptions> = {}) {
   let now = NOW
@@ -43,7 +74,7 @@ function setup(extra: Partial<LighthouseOptions> = {}) {
       req += 1
       if (request.type === 'hello') nonce = request.nonce
       const sent = encodeRequest({ req, request })
-      const text = await connection.receive(sent)
+      const text = must(await connection.receive(sent))
       const opened = await openReply(fakeCrypto, signer.id, text, { nonce, sent })
       if (!opened.ok) throw new Error(opened.error)
       expect(opened.value.req).toBe(req)
@@ -173,21 +204,87 @@ describe('the Lighthouse', () => {
   })
 
   it('takes a retry as the same mail, held as first put, without counting it again', async () => {
-    const ask = setup({ limits: { ...DEFAULT_LIMITS, putsPerHour: 1 } }).open()
+    const ask = setup({ limits: { ...DEFAULT_LIMITS, putsPerHour: 2 } }).open()
     await ask(hello)
     const request = await put(1, [2])
     const first = await ask(request)
     expect(await ask({ ...request, expires: request.expires + 500 })).toEqual(first)
+    expect((await ask(await put(4, [5]))).type).toBe('stored')
+    expect(await ask(await put(6, [7]))).toEqual({ type: 'error', error: 'limit' })
+  })
+
+  it('refuses a put over its limits without hashing it or touching the store', async () => {
+    const { store, crypto, calls, hashes } = watched()
+    const ask = setup({ store, crypto, limits: { ...DEFAULT_LIMITS, putsPerHour: 1 } }).open()
+    await ask(hello)
+    expect((await ask(await put(1, [2]))).type).toBe('stored')
+    calls.length = 0
+    const before = hashes()
     expect(await ask(await put(4, [5]))).toEqual({ type: 'error', error: 'limit' })
+    expect(calls).toEqual([])
+    // The one hash is of the frame the refusal answers, which every signed reply carries.
+    expect(hashes() - before).toBe(1)
   })
 
   it('refuses when full, counting what each blob costs to keep, not just its bytes', async () => {
-    const ask = setup({ limits: { ...DEFAULT_LIMITS, maxBytes: blobCost(3, 1) } }).open()
+    const { store, calls } = watched()
+    const ask = setup({ store, limits: { ...DEFAULT_LIMITS, maxBytes: blobCost(3, 1) } }).open()
     await ask(hello)
     expect((await ask(await put(1, [2]))).type).toBe('stored')
+    calls.length = 0
     expect(await ask(await put(4, [5]))).toEqual({ type: 'error', error: 'full' })
-    // Mail already held is still held: a retry hears so, not that it's full.
-    expect((await ask(await put(1, [2]))).type).toBe('stored')
+    // Its total is all a refusal reads: nothing is looked up by id.
+    expect(calls).toEqual(['totalBytes'])
+  })
+
+  it('takes back the count of a put refused for being full', async () => {
+    const limits = { ...DEFAULT_LIMITS, putsPerHour: 2, maxBytes: blobCost(3, 1) }
+    const { open } = setup({ limits })
+    const ask = open()
+    await ask(hello)
+    const first = await ask(await put(1, [2]))
+    const id = first.type === 'stored' ? first.id : ''
+    expect(await ask(await put(4, [5]))).toEqual({ type: 'error', error: 'full' })
+    // Room again, and the refusal didn’t use up the hour’s second put.
+    await ask({ type: 'drop', id, key: key(2) })
+    expect((await ask(await put(4, [5]))).type).toBe('stored')
+  })
+
+  it('closes, unanswered, a connection whose range sends more frames than it may', async () => {
+    const { store, crypto, calls, hashes } = watched()
+    const { lighthouse } = setup({
+      store,
+      crypto,
+      limits: { ...DEFAULT_LIMITS, framesPerMinute: 3 },
+    })
+    const connection = lighthouse.connect('203.0.113.7')
+    // Frames that are refused or can't be read count as much as any other.
+    expect(await connection.receive('not a frame')).toBeDefined()
+    expect(
+      await connection.receive(encodeRequest({ req: 1, request: await put(1, [2]) })),
+    ).toBeDefined()
+    expect(await connection.receive(encodeRequest({ req: 2, request: hello }))).toBeDefined()
+    calls.length = 0
+    const before = hashes()
+    const frame = encodeRequest({ req: 3, request: await put(1, [2]) })
+    expect(await connection.receive(frame)).toBeUndefined()
+    expect(calls).toEqual([])
+    expect(hashes()).toBe(before)
+    // The budget is the range's: another connection from it is closed too, until the minute turns.
+    expect(await lighthouse.connect('203.0.113.7').receive(frame)).toBeUndefined()
+    expect(await lighthouse.connect('198.51.100.1').receive(frame)).toBeDefined()
+  })
+
+  it('counts frames before hello against the budget too', async () => {
+    const { lighthouse, tick } = setup({ limits: { ...DEFAULT_LIMITS, framesPerMinute: 2 } })
+    const connection = lighthouse.connect('203.0.113.7')
+    const frame = encodeRequest({ req: 1, request: { type: 'get', id: key(1) } })
+    expect(await connection.receive(frame)).toBeDefined()
+    expect(await connection.receive(frame)).toBeDefined()
+    expect(await connection.receive(frame)).toBeUndefined()
+    // Once over, the connection stays closed, even when the minute turns.
+    tick(60_000)
+    expect(await connection.receive(frame)).toBeUndefined()
   })
 
   it('counts hellos, lists, gets and drops too', async () => {
@@ -200,7 +297,7 @@ describe('the Lighthouse', () => {
   it('answers a frame it can’t read with a signed refusal for that frame', async () => {
     const { lighthouse } = setup()
     const sent = '{"req":5,"request":{"type":"nope"}}'
-    const text = await lighthouse.connect('203.0.113.7').receive(sent)
+    const text = must(await lighthouse.connect('203.0.113.7').receive(sent))
     expect(await openReply(fakeCrypto, signer.id, text, { nonce: '', sent })).toEqual({
       ok: true,
       value: { req: 5, at: NOW, reply: { type: 'error', error: 'malformed' } },
@@ -216,7 +313,7 @@ describe('the Lighthouse', () => {
     const replies = await Promise.all(frames.map((frame) => connection.receive(frame)))
     const kinds = await Promise.all(
       replies.map(async (text, i) => {
-        const opened = await openReply(fakeCrypto, signer.id, text, {
+        const opened = await openReply(fakeCrypto, signer.id, must(text), {
           nonce: i < MAX_PENDING ? NONCE : '',
           sent: frames[i] ?? '',
         })
@@ -235,7 +332,7 @@ describe('the Lighthouse', () => {
     // The socket woke in a fresh instance: the same connection, from what it saved.
     const woken = lighthouse.connect('203.0.113.7', first.saved())
     const sent = encodeRequest({ req: 2, request: { type: 'list', tags: [key(1)], cursor: 0 } })
-    const opened = await openReply(fakeCrypto, signer.id, await woken.receive(sent), {
+    const opened = await openReply(fakeCrypto, signer.id, must(await woken.receive(sent)), {
       nonce: NONCE,
       sent,
     })
@@ -252,7 +349,7 @@ describe('the Lighthouse', () => {
     ])
     const opened = await Promise.all(
       replies.map((text, i) =>
-        openReply(fakeCrypto, signer.id, text, {
+        openReply(fakeCrypto, signer.id, must(text), {
           nonce: NONCE,
           sent: encodeRequest({ req: i + 1, request: i === 0 ? hello : request }),
         }),

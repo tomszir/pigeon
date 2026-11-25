@@ -49,6 +49,9 @@ export interface MailStore {
   useDrop(id: string, hash: string, now: number): Promise<DropOutcome>
   /** Deletes what has expired; says how many. */
   expire(now: number): Promise<number>
-  /** The cost of everything held, for the Lighthouse's limit on its whole store. */
+  /**
+   * The cost of everything held, for the Lighthouse's limit on its whole store. It's asked on
+   * every put, so a store keeps it as a running total rather than adding up what it holds.
+   */
   totalBytes(): Promise<number>
 }

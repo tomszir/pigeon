@@ -29,5 +29,7 @@ export function nodeSqlDatabase(db: DatabaseSync): SqlDatabase {
 export function createSqliteStore(path: string): MailStore & { close(): void } {
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
-  return { ...createSqlStore(nodeSqlDatabase(db)), close: () => db.close() }
+  // Each statement commits on its own here, so a crash can fall between a change and its total:
+  // the total is summed afresh at each start rather than trusted.
+  return { ...createSqlStore(nodeSqlDatabase(db), { recount: true }), close: () => db.close() }
 }

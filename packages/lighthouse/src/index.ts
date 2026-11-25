@@ -5,8 +5,15 @@ export type {
   SavedConnection,
 } from './lighthouse/lighthouse.ts'
 export { createLighthouse, MAX_PENDING } from './lighthouse/lighthouse.ts'
-export type { LimitCounter, Limits } from './limits/limits.ts'
-export { addressRange, blobCost, createLimitCounter, DEFAULT_LIMITS } from './limits/limits.ts'
+export type { LimitCounter, Limits, OpenConnections } from './limits/limits.ts'
+export {
+  addressRange,
+  blobCost,
+  createLimitCounter,
+  DEFAULT_LIMITS,
+  roomForConnection,
+  wideRange,
+} from './limits/limits.ts'
 export { createMemoryStore } from './store/memory-store.ts'
 export type { SqlDatabase, SqlValue } from './store/sql-store.ts'
 export { createSqlStore, MAX_BOUND_VALUES } from './store/sql-store.ts'

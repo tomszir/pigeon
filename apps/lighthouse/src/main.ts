@@ -49,6 +49,7 @@ const server = await startServer({
   port: config.port,
   trustForwardedFor: config.trustForwardedFor,
   address,
+  limits: config.limits,
 })
 console.log(`${config.name} is listening on ${config.host}:${server.port}.\n${address}`)
 

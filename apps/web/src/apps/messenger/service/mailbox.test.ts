@@ -46,7 +46,10 @@ function setup(options: { skew?: number } = {}) {
         const connection = lighthouse.connect('203.0.113.7')
         void Promise.resolve().then(events.onOpen)
         return {
-          send: (text) => void connection.receive(text).then(events.onMessage),
+          send: (text) =>
+            void connection
+              .receive(text)
+              .then((reply) => (reply === undefined ? events.onClose() : events.onMessage(reply))),
           close: () => events.onClose(),
         }
       },

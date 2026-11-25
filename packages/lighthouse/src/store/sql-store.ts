@@ -36,7 +36,15 @@ const SCHEMA = [
   )`,
   'CREATE INDEX IF NOT EXISTS blobs_by_tag ON blobs (tag, seq)',
   'CREATE INDEX IF NOT EXISTS blobs_by_expiry ON blobs (expires)',
+  // Running totals over `blobs`, kept as it changes so reading one reads one row, not them all.
+  `CREATE TABLE IF NOT EXISTS totals (
+    name TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+  )`,
 ]
+
+/** The totals row holding the cost of every blob held. */
+const COST = 'cost'
 
 const num = (value: SqlValue | undefined): number => Number(value ?? 0)
 const text = (value: SqlValue | undefined): string => String(value ?? '')
@@ -54,22 +62,55 @@ const toBlob = (row: Readonly<Record<string, SqlValue>>): StoredBlob => ({
 })
 
 /**
- * A MailStore on `db`, making its table if there isn't one. Every method runs its statements
+ * A MailStore on `db`, making its tables if there aren't any. Every method runs its statements
  * with no await between them, so on one connection no other call comes between a check and the
  * write that follows it.
+ *
+ * It keeps the cost of everything held as a running total, in memory and in the `totals` table,
+ * changed with each put, drop and expiry, so the Lighthouse can check its size limit on every
+ * put without summing every row. That makes it the only store on its database: a second one
+ * writing to the same database would leave this one's total behind.
  */
-export function createSqlStore(db: SqlDatabase): MailStore {
+export function createSqlStore(
+  db: SqlDatabase,
+  options: {
+    /**
+     * Sum the total from every row on opening rather than trust the one kept. For a database
+     * whose statements each commit on their own, such as node:sqlite's, where a crash between a
+     * change and its total would otherwise leave the total off for good. One scan per start.
+     */
+    readonly recount?: boolean
+  } = {},
+): MailStore {
   for (const statement of SCHEMA) db.exec(statement)
   const live = (id: string, now: number) =>
     db.exec('SELECT * FROM blobs WHERE id = ? AND expires > ?', id, now).rows[0]
 
+  const kept = db.exec('SELECT value FROM totals WHERE name = ?', COST).rows[0]
+  let total = num(kept?.['value'])
+  if (kept === undefined || options.recount === true) {
+    // A database from before the total was kept, or one asked to recount: summed once.
+    total = num(db.exec('SELECT COALESCE(SUM(cost), 0) AS total FROM blobs').rows[0]?.['total'])
+    if (kept === undefined) db.exec('INSERT INTO totals (name, value) VALUES (?, ?)', COST, total)
+    else db.exec('UPDATE totals SET value = ? WHERE name = ?', total, COST)
+  }
+  /** Moves the total by `by`, written in the same turn as the change it follows. */
+  const add = (by: number) => {
+    if (by === 0) return
+    db.exec('UPDATE totals SET value = value + ? WHERE name = ?', by, COST)
+    total += by
+  }
+
   return {
     async put(blob, now) {
-      const held = db.exec('SELECT expires FROM blobs WHERE id = ?', blob.id).rows[0]
+      const held = db.exec('SELECT expires, cost FROM blobs WHERE id = ?', blob.id).rows[0]
       if (held !== undefined && num(held['expires']) > now) return 'exists'
       // Expired but not swept: replaced, with a new seq, so it lists again. AUTOINCREMENT means
       // a seq is never given twice, even after the highest row is deleted.
-      if (held !== undefined) db.exec('DELETE FROM blobs WHERE id = ?', blob.id)
+      if (held !== undefined) {
+        db.exec('DELETE FROM blobs WHERE id = ?', blob.id)
+        add(-num(held['cost']))
+      }
       db.exec(
         'INSERT INTO blobs (id, tag, blob, size, cost, expires, drops) VALUES (?, ?, ?, ?, ?, ?, ?)',
         blob.id,
@@ -80,6 +121,7 @@ export function createSqlStore(db: SqlDatabase): MailStore {
         blob.expires,
         JSON.stringify(blob.drops),
       )
+      add(blob.cost)
       return 'stored'
     },
     async list(tags, cursor, limit, now): Promise<ListedPage> {
@@ -125,15 +167,24 @@ export function createSqlStore(db: SqlDatabase): MailStore {
       if (!blob.drops.includes(hash) || blob.used.includes(hash)) return { kind: 'wrong' }
       const used = [...blob.used, hash]
       const remaining = blob.drops.length - used.length
-      if (remaining === 0) db.exec('DELETE FROM blobs WHERE id = ?', id)
-      else db.exec('UPDATE blobs SET used = ? WHERE id = ?', JSON.stringify(used), id)
+      if (remaining === 0) {
+        db.exec('DELETE FROM blobs WHERE id = ?', id)
+        add(-blob.cost)
+      } else db.exec('UPDATE blobs SET used = ? WHERE id = ?', JSON.stringify(used), id)
       return { kind: 'used', remaining }
     },
     async expire(now) {
-      return db.exec('DELETE FROM blobs WHERE expires <= ?', now).changes
+      // Only the rows about to go are read, through the expiry index.
+      const gone = db.exec(
+        'SELECT COALESCE(SUM(cost), 0) AS gone FROM blobs WHERE expires <= ?',
+        now,
+      ).rows[0]
+      const deleted = db.exec('DELETE FROM blobs WHERE expires <= ?', now).changes
+      add(-num(gone?.['gone']))
+      return deleted
     },
     async totalBytes() {
-      return num(db.exec('SELECT COALESCE(SUM(cost), 0) AS total FROM blobs').rows[0]?.['total'])
+      return total
     },
   }
 }
