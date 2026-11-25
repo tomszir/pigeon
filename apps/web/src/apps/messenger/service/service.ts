@@ -48,6 +48,7 @@ import {
   type PairSession,
   type PeerId,
   type Presence,
+  type ProfileChange,
   pairRoom,
   pairRoomsAt,
   type RoomName,
@@ -188,6 +189,8 @@ const KEYS = {
   /** Friends you removed who haven't been told yet. */
   farewells: 'farewells',
   settings: 'messengerSettings',
+  /** When your name or personal message last changed, so the newest wins on your devices (0036). */
+  profileChangedAt: 'profileChangedAt',
   /** Set once the balloon reminding you to make a recovery key has been shown (0027). */
   recoveryReminded: 'recoveryReminded',
   log: (id: PeerId) => `log:${id}`,
@@ -229,6 +232,9 @@ export type JoinedIdentity =
       readonly ok: false
       readonly error: 'stopped' | 'impostor' | 'has-friends' | 'has-devices' | 'waiting' | 'own'
     }
+
+/** How far ahead of this device's clock another of yours may stamp a name (decision 0036). */
+export const PROFILE_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
 
 /** How long a link code is shown before it lapses. */
 export const LINK_LIFETIME_MS = 10 * 60 * 1000
@@ -287,6 +293,16 @@ export async function createMessenger(deps: MessengerDeps) {
   const [profile, setProfileSignal] = createSignal<Profile>(
     isProfile(storedProfile) ? storedProfile : DEFAULT_PROFILE,
   )
+  const storedChangedAt = await store.get(KEYS.profileChangedAt)
+  let profileChangedAt =
+    typeof storedChangedAt === 'number' && Number.isSafeInteger(storedChangedAt)
+      ? storedChangedAt
+      : 0
+  /** Your name and personal message for your other devices, once either has been changed. */
+  const profileChange = () =>
+    profileChangedAt === 0 || profile().handle === ''
+      ? undefined
+      : { handle: profile().handle, message: profile().message, changedAt: profileChangedAt }
   const selfFingerprint = await fingerprint(crypto, self)
 
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
@@ -791,10 +807,39 @@ export async function createMessenger(deps: MessengerDeps) {
       onDeviceLog: async (log) => {
         if (log.identity === self) await takeOwnLog(log)
       },
+      profile: profileChange,
+      onProfile: (change) => void takeProfile(change),
     })
     selfSession = session
     places.set(session, () => selfRoomsAt(crypto, secret, clock.now()))
     await syncRooms(session)
+  }
+
+  /** Keeps a new profile and tells friends; `changedAt` when the name or message changed. */
+  async function saveProfile(next: Profile, changedAt?: number) {
+    const first = profile().handle === '' && next.handle !== ''
+    const renamed = profile().handle !== next.handle
+    // Before any await, so an older profile arriving meanwhile is already too old.
+    if (changedAt !== undefined) profileChangedAt = changedAt
+    setProfileSignal(next)
+    await store.set(KEYS.profile, profile())
+    if (changedAt !== undefined) await store.set(KEYS.profileChangedAt, changedAt)
+    if (first) await connect()
+    else for (const session of sessions.values()) session.announce()
+    // The code's host answers with the name it was started with.
+    const current = invite()
+    if (renamed && !first && current !== undefined) await host(current)
+  }
+
+  /** Your name from another of your devices (decision 0036): the newest change wins. */
+  async function takeProfile(change: ProfileChange) {
+    if (change.changedAt <= profileChangedAt || profile().handle === '') return
+    // A time far ahead would outrank every later change, even after its device is removed.
+    if (change.changedAt > clock.now() + PROFILE_CLOCK_SLACK_MS) return
+    await saveProfile(
+      { ...profile(), handle: change.handle, message: change.message },
+      change.changedAt,
+    )
   }
 
   /** Your device log arrived from another of your devices. */
@@ -1050,6 +1095,8 @@ export async function createMessenger(deps: MessengerDeps) {
     await store.set(KEYS.profile, profileValue)
     await store.set(KEYS.friends, friends)
     await store.set(KEYS.blocked, blockedList)
+    // The profile is the other device's now; this one's old change time no longer applies (0036).
+    await store.delete(KEYS.profileChangedAt)
     // Nothing of a Pigeon left behind (0035) is said as this one.
     await store.set(KEYS.farewells, [])
     for (const [id, friendLog] of logs)
@@ -1283,15 +1330,11 @@ export async function createMessenger(deps: MessengerDeps) {
     async setProfile(next: Profile) {
       const handle = next.handle.trim().slice(0, MAX_HANDLE_LENGTH)
       const message = next.message.slice(0, MAX_PERSONAL_MESSAGE_LENGTH)
-      const first = profile().handle === '' && handle !== ''
-      const renamed = profile().handle !== handle
-      setProfileSignal({ ...next, handle, message })
-      await store.set(KEYS.profile, profile())
-      if (first) await connect()
-      else for (const session of sessions.values()) session.announce()
-      // The code's host answers with the name it was started with.
-      const current = invite()
-      if (renamed && !first && current !== undefined) await host(current)
+      const named = handle !== profile().handle || message !== profile().message
+      // Later than any change this device has seen, even with a clock that's behind.
+      const at = named ? Math.max(clock.now(), profileChangedAt + 1) : undefined
+      await saveProfile({ ...next, handle, message }, at)
+      if (named) selfSession?.announce()
     },
     friends: friendList,
     friend,
