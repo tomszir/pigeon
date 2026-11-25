@@ -1,5 +1,5 @@
 // Conventional Commits and no AI attribution, for the commit-msg hook and the pr-title CI job.
-// Adapted from the author's Aloft project. CONTRIBUTING.md describes the format.
+// CONTRIBUTING.md describes the format.
 export const TYPES = [
   'feat',
   'fix',

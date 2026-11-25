@@ -1,6 +1,6 @@
 // Talking to one friend in your pair rooms: say hello, catch each other up on the chat log, and
 // pass typing, buzz and presence along. A friend can be in several rooms at once (today's and
-// yesterday's around midnight, or the old room while moving; decision 0026), so a session spans
+// yesterday's around midnight, or the old room while moving), so a session spans
 // rooms that come and go. Pure protocol over Rooms; the app stores the log and draws the events.
 
 import { AVATAR_VERSION } from '../avatar/avatar.ts'
@@ -26,7 +26,7 @@ import {
   summarize,
 } from './chat-log.ts'
 
-/** Random bytes in a run's id (decision 0028): 16 base32 characters. */
+/** Random bytes in a run's id: 16 base32 characters. */
 export const INSTANCE_BYTES = 10
 /** A run's id, said in every hello, from `INSTANCE_BYTES` random bytes. */
 export const encodeInstance = (random: Uint8Array): string => base32Encode(random)
@@ -82,7 +82,7 @@ export interface PairSessionOptions {
   readonly now: () => number
   readonly onEvent: (event: PairEvent) => void
   /**
-   * Who a device is (decision 0024): one of the friend's, one of your own others, or nobody.
+   * Who a device is: one of the friend's, one of your own others, or nobody.
    * Without it only the friend's own key is the friend.
    */
   readonly accepts?: ((device: PeerId) => 'friend' | 'self' | undefined) | undefined
@@ -97,24 +97,23 @@ export interface PairSessionOptions {
   readonly onDeviceLog?: ((log: DeviceLog) => Promise<void>) | undefined
   /**
    * The friend's own device log as you keep it. Sent back to them when it holds a recovery, so a
-   * device brought back by its recovery key gets its whole log from the first friend it meets
-   * (decision 0027).
+   * device brought back by its recovery key gets its whole log from the first friend it meets.
    */
   readonly theirLog?: (() => DeviceLog | undefined) | undefined
   /**
-   * Your name and personal message with when they changed, for your own devices only (decision
-   * 0036): sent after hello and on `announce`, while it has a time.
+   * Your name and personal message with when they changed, for your own devices only:
+   * sent after hello and on `announce`, while it has a time.
    */
   readonly profile?: (() => ProfileChange | undefined) | undefined
   /** Another of your devices said its name and personal message. */
   readonly onProfile?: ((change: ProfileChange) => void) | undefined
-  /** This run's id, said in every hello (decision 0028). */
+  /** This run's id, said in every hello. */
   readonly instance?: string | undefined
   /** A hello signed with this device's own key came from another run: a copied profile. */
   readonly onTwin?: (() => void) | undefined
 }
 
-/** A name and personal message, and when they were changed (decision 0036). */
+/** A name and personal message, and when they were changed. */
 export interface ProfileChange {
   readonly handle: string
   readonly message: string

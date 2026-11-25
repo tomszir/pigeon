@@ -32,18 +32,18 @@ export interface BuddyListProps {
   /** What a friend's right-click menu offers; none for the sample. */
   menuFor?: ((id: string) => readonly MenuEntry[]) | undefined
   onBlockedPeople?: (() => void) | undefined
-  /** File, My Devices, Link a Device and Link to My Other Device (decision 0024). */
+  /** File, My Devices, Link a Device and Link to My Other Device. */
   onMyDevices?: (() => void) | undefined
   onLinkDevice?: (() => void) | undefined
   onJoinDevice?: (() => void) | undefined
-  /** File, Make a Recovery Key, Use My Recovery Key and Recover My Pigeon (decision 0027). */
+  /** File, Make a Recovery Key, Use My Recovery Key and Recover My Pigeon. */
   onMakeRecoveryKey?: (() => void) | undefined
   onUseRecoveryKey?: (() => void) | undefined
   onRecoverPigeon?: (() => void) | undefined
-  /** File, Export My Data and Import My Data (M13). */
+  /** File, Export My Data and Import My Data. */
   onExportData?: (() => void) | undefined
   onImportData?: (() => void) | undefined
-  /** File, Always Go Through the Relay: turns relay-only connections on or off (0026). */
+  /** File, Always Go Through the Relay: turns relay-only connections on or off. */
   onRelayOnly?: ((on: boolean) => void) | undefined
   onCopyInvite: () => void
   onAbout: () => void
@@ -173,7 +173,7 @@ export function BuddyList(props: BuddyListProps) {
               },
               {
                 label: 'Link a De&vice...',
-                // Only the first device links devices (decision 0024).
+                // Only the first device links devices.
                 disabled:
                   !named() ||
                   live()?.isFirstDevice() !== true ||
@@ -182,13 +182,13 @@ export function BuddyList(props: BuddyListProps) {
                 onSelect: () => props.onLinkDevice?.(),
               },
               // A Pigeon with nobody on it becomes another one; one with friends or devices is
-              // offered to leave first (decision 0035). Never while a recovery waits (0030).
+              // offered to leave first. Never while a recovery waits.
               ...(live() !== undefined &&
               live()?.waitingForList() !== true &&
               props.onJoinDevice !== undefined
                 ? [{ label: 'Link to My &Other Device...', onSelect: () => props.onJoinDevice?.() }]
                 : []),
-              // The recovery key (decision 0027): made once on the first device, used anywhere.
+              // The recovery key: made once on the first device, used anywhere.
               ...(live()?.recoveryKey() === undefined &&
               live()?.isFirstDevice() === true &&
               live()?.nextEpoch() === 1 &&

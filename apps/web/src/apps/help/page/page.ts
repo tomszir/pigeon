@@ -1,5 +1,5 @@
 // What every Help page is made of: a PigeonHTML document with a title and a CSS 2.1 style
-// sheet, the same as anyone's page (decision 0032).
+// sheet, the same as anyone's page.
 
 import { escapeHtml } from '../markdown/markdown.ts'
 

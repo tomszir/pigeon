@@ -12,7 +12,7 @@ const sources = [
       '',
       '## Identity',
       '',
-      'Keys. See [rooms](protocol.md#rooms), [flows](flows.md), [0024](decisions/0024-x.md) and [stack](stack.md).',
+      'Keys. See [rooms](protocol.md#rooms), [flows](flows.md), [design](design.md) and [stack](stack.md).',
       '',
       '### Fingerprints',
       '',
@@ -61,7 +61,7 @@ describe('buildSpec', () => {
 
   it('maps links to docs in Help to their pages and shows the rest as text', () => {
     expect(page(`${PROTOCOL_HOME}identity`)).toContain(
-      `See <a href="${PROTOCOL_HOME}rooms">rooms</a>, <a href="${PROTOCOL_HOME}flows/one">flows</a>, 0024 and stack.`,
+      `See <a href="${PROTOCOL_HOME}rooms">rooms</a>, <a href="${PROTOCOL_HOME}flows/one">flows</a>, design and stack.`,
     )
   })
 

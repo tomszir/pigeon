@@ -1,4 +1,4 @@
-// A chat as signed append-only logs, one per author (decision 0003). Peers trade summaries of
+// A chat as signed append-only logs, one per author. Peers trade summaries of
 // the highest contiguous sequence they hold per author and send each other what's missing; the
 // view is the union sorted by Lamport time.
 import { base32Decode, base32Encode } from '../encoding/bytes.ts'

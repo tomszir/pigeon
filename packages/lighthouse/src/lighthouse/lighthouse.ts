@@ -1,4 +1,4 @@
-// A Lighthouse's mailbox (decision 0037), with no platform in it: the Node and Worker runners
+// A Lighthouse's mailbox, with no platform in it: the Node and Worker runners
 // hand each connection's frames to `connect(...).receive`, and send back what it returns. It
 // holds mail it can't open or attribute, under tags only the two ends can work out, until every
 // recipient device has dropped its copy or the mail expires.
@@ -101,7 +101,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     const bytes = base64Decode(request.blob)
     if (!bytes.ok) return error('malformed')
     const id = await mailBlobId(crypto, request.tag, request.blob, request.drops)
-    // A sender's retry (0037) finds it held: the same id, and the expiry it was first put with.
+    // A sender's retry finds it held: the same id, and the expiry it was first put with.
     const held = await store.get(id, at)
     if (held !== undefined) return { type: 'stored', id, expires: held.expires }
     const size = bytes.value.length
@@ -177,7 +177,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     connect(address, saved) {
       const range = addressRange(address)
       let greeted = saved?.greeted ?? false
-      /** The client's nonce from its hello: every reply after signs it (0037). */
+      /** The client's nonce from its hello: every reply after signs it. */
       let nonce = saved?.nonce ?? ''
       let pending = 0
       // One request at a time per connection, in the order they came.

@@ -1,4 +1,4 @@
-// Add to Home Screen.txt: why and how to keep Pigeon on an iPhone (decision 0026). Shown on
+// Add to Home Screen.txt: why and how to keep Pigeon on an iPhone. Shown on
 // iPhones and iPads in a browser tab. Plain text, 46 columns.
 
 export const HOME_SCREEN_TEXT = `ADD PIGEON TO YOUR HOME SCREEN

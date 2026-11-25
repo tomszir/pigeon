@@ -54,5 +54,5 @@ description = "Playwright end-to-end tests in real browsers over the public rela
 run = "pnpm --filter web e2e"
 
 [tasks.deploy]
-description = "Build and deploy to pigeon.tomszir.com (the author runs this, never an agent; decision 0005)"
+description = "Build and deploy to pigeon.tomszir.com (the maintainer runs this, never an agent)"
 run = "pnpm --filter web deploy"

@@ -1,4 +1,4 @@
-// A Lighthouse's limits (decision 0037), counted per address range: an IPv4 address, or an
+// A Lighthouse's limits, counted per address range: an IPv4 address, or an
 // IPv6 /64, since anyone with one IPv6 address has the 2^64 around it. Counts live in memory
 // only; addresses are never written to storage. A cap on everyone together, and on how many
 // ranges are tracked at once, keeps someone with a whole IPv6 block from getting round them.
@@ -17,7 +17,7 @@ export interface Limits {
   /**
    * Puts from everyone together in an hour. Past it nobody can put until the hour turns: it
    * protects the store and the bill, and someone who trips it on purpose shuts everyone out
-   * for that hour, which 0037 accepts.
+   * for that hour: the price of a Lighthouse that can't be filled.
    */
   readonly totalPutsPerHour: number
   /** Address ranges tracked at once; past it, new ones are refused until the window turns. */

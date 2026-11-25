@@ -1,6 +1,6 @@
 # Flows
 
-The protocol's handshakes and state machines drawn in ASCII, RFC style, so Help can show them as they are ([0032](decisions/0032-explorer-on-this-computer-first.md)).
+The protocol's handshakes and state machines drawn in ASCII, RFC style, so Help can show them as they are.
 
 Every diagram follows [protocol.md](protocol.md), which wins where the two differ. Names in angle brackets are filled in at run time; `--->` is one envelope, `===` a room both sides are in.
 
@@ -46,7 +46,7 @@ Toms makes an invite and Mika opens it ([Pairing](protocol.md#pairing)). Both si
 
 ## Pair rooms by day
 
-Two friends meet in a room named from their pair secret and the UTC date ([Rooms](protocol.md#rooms), [0026](decisions/0026-pair-rooms-from-a-shared-secret.md)). Around midnight UTC both days' rooms are joined, so clocks less than an hour apart still meet. One pair session spans the rooms, and the same envelope goes to each.
+Two friends meet in a room named from their pair secret and the UTC date ([Rooms](protocol.md#rooms)). Around midnight UTC both days' rooms are joined, so clocks less than an hour apart still meet. One pair session spans the rooms, and the same envelope goes to each.
 
 ```text
   name(day)     = "pair:" + base32( HMAC-SHA256( secret,
@@ -74,7 +74,7 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
 
 ## Linking a device
 
-Toms puts his phone on his device log ([Devices](protocol.md#devices), [0024](decisions/0024-a-signed-list-of-devices.md)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first ([0035](decisions/0035-leave-a-pigeon-to-link-it.md)).
+Toms puts his phone on his device log ([Devices](protocol.md#devices)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first.
 
 ```text
   Laptop (writes the log)        link:<code>          Phone (new device)
@@ -120,7 +120,7 @@ Toms puts his phone on his device log ([Devices](protocol.md#devices), [0024](de
 
 ## The device log
 
-An identity's device log, as a state machine ([Devices](protocol.md#devices), [0024](decisions/0024-a-signed-list-of-devices.md), [0027](decisions/0027-a-recovery-key-that-outranks-devices.md), [0030](decisions/0030-the-recovery-key-beside-the-chain.md), [0031](decisions/0031-a-replaced-recovery-key-stays-replaced.md)). Each epoch has one writer, whose entries form a single chain, each naming the signature of the one before.
+An identity's device log, as a state machine ([Devices](protocol.md#devices)). Each epoch has one writer, whose entries form a single chain, each naming the signature of the one before.
 
 A device, within one epoch:
 
@@ -208,7 +208,7 @@ What a merge of two copies of one log keeps:
 
 ## Recovery with every device lost
 
-Rook has lost his laptop, his only device, and opens Pigeon in a new browser with his recovery key ([0027](decisions/0027-a-recovery-key-that-outranks-devices.md), [0030](decisions/0030-the-recovery-key-beside-the-chain.md)). Mika knew him before, so her Pigeon keeps his log.
+Rook has lost his laptop, his only device, and opens Pigeon in a new browser with his recovery key. Mika knew him before, so her Pigeon keeps his log.
 
 ```text
   New browser N             Mika's Pigeon               Lost laptop L

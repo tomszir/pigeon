@@ -11,7 +11,7 @@ The browser app and the always-on Lighthouse peer (Node) must speak the same pro
 
 ## Decision
 
-Use a pnpm workspace (`apps/*`, `packages/*`) like the author's seams repo. Shared, pure code lives in `@pigeon/core` and `@pigeon/pigeonhtml`; packages are consumed as TypeScript source via `workspace:*`, with no build step of their own.
+Use a pnpm workspace (`apps/*`, `packages/*`) like the maintainer's seams repo. Shared, pure code lives in `@pigeon/core` and `@pigeon/pigeonhtml`; packages are consumed as TypeScript source via `workspace:*`, with no build step of their own.
 
 ## Consequences
 

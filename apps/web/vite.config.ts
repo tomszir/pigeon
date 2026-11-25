@@ -4,14 +4,14 @@ import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import { devPort } from './ports.ts'
 
-/** The version release-please keeps in the root package.json (decision 0021). */
+/** The version release-please keeps in the root package.json. */
 const { version } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 ) as { version: string }
 /** The commit Cloudflare Workers Builds is building, when it is; empty locally. */
 const commit = (process.env['WORKERS_CI_COMMIT_SHA'] ?? '').slice(0, 7)
 /**
- * Where the dev server gets TURN credentials (decision 0022): the live site's /api/turn, so a
+ * Where the dev server gets TURN credentials: the live site's /api/turn, so a
  * phone on mobile data can reach a dev tab. PIGEON_TURN_FROM=off leaves dev on STUN alone.
  */
 const turnFrom = process.env['PIGEON_TURN_FROM'] ?? 'https://pigeon.tomszir.com'

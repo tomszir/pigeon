@@ -1,4 +1,4 @@
-// Chapter 5: the recovery key (docs/protocol.md, Devices; decisions 0027, 0030 and 0031).
+// Chapter 5: the recovery key (docs/protocol.md, Devices).
 
 import { pre } from '../page/page.ts'
 import { aside, chapterAddress, figure, helpLink, steps } from './frame.ts'

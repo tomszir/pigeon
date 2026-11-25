@@ -41,7 +41,10 @@ export interface ErrorPageProps {
   onHome: () => void
 }
 
-/** Nobody who keeps a copy of the page is online. Until M5 nobody hosts anything, honestly so. */
+/**
+ * Nobody who keeps a copy of the page is online. Nobody hosts pages over the network yet, so
+ * this is honestly so.
+ */
 export function NotHosted(props: ErrorPageProps) {
   return (
     <ErrorPage

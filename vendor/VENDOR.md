@@ -13,7 +13,7 @@ Each lock names its sources (an npm package at a version, a URL, or a folder in 
 | `wine-tahoma.ttf`    | Wine `fonts/tahoma.ttf` at tag `wine-10.0` (gitlab.winehq.org) | LGPL 2.1 or later      |
 | `vera-sans-mono.ttf` | Bitstream Vera 1.10 release tarball (download.gnome.org), 2003 | Bitstream Vera licence |
 
-Wine's fonts are its own clones, drawn for Wine, not Microsoft's Tahoma. Wine's `tahomabd.ttf` isn't taken: its outlines draw at regular weight, so the browser synthesises bold from the regular face ([0009](../docs/decisions/0009-bundled-fonts-only.md)). The licence texts are in `apps/web/src/fonts/LICENSES/`.
+Wine's fonts are its own clones, drawn for Wine, not Microsoft's Tahoma. Wine's `tahomabd.ttf` isn't taken: its outlines draw at regular weight, so the browser synthesises bold from the regular face. The licence texts are in `apps/web/src/fonts/LICENSES/`.
 
 ## Icons
 
@@ -25,7 +25,7 @@ Wine's fonts are its own clones, drawn for Wine, not Microsoft's Tahoma. Wine's 
 | `tango/` | Tango Icon Theme 0.8.90 source tarball, from snapshot.debian.org; 16, 22 and 32 px PNGs | public domain |
 | `brand/` | `assets/brand/` in this repository: Pigeon's own art                                    | ours          |
 
-The licence texts are in `apps/web/src/icons/LICENSES/`. XP.css's own MS Sans Serif fonts are never taken ([0007](../docs/decisions/0007-original-and-openly-licensed-assets-only.md)).
+The licence texts are in `apps/web/src/icons/LICENSES/`. XP.css's own MS Sans Serif fonts are never taken.
 
 ## Wallpapers
 
@@ -35,7 +35,7 @@ The licence texts are in `apps/web/src/icons/LICENSES/`. XP.css's own MS Sans Se
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `hills.jpg` | Unsplash `photo-1756074924706-48ca9f24410f` by [@bchen22](https://unsplash.com/@bchen22), cropped to 1024×768 by Unsplash's image server | [Unsplash License](https://unsplash.com/license) |
 
-The crop is part of the URL, so the bytes are stable and pinned like any download ([0011](../docs/decisions/0011-unsplash-photo-wallpaper.md)).
+The crop is part of the URL, so the bytes are stable and pinned like any download.
 
 ## Rules
 

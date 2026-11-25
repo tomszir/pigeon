@@ -1,4 +1,4 @@
-// Changelog.txt: release notes for the people using Pigeon, newest first (decision 0025). The
+// Changelog.txt: release notes for the people using Pigeon, newest first. The
 // author writes them on each release PR, from a draft scripts/release-notes.ts makes.
 import text from './changelog.txt?raw'
 

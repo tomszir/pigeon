@@ -1,5 +1,5 @@
 // Chapter 6: Export My Data, Import My Data and Save Conversation As (docs/protocol.md, Your
-// data in a file; decision 0029).
+// data in a file).
 
 import { pre } from '../page/page.ts'
 import { aside, figure, steps } from './frame.ts'

@@ -1,4 +1,4 @@
-// Set by vite.config.ts from the root package.json and the build's commit (decision 0021).
+// Set by vite.config.ts from the root package.json and the build's commit.
 
 /** "0.2.0". */
 declare const __PIGEON_VERSION__: string

@@ -252,7 +252,7 @@ export function createShell(env: ShellEnv): CreatedShell {
       if (refocus) menuButton?.focus()
     }
 
-    // Back closes the Pigeon menu while it's open (decision 0034).
+    // Back closes the Pigeon menu while it's open.
     const back = useBack()
     const menuBack = backStep(back, () => closeMenu(true))
     createEffect(() => (menuOpen() ? menuBack.open() : menuBack.close()))

@@ -1,4 +1,4 @@
-// PigeonHTML: the 2000s-only subset pages may use (docs/pigeonhtml.md, decisions 0004 and 0032).
+// PigeonHTML: the 2000s-only subset pages may use (docs/pigeonhtml.md).
 // Pages are parsed with parse5, walked against the allowlists in allowlists.ts, and written
 // back out with only what's kept.
 

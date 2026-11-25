@@ -1,4 +1,4 @@
-// The phone layout (decision 0019) on a touch phone: Today first, soft keys and a home key, the
+// The phone layout on a touch phone: Today first, soft keys and a home key, the
 // menu from the bottom right, one window at a time, and the keys stepping aside while typing.
 import { devices, expect, test } from '@playwright/test'
 

@@ -1,5 +1,5 @@
 // "The Pigeon Protocol": an RFC-style spec made from docs/ each build, so it can't drift from
-// them (decision 0032). docs/protocol.md gives the numbered sections, docs/flows.md and
+// them. docs/protocol.md gives the numbered sections, docs/flows.md and
 // docs/glossary.md the appendices, one page per `##` section.
 
 import flowsMarkdown from '../../../../../../docs/flows.md?raw'
@@ -200,7 +200,7 @@ export function buildSpec(sources: readonly SpecSource[]): Spec {
 
   /**
    * Where a link in `from` goes: a doc shown in the spec goes to its page, and anything else
-   * (decision records, other docs, the web) is shown as text.
+   * (other docs, the web) is shown as text.
    */
   const linkTo =
     (from: string) =>
@@ -259,7 +259,7 @@ export function buildSpec(sources: readonly SpecSource[]): Spec {
       [
         `<h1>${escapeHtml(SPEC_TITLE)}</h1>`,
         '<h2>Status of This Memo</h2>',
-        "<p>This memo says how Pigeon talks to other Pigeons: how a peer is known, how friends find each other, and what they send. It is put together from Pigeon's own notes every time Pigeon is built, so it always says what this copy of Pigeon does. Where it names a decision, that decision is kept with Pigeon's source. Distribution of this memo is unlimited.</p>",
+        "<p>This memo says how Pigeon talks to other Pigeons: how a peer is known, how friends find each other, and what they send. It is put together from Pigeon's own notes every time Pigeon is built, so it always says what this copy of Pigeon does. Distribution of this memo is unlimited.</p>",
         '<h2>Abstract</h2>',
         main ? blocksHtml(main.intro, main.file, '0') : '',
         '<h2>Table of Contents</h2>',

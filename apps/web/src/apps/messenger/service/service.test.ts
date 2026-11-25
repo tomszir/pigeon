@@ -167,7 +167,7 @@ describe('the Messenger service', () => {
     b.transport.disconnect()
     await flush()
     await a.messenger.remove(mikaId, { block: false })
-    // Kept with the secret, so the farewell finds them in their private room (decision 0026).
+    // Kept with the secret, so the farewell finds them in their private room.
     expect(await a.store.get('farewells')).toEqual([
       { id: mikaId, secret: expect.any(String), moved: true },
     ])
@@ -340,7 +340,7 @@ const HOUR = 60 * 60 * 1000
 const pairJoins = (network: Network) =>
   network.joins.filter((join) => join.name.startsWith('pair:'))
 
-/** Rook and Mika as friends from before 0026: no secret, meeting in the old room. */
+/** Rook and Mika as friends from before pair secrets: no secret, meeting in the old room. */
 async function oldFriends(network: Network, clock = fakeClock(NOON)) {
   const { a, b } = await pair(network, {}, 'link', clock)
   await a.messenger.close()
@@ -355,7 +355,7 @@ async function oldFriends(network: Network, clock = fakeClock(NOON)) {
   return { a: a.store, b: b.store, clock }
 }
 
-describe('private rooms (decision 0026)', () => {
+describe('private rooms', () => {
   it('pairs into a room named from a shared secret and locked with it', async () => {
     const network = createMemoryNetwork()
     const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
@@ -436,8 +436,9 @@ describe('private rooms (decision 0026)', () => {
     expect(network.occupants(await legacy())).toBe(1)
   })
 
-  it('moves a friend from before 0026 once they update, if they never got a secret', async () => {
-    // Mika paired with a Pigeon from before 0026 and has no secret; Rook made one when pairing.
+  it('moves a friend from before pair secrets once they update, if they never got a secret', async () => {
+    // Mika paired with a Pigeon from before pair secrets and has no secret; Rook made one when
+    // pairing.
     const network = createMemoryNetwork()
     const stores = await oldFriends(network)
     const friends = (await stores.a.get('friends')) as Record<string, unknown>[]
@@ -547,7 +548,7 @@ async function linkDevice(
   return { device: started, status }
 }
 
-describe('your devices (decision 0024)', () => {
+describe('your devices', () => {
   it('links a phone to a laptop: Mika sees one Toms, and the phone’s message reaches the laptop', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
@@ -593,7 +594,7 @@ describe('your devices (decision 0024)', () => {
     const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
     const { device: phone, status } = await linkDevice(network, laptop, 'rook-phone', clock)
     expect(status).toBe('linked')
-    // The phone can't link or remove anything (decision 0024).
+    // The phone can't link or remove anything.
     expect(phone.messenger.isFirstDevice()).toBe(false)
     expect(await phone.messenger.startLink()).toBeUndefined()
     await phone.messenger.removeDevice(laptop.messenger.device)
@@ -644,7 +645,7 @@ describe('your devices (decision 0024)', () => {
     expect(laptop.messenger.devices().map((view) => view.here)).toEqual([true])
   })
 
-  it('keeps your name and personal message in step on your devices (decision 0036)', async () => {
+  it('keeps your name and personal message in step on your devices', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
     const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
@@ -671,7 +672,7 @@ describe('your devices (decision 0024)', () => {
     expect(laptop.messenger.profile().handle).toBe('Toms Z.')
   })
 
-  it('ignores a name stamped far in the future (0036)', async () => {
+  it('ignores a name stamped far in the future', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
     const { a: laptop } = await pair(network, {}, 'link', clock)
@@ -700,7 +701,7 @@ describe('your devices (decision 0024)', () => {
     })
   })
 
-  it('leaves a Pigeon with friends by telling them, so it can be linked (decision 0035)', async () => {
+  it('leaves a Pigeon with friends by telling them, so it can be linked', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
     const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
@@ -823,7 +824,7 @@ describe('your devices (decision 0024)', () => {
   })
 })
 
-describe('a copied profile (decision 0028)', () => {
+describe('a copied profile', () => {
   it('notices the same device open in two places, and says so once on each', async () => {
     const network = createMemoryNetwork()
     let twins = 0
@@ -843,7 +844,7 @@ describe('a copied profile (decision 0028)', () => {
     expect(mika.messenger.twin()).toBe(false)
   })
 
-  it('tells no friend when a copy leaves, since the other copy keeps the Pigeon (0035)', async () => {
+  it('tells no friend when a copy leaves, since the other copy keeps the Pigeon', async () => {
     const network = createMemoryNetwork()
     const { a: rook, b: mika } = await pair(network)
     const copy = await messenger(network, 'rook', { store: rook.store, seed: 99 })
@@ -854,7 +855,7 @@ describe('a copied profile (decision 0028)', () => {
   })
 })
 
-describe('export and import (M13)', () => {
+describe('export and import', () => {
   it('brings friends, chats and the profile to a device of the same identity', async () => {
     const network = createMemoryNetwork()
     const { a: rook, b: mika } = await pair(network)
@@ -902,7 +903,7 @@ describe('export and import (M13)', () => {
   })
 })
 
-describe('the recovery key (decision 0027)', () => {
+describe('the recovery key', () => {
   type Side = Awaited<ReturnType<typeof messenger>>
   async function pairAgain(host: Side, guest: Side) {
     await host.messenger.newInvite()
@@ -946,7 +947,7 @@ describe('the recovery key (decision 0027)', () => {
     expect(await back.messenger.startLink()).toBeUndefined()
     // Nor can the waiting tail be wiped: not by the next key, nor by linking or another identity.
     expect(back.messenger.canJoin()).toBe(false)
-    // Nor offered to leave for another Pigeon (0035): it refuses before any code is used.
+    // Nor offered to leave for another Pigeon: it refuses before any code is used.
     expect(await back.messenger.joinIdentity({ code: 'anything' }, never)).toEqual({
       ok: false,
       error: 'waiting',

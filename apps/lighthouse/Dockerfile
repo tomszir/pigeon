@@ -1,4 +1,4 @@
-# A Pigeon Lighthouse (decision 0037). Each release publishes it as
+# A Pigeon Lighthouse. Each release publishes it as
 # ghcr.io/tomszir/pigeon-lighthouse (.github/workflows/lighthouse-image.yml). Build from the
 # repository root:
 #   docker build -f apps/lighthouse/Dockerfile -t pigeon-lighthouse .

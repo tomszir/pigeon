@@ -228,7 +228,7 @@ describe('several rooms', () => {
   })
 })
 
-describe('several devices (decision 0024)', () => {
+describe('several devices', () => {
   const mikaPhone = fakeSigner('mika-phone')
   const rookPhone = fakeSigner('rook-phone')
 
@@ -316,7 +316,7 @@ describe('several devices (decision 0024)', () => {
   })
 })
 
-describe('a copied profile (decision 0028)', () => {
+describe('a copied profile', () => {
   async function run(transport: Transport, instance: string, twins: string[]) {
     const name = await pairRoom(fakeCrypto, rook.id, mika.id)
     return startPairSession({

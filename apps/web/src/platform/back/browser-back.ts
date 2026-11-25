@@ -1,4 +1,4 @@
-// The back stack over the browser's own history (decision 0034). Every entry Pigeon adds is at
+// The back stack over the browser's own history. Every entry Pigeon adds is at
 // the same address, marked with its depth in `history.state`, so the address bar never changes,
 // nothing reloads, and invite links in the address work as before.
 import { type BackStack, createBackStack } from '@pigeon/core'

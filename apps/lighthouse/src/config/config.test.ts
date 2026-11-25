@@ -4,8 +4,8 @@ import { parseConfig } from './config.ts'
 
 describe('the config', () => {
   it('needs a name and a URL, and fills in the rest', () => {
-    expect(parseConfig('{"name":" Homelab ","url":"wss://h.example.ts.net/"}', '/srv')).toEqual({
-      name: 'Homelab',
+    expect(parseConfig('{"name":" Attic ","url":"wss://h.example.ts.net/"}', '/srv')).toEqual({
+      name: 'Attic',
       url: 'wss://h.example.ts.net/',
       host: '0.0.0.0',
       port: 8787,

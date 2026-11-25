@@ -1,4 +1,4 @@
-// How Explorer draws a page, never what the page says (decision 0033). Handhelds of 2003 did the
+// How Explorer draws a page, never what the page says. Handhelds of 2003 did the
 // same: Pocket Internet Explorer's One Column and Opera's Small-Screen Rendering laid any page out
 // in one column, and Text Size made it bigger or smaller.
 

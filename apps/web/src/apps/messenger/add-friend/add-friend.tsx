@@ -1,6 +1,6 @@
 // Add a Friend: share your invite (a code to type, a link, its QR code), or open one a friend
 // sent. Opening one asks the inviter who they are and shows their fingerprint; nothing is agreed
-// until you choose Add (decision 0018).
+// until you choose Add.
 import {
   decodeInvite,
   formatFingerprint,

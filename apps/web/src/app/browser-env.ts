@@ -46,7 +46,7 @@ export function createBrowserEnv(): ShellEnv {
 
 /**
  * An iPhone or iPad in a browser tab rather than opened from the Home Screen, where Safari clears
- * a site's storage after 7 days without a visit, identity and all (decision 0026).
+ * a site's storage after 7 days without a visit, identity and all.
  */
 export function needsHomeScreen(): boolean {
   const ios =
@@ -58,7 +58,7 @@ export function needsHomeScreen(): boolean {
   return ios && !standalone
 }
 
-/** "Firefox on Linux": what My Devices calls this browser until you rename it (decision 0024). */
+/** "Firefox on Linux": what My Devices calls this browser until you rename it. */
 export function deviceName(): string {
   const agent = navigator.userAgent
   const browser = /Edg\//.test(agent)
@@ -86,7 +86,7 @@ export function deviceName(): string {
   return `${browser} on ${system}`
 }
 
-/** Waits for the bundled fonts so the first frame is drawn in them (decision 0009). */
+/** Waits for the bundled fonts so the first frame is drawn in them. */
 export async function loadFonts(): Promise<void> {
   await Promise.all([
     document.fonts.load('11px "Wine Tahoma"'),

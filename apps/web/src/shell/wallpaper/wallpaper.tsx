@@ -11,7 +11,7 @@ const photos: Record<ResolutionId, string> = {
   '1280x1024': hills1280,
 }
 
-/** The desktop wallpaper: a photo of rolling hills from Unsplash (decision 0011). */
+/** The desktop wallpaper: a photo of rolling hills from Unsplash. */
 export function Wallpaper(props: { screen: Resolution }) {
   return (
     <div

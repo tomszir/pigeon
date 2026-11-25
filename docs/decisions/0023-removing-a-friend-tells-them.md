@@ -17,4 +17,4 @@ The friend menu adds Remove Friend. The era's messengers removed silently: to th
 
 ## Consequences
 
-Both sides agree on who is a friend, and nothing waits forever for someone who left. Someone who removes you can't do it quietly; the author chose that over the era's habit. A farewell that never arrives (they never come back) costs one pending id and a room joined on each visit.
+Both sides agree on who is a friend, and nothing waits forever for someone who left. Someone who removes you can't do it quietly; the maintainer chose that over the era's habit. A farewell that never arrives (they never come back) costs one pending id and a room joined on each visit.

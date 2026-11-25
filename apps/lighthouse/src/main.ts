@@ -1,4 +1,4 @@
-// A Pigeon Lighthouse (decision 0037): node src/main.ts --config lighthouse.json
+// A Pigeon Lighthouse: node src/main.ts --config lighthouse.json
 // Holds sealed mail for anyone who uses it, says its address on start, and sweeps out expired
 // mail every hour.
 import { readFileSync } from 'node:fs'
@@ -28,7 +28,7 @@ const lighthouse = createLighthouse({
   store,
   now: Date.now,
   name: config.name,
-  // The Lighthouse's own claim (0037): nothing relies on it, but it says which build this is.
+  // The Lighthouse's own claim: nothing relies on it, but it says which build this is.
   software: {
     name: 'pigeon-lighthouse',
     version: VERSION,

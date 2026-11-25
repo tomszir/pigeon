@@ -55,14 +55,14 @@ import type { MenuEntry } from '../ui/menu/menu.tsx'
 
 export interface Programs extends ShellProps {
   readonly openReadme: () => void
-  /** Changelog.txt, the release notes (decision 0025). */
+  /** Changelog.txt, the release notes. */
   readonly openChangelog: () => void
-  /** Add to Home Screen.txt, for iPhones in a Safari tab (decision 0026). */
+  /** Add to Home Screen.txt, for iPhones in a Safari tab. */
   readonly openHomeScreen: () => void
   readonly openMessenger: () => void
   readonly openConversation: (contactId: string) => void
   readonly openAddFriend: (incoming?: Invite) => void
-  /** Link to My Other Device, perhaps from a link in the address bar (decision 0024). */
+  /** Link to My Other Device, perhaps from a link in the address bar. */
   readonly openJoinDevice: (incoming?: Invite) => void
   readonly sample: Accessor<boolean>
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
@@ -79,13 +79,13 @@ export interface MessengerHost {
   /** Starts Pigeon again, as a newly linked device must to become its identity. */
   readonly restart: () => void
   /**
-   * Forgets everything here and starts again at Link to My Other Device (decision 0028), linking
-   * to `target` straight away when it's given, as leaving a Pigeon does (0035).
+   * Forgets everything here and starts again at Link to My Other Device, linking to
+   * `target` straight away when it's given, as leaving a Pigeon does.
    */
   readonly startOver: (target?: Invite) => Promise<void>
 }
 
-/** Things that come in later milestones say so, in the world's own voice. */
+/** Programs not built yet say so, in the world's own voice. */
 const LATER = {
   letters: ['Letters is still being built.', 'Sealed letters carried by friends arrive soon.'],
   files: ['Shared Files is still being built.', 'Sending files to friends arrives soon.'],
@@ -251,7 +251,7 @@ export function createPrograms(
     })
   }
 
-  // Your devices (decision 0024).
+  // Your devices.
   const deviceIcon = tangoIcon('network-transmit-receive', 16)
   const openLinkDevice = () => {
     const messenger = host.messenger()
@@ -269,7 +269,7 @@ export function createPrograms(
     api.open('join-device', {
       title: 'Link to My Other Device',
       icon: deviceIcon,
-      // Tall enough for leaving's progress (decision 0035), Don't Wait and all.
+      // Tall enough for leaving's progress, Don't Wait and all.
       bounds: { x: 252, y: 110, width: 480, height: 400 },
       controls: { maximize: false },
       content: (window) => (
@@ -313,7 +313,7 @@ export function createPrograms(
     })
   }
 
-  // Your data in a file (M13), sealed with a passphrase.
+  // Your data in a file, sealed with a passphrase.
   const passphraseSeal: PassphraseSeal = { seal: sealWithPassphrase, open: openWithPassphrase }
   const dataIcon = tangoIcon('folder', 16)
   const openExportData = () => {
@@ -355,7 +355,7 @@ export function createPrograms(
     })
   }
 
-  // The recovery key (decision 0027).
+  // The recovery key.
   const recoveryCrypto = createBrowserCrypto()
   const recoveryKit: RecoveryKit = {
     generate: () => generateRecoveryKey(),
@@ -399,7 +399,7 @@ export function createPrograms(
     })
   }
   // Right after a new Pigeon gets its name, the key is offered once; "Later" is fine, and a
-  // balloon on a later visit reminds you, once (decision 0027).
+  // balloon on a later visit reminds you, once.
   createEffect(
     on(
       () => {
@@ -639,7 +639,7 @@ export function createPrograms(
     },
   }
 
-  // File, Always Go Through the Relay (decision 0026): friends never see your address.
+  // File, Always Go Through the Relay: friends never see your address.
   const setRelayOnly = async (on: boolean) => {
     const messenger = host.messenger()
     if (messenger === undefined) return
@@ -687,17 +687,17 @@ export function createPrograms(
       ),
     })
 
-  /** Every page that comes with Pigeon: the start page, then Help (decision 0032). */
+  /** Every page that comes with Pigeon: the start page, then Help. */
   const findPage = localPageFinder(START_PAGES, HELP_PAGES)
   const favorites = [
     { label: 'Pigeon &Home', address: HOME_ADDRESS },
     { label: 'Pigeon &Help', address: HELP_HOME },
   ]
 
-  /** The view you last chose in Explorer (decision 0033), kept while Pigeon is open. */
+  /** The view you last chose in Explorer, kept while Pigeon is open. */
   const [explorerView, setExplorerView] = createSignal<KeptView | undefined>()
 
-  /** Pigeon Explorer, at its start page or at `start` (decision 0032). */
+  /** Pigeon Explorer, at its start page or at `start`. */
   const openExplorer = (start?: string) =>
     api.open('explorer', {
       title: 'Pigeon Explorer',

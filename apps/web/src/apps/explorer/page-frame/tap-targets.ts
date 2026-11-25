@@ -1,4 +1,4 @@
-// Links a finger can hit in One Column on the Pocket (decision 0033).
+// Links a finger can hit in One Column on the Pocket.
 import { TAP_TARGET } from './view.ts'
 
 /**

@@ -1,4 +1,4 @@
-// Invites (decision 0018): an 8-character code to type, and a short link that carries the code plus
+// Invites: an 8-character code to type, and a short link that carries the code plus
 // the inviter's fingerprint. The code names the `invite:<code>` room; the fingerprint lets whoever
 // opens the link check the inviter is who the link says. A typed code carries no fingerprint, so
 // the two people compare fingerprints by eye.
@@ -53,7 +53,7 @@ function readCode(text: string): string | undefined {
 export const decodeInvite = (text: string): Result<Invite, 'malformed'> => decode(text, 'i/')
 
 /**
- * A link that links a new device to yours (decision 0024): `l/<code><fingerprint>`, the same
+ * A link that links a new device to yours: `l/<code><fingerprint>`, the same
  * shape as an invite with the identity's fingerprint. Typed codes read as for invites.
  */
 export function encodeDeviceLink(code: string, fingerprint: string): string {

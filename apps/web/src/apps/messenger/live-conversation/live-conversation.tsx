@@ -19,7 +19,7 @@ export interface LiveConversationProps {
   onAbout: () => void
   /** The friend's own items for the Actions menu (profile, rename, mute, remove). */
   actions?: (() => readonly MenuEntry[]) | undefined
-  /** Hands the visitor a text file to save: Save Conversation As... (M13). */
+  /** Hands the visitor a text file to save: Save Conversation As... */
   saveText?: ((name: string, text: string) => void) | undefined
   /** Now, for the line saying when it was saved. */
   now?: (() => number) | undefined
@@ -49,7 +49,7 @@ const NOTES: Record<
   offline: { kind: 'system', text: (name, at) => `${name} went offline at ${clockTime(at)}.` },
 }
 
-/** `mine` says which entries are yours: written on any of your devices (decision 0024). */
+/** `mine` says which entries are yours: written on any of your devices. */
 export function transcriptFor(
   view: FriendView,
   mine: PeerId | ((author: PeerId) => boolean),

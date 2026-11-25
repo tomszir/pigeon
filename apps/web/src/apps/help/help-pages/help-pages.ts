@@ -1,4 +1,4 @@
-// Every page of in-world Help, by its pigeon://help address (decision 0032). Explorer serves
+// Every page of in-world Help, by its pigeon://help address. Explorer serves
 // these from this computer and runs each through PigeonHTML's sanitize like anyone's page.
 
 import {

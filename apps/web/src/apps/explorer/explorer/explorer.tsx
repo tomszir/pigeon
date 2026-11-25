@@ -1,5 +1,5 @@
-// Pigeon Explorer, the in-world web browser (decision 0032). For now it opens the pages that come
-// with Pigeon, "On this computer", and says nobody is hosting every other address until M5.
+// Pigeon Explorer, the in-world web browser. It opens the pages that come with Pigeon, "On this
+// computer". Nobody hosts pages over the network yet, so every other address says so.
 
 import type { BackEntry } from '@pigeon/core'
 import { PAGE_BUDGET_BYTES, type PageUrls, sanitize } from '@pigeon/pigeonhtml'
@@ -51,7 +51,7 @@ export interface ExplorerProps {
   favorites?: readonly Favorite[] | undefined
   /** What relative image URLs resolve against; the app's own address. */
   base?: string | undefined
-  /** The view kept from earlier windows (decision 0033); One Column on a phone and Desktop Layout otherwise. */
+  /** The view kept from earlier windows; One Column on a phone and Desktop Layout otherwise. */
   view?: KeptView | undefined
   /** You chose another view, to keep for the next Explorer window. */
   onViewChange?: ((kept: KeptView) => void) | undefined
@@ -72,7 +72,7 @@ type Shown =
   | { readonly kind: 'not-hosted'; readonly address: string }
   | { readonly kind: 'too-big'; readonly address: string; readonly bytes: number }
 
-/** Every page, bundled ones included, goes through the same sanitizer (decision 0032). */
+/** Every page, bundled ones included, goes through the same sanitizer. */
 function open(address: string, findPage: ExplorerProps['findPage']): Shown {
   const page = findPage(address)
   if (page === undefined) return { kind: 'not-hosted', address }
@@ -131,7 +131,7 @@ export function Explorer(props: ExplorerProps) {
     })
   }
 
-  // The browser's Back goes back a page here too (decision 0034): one entry for each page behind
+  // The browser's Back goes back a page here too: one entry for each page behind
   // the one showing. Explorer's own Back takes its entry out; Forward adds one again.
   const backStack = useBack()
   const behind: BackEntry[] = []

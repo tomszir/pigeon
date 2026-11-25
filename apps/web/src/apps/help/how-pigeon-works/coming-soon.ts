@@ -1,5 +1,4 @@
-// Chapter 7: what's planned and not built (docs/roadmap.md; docs/protocol.md, Letters and
-// pigeon:// addresses).
+// Chapter 7: what's planned and not built (docs/protocol.md, Letters and pigeon:// addresses).
 
 import { pre } from '../page/page.ts'
 import { figure, NOT_BUILT, steps } from './frame.ts'

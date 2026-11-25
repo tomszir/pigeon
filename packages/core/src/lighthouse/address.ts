@@ -1,4 +1,4 @@
-// A Lighthouse's address (decision 0037): its key, its name and where to reach it, written as
+// A Lighthouse's address: its key, its name and where to reach it, written as
 // pigeon://lighthouse/<id>?url=wss://...&name=...[&pass=...]. The key is what Pigeon checks every
 // reply against, so an address names one Lighthouse however its server is reached.
 import { isPeerId, type PeerId } from '../identity/identity.ts'

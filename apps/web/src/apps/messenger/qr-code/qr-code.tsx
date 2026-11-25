@@ -1,4 +1,4 @@
-// An invite link as a QR code, drawn as crisp whole-pixel squares (decision 0008).
+// An invite link as a QR code, drawn as crisp whole-pixel squares.
 import { createMemo } from 'solid-js'
 import { encode } from 'uqr'
 import styles from './qr-code.module.css'

@@ -1,4 +1,4 @@
-// One person on several devices (decision 0024). Each device has its own key; an identity is a
+// One person on several devices. Each device has its own key; an identity is a
 // device log saying which devices are its own. The first device's key starts it and stays the
 // identity's PeerId, so a friend's view of you never changes; it is on the list without an entry.
 //
@@ -7,7 +7,7 @@
 // the one before, so each epoch's log is one chain with one writer. The first device writes
 // epoch 0.
 //
-// A recovery key (decisions 0027 and 0030) outranks every device. The first device commits to
+// A recovery key outranks every device. The first device commits to
 // one in `recovery`; a `recover` signed by the current key starts a new epoch, naming the device
 // that writes it, the devices it keeps, and the next key. Every other device is removed. Epochs
 // sit beside epoch 0's entries, in `epochs`, so a Pigeon from before them still reads epoch 0 and
@@ -54,7 +54,7 @@ export interface DeviceEntry {
   readonly sig: string
 }
 
-/** The recovery key's public half, signed by the first device (decision 0027). */
+/** The recovery key's public half, signed by the first device. */
 export interface RecoveryKey {
   readonly key: PeerId
   readonly at: number
@@ -484,7 +484,7 @@ export async function appendDeviceEntry(
 
 /**
  * Commits to a recovery key, from the first device, while there's none and no recovery yet.
- * After that only a `recover` signed by the current key names the next (decision 0027).
+ * After that only a `recover` signed by the current key names the next.
  */
 export async function setRecoveryKey(
   log: DeviceLog,
@@ -543,7 +543,7 @@ function longerChain(
 /**
  * Lines two runs of epochs up from the same number; ours is the one already trusted. At the first
  * recover they disagree on, what we already know wins if we have a later epoch on top of it: a
- * key that was used and replaced can't start that epoch again (decision 0031). Only at our latest
+ * key that was used and replaced can't start that epoch again. Only at our latest
  * epoch, where both recovers come from the key still current, does the lower signature win, with
  * everything after it. With no disagreement the one with more epochs wins, and each epoch both
  * share keeps the longer copy of its chain.

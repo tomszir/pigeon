@@ -1,5 +1,5 @@
-// The Pocket's Today screen (decision 0019), shown at start and on the home key: who you are, who's around, what's new and your live
-// invite, each a 44px row that opens where it says.
+// The Pocket's Today screen, shown at start and on the home key: who you are, who's around,
+// what's new and your live invite, each a 44px row that opens where it says.
 import { createSignal, For, onCleanup, Show } from 'solid-js'
 import { brand, tango } from '../../../ui/icons/icons.ts'
 import { Marquee } from '../../../ui/marquee/marquee.tsx'

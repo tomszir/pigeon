@@ -1,4 +1,4 @@
-// The CRT effect as a live SVG filter on the screen (decision 0013): the browser runs it on every
+// The CRT effect as a live SVG filter on the screen: the browser runs it on every
 // frame of the real desktop, the closest thing to a fragment shader that HTML allows.
 //
 //   1. curvature: a displacement map pulls the picture in towards the corners;

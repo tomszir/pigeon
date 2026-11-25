@@ -1,4 +1,4 @@
-// Where a Lighthouse keeps mail (decision 0037), as an interface: the Node runner keeps it in
+// Where a Lighthouse keeps mail, as an interface: the Node runner keeps it in
 // SQLite, the Worker in its Durable Objects' SQLite, and tests in memory. Nothing stored says who
 // mail is from or for: a tag, sealed bytes, when it expires, and a hash per recipient device.
 
@@ -17,7 +17,7 @@ export interface StoredBlob {
   readonly drops: readonly string[]
   /** The drop hashes already used. */
   readonly used: readonly string[]
-  /** The order blobs reached this Lighthouse: `list`'s cursor counts it (0037). It only rises. */
+  /** The order blobs reached this Lighthouse: `list`'s cursor counts it. It only rises. */
   readonly seq: number
 }
 

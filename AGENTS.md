@@ -11,10 +11,15 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
   from 0000-template.md. Don't reverse an accepted decision without saying so and
   writing a new one that supersedes it.
 - Every doc opens with a `# Heading` and then a one-line summary.
+- Write docs and code comments for a stranger, as [CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments)
+  says: what is so and, where it isn't obvious, why, in the text itself. No citing decision
+  records, milestone numbers or the roadmap, and nothing about the maintainer's own machines,
+  accounts or plans. The decision records and the roadmap, both in docs/, are the only places
+  those live.
 - Git history is the developers' change log. Don't keep one in docs/. Release notes for people
-  are Changelog.txt, written on each release PR (decision 0025).
+  are Changelog.txt, written on each release PR.
 - A commit with nothing to document carries the trailer `Docs: none`.
-- `scripts/check-docs` checks all of this. It runs when you finish and in CI.
+- `scripts/check-docs` checks all of this, citations included. It runs when you finish and in CI.
 
 ## Commits
 

@@ -1,4 +1,4 @@
-// Pages that come with Pigeon, served "On this computer" (decision 0032). Each set of pages is a
+// Pages that come with Pigeon, served "On this computer". Each set of pages is a
 // map from address to page; Explorer looks an address up in every set it's given, in order.
 import { brand } from '../../../ui/icons/icons.ts'
 import { canonicalAddress, HOME_ADDRESS } from '../explorer/address.ts'

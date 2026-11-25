@@ -7,7 +7,7 @@ Each web-app component lives in its own folder with a CSS Module beside it, and 
 
 ## Context
 
-M1 started with flat `ui/`, `shell/` and `apps/` folders and global, BEM-style class names (`pg-window__title-bar`). The folders got long and a class name could be used anywhere without anyone noticing. The author wants one folder per component. CSS Modules come with Vite, so they need no new dependency. But Vite types a module as an index signature, which this repo's strict `tsconfig` (`noPropertyAccessFromIndexSignature`, `noUncheckedIndexedAccess`) turns into `styles['titleBar']` with no check that the class exists.
+M1 started with flat `ui/`, `shell/` and `apps/` folders and global, BEM-style class names (`pg-window__title-bar`). The folders got long and a class name could be used anywhere without anyone noticing. The maintainer wants one folder per component. CSS Modules come with Vite, so they need no new dependency. But Vite types a module as an index signature, which this repo's strict `tsconfig` (`noPropertyAccessFromIndexSignature`, `noUncheckedIndexedAccess`) turns into `styles['titleBar']` with no check that the class exists.
 
 ## Decision
 

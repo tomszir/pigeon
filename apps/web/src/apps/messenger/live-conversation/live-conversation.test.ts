@@ -73,7 +73,7 @@ it('spells times like the taskbar clock', () => {
   expect(clockTime(new Date(2026, 0, 1, 9, 41).getTime())).toBe('9:41 AM')
 })
 
-describe('Save Conversation As (M13)', () => {
+describe('Save Conversation As', () => {
   it('writes each message on a line with its day and time, and who wrote it', async () => {
     const rook = fakeSigner('rook')
     const mika = fakeSigner('mika')

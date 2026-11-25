@@ -1,4 +1,4 @@
-// The recovery key in WebCrypto (decision 0027). Unlike a device's key, it's made extractable,
+// The recovery key in WebCrypto. Unlike a device's key, it's made extractable,
 // once, so its seed can be shown as a code or sealed in a file; Pigeon never stores it. To use
 // it, the seed is imported again for as long as one `recover` takes to sign.
 import { peerIdFromPublicKey, RECOVERY_SEED_BYTES, type Signer } from '@pigeon/core'

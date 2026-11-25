@@ -1,4 +1,4 @@
-// Core's SealCrypto and a device's Sealer on WebCrypto (decision 0037): ECDH on P-256, HKDF-SHA256
+// Core's SealCrypto and a device's Sealer on WebCrypto: ECDH on P-256, HKDF-SHA256
 // and AES-256-GCM. A device's sealing key is made once, non-extractable like its signing key, so
 // not even the page can read its private half; only its public half leaves the browser.
 import type { SealCrypto, Sealer } from '@pigeon/core'

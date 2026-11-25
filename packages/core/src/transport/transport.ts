@@ -1,4 +1,4 @@
-// The only seam between Pigeon and whatever moves bytes between peers (decision 0002).
+// The only seam between Pigeon and whatever moves bytes between peers.
 // Trystero implements it today; hand-written signaling can replace it without touching callers.
 
 /**
@@ -29,7 +29,7 @@ export interface Room {
 export interface JoinOptions {
   /**
    * Locks the room: offers are encrypted with a key derived from it, so only peers that know
-   * it can read them or connect (decision 0026).
+   * it can read them or connect.
    */
   readonly password?: string
   /** Connect through the TURN relay only, so the other peer never learns your IP address. */

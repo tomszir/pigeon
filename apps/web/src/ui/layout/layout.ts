@@ -1,4 +1,4 @@
-// Which layout a control is drawn in. The phone shell provides 'phone' (decision 0019); controls
+// Which layout a control is drawn in. The phone shell provides 'phone'; controls
 // that arrange themselves differently for a finger read it. Sizes change through tokens instead.
 import { createContext, useContext } from 'solid-js'
 

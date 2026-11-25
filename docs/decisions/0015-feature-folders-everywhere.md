@@ -7,7 +7,7 @@ Code is grouped into one folder per feature in every package and app, never one 
 
 ## Context
 
-`@pigeon/core` started as a flat `src/` and is about to grow to twenty-odd files in M2 (encoding, identity, envelopes, chat logs, pairing, test fakes, beside the window manager). The web app already uses layer folders with one folder per component ([0010](0010-component-folders-and-css-modules.md)). The author wants the same shape everywhere.
+`@pigeon/core` started as a flat `src/` and is about to grow to twenty-odd files in M2 (encoding, identity, envelopes, chat logs, pairing, test fakes, beside the window manager). The web app already uses layer folders with one folder per component ([0010](0010-component-folders-and-css-modules.md)). The maintainer wants the same shape everywhere.
 
 ## Decision
 

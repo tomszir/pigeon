@@ -1,4 +1,4 @@
-/* The screen: its resolution at 1×, scaled by a whole number (decisions 0008 and 0012). */
+/* The screen: its resolution at 1×, scaled by a whole number. */
 
 .screen {
   position: relative;
@@ -28,7 +28,7 @@
 }
 
 /*
- * The CRT effect (decision 0013). The picture itself goes through the SVG filter in
+ * The CRT effect. The picture itself goes through the SVG filter in
  * crt-filter.tsx; on top sit the parts that really are on the glass: a curved reflection, darker
  * rounded edges, a soft glow from the tube's rim, a slow refresh band and a faint flicker. The band
  * and flicker stop when motion is reduced.

@@ -11,34 +11,32 @@ packages/
       encoding/   UTF-8, base32, hex and canonical JSON.
       identity/   PeerId, fingerprints, the old pair-room name (now the chat's id),
                   and the Crypto and Signer interfaces the platform implements.
-      transport/  the Transport and Room interfaces (decision 0002); a join can
-                  carry a room password and ask for relay-only connections.
+      transport/  the Transport and Room interfaces, so the network library can be
+                  swapped; a join can carry a room password and ask for relay-only connections.
       messages/   signed envelopes: body types, shape checks, the 64 KB limit.
       chat/       signed append-only chat logs and the pair session that syncs them,
                   across however many pair rooms the friend is in.
       pairing/    invite codes and links, the invite handshake, pair rooms named
-                  from the pair secret and the UTC day (decision 0026), and linking
-                  a new device (link.ts, decision 0024).
-      devices/    the signed device log that ties several devices to one identity
-                  (decision 0024).
-      mail/       mail sealed to devices (decision 0037): mail tags from the pair or
-                  self secret and the UTC date, sealing keys bound to their devices,
-                  sealMail and openMail, and SealCrypto and Sealer, the ECDH, HKDF and
-                  AES-GCM the platform implements.
-      lighthouse/ what a Pigeon and a Lighthouse say (decision 0037): plain requests,
+                  from the pair secret and the UTC day, and linking a new device
+                  (link.ts).
+      devices/    the signed device log that ties several devices to one identity.
+      mail/       mail sealed to devices: mail tags from the pair or self secret and
+                  the UTC date, sealing keys bound to their devices, sealMail and
+                  openMail, and SealCrypto and Sealer, the ECDH, HKDF and AES-GCM the
+                  platform implements.
+      lighthouse/ what a Pigeon and a Lighthouse say: plain requests,
                   replies signed by the Lighthouse over the request number, blob ids
                   from their content, pigeon://lighthouse addresses, and client.ts, a
                   Pigeon's side of one Lighthouse over a socket the platform opens: a
                   fresh nonce per connection, one checked reply per request.
       windows/    window-manager state.
       back/       the back stack: what the browser's Back closes next, kept in step
-                  with the browser's history through a small port (decision 0034).
+                  with the browser's history through a small port.
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner and an
                   in-memory network. Never used outside tests.
-                Letter rules and pigeon:// resolution arrive as their own folders.
-  lighthouse/   @pigeon/lighthouse: a Lighthouse's mailbox with no platform in it
-                (decision 0037). lighthouse/ answers each connection's request frames
+  lighthouse/   @pigeon/lighthouse: a Lighthouse's mailbox with no platform in it.
+                lighthouse/ answers each connection's request frames
                 with signed replies; store/ is the MailStore interface, a memory store,
                 and store-contract.ts, the tests every store runs (exported as
                 @pigeon/lighthouse/testing), and sql-store.ts, the MailStore over a
@@ -52,27 +50,26 @@ packages/
 apps/
   web/          The site (Vite + Solid), served by a Cloudflare Worker.
     worker/     The Worker: static assets, and /api/turn, which hands out short-lived
-                TURN credentials (decision 0022). Holds no user data.
+                TURN credentials. Holds no user data.
     src/
       platform/ The only code that touches browser APIs, one folder per concern:
                 crypto/ (WebCrypto keys behind core's Crypto and Signer, a device's
                 sealing key and core's SealCrypto, and sealing with a passphrase), files/ (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
-                (Trystero, with TURN servers from /api/turn), clock/, clipboard/, lighthouse/ (the WebSocket core's Lighthouse client talks over,
-                decision 0037), tab-lock/ (one tab at a time, with Web
-                Locks and a BroadcastChannel; decision 0028), back/ (core's back stack over
-                `history`, decision 0034). Each is an interface plus a
-                browser implementation; audio and files come later.
+                (Trystero, with TURN servers from /api/turn), clock/, clipboard/,
+                lighthouse/ (the WebSocket core's Lighthouse client talks over),
+                tab-lock/ (one tab at a time, with Web Locks and a BroadcastChannel)
+                and back/ (core's back stack over `history`). Each is an interface
+                plus a browser implementation.
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,
                 and tokens.css, the only global stylesheet. back/ is the context that
                 hands the back stack to whatever Back can close.
       shell/    Stage and scaling, desktop, taskbar, Pigeon menu, tray and balloons,
                 the window layer and the phone layout (shell/phone-shell/, the
                 Kestrel Pocket; Today itself comes from apps/messenger/today/).
-                createShell() returns the
-                ShellApi that app/ hands to programs.
-      apps/     One folder per app (messenger, reader, explorer, help, builder, letters, files), each
-                holding one folder per component: apps/<app>/<component>/. The
+                createShell() returns the ShellApi that app/ hands to programs.
+      apps/     One folder per app (messenger, reader, explorer, help, about),
+                each holding one folder per component: apps/<app>/<component>/. The
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
                 answers invites, and exposes Solid state the windows draw;
@@ -80,8 +77,8 @@ apps/
                 a device is. messenger/devices/ draws Link a Device, Link to My
                 Other Device and My Devices. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
-                (Changelog.txt, the release notes, decision 0025). explorer/ is
-                Pigeon Explorer (decision 0032): explorer/ (the window, history.ts
+                (Changelog.txt, the release notes). explorer/ is
+                Pigeon Explorer: explorer/ (the window, history.ts
                 and address.ts for pigeon:// addresses), address-bar/, page-frame/
                 (the sandboxed frame, its CSP and base stylesheet), error-page/
                 ("page not hosted" and "too big"), and local-pages/, the pages
@@ -89,7 +86,7 @@ apps/
                 order. Bundled pages are PigeonHTML in .html files, which Biome
                 leaves alone since they're written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
-                pigeon://help (decision 0032), with no window of its own:
+                pigeon://help, with no window of its own:
                 help-pages/ exports HELP_PAGES, every page by address, which app/
                 hands to Explorer after the start page, and Help in the Pigeon
                 menu opens; how-pigeon-works/ is the hand-written guide;
@@ -103,14 +100,14 @@ apps/
                 and builds the Messenger; address-invite.ts reads an invite link
                 from the address bar once and removes it; whats-new.ts decides
                 whether this visit says Pigeon was updated.
-  lighthouse/   The Node Lighthouse (decision 0037, docs/lighthouse.md): @pigeon/lighthouse
+  lighthouse/   The Node Lighthouse (docs/lighthouse.md): @pigeon/lighthouse
                 run from one config file. config/ reads and checks it; platform/ is core's
                 Crypto and the Lighthouse's key file over Node's WebCrypto; store/ the
                 MailStore in SQLite (node:sqlite); server/ the WebSocket server (ws), one
                 connection per client, each frame one request. main.ts starts it.
                 Dockerfile builds it from the repository root.
   lighthouse-worker/
-                The Worker Lighthouse (decision 0037, docs/lighthouse.md): index.ts sends
+                The Worker Lighthouse (docs/lighthouse.md): index.ts sends
                 every request, with the client's address, to the one Durable Object;
                 object/ is that Durable Object, the mailbox on its SQLite with hibernating
                 WebSockets and an hourly sweep; platform/ is core's Crypto on the Workers
@@ -143,6 +140,6 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - The caller passes time and randomness in; `core` has no module-level state.
 - Content and numbers live in tables, not branches.
 - Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`.
-- Folders by feature, never one flat directory: in a package, `src/<feature>/` ([0015](decisions/0015-feature-folders-everywhere.md)); in the web app, the layer folders above and one folder per component.
-- In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses ([0010](decisions/0010-component-folders-and-css-modules.md)). Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
+- Folders by feature, never one flat directory: in a package, `src/<feature>/`; in the web app, the layer folders above and one folder per component.
+- In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses. Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
 - Tests sit beside the file they test (`name.test.ts`) and go at the lowest level that fails for the reason they guard. Playwright e2e lives in `apps/web/e2e/`.

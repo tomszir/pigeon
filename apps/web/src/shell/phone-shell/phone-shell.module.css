@@ -1,5 +1,5 @@
 /*
- * The Kestrel Pocket (decision 0019): a matte black frame, a screen that fills the phone, and a
+ * The Kestrel Pocket: a matte black frame, a screen that fills the phone, and a
  * row of four keys. Inside the screen the desktop's controls grow to touch size through tokens.
  */
 
@@ -31,7 +31,7 @@
 }
 
 .screen {
-  /* Touch sizes for every control drawn inside (decision 0019). */
+  /* Touch sizes for every control drawn inside. */
   --pg-type-body: 400 13px / 17px var(--pg-font-ui);
   --pg-type-body-strong: 700 13px / 17px var(--pg-font-ui);
   --pg-type-message: 400 14px / 18px var(--pg-font-ui);

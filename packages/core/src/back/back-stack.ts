@@ -1,4 +1,4 @@
-// Back steps back inside Pigeon (decision 0034). Everything you can step back from (a page
+// Back steps back inside Pigeon. Everything you can step back from (a page
 // Explorer opened, a window on the Pocket, an open menu) adds an entry, and each entry is one
 // entry in the browser's history at the same address. The browser's Back takes the newest entry
 // off and runs it; with none left, Back leaves Pigeon as it always did.

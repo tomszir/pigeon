@@ -1,4 +1,4 @@
-// Files you save and open yourself: an export of your data (M13), a conversation saved as text.
+// Files you save and open yourself: an export of your data, a conversation saved as text.
 // An interface, so the Messenger's windows take it from the composition root.
 
 export interface Files {

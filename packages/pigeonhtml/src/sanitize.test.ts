@@ -255,7 +255,7 @@ describe('image maps', () => {
 })
 
 describe('framesets', () => {
-  it('are dropped for now, frames and all', () => {
+  it('are dropped, frames and all', () => {
     const { html, removed } = sanitize(
       '<frameset cols="20%,80%"><frame src="nav.html"><frame src="main.html"><noframes>Get a browser</noframes></frameset>',
       anyUrls,

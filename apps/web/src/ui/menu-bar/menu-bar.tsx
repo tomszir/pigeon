@@ -33,7 +33,7 @@ export function MenuBar(props: { label: string; menus: readonly MenuBarMenu[] })
     if (refocus && was !== null) buttons[was]?.focus()
   }
 
-  // Back closes an open menu (decision 0034); moving between menus is still one step.
+  // Back closes an open menu; moving between menus is still one step.
   const back = backStep(useBack(), () => close(true))
   createEffect(() => (open() === null ? back.close() : back.open()))
 

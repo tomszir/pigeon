@@ -5,7 +5,7 @@
  */
 
 /* Wine ships a tahomabd.ttf, but its outlines draw at regular weight, so bold is synthesised
-   from the regular face (decision 0009). */
+   from the regular face. */
 @font-face {
   font-family: "Wine Tahoma";
   src: url("../fonts/wine-tahoma.ttf") format("truetype");
@@ -231,7 +231,7 @@
     inset 2px -2px #89ade4;
   --pg-shadow-check-hover: inset -2px -2px #f8b636, inset 2px 2px #fedf9c;
 
-  /* Type (bundled fonts only, decision 0009) */
+  /* Type (bundled fonts only) */
   --pg-font-ui: "Wine Tahoma", sans-serif;
   --pg-font-mono: "Vera Sans Mono", monospace;
   --pg-type-title: 700 13px / 15px var(--pg-font-ui);

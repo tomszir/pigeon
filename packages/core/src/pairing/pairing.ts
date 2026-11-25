@@ -1,9 +1,9 @@
-// The invite handshake (decision 0018). The inviter waits in `invite:<code>`. Whoever opens the
+// The invite handshake. The inviter waits in `invite:<code>`. Whoever opens the
 // invite joins and sends a signed pair-request with the code and their name; the inviter answers
 // pair-offer with its own name. The invitee now sees who answered and their fingerprint, checked
 // against the link's when there is one. Only when they agree does pair-confirm go back, and the
-// inviter's pair-accept close it, carrying the pair secret their room is named from (decision
-// 0026). A code pairs once.
+// inviter's pair-accept close it, carrying the pair secret their room is named from.
+// A code pairs once.
 import { type DeviceLog, speakerIdentity } from '../devices/device-log.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { fingerprint, type PeerId } from '../identity/identity.ts'
@@ -12,7 +12,7 @@ import type { ConnectionId, Room, Transport } from '../transport/transport.ts'
 import { type Invite, inviteRoom } from './invite.ts'
 
 export interface NewFriend {
-  /** Their identity: what they're known by, whichever device answered (decision 0024). */
+  /** Their identity: what they're known by, whichever device answered. */
   readonly id: PeerId
   readonly handle: string
   /** Their device log, when the device that answered isn't their first. */
@@ -29,7 +29,7 @@ interface Common {
   readonly speaker?: (() => Speaker | undefined) | undefined
   /**
    * The device log you already keep for someone, so a friend back from a recovery is checked
-   * against it, and a device their recovery took off their list is refused (decision 0027).
+   * against it, and a device their recovery took off their list is refused.
    */
   readonly knownLog?: ((id: PeerId) => Promise<DeviceLog | undefined>) | undefined
 }
@@ -141,7 +141,7 @@ export interface Offer {
   readonly checked: boolean
   /**
    * Agrees to be friends; resolves once the inviter has added you, with the pair secret they
-   * sent (none from a Pigeon before 0026), or `false` if `until` gives up first.
+   * sent (none from a Pigeon before pair secrets), or `false` if `until` gives up first.
    */
   confirm(until: Promise<void>): Promise<Accepted | false>
   cancel(): Promise<void>
