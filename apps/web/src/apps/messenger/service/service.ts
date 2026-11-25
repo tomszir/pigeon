@@ -76,7 +76,7 @@ import {
   verifySealingKey,
 } from '@pigeon/core'
 import { batch, createSignal } from 'solid-js'
-import { createStore, produce } from 'solid-js/store'
+import { createStore, produce, unwrap } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
@@ -86,6 +86,7 @@ import {
   loadInviteLinks,
   type OpenedLink,
 } from './invite-links.ts'
+import { createLetters, type Letters } from './letters.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
@@ -472,7 +473,11 @@ export async function createMessenger(deps: MessengerDeps) {
           client: (address) => lighthouseClient(address) as LighthouseClient,
           head: () => ({ epoch: devices.epoch(), seq: devices.own().entries.length }),
           stopped: () => closed,
+          onReceipt: (sender, id) => void letters?.receipted(sender, id).catch(() => undefined),
+          onStored: (to, id, where) => void letters?.stored(to, id, where).catch(() => undefined),
         })
+  /** Messages left at friends' Lighthouses while they're away, once friends are loaded. */
+  let letters: Letters | undefined
   /** Invite links through Lighthouses, once friends are loaded. */
   let inviteLinks: InviteLinks | undefined
 
@@ -497,8 +502,18 @@ export async function createMessenger(deps: MessengerDeps) {
    * it; one from a device it doesn't know yet is left, to be looked at again when it's put
    * again. From someone you've removed too, it's simply heard.
    */
-  async function takeLetter(source: Source, letter: Letter): Promise<boolean> {
+  async function takeLetter(
+    source: Source,
+    letter: Letter,
+    through: LighthouseAddress,
+  ): Promise<boolean> {
     if (closed) return false
+    if (letter.kind === 'letter') {
+      // Only from a device on their list, and only into a chat with them.
+      if (friend(letter.sender) === undefined || letters === undefined) return true
+      if (devices.classify(letter.sender, letter.from) !== 'friend') return false
+      return letters.take(letter.sender, letter, through)
+    }
     if (letter.kind === 'self') return source.sender === self && takeSelfNews(letter)
     if (letter.kind === 'invite' || letter.kind === 'invite-answer')
       return inviteLinks?.take(source, letter) ?? Promise.resolve(false)
@@ -638,7 +653,7 @@ export async function createMessenger(deps: MessengerDeps) {
         sources.set(view.id, {
           sender: view.id,
           secret: view.secret,
-          kinds: ['farewell', 'receipt'],
+          kinds: ['farewell', 'receipt', 'letter'],
           replyTo: await recipient(view.id, view.secret),
         })
       }
@@ -655,6 +670,8 @@ export async function createMessenger(deps: MessengerDeps) {
       await mailbox.resend()
       const all = [...sources.values(), ...(inviteLinks?.sources() ?? [])]
       const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
+      // What waits to be mailed to friends who are away: written before a close, or held back.
+      for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
       // A farewell every device of theirs has a receipt for was heard: nothing more to say.
       // One that only expired wasn't, and goes on being said in person.
       for (const id of heard)
@@ -792,7 +809,10 @@ export async function createMessenger(deps: MessengerDeps) {
       setState('friends', id, { handle: event.handle, name: nameOf(event.handle, current.petname) })
       void saveFriends()
     },
+    // Their device said what it has, and the session answers with the rest: it has it all.
+    has: (id) => letters?.synced(id),
     offline: (id) => {
+      void Promise.resolve().then(() => letters?.left(id))
       setState('friends', id, { online: false, typing: false })
       note(id, 'offline')
     },
@@ -976,6 +996,7 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   async function addFriend(record: FriendRecord, log?: ChatLog) {
+    letters?.remember(record.id)
     const existing = friend(record.id)
     if (existing !== undefined) {
       // Paired again, perhaps after they'd removed you: friends once more.
@@ -1112,6 +1133,29 @@ export async function createMessenger(deps: MessengerDeps) {
     events.onPaired?.(view)
   }
 
+  if (mailbox !== undefined)
+    letters = createLetters({
+      store,
+      mailbox,
+      device: signer.id,
+      random: deps.random,
+      now: clock.now,
+      sleep: clock.sleep,
+      stopped: () => closed,
+      chat: (id) => friend(id)?.log,
+      connected: (id) => sessions.get(id)?.online() === true,
+      // Nobody to write to once they've removed you.
+      recipient: async (id) =>
+        friend(id)?.removedYouAt === undefined ? recipient(id, friend(id)?.secret) : undefined,
+      takeEntries: async (id, entries) => {
+        const session = sessions.get(id)
+        if (session === undefined) return false
+        await session.takeEntries(entries)
+        return true
+      },
+    })
+  for (const view of friendList()) void letters?.load(view.id).catch(() => undefined)
+
   if (mailbox !== undefined && deps.seal !== undefined && makeClient !== undefined)
     inviteLinks = await loadInviteLinks({
       crypto,
@@ -1201,6 +1245,7 @@ export async function createMessenger(deps: MessengerDeps) {
     })
     await saveFriends()
     await store.delete(KEYS.log(id))
+    await letters?.forget(id)
     // Who they are to mail, before their devices are forgotten: the farewell is sealed to them.
     const mailTo = view.removedYouAt === undefined ? await recipient(id, view.secret) : undefined
     await devices.forgetFriend(id)
@@ -1476,8 +1521,10 @@ export async function createMessenger(deps: MessengerDeps) {
       if (isBlocked(record.id)) continue
       const room = await pairRoom(crypto, self, record.id)
       const stored = await store.get(KEYS.log(record.id))
+      // The chat as the Messenger shows it lives in a reactive store: unwrapped, so it can be kept.
+      const shown = have.get(record.id)?.log
       const current =
-        have.get(record.id)?.log ??
+        (shown === undefined ? undefined : unwrap(shown)) ??
         (isChatLog(stored) && stored.id === room ? stored : emptyLog(room))
       const incoming = (logs as Record<string, unknown>)[record.id]
       if (!isChatLog(incoming) || incoming.id !== room) {
@@ -1827,6 +1874,12 @@ export async function createMessenger(deps: MessengerDeps) {
       tellOwnDevices()
     },
     selfFingerprint,
+    /**
+     * Where one of the chat's messages is: sealing, left at Lighthouses, received, or come by
+     * letter; nothing for one that went straight to them. Call `loadLetters` when the chat opens.
+     */
+    messageRoute: (id: PeerId, entry: LogEntry) => letters?.route(id, entry),
+    loadLetters: (id: PeerId) => letters?.load(id) ?? Promise.resolve(),
     /** Invite links this device made, with who asked through each. */
     inviteLinks: () => inviteLinks?.links() ?? [],
     /** Invite links your other devices made. */
@@ -1965,6 +2018,7 @@ export async function createMessenger(deps: MessengerDeps) {
       if (trimmed === '' || devices.status() !== 'active') return
       lastTypingSent.delete(id)
       await sessions.get(id)?.send(trimmed)
+      letters?.wrote(id)
     },
     /** Call on every edit of the draft; it throttles what goes on the wire. */
     typing(id: PeerId, active: boolean) {

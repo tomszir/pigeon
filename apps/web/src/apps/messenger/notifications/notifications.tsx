@@ -103,6 +103,14 @@ export function NotificationList(props: NotificationListProps) {
   )
 }
 
+/** The Lighthouse that brought a friend's last message, when it came by letter. */
+function arrivedThrough(messenger: Messenger, id: string): string | undefined {
+  const last = messenger.friend(id)?.log.entries.at(-1)
+  if (last === undefined) return undefined
+  const route = messenger.messageRoute(id, last)
+  return route?.kind === 'arrived' ? route.through : undefined
+}
+
 function AwayRow(props: {
   item: AwayItem
   messenger: Messenger
@@ -114,6 +122,7 @@ function AwayRow(props: {
 }) {
   const friend = () =>
     props.item.kind === 'requests' ? undefined : props.messenger.friend(props.item.id)
+  const byLetter = (id: string) => arrivedThrough(props.messenger, id)
   return (
     <Show
       when={props.item.kind !== 'requests' && friend()}
@@ -171,6 +180,9 @@ function AwayRow(props: {
             <span class={styles.text}>
               <strong>{view().name}</strong>
               <span class={styles.preview}>{view().log.entries.at(-1)?.text.split('\n')[0]}</span>
+              <Show when={byLetter(view().id)}>
+                {(through) => <span class={styles.letter}>By letter, through {through()}</span>}
+              </Show>
             </span>
           </Show>
           <span class={styles.end}>

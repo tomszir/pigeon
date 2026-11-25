@@ -64,6 +64,30 @@ function setup(
 }
 
 describe('the Lighthouse client', () => {
+  it('gives up on a socket that never opens, so nothing waits on it for good', async () => {
+    const timers: (() => void)[] = []
+    let opened = 0
+    const c = createLighthouseClient({
+      address,
+      crypto: fakeCrypto,
+      // Neither opens nor closes, as a connection stuck on its way can.
+      open: () => {
+        opened += 1
+        return { send: () => undefined, close: () => undefined }
+      },
+      random: (length) => new Uint8Array(length).fill(1),
+      sleep: () => new Promise<void>((resolve) => timers.push(resolve)),
+    })
+    const answer = c.request({ type: 'list', tags: [key(1)], cursor: 0 })
+    await flush()
+    for (const run of timers.splice(0)) run()
+    expect(await answer).toEqual({ ok: false, error: 'unreachable' })
+    // The next call opens anew.
+    void c.hello()
+    await flush()
+    expect(opened).toBe(2)
+  })
+
   it('says hello once per connection, then carries requests and checked replies', async () => {
     const { client, opens } = setup()
     const c = client()
