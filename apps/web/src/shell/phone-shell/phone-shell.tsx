@@ -16,14 +16,14 @@ import { brand, tangoIcon } from '../../ui/icons/icons.ts'
 import { LayoutContext } from '../../ui/layout/layout.ts'
 import { Marquee } from '../../ui/marquee/marquee.tsx'
 import type { WindowAlert } from '../../ui/window/window.tsx'
-import { Elsewhere } from '../elsewhere/elsewhere.tsx'
+import { FullScreen } from '../full-screen/full-screen.tsx'
 import { PocketStandby } from '../pocket-standby/pocket-standby.tsx'
 import type {
-  ElsewhereSpec,
   Launcher,
   Notice,
   PhoneSpec,
   PigeonMenuSpec,
+  ScreenSpec,
   WindowHandle,
   WindowSpec,
 } from '../shell/types.ts'
@@ -71,8 +71,8 @@ export interface PhoneShellProps {
   /** Turned off: the standby screen shows until a tap or a key wakes it. */
   asleep: boolean
   onWake: () => void
-  /** Pigeon runs in another tab: the screen says so and the keys do nothing (decision 0028). */
-  elsewhere?: ElsewhereSpec | undefined
+  /** A state nothing works in, as Pigeon in another tab: it covers the screen, keys and all. */
+  fullScreen?: ScreenSpec | undefined
   handle: (id: WindowId) => WindowHandle
 }
 
@@ -196,20 +196,20 @@ export function PhoneShell(props: PhoneShellProps) {
   }
 
   const goHome = () => {
-    if (props.elsewhere !== undefined) return
+    if (props.fullScreen !== undefined) return
     if (props.asleep) return props.onWake()
     setMenuOpen(false)
     setHome(true)
     closeAllBut(undefined)
   }
   const toggleMenu = () => {
-    if (props.elsewhere !== undefined) return
+    if (props.fullScreen !== undefined) return
     if (props.asleep) return props.onWake()
     return menuOpen() ? closeMenu(true) : openMenu()
   }
   const left = () => props.phone.leftSoftKey(showingHome() ? undefined : current())
   const pressLeft = () => {
-    if (props.elsewhere !== undefined) return
+    if (props.fullScreen !== undefined) return
     if (props.asleep) return props.onWake()
     setMenuOpen(false)
     setHome(false)
@@ -305,9 +305,7 @@ export function PhoneShell(props: PhoneShellProps) {
                 event.preventDefault()
             }}
           >
-            <Show when={props.elsewhere}>
-              {(spec) => <Elsewhere title={spec().title} onTakeOver={spec().onTakeOver} phone />}
-            </Show>
+            <Show when={props.fullScreen}>{(spec) => <FullScreen spec={spec()} phone />}</Show>
             <Show when={props.asleep}>
               <PocketStandby
                 now={props.now}

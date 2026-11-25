@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
 import { brandIcon } from '../../ui/icons/icons.ts'
-import type { ElsewhereSpec, Launcher, WindowHandle, WindowSpec } from '../shell/types.ts'
+import type { Launcher, ScreenSpec, WindowHandle, WindowSpec } from '../shell/types.ts'
 import { PhoneShell, softKeyPath } from './phone-shell.tsx'
 
 const icon = brandIcon('pigeon-16')
@@ -18,7 +18,7 @@ const launcher = (id: string, label: string, extra: Partial<Launcher> = {}): Lau
 
 const box = { x: 0, y: 0, width: 100, height: 100 }
 
-function setup(touch = true, elsewhere?: ElsewhereSpec) {
+function setup(touch = true, fullScreen?: ScreenSpec) {
   const messenger = launcher('messenger', 'Pigeon Messenger')
   const addFriend = vi.fn()
   const readme = launcher('readme', 'Read Me')
@@ -72,7 +72,7 @@ function setup(touch = true, elsewhere?: ElsewhereSpec) {
       onShutDown={() => undefined}
       asleep={false}
       onWake={() => undefined}
-      elsewhere={elsewhere}
+      fullScreen={fullScreen}
       handle={handle}
     />
   ))
@@ -109,8 +109,10 @@ describe('PhoneShell', () => {
   it('covers the screen and stills the keys while Pigeon runs in another tab', () => {
     const onTakeOver = vi.fn()
     const { addFriend, messenger } = setup(true, {
+      kind: 'notice',
       title: 'Pigeon is open in another tab',
-      onTakeOver,
+      text: 'Only one tab runs Pigeon at a time.',
+      buttons: [{ label: '&Use Pigeon Here', onClick: onTakeOver, isDefault: true }],
     })
     expect(screen.getByRole('alertdialog', { name: 'Pigeon is open in another tab' })).toBeTruthy()
     // The keys are still there under the screen, hidden from the accessibility tree by it.
