@@ -4,6 +4,49 @@
      `---'       version, newest first
 ==============================================
 
+0.8.0, 25 November 2026
+----------------------------------------------
+  * Show each chat's last message, time and
+    unread badge.
+  * Tidy the Pocket and stop welcoming
+    returning visitors.
+  * Invite links that work through
+    Lighthouses.
+  * Catch your other devices up through the
+    self mailbox.
+  * See and change your Lighthouses in a
+    Network window.
+  * Leave a farewell in an offline friend's
+    mailbox.
+  * Say each device's sealing key and
+    Lighthouses in hello.
+  * Talk to a Lighthouse the way its replies
+    need.
+  * Seal mail to each recipient device.
+  * Run a Lighthouse as a Cloudflare Worker.
+  * Run a Lighthouse in Node from one config
+    file.
+  * Hold sealed mail until each device takes
+    it.
+  * A home screen on the Pocket and
+    notifications on the desktop.
+  * Drop the Messenger's second Add a Friend
+    on the Pocket.
+  * Link previews, a share card, and a
+    Messenger icon of its own.
+  * Leave messages for friends who are offline
+    as letters.
+  * Give your other devices the letters you
+    send.
+  * Drop Seal Letter, and say where offline
+    mail goes.
+  * Update ws past its memory-exhaustion
+    advisory.
+  * Trust X-Forwarded-For only when a config
+    says to.
+  * Send a content security policy and safe
+    headers.
+
 0.7.1, 25 November 2026
 ----------------------------------------------
   * Fixed: after removing a friend who was
