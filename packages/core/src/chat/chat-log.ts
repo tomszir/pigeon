@@ -1,7 +1,7 @@
 // A chat as signed append-only logs, one per author. Peers trade summaries of
 // the highest contiguous sequence they hold per author and send each other what's missing; the
 // view is the union sorted by Lamport time.
-import { base32Decode, base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
@@ -102,7 +102,7 @@ export function isLogEntry(value: unknown): value is LogEntry {
 }
 
 export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry): Promise<boolean> {
-  const sig = base32Decode(entry.sig)
+  const sig = base32DecodeExact(entry.sig)
   if (!sig.ok) return false
   return crypto.verify(entry.author, sig.value, signedBytes(log, entry))
 }

@@ -5,6 +5,7 @@
 // device, so a blob says nothing about whom it's for; a device tries each until one opens.
 import {
   base32Decode,
+  base32DecodeExact,
   base32Encode,
   base64Decode,
   base64Encode,
@@ -116,7 +117,7 @@ export function isSealingKey(value: unknown): value is SealingKey {
 /** True when `binding` is its device's own signature over its key. */
 export async function verifySealingKey(crypto: Crypto, binding: SealingKey): Promise<boolean> {
   if (!isSealingKey(binding)) return false
-  const signature = base32Decode(binding.sig)
+  const signature = base32DecodeExact(binding.sig)
   if (!signature.ok) return false
   return crypto.verify(
     binding.device,
@@ -360,7 +361,7 @@ export async function openMail(
     const letter = readLetter(parse(inner))
     if (letter === undefined) return err('malformed')
     const { sig, ...fieldsOnly } = letter
-    const signature = base32Decode(sig)
+    const signature = base32DecodeExact(sig)
     if (!signature.ok) return err('malformed')
     const valid = await crypto.verify(
       letter.from,

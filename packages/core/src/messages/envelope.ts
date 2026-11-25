@@ -3,7 +3,7 @@
 
 import { isLogEntry, type LogEntry, type LogSummary } from '../chat/chat-log.ts'
 import { type DeviceLog, isDeviceLog } from '../devices/device-log.ts'
-import { base32Decode, base32Encode, utf8Decode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode, utf8Decode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
@@ -227,7 +227,7 @@ export async function openEnvelope(
   )
     return err('malformed')
   const envelope: Envelope = { v: 1, from, room, at, body }
-  const signature = base32Decode(sig)
+  const signature = base32DecodeExact(sig)
   if (!signature.ok) return err('malformed')
   const valid = await crypto.verify(from, signature.value, canonicalBytes(signedPart(envelope)))
   return valid ? ok(envelope) : err('bad-signature')

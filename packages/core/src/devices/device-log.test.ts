@@ -153,6 +153,46 @@ describe('a recovery key', () => {
     return log
   }
 
+  it('keeps a removal after a recovery, whatever case a copy writes its signature in', async () => {
+    const recovered = await mergeDeviceLogs(
+      fakeCrypto,
+      await withKey(),
+      await recoverOnto(newPhone.id),
+    )
+    const step = async (log: DeviceLog, kind: DeviceEntryKind, at: number) => {
+      const result = await appendDeviceEntry(
+        fakeCrypto,
+        log,
+        newPhone,
+        { kind, device: tablet.id, ...(kind === 'add' ? { name: 'Tablet' } : {}) },
+        at,
+      )
+      if (!result.ok) throw new Error(result.error)
+      return result.log
+    }
+    const added = await step(recovered, 'add', 11)
+    const removed = await step(added, 'remove', 12)
+    // An older copy whose recover signature is the same bytes in capitals: it still verifies by
+    // decoding, but as text it's another value, and capitals sort first.
+    const epoch = added.epochs?.[0]
+    if (epoch === undefined) throw new Error('no epoch')
+    const shouted: DeviceLog = {
+      ...added,
+      epochs: [{ ...epoch, recover: { ...epoch.recover, sig: epoch.recover.sig.toUpperCase() } }],
+    }
+    for (const merged of [
+      await mergeDeviceLogs(fakeCrypto, removed, shouted),
+      await mergeDeviceLogs(
+        fakeCrypto,
+        await mergeDeviceLogs(fakeCrypto, removed, shouted),
+        removed,
+      ),
+    ]) {
+      expect(deviceState(merged).active.has(tablet.id)).toBe(false)
+    }
+    expect(await verifyDeviceLog(fakeCrypto, shouted)).toBe(false)
+  })
+
   it('is committed once, by the first device, and verifies', async () => {
     const log = await withKey()
     expect(await verifyDeviceLog(fakeCrypto, log)).toBe(true)

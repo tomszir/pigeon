@@ -23,7 +23,7 @@
 // `from` set, `by` the key it trusts its first recover to, and nothing before. Only a Pigeon that
 // already has your earlier epochs takes a tail, and the tail's owner takes a whole log only if it
 // runs through the key in `by`.
-import { base32Decode, base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
@@ -132,7 +132,9 @@ const KINDS: ReadonlySet<string> = new Set(['add', 'remove', 'name'])
 const isName = (value: unknown) =>
   typeof value === 'string' && value.trim() !== '' && value.length <= MAX_DEVICE_NAME_LENGTH
 const isCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value)
-const isSig = (value: unknown) => typeof value === 'string' && value.length <= 256
+/** Lowercase base32 only, the one way Pigeon writes a signature (empty for a chain's first link). */
+const isSig = (value: unknown) =>
+  typeof value === 'string' && value.length <= 256 && /^[a-z2-7]*$/.test(value)
 const isId = (value: unknown) => typeof value === 'string' && isPeerId(value)
 
 function isEntry(value: unknown): value is DeviceEntry {
@@ -351,7 +353,7 @@ export function deviceState(log: DeviceLog): DeviceState {
 }
 
 async function checkSig(crypto: Crypto, signer: PeerId, sig: string, bytes: Uint8Array) {
-  const signature = base32Decode(sig)
+  const signature = base32DecodeExact(sig)
   return signature.ok && (await crypto.verify(signer, signature.value, bytes))
 }
 
