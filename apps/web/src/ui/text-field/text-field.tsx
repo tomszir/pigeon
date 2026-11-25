@@ -18,6 +18,8 @@ export interface TextFieldProps {
   placeholder?: string | undefined
   disabled?: boolean | undefined
   readOnly?: boolean | undefined
+  /** Dots instead of letters, for a passphrase; single-line fields only. */
+  password?: boolean | undefined
   /** Enter in a multi-line field, without Shift. */
   onSubmit?: (() => void) | undefined
   class?: string | undefined
@@ -50,7 +52,7 @@ export function TextField(props: TextFieldProps) {
           <input
             id={id}
             class={field.input}
-            type="text"
+            type={props.password === true ? 'password' : 'text'}
             value={props.value}
             placeholder={props.placeholder}
             disabled={props.disabled}

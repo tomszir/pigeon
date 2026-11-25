@@ -34,7 +34,8 @@ apps/
                 TURN credentials (decision 0022). Holds no user data.
     src/
       platform/ The only code that touches browser APIs, one folder per concern:
-                crypto/ (WebCrypto keys behind core's Crypto and Signer), storage/
+                crypto/ (WebCrypto keys behind core's Crypto and Signer, and sealing
+                with a passphrase), files/ (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
                 (Trystero, with TURN servers from /api/turn), clock/, clipboard/, tab-lock/ (one tab at a time, with Web
                 Locks and a BroadcastChannel; decision 0028). Each is an interface plus a

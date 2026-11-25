@@ -18,10 +18,17 @@ import { SAMPLE_SELF, sampleConversation } from '../apps/messenger/sample/sample
 import { SampleConversation } from '../apps/messenger/sample-conversation/sample-conversation.tsx'
 import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
+import {
+  ExportData,
+  ImportData,
+  type PassphraseSeal,
+} from '../apps/messenger/your-data/your-data.tsx'
 import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
 import { HOME_SCREEN_TEXT } from '../apps/reader/home-screen/home-screen-text.ts'
 import { Reader } from '../apps/reader/reader/reader.tsx'
 import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
+import { openWithPassphrase, sealWithPassphrase } from '../platform/crypto/passphrase.ts'
+import { browserFiles } from '../platform/files/browser-files.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
@@ -280,6 +287,48 @@ export function createPrograms(
     })
   }
 
+  // Your data in a file (M13), sealed with a passphrase.
+  const passphraseSeal: PassphraseSeal = { seal: sealWithPassphrase, open: openWithPassphrase }
+  const dataIcon = tangoIcon('folder', 16)
+  const openExportData = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('export-data', {
+      title: 'Export My Data',
+      icon: dataIcon,
+      bounds: { x: 292, y: 140, width: 440, height: 300 },
+      controls: { maximize: false },
+      content: (window) => (
+        <ExportData
+          messenger={messenger}
+          files={browserFiles}
+          seal={passphraseSeal}
+          now={Date.now}
+          onClose={window.close}
+        />
+      ),
+    })
+  }
+  const openImportData = () => {
+    const messenger = host.messenger()
+    if (messenger === undefined) return
+    api.open('import-data', {
+      title: 'Import My Data',
+      icon: dataIcon,
+      bounds: { x: 302, y: 150, width: 440, height: 280 },
+      controls: { maximize: false },
+      content: (window) => (
+        <ImportData
+          messenger={messenger}
+          files={browserFiles}
+          seal={passphraseSeal}
+          onImported={host.restart}
+          onClose={window.close}
+        />
+      ),
+    })
+  }
+
   const copyInvite = async () => {
     const messenger = host.messenger()
     if (messenger === undefined) return
@@ -514,6 +563,8 @@ export function createPrograms(
           onMyDevices={openMyDevices}
           onLinkDevice={openLinkDevice}
           onJoinDevice={() => openJoinDevice()}
+          onExportData={openExportData}
+          onImportData={openImportData}
           onRelayOnly={(on) => void setRelayOnly(on)}
           onAbout={openAbout}
           onClose={window.close}

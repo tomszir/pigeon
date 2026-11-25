@@ -25,6 +25,10 @@ Linking is in person, from the first device. It hosts `link:<code>` (a code like
 
 Your devices meet in `self:<base32 HMAC-SHA256(self secret, "pigeon/self/v1/" + UTC date)>`, locked with HKDF of the self secret (info `pigeon/self/password`) and renamed daily like pair rooms. Only device logs travel there, so a removal reaches your other devices with no friend online. A device that finds itself removed stops talking and says so.
 
+## Your data in a file
+
+Export My Data writes a `.txt` whose sealed line is `pigeon-sealed:v1:<rounds>:<salt>:<iv>:<sealed>` (base64), made with PBKDF2-SHA256 (600,000 rounds) and AES-256-GCM from a passphrase ([0029](decisions/0029-your-data-in-a-file-for-your-own-devices.md)). Inside it is the canonical JSON `{ kind: "pigeon-export", v: 1, at, self, profile, friends, blocked, friendDevices, logs, settings }`, where `logs` maps each friend to their chat log as stored. It holds no keys, device log or self secret. Import refuses a file whose `self` isn't this device's identity, merges each chat's entries with the same checks a catch-up uses, adds friends and blocks this device lacks (keeping its own where both have one), takes the profile and settings only on a device with no name yet, and starts the Messenger again.
+
 ## Rooms
 
 All traffic goes through the `Transport` interface ([0002](decisions/0002-trystero-behind-a-transport-interface.md)).
