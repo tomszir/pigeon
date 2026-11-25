@@ -356,6 +356,11 @@ export async function createMessenger(deps: MessengerDeps) {
     ? storedFarewells.map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
     : []
   const farewellSessions = new Map<PeerId, PairSession>()
+  /**
+   * Set once `close` runs. Declared before anything that reads it can run: a farewell still owed
+   * from the last visit is said while the Messenger starts.
+   */
+  let closed = false
   // Leaving this Pigeon waits for its farewells to be said (decision 0035).
   let farewellsSaid: (() => void)[] = []
   const saidFarewells = () => {
@@ -1249,7 +1254,6 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   // Rooms are renamed each UTC day, with both joined around midnight.
-  let closed = false
   void (async () => {
     while (!closed) {
       await clock.sleep(untilPairDaysChange(clock.now()))
