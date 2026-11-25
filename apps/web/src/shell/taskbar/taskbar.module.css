@@ -165,3 +165,38 @@
   white-space: nowrap;
   padding-left: 3px;
 }
+
+/* Pigeon's own icon in the tray, with how many things wait on its corner. */
+.trayButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+}
+
+.trayButton[aria-expanded="true"],
+.trayButton:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
+.trayBadge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  box-sizing: border-box;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border: 1px solid #ffffff;
+  border-radius: 7px;
+  background: var(--pg-badge);
+  color: #ffffff;
+  font: 700 9px / 12px var(--pg-font-ui);
+  text-align: center;
+}

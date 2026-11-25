@@ -2,7 +2,7 @@ import type { WindowId } from '@pigeon/core'
 import { createSignal, For, onCleanup, Show } from 'solid-js'
 import { classes } from '../../ui/classes/classes.ts'
 import { brand, type Icon, tango } from '../../ui/icons/icons.ts'
-import type { Launcher } from '../shell/types.ts'
+import type { Launcher, TraySpec } from '../shell/types.ts'
 import { taskButtonLayout } from './task-buttons.ts'
 import styles from './taskbar.module.css'
 
@@ -27,6 +27,10 @@ export interface TaskbarProps {
   peers: number
   /** The screen's width, which the task buttons share. */
   screenWidth: number
+  /** Pigeon's icon in the tray, with its count and the list it opens. */
+  tray?: TraySpec | undefined
+  trayOpen?: boolean | undefined
+  onToggleTray?: (() => void) | undefined
 }
 
 export function Taskbar(props: TaskbarProps) {
@@ -80,13 +84,25 @@ export function Taskbar(props: TaskbarProps) {
           )}
         </For>
       </div>
-      <Tray now={props.now} peers={props.peers} />
+      <Tray
+        now={props.now}
+        peers={props.peers}
+        spec={props.tray}
+        open={props.trayOpen === true}
+        onToggle={() => props.onToggleTray?.()}
+      />
     </footer>
   )
 }
 
 /** The notification area: Pigeon's own status, the peer count, and the clock. */
-function Tray(props: { now: () => Date; peers: number }) {
+function Tray(props: {
+  now: () => Date
+  peers: number
+  spec: TraySpec | undefined
+  open: boolean
+  onToggle: () => void
+}) {
   const [time, setTime] = createSignal(props.now())
   const timer = setInterval(() => setTime(props.now()), 15_000)
   onCleanup(() => clearInterval(timer))
@@ -94,7 +110,27 @@ function Tray(props: { now: () => Date; peers: number }) {
   const status = () => (props.peers === 0 ? 'Pigeon: offline' : 'Pigeon: online')
 
   return (
-    <div class={styles.tray} role="status">
+    <div class={styles.tray}>
+      <Show when={props.spec}>
+        {(spec) => (
+          <button
+            type="button"
+            class={styles.trayButton}
+            aria-label={spec().label()}
+            aria-expanded={props.open}
+            aria-haspopup="dialog"
+            title={spec().label()}
+            onClick={() => props.onToggle()}
+          >
+            <img src={brand('pigeon-16')} alt="" width="16" height="16" />
+            <Show when={spec().count() > 0}>
+              <span class={styles.trayBadge} aria-hidden="true">
+                {spec().count() > 99 ? '99+' : spec().count()}
+              </span>
+            </Show>
+          </button>
+        )}
+      </Show>
       <img
         src={brand(props.peers === 0 ? 'presence-16-offline' : 'presence-16-online')}
         alt={status()}

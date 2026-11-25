@@ -1,19 +1,20 @@
-/* Today: the wallpaper with a greeting, then one row per thing worth a tap. */
+/*
+ * Today: the wallpaper with a greeting and your programs, then what happened while you were
+ * away, then who's online now.
+ */
 
 .today {
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  background: var(--pg-surface-panel);
+  background: var(--pg-field);
 }
 
 .hero {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  justify-content: flex-end;
-  min-height: 180px;
-  padding: 12px;
+  padding: 14px 12px 12px;
   background-color: var(--pg-desktop);
   background-position: 40% 60%;
   background-size: cover;
@@ -30,42 +31,127 @@
   font: 700 22px / 26px var(--pg-font-ui);
 }
 
+/* Four programs to a row, each a 48px tile with its label under it. */
+.apps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 4px;
+  margin-top: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 72px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #ffffff;
+  font: var(--pg-type-body);
+  font-size: 12px;
+  text-shadow: inherit;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgb(255 255 255 / 80%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 22%);
+  box-shadow: 0 1px 3px rgb(15 26 64 / 40%);
+}
+
+.app:active .tile,
+.app:focus-visible .tile {
+  background: var(--pg-selection);
+  outline: none;
+}
+
+.app:focus-visible {
+  outline: none;
+}
+
+.label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A count on a program's corner, ringed in white so it reads on the wallpaper. */
+.badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid #ffffff;
+  border-radius: 10px;
+  background: var(--pg-badge);
+  font: 700 11px / 16px var(--pg-font-ui);
+  text-align: center;
+  text-shadow: none;
+}
+
 .rows {
   display: flex;
   flex-direction: column;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 0 12px;
+}
+
+.title {
+  margin: 0;
+  color: var(--pg-group-heading);
+  font: var(--pg-type-body-strong);
+}
+
+.onlineTitle {
+  padding: 14px 12px 6px;
+}
+
+.clear {
+  min-height: var(--pg-touch-target);
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-decoration: underline;
 }
 
 .row {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60px;
   padding: 6px 12px;
   border: 0;
-  border-bottom: 1px solid var(--pg-separator);
+  border-top: 1px solid var(--pg-separator);
   background: transparent;
   color: var(--pg-text);
   font: var(--pg-type-body);
   text-align: left;
 }
 
-.row:focus-visible,
 .row:active {
-  outline: none;
   background: var(--pg-selection);
   color: var(--pg-selection-text);
-}
-
-.news {
-  background: #fff7d6;
-}
-
-.small {
-  margin: 0 8px;
-}
-
-.icon22 {
-  margin: 0 5px;
 }
 
 .text {
@@ -79,25 +165,49 @@
   color: var(--pg-text-muted);
 }
 
-.row:focus-visible .muted,
-.row:active .muted {
-  color: inherit;
+/* Who's online now: their birds in a row that scrolls sideways when there are many. */
+.online {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 0 12px 12px;
+  overflow-x: auto;
+  list-style: none;
 }
 
-.code {
-  font-family: var(--pg-font-mono);
-  letter-spacing: 0.08em;
+.friend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 72px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  font-size: 12px;
+}
+
+.friendName {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .note {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--pg-text-muted);
+}
+
+/* Nothing on the list and friends to have it: a quiet line, not a second empty state. */
+.caughtUp {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0;
-  padding: 12px;
+  padding: 14px 12px;
   color: var(--pg-text-muted);
-}
-
-.note img {
-  margin: 0 8px;
 }

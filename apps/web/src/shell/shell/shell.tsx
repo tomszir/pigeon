@@ -71,6 +71,7 @@ import type {
   Settings,
   ShellApi,
   ShellEnv,
+  TraySpec,
   WindowHandle,
   WindowSpec,
 } from './types.ts'
@@ -94,6 +95,7 @@ export interface ShellProps {
   quickLaunch: readonly Launcher[]
   menu: PigeonMenuSpec
   phone: PhoneSpec
+  tray?: TraySpec | undefined
 }
 
 export interface CreatedShell {
@@ -238,6 +240,7 @@ export function createShell(env: ShellEnv): CreatedShell {
 
   function Shell(props: ShellProps) {
     const [menuOpen, setMenuOpen] = createSignal(false)
+    const [trayOpen, setTrayOpen] = createSignal(false)
     const [menuByKeyboard, setMenuByKeyboard] = createSignal(false)
     const [selectedIcon, setSelectedIcon] = createSignal<string | null>(null)
     let menuButton: HTMLElement | undefined
@@ -380,6 +383,9 @@ export function createShell(env: ShellEnv): CreatedShell {
             </div>
           )}
         </Show>
+        <Show when={trayOpen() && props.tray}>
+          {(tray) => <div class={styles.trayHost}>{tray().flyout(() => setTrayOpen(false))}</div>}
+        </Show>
         <Show when={menuOpen()}>
           <PigeonMenu
             spec={props.menu}
@@ -407,6 +413,12 @@ export function createShell(env: ShellEnv): CreatedShell {
             now={env.now}
             peers={0}
             screenWidth={screen().width}
+            tray={props.tray}
+            trayOpen={trayOpen()}
+            onToggleTray={() => {
+              setNotice(null)
+              setTrayOpen(!trayOpen())
+            }}
           />
         </div>
       </>
