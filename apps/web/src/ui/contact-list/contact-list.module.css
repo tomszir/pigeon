@@ -111,3 +111,106 @@
 .section:first-child > .group {
   margin-top: 0;
 }
+
+/* The name, and under it in a row with a picture, the last message. */
+.text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.name,
+.preview {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.preview {
+  color: var(--pg-text-muted);
+}
+
+.typing {
+  color: var(--pg-text-ok);
+  font-style: italic;
+}
+
+.unreadText {
+  color: var(--pg-text);
+  font-weight: 700;
+}
+
+/*
+ * The time, and the unread badge under it, in a column of their own at the row's end: a badge
+ * never pushes the time aside.
+ */
+.end {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  align-self: flex-start;
+  gap: 2px;
+  min-width: 32px;
+}
+
+.time {
+  color: var(--pg-text-muted);
+}
+
+.fresh {
+  color: var(--pg-group-heading);
+  font-weight: 700;
+}
+
+.badge {
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--pg-badge);
+  color: #ffffff;
+  font: 700 10px / 16px var(--pg-font-ui);
+  text-align: center;
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Someone you asked who hasn't added you yet: an empty dashed frame where their bird will be. */
+.pending {
+  flex: none;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--pg-text-faint);
+  border-radius: var(--pg-radius-avatar);
+  background: var(--pg-surface-panel);
+}
+
+.selected .preview,
+.selected .time,
+.selected .fresh {
+  color: inherit;
+}
+
+/* On a phone the badge and the time are a size bigger, as the type is. */
+.phone .badge {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.phone .end {
+  min-width: 44px;
+}

@@ -47,7 +47,7 @@ It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenge
 
 ## Try it
 
-Open [pigeon.tomszir.com](https://pigeon.tomszir.com) in two browsers (or on your phone and your laptop), choose a name in each, and type one's invite code into the other. Add `?demo` to the address to see the sample conversation.
+Open [pigeon.tomszir.com](https://pigeon.tomszir.com) in two browsers (or on your phone and your laptop), choose a name in each, and type one's invite code into the other.
 
 ## How it works
 

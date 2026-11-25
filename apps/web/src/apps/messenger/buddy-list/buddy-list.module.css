@@ -11,33 +11,6 @@
   background: var(--pg-grad-user-band);
 }
 
-.avatar {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 42px;
-  height: 42px;
-  padding: 3px;
-  border: 1px solid #8ea4c8;
-  border-radius: 4px;
-  background: #ffffff;
-}
-
-.initial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 2px;
-  background: linear-gradient(135deg, #fbd9b7, #f2a86c);
-  box-shadow: 0 0 0 2px #59b84a;
-  color: #8a3d16;
-  font: 700 18px / 20px var(--pg-font-ui);
-}
-
 .who {
   display: flex;
   flex-direction: column;
@@ -50,11 +23,6 @@
   color: var(--pg-text-faint);
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.letters {
-  color: var(--pg-link);
-  text-decoration: underline;
 }
 
 /* Straight under your own band, which draws the line between them. */
@@ -135,4 +103,69 @@
   gap: 10px;
   width: 100%;
   padding: 0 12px;
+}
+
+/* People waiting for you to add them: a strip above the list, the whole of it a button. */
+.requests {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: max(var(--pg-touch-target), 24px);
+  padding: 2px 6px;
+  border: 1px solid #e6c97a;
+  background: #fff4d6;
+  color: var(--pg-text);
+  font: inherit;
+  text-align: left;
+}
+
+.requestsText {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.requestsLook {
+  color: var(--pg-link);
+  text-decoration: underline;
+}
+
+/* No friends yet: what Pigeon is for, and the ways to add one, in the middle of the list. */
+.emptyState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.emptyText {
+  margin: 0;
+  line-height: 14px;
+}
+
+.emptyActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.emptyActions > button {
+  min-width: 160px;
+}
+
+/* On a phone the two buttons share a row, each half of it. */
+.phoneEmpty .emptyActions {
+  flex-direction: row;
+  align-self: stretch;
+  gap: 8px;
+}
+
+.phoneEmpty .emptyActions > button {
+  flex: 1 1 0;
+  min-width: 0;
 }

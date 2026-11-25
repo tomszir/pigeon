@@ -14,7 +14,6 @@ import {
 import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
-import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { Tabs } from '../../../ui/tabs/tabs.tsx'
@@ -35,8 +34,13 @@ export const CONFIRM_TIMEOUT_MS = 20_000
 /** What the address bar brought: a live invite's code, or a link through Lighthouses. */
 export type IncomingInvite = Invite | { readonly link: string }
 
+/** Add a Friend's tabs: links you send, a quick code, and one someone sent you. */
+export type AddFriendTab = 'links' | 'code' | 'enter'
+
 export interface AddFriendProps {
   messenger: Messenger
+  /** The tab it opens on; Invite Links unless set. */
+  tab?: AddFriendTab | undefined
   /** A link opened from the address bar. */
   incoming?: IncomingInvite | undefined
   copyText: (text: string) => Promise<boolean>
@@ -241,7 +245,7 @@ export function AddFriend(props: AddFriendProps) {
   })
 
   /** Which tab shows, kept while a link or code is looked up and you come back. */
-  const [tab, setTab] = createSignal<'links' | 'code' | 'enter'>('links')
+  const [tab, setTab] = createSignal<AddFriendTab>(props.tab ?? 'links')
 
   onMount(() => {
     if (props.incoming !== undefined && hasName()) openIncoming(props.incoming)
@@ -340,7 +344,7 @@ export function AddFriend(props: AddFriendProps) {
             label="Add a Friend"
             fill={phone}
             initial={tab()}
-            onSelect={(id) => setTab(id as 'links' | 'code' | 'enter')}
+            onSelect={(id) => setTab(id as AddFriendTab)}
             tabs={[
               {
                 id: 'links',

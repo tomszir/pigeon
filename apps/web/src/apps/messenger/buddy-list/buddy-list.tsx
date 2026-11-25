@@ -1,35 +1,34 @@
-// The Pigeon Messenger main window: you, your friends, and the ways to add one. Shows the
-// Desktop board's sample instead when asked, and says so.
+// The Pigeon Messenger main window: you, your friends, and the ways to add one.
 import type { AvatarTraits, Status } from '@pigeon/core'
-import { createEffect, createSignal, Match, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, Match, onCleanup, Show, Switch } from 'solid-js'
 import { Avatar } from '../../../ui/avatar/avatar.tsx'
+import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
 import {
   type ContactGroup,
   ContactList,
   type ContactRow,
 } from '../../../ui/contact-list/contact-list.tsx'
-import { tango } from '../../../ui/icons/icons.ts'
+import { brand, tango } from '../../../ui/icons/icons.ts'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { Menu, type MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
+import type { AddFriendTab } from '../add-friend/add-friend.tsx'
+import { waitingCount } from '../invite-links/invite-links.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
-import { SAMPLE_GROUPS, SAMPLE_SELF, sampleConversation } from '../sample/sample.ts'
+import type { SentAsk } from '../service/invite-links.ts'
 import type { FriendView, Messenger } from '../service/service.ts'
 import styles from './buddy-list.module.css'
 
 export interface BuddyListProps {
-  /** Show the board's sample friends instead of yours. */
-  sample: boolean
   /** Undefined while starting, or when this browser can't run Pigeon (see `problem`). */
   messenger: Messenger | undefined
   problem?: string | undefined
-  onShowSample: () => void
-  onHideSample: () => void
   onOpenConversation: (contactId: string) => void
-  onAddFriend: () => void
-  /** What a friend's right-click menu offers; none for the sample. */
+  /** Opens Add a Friend, on one of its tabs if said. */
+  onAddFriend: (tab?: AddFriendTab) => void
+  /** What a friend's right-click menu offers. */
   menuFor?: ((id: string) => readonly MenuEntry[]) | undefined
   onBlockedPeople?: (() => void) | undefined
   /** File, My Devices, Link a Device and Link to My Other Device. */
@@ -51,39 +50,97 @@ export interface BuddyListProps {
 
 const STATUS_LABEL: Record<Status, string> = { online: 'Online', away: 'Away', busy: 'Busy' }
 
-export function friendRow(view: FriendView, muted = false, avatar?: AvatarTraits): ContactRow {
+const DAY = 24 * 60 * 60 * 1000
+const two = (n: number) => String(n).padStart(2, '0')
+
+/**
+ * When a message was, as a list shows it: the time today, the day this week, the date before.
+ * "21:03", "Mon", "Nov 3".
+ */
+export function shortWhen(at: number, now: number): string {
+  const when = new Date(at)
+  const today = new Date(now)
+  if (when.toDateString() === today.toDateString())
+    return `${two(when.getHours())}:${two(when.getMinutes())}`
+  if (now - at < 6 * DAY) return when.toLocaleDateString('en-US', { weekday: 'short' })
+  return when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** What a list says of a chat: who wrote last, what, and when. */
+export interface ListContext {
+  readonly isMine?: (author: string) => boolean
+  readonly now?: number
+}
+
+export function friendRow(
+  view: FriendView,
+  muted = false,
+  avatar?: AvatarTraits,
+  context: ListContext = {},
+): ContactRow {
   const notes = [
     view.online && view.presence.status !== 'online'
       ? `(${STATUS_LABEL[view.presence.status]})`
       : '',
-    view.unread > 0 ? `- ${view.unread} new` : '',
     view.removedYouAt !== undefined ? '(removed you)' : '',
     muted ? '(muted)' : '',
   ].filter((note) => note !== '')
+  const last = view.log.entries[view.log.entries.length - 1]
+  const mine = last !== undefined && context.isMine?.(last.author) === true
+  const line = last?.text.split('\n')[0] ?? ''
+  const preview: ContactRow['preview'] = view.typing
+    ? { text: 'typing...', kind: 'typing' }
+    : last === undefined
+      ? undefined
+      : {
+          text: mine ? `You: ${line}` : line,
+          ...(view.unread > 0 && !mine ? { kind: 'unread' as const } : {}),
+        }
   return {
     id: view.id,
     name: view.name,
     presence: !view.online ? 'offline' : view.presence.status === 'online' ? 'online' : 'away',
     ...(notes.length > 0 ? { note: notes.join(' ') } : {}),
     ...(avatar === undefined ? {} : { avatar }),
+    ...(preview === undefined ? {} : { preview }),
+    ...(last === undefined ? {} : { time: shortWhen(last.at, context.now ?? Date.now()) }),
+    ...(view.unread > 0 ? { unread: view.unread } : {}),
   }
 }
+
+/** Someone you asked through their link, until they add you: a row of its own. */
+export const ASK_PREFIX = 'ask:'
+export const askRow = (ask: SentAsk): ContactRow => ({
+  id: `${ASK_PREFIX}${ask.secret}`,
+  name: ask.name,
+  presence: 'offline',
+  pending: true,
+  preview: { text: 'You asked to be friends' },
+})
 
 export function friendGroups(
   friends: readonly FriendView[],
   muted: (view: FriendView) => boolean = () => false,
   avatars: ReadonlyMap<string, AvatarTraits> = new Map(),
+  context: ListContext = {},
+  asks: readonly SentAsk[] = [],
 ): readonly ContactGroup[] {
-  const online = friends.filter((view) => view.online)
-  const offline = friends.filter((view) => !view.online)
-  const row = (view: FriendView) => friendRow(view, muted(view), avatars.get(view.id))
+  // The latest chat first in each group, as a list of conversations has it.
+  const latest = (view: FriendView) => view.log.entries[view.log.entries.length - 1]?.at ?? 0
+  const sorted = [...friends].sort((a, b) => latest(b) - latest(a))
+  const online = sorted.filter((view) => view.online)
+  const offline = sorted.filter((view) => !view.online)
+  const row = (view: FriendView) => friendRow(view, muted(view), avatars.get(view.id), context)
+  const asked = asks.filter((ask) => ask.state === 'waiting')
   return [
     { id: 'online', label: 'Online', contacts: online.map(row) },
     { id: 'offline', label: 'Offline', contacts: offline.map(row) },
+    { id: 'asked', label: 'Asked, not added yet', contacts: asked.map(askRow) },
   ].filter((group) => group.contacts.length > 0)
 }
 
 export function BuddyList(props: BuddyListProps) {
+  const layout = useLayout()
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
   const [editing, setEditing] = createSignal(false)
   const [menu, setMenu] = createSignal<{ id: string; x: number; y: number } | undefined>()
@@ -116,7 +173,7 @@ export function BuddyList(props: BuddyListProps) {
       element.style.top = `${top}px`
     })
   }
-  const live = () => (props.sample ? undefined : props.messenger)
+  const live = () => props.messenger
   // Everyone's pixel pigeon, yours included, worked out once per id.
   const [avatars, setAvatars] = createSignal<ReadonlyMap<string, AvatarTraits>>(new Map())
   createEffect(() => {
@@ -130,10 +187,33 @@ export function BuddyList(props: BuddyListProps) {
     }
   })
   const named = () => (live()?.profile().handle ?? '') !== ''
+  const phone = () => layout === 'phone'
+  // Times in the list ("21:03", "Mon") move on as the day does.
+  const [clock, setClock] = createSignal(Date.now())
+  const ticker = setInterval(() => setClock(Date.now()), 60_000)
+  onCleanup(() => clearInterval(ticker))
+  /** People waiting for you to add them, through your invite links. */
+  const waiting = () => {
+    const messenger = live()
+    return messenger === undefined ? 0 : waitingCount(messenger)
+  }
+  const waitingText = () => {
+    const messenger = live()
+    const first = messenger
+      ?.inviteLinks()
+      .flatMap((link) => link.requests)
+      .find((request) => request.state === 'waiting')
+    if (waiting() === 1 && first !== undefined) return `${first.name} asks to be friends`
+    return `${waiting()} people ask to be friends`
+  }
 
   const open = (id: string) => {
-    if (props.sample ? sampleConversation(id) !== undefined : live()?.friend(id) !== undefined)
-      props.onOpenConversation(id)
+    // Someone you asked: what's become of it is in Add a Friend.
+    if (id.startsWith(ASK_PREFIX)) {
+      props.onAddFriend('enter')
+      return
+    }
+    if (live()?.friend(id) !== undefined) props.onOpenConversation(id)
   }
   const setStatus = (status: Status) => {
     const messenger = live()
@@ -142,7 +222,7 @@ export function BuddyList(props: BuddyListProps) {
   /** The selected friend's menu, its access keys dropped: the status items already use them. */
   const selectedActions = (): readonly MenuEntry[] => {
     const id = selected()
-    const entries = id === undefined || props.sample ? [] : (props.menuFor?.(id) ?? [])
+    const entries = id === undefined ? [] : (props.menuFor?.(id) ?? [])
     if (entries.length === 0) return [{ label: 'Select a friend for more', disabled: true }]
     return entries.map((entry) =>
       entry.kind === 'separator' ? entry : { ...entry, label: entry.label.replace('&', '') },
@@ -255,41 +335,21 @@ export function BuddyList(props: BuddyListProps) {
               statusEntry('busy', 'Appear &Busy'),
               { kind: 'separator' },
               ...selectedActions(),
-              { kind: 'separator' },
-              props.sample
-                ? { label: '&Leave the sample', onSelect: props.onHideSample }
-                : { label: '&Show the sample', onSelect: props.onShowSample },
             ],
           },
           { label: '&Help', entries: [{ label: '&About Pigeon', onSelect: props.onAbout }] },
         ]}
       />
       <div class={styles.me}>
-        <Show
-          when={props.sample}
-          fallback={
-            <Avatar
-              traits={avatars().get(live()?.self ?? '')}
-              size={32}
-              name="Your"
-              decorative
-              status={live()?.profile().status}
-            />
-          }
-        >
-          <div class={styles.avatar} aria-hidden="true">
-            <span class={styles.initial}>R</span>
-          </div>
-        </Show>
+        <Avatar
+          traits={avatars().get(live()?.self ?? '')}
+          size={32}
+          name="Your"
+          decorative
+          status={live()?.profile().status}
+        />
         <div class={styles.who}>
           <Switch>
-            <Match when={props.sample}>
-              <span>
-                <strong>{SAMPLE_SELF.name}</strong> <span class={styles.muted}>(Online)</span>
-              </span>
-              <span class={styles.personal}>{SAMPLE_SELF.personalMessage}</span>
-              <span class={styles.letters}>{SAMPLE_SELF.lettersCarried} letters carried</span>
-            </Match>
             <Match when={live()}>
               {(messenger) => (
                 <>
@@ -314,35 +374,42 @@ export function BuddyList(props: BuddyListProps) {
           </Switch>
         </div>
       </div>
+      <Show when={live() !== undefined && waiting() > 0}>
+        <button type="button" class={styles.requests} onClick={() => props.onAddFriend('links')}>
+          <img src={tango('contact-new', 16)} alt="" width="16" height="16" />
+          <span class={styles.requestsText}>{waitingText()}</span>
+          <span class={styles.requestsLook}>Look</span>
+        </button>
+      </Show>
       <div ref={listBox} class={styles.list}>
         <Switch
           fallback={
             <ContactList
               label="Friends"
-              groups={
-                props.sample
-                  ? SAMPLE_GROUPS
-                  : friendGroups(
-                      live()?.friends() ?? [],
-                      (view) => live()?.muted(view.id) === true,
-                      avatars(),
-                    )
-              }
-              pictures={!props.sample}
+              groups={friendGroups(
+                live()?.friends() ?? [],
+                (view) => live()?.muted(view.id) === true,
+                avatars(),
+                { isMine: (author) => live()?.isMine(author) === true, now: clock() },
+                live()?.sentAsks() ?? [],
+              )}
+              pictures
               selected={selected()}
               onSelect={setSelected}
               onOpen={open}
-              onMenu={props.sample || props.menuFor === undefined ? undefined : openMenu}
-              empty="No friends yet."
+              onMenu={
+                props.menuFor === undefined
+                  ? undefined
+                  : (id, at) => (id.startsWith(ASK_PREFIX) ? undefined : openMenu(id, at))
+              }
+              empty=""
             />
           }
         >
-          <Match when={!props.sample && props.problem !== undefined}>
+          <Match when={props.problem !== undefined}>
             <p class={styles.hint}>{props.problem}</p>
           </Match>
-          <Match
-            when={!props.sample && live() !== undefined && live()?.deviceStatus() !== 'active'}
-          >
+          <Match when={live() !== undefined && live()?.deviceStatus() !== 'active'}>
             <p class={styles.hint}>
               This device was removed from your Pigeon. It keeps the chats it had, but talks to
               nobody now.
@@ -374,13 +441,40 @@ export function BuddyList(props: BuddyListProps) {
             />
           )}
         </Show>
-        <Show when={!props.sample && named() && live()?.friends().length === 0 && !editing()}>
-          <p class={styles.hint}>
-            Add a friend by sending them your invite link.{' '}
-            <button type="button" class={styles.linkButton} onClick={() => props.onShowSample()}>
-              See a sample conversation
+        <Show
+          when={
+            named() &&
+            live()?.friends().length === 0 &&
+            (live()?.sentAsks().length ?? 0) === 0 &&
+            !editing()
+          }
+        >
+          <div class={classes(styles.emptyState, phone() && styles.phoneEmpty)}>
+            <img src={brand('pigeon-48')} alt="" width="48" height="48" />
+            <strong>No friends yet</strong>
+            <p class={styles.emptyText}>
+              There's no directory on Pigeon. Send a friend an invite, and they can open it even
+              when you're offline.
+            </p>
+            <div class={styles.emptyActions}>
+              <Button
+                label={phone() ? '&Invite link' : '&Make an invite link'}
+                isDefault
+                onClick={() => props.onAddFriend('links')}
+              />
+              <Button
+                label={phone() ? '&Quick code' : 'Show a &quick code'}
+                onClick={() => props.onAddFriend('code')}
+              />
+            </div>
+            <button
+              type="button"
+              class={styles.linkButton}
+              onClick={() => props.onAddFriend('enter')}
+            >
+              I have an invite
             </button>
-          </p>
+          </div>
         </Show>
       </div>
       <div class={classes(styles.tasks, useLayout() === 'phone' && styles.phoneTasks)}>
@@ -395,17 +489,13 @@ export function BuddyList(props: BuddyListProps) {
         </button>
       </div>
       <StatusBar
-        fields={
-          props.sample
-            ? [{ content: 'Sample: nothing leaves this tab', grow: true }, { content: 'Direct' }]
-            : [
-                {
-                  content: `${live()?.onlineCount() ?? 0} of ${live()?.friends().length ?? 0} friends online`,
-                  grow: true,
-                },
-                { content: (live()?.onlineCount() ?? 0) > 0 ? 'Direct' : 'Offline' },
-              ]
-        }
+        fields={[
+          {
+            content: `${live()?.onlineCount() ?? 0} of ${live()?.friends().length ?? 0} friends online`,
+            grow: true,
+          },
+          { content: (live()?.onlineCount() ?? 0) > 0 ? 'Direct' : 'Offline' },
+        ]}
       />
     </>
   )
