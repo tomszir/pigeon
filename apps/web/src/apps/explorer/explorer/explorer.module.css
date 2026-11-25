@@ -1,0 +1,30 @@
+.explorer {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.toolbar {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* The page sits sunken in a white well, the frame or Explorer's own error page filling it. */
+.pageArea {
+  flex-grow: 1;
+  min-height: 0;
+  border: 1px solid var(--pg-field-border);
+  background: #ffffff;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.statusIcon {
+  flex-shrink: 0;
+}

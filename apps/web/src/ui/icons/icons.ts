@@ -14,6 +14,10 @@ export const TANGO_ICONS = [
   'dialog-warning',
   'face-smile',
   'folder',
+  'go-home',
+  'go-jump',
+  'go-next',
+  'go-previous',
   'help-browser',
   'image-x-generic',
   'internet-mail',
@@ -21,10 +25,12 @@ export const TANGO_ICONS = [
   'mail-attachment',
   'network-transmit-receive',
   'preferences-system',
+  'process-stop',
   'system-log-out',
   'system-shutdown',
   'text-x-generic',
   'user-trash',
+  'view-refresh',
 ] as const
 
 export const BRAND_ICONS = [

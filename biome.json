@@ -12,7 +12,8 @@
       "!**/dist",
       "!assets",
       "!apps/web/src/icons",
-      "!apps/web/src/fonts"
+      "!apps/web/src/fonts",
+      "!apps/web/src/apps/**/*.html"
     ]
   },
   "formatter": {

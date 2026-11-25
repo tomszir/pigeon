@@ -253,6 +253,42 @@
       "sizes": [16, 22, 32]
     },
     {
+      "source": "tango",
+      "icon": "go-previous",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "go-next",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "process-stop",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "view-refresh",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "go-home",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "go-jump",
+      "context": "actions",
+      "sizes": [16, 22, 32]
+    },
+    {
       "source": "brand",
       "icon": "paper-plane-24"
     },
