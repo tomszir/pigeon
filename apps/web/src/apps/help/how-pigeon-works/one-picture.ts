@@ -44,7 +44,7 @@ ${figure(
 <p>Some networks block direct connections. Then a <b>TURN relay</b> carries your sealed packets between you. It can't read them and it stores nothing. You can also choose to go through it always; see ${helpLink(chapterAddress('private-rooms'), 'Your Private Rooms')}.</p>
 
 <h2>Where your chats live</h2>
-<p>Your chats are kept in this browser, and your friend keeps the same chat in theirs. When you're both online, the two copies catch up with each other. A message you write while your friend is away waits on your computer and reaches them the next time you're both online.</p>
+<p>Your chats are kept in this browser, and your friend keeps the same chat in theirs. When you're both online, the two copies catch up with each other. A message you write while your friend is away is sealed so only their devices can open it and left at their Lighthouses, which hold it until they're back: neither of you has to be online at the same time.</p>
 ${aside(
   'Good to know',
   "Clearing this browser's data for Pigeon clears your key with it, and with it who you are. A " +

@@ -94,7 +94,10 @@ export interface MessengerHost {
 
 /** Programs not built yet say so, in the world's own voice. */
 const LATER = {
-  letters: ['Letters is still being built.', 'Sealed letters carried by friends arrive soon.'],
+  letters: [
+    'Letters, a window of everything carried by letter, is still being built.',
+    "Messages to friends who are offline already go by letter: they're in your chats.",
+  ],
   files: ['Shared Files is still being built.', 'Sending files to friends arrives soon.'],
 } as const
 
