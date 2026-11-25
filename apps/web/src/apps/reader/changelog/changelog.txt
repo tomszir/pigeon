@@ -4,6 +4,21 @@
      `---'       version, newest first
 ==============================================
 
+0.7.1, 25 November 2026
+----------------------------------------------
+  * Fixed: after removing a friend who was
+    offline, or reloading while leaving a
+    Pigeon, it could refuse to start ("Pigeon
+    couldn't start in this browser"). It
+    starts again now, with nothing lost.
+  * If Pigeon ever can't start, the whole
+    screen says so, with Try Again, and
+    Start Over to wipe this browser's
+    Pigeon.
+  * Leaving a Pigeon shows how many friends
+    have heard you left, and Don't Wait goes
+    on without the rest.
+
 0.7.0, 25 November 2026
 ----------------------------------------------
   * Started Pigeon on your phone and your
