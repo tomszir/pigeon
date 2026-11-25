@@ -33,6 +33,16 @@ export type Body =
   /** Your device log: which devices speak for you. Sent before hello by an identity with one. */
   | { readonly type: 'device-log'; readonly log: DeviceLog }
   | { readonly type: 'presence'; readonly status: Status; readonly message: string }
+  /**
+   * Between your own devices only (decision 0036): your name and personal message, and when
+   * they were last changed, so the newest change wins on every device.
+   */
+  | {
+      readonly type: 'profile'
+      readonly handle: string
+      readonly message: string
+      readonly changedAt: number
+    }
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
   /** Sent as a tab closes, so the friend shows you offline now rather than at the timeout. */
@@ -120,6 +130,11 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&
     isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']),
+  profile: (b) =>
+    isHandle(b['handle']) &&
+    isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']) &&
+    Number.isSafeInteger(b['changedAt']) &&
+    (b['changedAt'] as number) > 0,
   typing: (b) => typeof b['active'] === 'boolean',
   buzz: () => true,
   bye: () => true,

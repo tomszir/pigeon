@@ -20,7 +20,13 @@ export {
   missingFrom,
   summarize,
 } from './chat/chat-log.ts'
-export type { PairEvent, PairSession, PairSessionOptions, Presence } from './chat/pair-session.ts'
+export type {
+  PairEvent,
+  PairSession,
+  PairSessionOptions,
+  Presence,
+  ProfileChange,
+} from './chat/pair-session.ts'
 export { encodeInstance, INSTANCE_BYTES, startPairSession } from './chat/pair-session.ts'
 export type {
   AppendError,

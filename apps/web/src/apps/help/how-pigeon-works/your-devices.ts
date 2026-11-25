@@ -44,7 +44,7 @@ ${figure(
 )}
 ${aside(
   'Good to know',
-  'A device gets your name and settings when it is linked, and they are not kept in step afterwards. If you have a great many friends, a few hundred or more, the link is refused before anything changes, because everything has to travel in one message.',
+  'A device gets your name and settings when it is linked. Afterwards, a new name or personal message on one of your devices reaches the others when they next meet; settings are not kept in step. If you have a great many friends, a few hundred or more, the link is refused before anything changes, because everything has to travel in one message.',
 )}
 
 <h2>Seeing and removing devices</h2>

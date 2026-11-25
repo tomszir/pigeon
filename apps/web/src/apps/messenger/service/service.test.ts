@@ -627,6 +627,49 @@ describe('your devices (decision 0024)', () => {
     expect(laptop.messenger.devices().map((view) => view.here)).toEqual([true])
   })
 
+  it('keeps your name and personal message in step on your devices (decision 0036)', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await laptop.messenger.setProfile({ ...laptop.messenger.profile(), handle: 'Toms' })
+    await flush()
+    expect(phone.messenger.profile().handle).toBe('Toms')
+    // Status stays each device's own.
+    expect(phone.messenger.profile().status).toBe('online')
+
+    await clock.tick(1000)
+    await phone.messenger.setProfile({ ...phone.messenger.profile(), message: 'on the train' })
+    await flush()
+    expect(laptop.messenger.profile()).toMatchObject({ handle: 'Toms', message: 'on the train' })
+    // Friends hear it from whichever device changed it.
+    expect(only(mika.messenger.friends()).handle).toBe('Toms')
+
+    // Kept across a restart, with when it changed, so an older name never wins.
+    await phone.messenger.close()
+    await laptop.messenger.setProfile({ ...laptop.messenger.profile(), handle: 'Toms Z.' })
+    const back = await messenger(network, 'rook-phone', { clock, store: phone.store })
+    await flush()
+    expect(back.messenger.profile().handle).toBe('Toms Z.')
+    expect(laptop.messenger.profile().handle).toBe('Toms Z.')
+  })
+
+  it('ignores a name stamped far in the future (0036)', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    await laptop.messenger.close()
+    await phone.messenger.close()
+    // As a stolen device might send: a time that would outrank every later rename.
+    await phone.store.set('profile', { handle: 'Thief', status: 'online', message: '' })
+    await phone.store.set('profileChangedAt', NOON + 365 * 24 * 60 * 60 * 1000)
+    const again = await messenger(network, 'rook', { clock, store: laptop.store })
+    await messenger(network, 'rook-phone', { clock, store: phone.store })
+    await flush()
+    expect(again.messenger.profile().handle).toBe('Rook')
+  })
+
   it('only links a device with no friends of its own', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)

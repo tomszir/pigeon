@@ -101,10 +101,24 @@ export interface PairSessionOptions {
    * (decision 0027).
    */
   readonly theirLog?: (() => DeviceLog | undefined) | undefined
+  /**
+   * Your name and personal message with when they changed, for your own devices only (decision
+   * 0036): sent after hello and on `announce`, while it has a time.
+   */
+  readonly profile?: (() => ProfileChange | undefined) | undefined
+  /** Another of your devices said its name and personal message. */
+  readonly onProfile?: ((change: ProfileChange) => void) | undefined
   /** This run's id, said in every hello (decision 0028). */
   readonly instance?: string | undefined
   /** A hello signed with this device's own key came from another run: a copied profile. */
   readonly onTwin?: (() => void) | undefined
+}
+
+/** A name and personal message, and when they were changed (decision 0036). */
+export interface ProfileChange {
+  readonly handle: string
+  readonly message: string
+  readonly changedAt: number
 }
 
 export interface PairSession {
@@ -202,6 +216,10 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         (devices.epochs?.length ?? 0) === 0)
     return empty || devices === undefined ? undefined : { type: 'device-log', log: devices }
   }
+  const sendProfile = (to: Link | 'all') => {
+    const change = options.profile?.()
+    if (change !== undefined) sendTo(to, { type: 'profile', ...change })
+  }
   const greet = (to: Link) => {
     const devices = devicesBody()
     if (devices !== undefined) sendTo(to, devices)
@@ -210,6 +228,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       sendTo(to, { type: 'device-log', log: theirs })
     sendTo(to, hello())
     sendTo(to, { type: 'presence', ...options.presence() })
+    sendProfile(to)
     sendTo(to, { type: 'log-sync', have: summarize(log) })
   }
 
@@ -259,6 +278,12 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         presence: { status: body.status, message: body.message },
       })
     },
+    profile: (_from, body) =>
+      options.onProfile?.({
+        handle: body.handle,
+        message: body.message,
+        changedAt: body.changedAt,
+      }),
     typing: (_from, body) => options.onEvent({ type: 'typing', active: body.active }),
     buzz: () => options.onEvent({ type: 'buzz' }),
     unfriend: () => options.onEvent({ type: 'unfriended' }),
@@ -401,6 +426,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     announce() {
       sendTo('all', hello())
       sendTo('all', { type: 'presence', ...options.presence() })
+      sendProfile('all')
     },
     async unfriend() {
       sendTo('all', { type: 'unfriend' })
