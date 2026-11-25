@@ -1,0 +1,40 @@
+name: Bug
+description: Something in Pigeon doesn't work as it should.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: Short and factual. Bullets beat paragraphs. Found a security problem? Don't file it here; use **Report a security problem** instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: One or two sentences, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduced by
+      description: Steps, a failing test or a command that shows it. Say if you couldn't reproduce it.
+      placeholder: |
+        1. Open Pigeon in two tabs
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Version and device
+      placeholder: 0.8.0, Firefox on Android
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Not sure, core, lighthouse, web]
+      default: 0
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: What has to be true to close this. Leave it empty if it's just "it stops happening".
