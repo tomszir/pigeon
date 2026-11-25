@@ -3,6 +3,7 @@
 import { PAGE_BUDGET_BYTES, type PageUrls, sanitize } from '@pigeon/pigeonhtml'
 import { batch, createSignal, type JSX, Match, Show, Switch } from 'solid-js'
 import { brandIcon, type Icon, tangoIcon } from '../../../ui/icons/icons.ts'
+import { useLayout } from '../../../ui/layout/layout.ts'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
@@ -11,6 +12,15 @@ import { AddressBar, type AddressBarControls } from '../address-bar/address-bar.
 import { NotHosted, TooBig } from '../error-page/error-page.tsx'
 import type { LocalPage } from '../local-pages/local-pages.ts'
 import { type FrameControls, PageFrame } from '../page-frame/page-frame.tsx'
+import {
+  type KeptView,
+  keep,
+  openingView,
+  type PageView,
+  TEXT_SIZES,
+  textSize,
+  type ViewMode,
+} from '../page-frame/view.ts'
 import { HOME_ADDRESS, linkTarget, typedAddress } from './address.ts'
 import styles from './explorer.module.css'
 import {
@@ -38,6 +48,10 @@ export interface ExplorerProps {
   favorites?: readonly Favorite[] | undefined
   /** What relative image URLs resolve against; the app's own address. */
   base?: string | undefined
+  /** The view kept from earlier windows (decision 0033); One Column on a phone and Desktop Layout otherwise. */
+  view?: KeptView | undefined
+  /** You chose another view, to keep for the next Explorer window. */
+  onViewChange?: ((kept: KeptView) => void) | undefined
   copyText: (text: string) => Promise<boolean>
   onClose: () => void
   onAbout: () => void
@@ -98,6 +112,9 @@ export function Explorer(props: ExplorerProps) {
   const [loading, setLoading] = createSignal(shown().kind === 'page')
   const [hovered, setHovered] = createSignal<string | undefined>()
   const [statusBar, setStatusBar] = createSignal(true)
+  const phone = useLayout() === 'phone'
+  const [view, setView] = createSignal<PageView>(openingView(props.view, phone))
+  let kept = props.view
   let frame: FrameControls | undefined
   let addressBar: AddressBarControls | undefined
 
@@ -131,11 +148,28 @@ export function Explorer(props: ExplorerProps) {
   }
   const isPage = () => shown().kind === 'page'
 
+  /** A new view draws the page again in it. */
+  const changeView = (next: PageView) => {
+    kept = keep(kept, view(), next, phone)
+    setView(next)
+    props.onViewChange?.(kept)
+    if (isPage()) refresh()
+  }
+  const viewAs = (mode: ViewMode) => {
+    if (view().mode !== mode) changeView({ ...view(), mode })
+  }
+  const textBy = (step: number) => {
+    const text = textSize(view().text + step)
+    if (text !== view().text) changeView({ ...view(), text })
+  }
+
   /** The keys the menus name, from the window or from inside the page. */
   const shortcut = (event: KeyboardEvent): (() => void) | undefined => {
     if (event.key === 'F5') return refresh
     if (event.key === 'Escape' && loading()) return stop
     if (event.ctrlKey && event.key === 'o') return () => addressBar?.focus()
+    if (event.ctrlKey && (event.key === '+' || event.key === '=')) return () => textBy(1)
+    if (event.ctrlKey && event.key === '-') return () => textBy(-1)
     if (!event.altKey) return undefined
     if (event.key === 'ArrowLeft') return back
     if (event.key === 'ArrowRight') return forward
@@ -190,6 +224,30 @@ export function Explorer(props: ExplorerProps) {
         { kind: 'separator' },
         { label: '&Stop', shortcut: 'Esc', disabled: !loading(), onSelect: stop },
         { label: '&Refresh', shortcut: 'F5', onSelect: refresh },
+        { kind: 'separator' },
+        {
+          label: 'One &Column',
+          checked: view().mode === 'one-column',
+          onSelect: () => viewAs('one-column'),
+        },
+        {
+          label: '&Desktop Layout',
+          checked: view().mode === 'desktop',
+          onSelect: () => viewAs('desktop'),
+        },
+        { kind: 'separator' },
+        {
+          label: 'Text &Larger',
+          shortcut: 'Ctrl++',
+          disabled: view().text === TEXT_SIZES.length - 1,
+          onSelect: () => textBy(1),
+        },
+        {
+          label: 'Text S&maller',
+          shortcut: 'Ctrl+-',
+          disabled: view().text === 0,
+          onSelect: () => textBy(-1),
+        },
         { kind: 'separator' },
         {
           label: 'Status Ba&r',
@@ -267,6 +325,8 @@ export function Explorer(props: ExplorerProps) {
                       html={found().html}
                       imageUrls={found().imageUrls}
                       base={props.base ?? document.baseURI}
+                      view={view()}
+                      phone={phone}
                       onNavigate={navigate}
                       onHover={setHovered}
                       onKeyDown={onKeyDown}
@@ -307,6 +367,9 @@ export function Explorer(props: ExplorerProps) {
                 </span>
               ),
             },
+            ...(view().mode === 'one-column' && isPage()
+              ? [{ content: <span class={styles.status}>One Column</span> }]
+              : []),
             {
               content: (
                 <span class={styles.status}>

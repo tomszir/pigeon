@@ -12,6 +12,7 @@ import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
 import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
 import { localPageFinder, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
+import type { KeptView } from '../apps/explorer/page-frame/view.ts'
 import { HELP_HOME, HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
@@ -685,6 +686,9 @@ export function createPrograms(
     { label: 'Pigeon &Help', address: HELP_HOME },
   ]
 
+  /** The view you last chose in Explorer (decision 0033), kept while Pigeon is open. */
+  const [explorerView, setExplorerView] = createSignal<KeptView | undefined>()
+
   /** Pigeon Explorer, at its start page or at `start` (decision 0032). */
   const openExplorer = (start?: string) =>
     api.open('explorer', {
@@ -697,6 +701,8 @@ export function createPrograms(
           start={start}
           findPage={findPage}
           favorites={favorites}
+          view={explorerView()}
+          onViewChange={setExplorerView}
           copyText={host.copyText}
           onClose={window.close}
           onAbout={openAbout}
