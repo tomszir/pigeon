@@ -36,6 +36,9 @@ export interface BuddyListProps {
   onMyDevices?: (() => void) | undefined
   onLinkDevice?: (() => void) | undefined
   onJoinDevice?: (() => void) | undefined
+  /** File, Export My Data and Import My Data (M13). */
+  onExportData?: (() => void) | undefined
+  onImportData?: (() => void) | undefined
   /** File, Always Go Through the Relay: turns relay-only connections on or off (0026). */
   onRelayOnly?: ((on: boolean) => void) | undefined
   onCopyInvite: () => void
@@ -175,6 +178,17 @@ export function BuddyList(props: BuddyListProps) {
               ...(live()?.canJoin() === true && props.onJoinDevice !== undefined
                 ? [{ label: 'Link to My &Other Device...', onSelect: () => props.onJoinDevice?.() }]
                 : []),
+              { kind: 'separator' },
+              {
+                label: '&Export My Data...',
+                disabled: !named() || props.onExportData === undefined,
+                onSelect: () => props.onExportData?.(),
+              },
+              {
+                label: '&Import My Data...',
+                disabled: live() === undefined || props.onImportData === undefined,
+                onSelect: () => props.onImportData?.(),
+              },
               { kind: 'separator' },
               {
                 label: 'Always Go Through the &Relay',

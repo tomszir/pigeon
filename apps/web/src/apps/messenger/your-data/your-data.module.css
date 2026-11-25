@@ -1,0 +1,44 @@
+/* Export My Data and Import My Data: a few lines and fields, like Link a Device. */
+
+.data {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text {
+  margin: 0;
+  line-height: 14px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.error {
+  margin: 0;
+  color: var(--pg-text-error);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.phone .buttons {
+  flex-direction: column;
+  align-items: stretch;
+}

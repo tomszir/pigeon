@@ -715,3 +715,51 @@ describe('a copied profile (decision 0028)', () => {
     expect(mika.messenger.twin()).toBe(false)
   })
 })
+
+describe('export and import (M13)', () => {
+  it('brings friends, chats and the profile to a device of the same identity', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook, b: mika } = await pair(network)
+    const mikaId = only(rook.messenger.friends()).id
+    await rook.messenger.send(mikaId, 'before the export')
+    await rook.messenger.rename(mikaId, 'Mika M.')
+    await flush()
+    const data = JSON.parse(JSON.stringify(rook.messenger.exportData())) as unknown
+    expect(JSON.stringify(data)).not.toContain('privateKey')
+
+    // Rook again on an empty browser, as after a recovery, with nobody on it.
+    const offline = createMemoryNetwork()
+    const fresh = await messenger(offline, 'rook')
+    expect(await fresh.messenger.importData(data)).toBe('imported')
+    await fresh.messenger.close()
+    const again = await messenger(offline, 'rook', { store: fresh.store })
+    const back = only(again.messenger.friends())
+    expect(back.id).toBe(mikaId)
+    expect(back.name).toBe('Mika M.')
+    expect(back.secret).toBe(only(rook.messenger.friends()).secret)
+    expect(back.log.entries.map((entry) => entry.text)).toEqual(['before the export'])
+    expect(again.messenger.profile().handle).toBe('Rook')
+
+    // Someone else's file is refused, and so is anything that isn't one.
+    expect(await mika.messenger.importData(data)).toBe('not-yours')
+    expect(await rook.messenger.importData({ kind: 'something' })).toBe('unreadable')
+  })
+
+  it('merges into what the device has, keeping its own copies', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook } = await pair(network)
+    const mikaId = only(rook.messenger.friends()).id
+    await rook.messenger.send(mikaId, 'one')
+    await flush()
+    const data = JSON.parse(JSON.stringify(rook.messenger.exportData())) as unknown
+    await rook.messenger.rename(mikaId, 'Kept here')
+    await rook.messenger.send(mikaId, 'two')
+    await flush()
+    expect(await rook.messenger.importData(data)).toBe('imported')
+    await rook.messenger.close()
+    const again = await messenger(createMemoryNetwork(), 'rook', { store: rook.store })
+    const mika = only(again.messenger.friends())
+    expect(mika.name).toBe('Kept here')
+    expect(mika.log.entries.map((entry) => entry.text)).toEqual(['one', 'two'])
+  })
+})
