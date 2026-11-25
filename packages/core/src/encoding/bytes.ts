@@ -131,3 +131,49 @@ export function concatBytes(...parts: readonly Uint8Array[]): Uint8Array {
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, i) => byte === b[i])
 }
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** Standard base64 with padding: how sealed mail travels in JSON, at a third more than raw. */
+export function base64Encode(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] ?? 0
+    const b = bytes[i + 1] ?? 0
+    const c = bytes[i + 2] ?? 0
+    const triple = (a << 16) | (b << 8) | c
+    out += BASE64[(triple >> 18) & 63]
+    out += BASE64[(triple >> 12) & 63]
+    out += i + 1 < bytes.length ? BASE64[(triple >> 6) & 63] : '='
+    out += i + 2 < bytes.length ? BASE64[triple & 63] : '='
+  }
+  return out
+}
+
+/** Decodes standard padded base64; anything else, unused bits included, is malformed. */
+export function base64Decode(text: string): Result<Uint8Array, 'malformed'> {
+  if (text.length % 4 !== 0) return err('malformed')
+  const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
+  const out = new Uint8Array((text.length / 4) * 3 - padding)
+  let at = 0
+  for (let i = 0; i < text.length; i += 4) {
+    let triple = 0
+    for (let j = 0; j < 4; j++) {
+      const char = text[i + j] ?? ''
+      const last = i + 4 === text.length
+      if (char === '=' && last && j >= 4 - padding) {
+        triple <<= 6
+        continue
+      }
+      const value = BASE64.indexOf(char)
+      if (value < 0) return err('malformed')
+      triple = (triple << 6) | value
+    }
+    const chunk = [(triple >> 16) & 255, (triple >> 8) & 255, triple & 255]
+    for (const byte of chunk) if (at < out.length) out[at++] = byte
+    // Bits past the end must be zero, so each value has one spelling.
+    if (i + 4 === text.length && padding > 0 && (triple & ((1 << (8 * padding)) - 1)) !== 0)
+      return err('malformed')
+  }
+  return ok(out)
+}
