@@ -12,42 +12,36 @@
 </div>
 
 <p align="center">
-    <img src="docs/screenshots/1-desktop.png" alt="The Pigeon desktop on a CRT monitor, with the Read Me, a conversation with Mika and the friends list open" width="840" />
+    <img src="docs/screenshots/1-desktop.png" alt="The Pigeon desktop on a CRT monitor: a conversation with Mika, the friends list with each chat's last message, and Read Me" width="840" />
 </p>
 
 > [!NOTE]
-> Pigeon is in early development. Chatting with friends, on as many of your devices as you like, works today, and messages reach friends who are offline. Files and pages hosted by friends aren't built yet.
+> Pigeon is in early development. Chatting with friends, on all your devices, works today, even when they're offline. Files, groups and pages hosted by friends come later.
 > Try it at **[pigeon.tomszir.com](https://pigeon.tomszir.com)**.
 
 ## What it does
 
 It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenger from that world: your browser talks straight to your friends' browsers, with no account, no server keeping your chats and no one reading over your shoulder.
 
-- **Add a friend with a code:** Add a Friend shows a short code like `K7RT-VP2B` to read out, a link and a QR code. Each code works once, for 30 minutes. Before a friend is added, Pigeon shows who answered and their fingerprint, so you can check it's really them.
-- **Chat like it's 2003:** messages, buzzes that shake the window, "is writing a message…", away and busy, and a note when a friend comes online or goes offline.
-- **Chats that catch up:** conversations are kept in your browser, signed by both sides, and fill in what you missed the next time you're both online.
-- **A pigeon for everyone:** every friend gets a pixel bird drawn from their key, the same on every Pigeon, shown next to their fingerprint.
-- **Your phone and your laptop:** link a second device in person with a code and a 6-digit check, and it's you there too, with your friends and your name. Your first device links and removes devices.
-- **Yours to keep:** a recovery key brings your Pigeon back if you lose your devices, and Export My Data seals your friends, chats and settings in a file only your passphrase opens.
-- **Pigeon Explorer:** a browser for `pigeon://` pages, with Pigeon's own start page and Help, the protocol included, drawn in 2003's HTML and CSS.
-- **What's new:** after an update, a balloon offers Changelog.txt, release notes written for people.
-- **A whole desktop:** windows you can drag, a taskbar, a CRT monitor, and a 3D maze or pigeons in flight when you turn it off.
-- **The Kestrel Pocket on phones:** on a phone, Pigeon runs on a 2003 handheld with soft keys, an LCD screen and a buzz you can feel.
+- **Add friends with a link or a code:** send an invite link that waits up to 30 days, for one friend or several, and approve each one who asks; or show a quick code to someone next to you. Pigeon checks it's really them by their fingerprint.
+- **Messages that wait:** chat browser to browser, buzz, see who's writing. Write to a friend who's offline and it's left, sealed, at their Lighthouses until they're back, and each message says where it is.
+- **All your devices:** link your phone to your laptop and it's you there too, with your friends, your name and your chats. A recovery key brings your Pigeon back if you lose them.
+- **A whole desktop:** windows, a taskbar, a CRT monitor and Pigeon Explorer for `pigeon://` pages; on a phone, the Kestrel Pocket, a 2003 handheld with a home screen and soft keys.
 
 <table>
     <tr>
-        <td width="50%"><img src="docs/screenshots/2-pocket-today.png" alt="The Kestrel Pocket's Today screen" /></td>
-        <td width="50%"><img src="docs/screenshots/4-pocket-chat.png" alt="A conversation on the Kestrel Pocket" /></td>
+        <td width="50%"><img src="docs/screenshots/2-pocket-today.png" alt="The Kestrel Pocket's home screen: programs, a new message from Rook, and who's online" /></td>
+        <td width="50%"><img src="docs/screenshots/4-pocket-chat.png" alt="A conversation with Rook on the Kestrel Pocket, with a buzz" /></td>
     </tr>
     <tr>
-        <td><img src="docs/screenshots/3-add-a-friend.png" alt="Choosing the name friends will see" /></td>
+        <td><img src="docs/screenshots/3-add-a-friend.png" alt="Add a Friend: Kestrel asks to be friends through an invite link" /></td>
         <td><img src="docs/screenshots/5-maze.png" alt="The 3D maze screen saver" /></td>
     </tr>
 </table>
 
 ## Try it
 
-Open [pigeon.tomszir.com](https://pigeon.tomszir.com) in two browsers (or on your phone and your laptop), choose a name in each, and type one's invite code into the other.
+Open [pigeon.tomszir.com](https://pigeon.tomszir.com), choose a name, and send a friend an invite link from Add a Friend. Or try it alone in two browsers.
 
 ## How it works
 
@@ -55,7 +49,7 @@ Browsers connect directly over WebRTC. To find each other, they post small signe
 
 Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. Friends meet in a room named and locked by a secret only the two of them hold, renamed every day, so knowing two people's ids says nothing about when they talk. Several devices are one person through a device log your first device signs. The protocol is in [docs/protocol.md](docs/protocol.md).
 
-Honest P2P has a cost: a friend has to be online for a message to arrive. Lighthouses are how Pigeon gets around it: peers anyone can run that hold mail sealed to a friend's devices until they're back, without being able to open it or say whom it's from. Removing a friend already goes through them, so a friend who's offline hears it when they next open Pigeon, and so do your own devices' changes (your name, your list of devices, your Lighthouses), so a tablet left in a drawer catches up when it opens, and so do your messages: written while a friend is away, they're left there as a letter for when they're back. Pigeon leaves mail at the three official Lighthouses (Loft, a Cloudflare Worker, and Dovecote and Perch, run at home through Tailscale Funnel) unless told otherwise, and Network on the desktop shows yours, whether each answers, and lets you add your own. [docs/lighthouse.md](docs/lighthouse.md) says how to run one, and what it stores and sees.
+Honest P2P has a cost: a friend has to be online for a message to arrive. Lighthouses get around it: peers anyone can run that hold mail sealed to a friend's devices until they're back, without being able to open it or say whom it's from. Messages, invite links, farewells and your own devices' changes all go through them. Pigeon uses the three official Lighthouses (Loft, Dovecote and Perch) unless you add your own in Network. [docs/lighthouse.md](docs/lighthouse.md) says how to run one, and what it stores and sees.
 
 ## Privacy
 
