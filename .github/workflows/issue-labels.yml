@@ -1,0 +1,31 @@
+name: Issue labels
+
+# Labels a new issue with the area its form names, and takes `triage` off once it has a priority.
+# The forms add the kind label and `triage` themselves.
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue
+            const has = new Set(issue.labels.map((label) => label.name))
+            const params = { ...context.repo, issue_number: issue.number }
+            if (context.payload.action === 'labeled') {
+              if (['p1', 'p2', 'p3'].some((p) => has.has(p)) && has.has('triage'))
+                await github.rest.issues.removeLabel({ ...params, name: 'triage' })
+              return
+            }
+            // Issue forms write each field as "### Label" followed by the answer.
+            const area = /^### Area\s+(\S+)/m.exec(issue.body ?? '')?.[1]
+            if (['core', 'lighthouse', 'web'].includes(area) && !has.has(area))
+              await github.rest.issues.addLabels({ ...params, labels: [area] })

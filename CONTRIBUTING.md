@@ -27,6 +27,15 @@ Before opening a PR, run `mise run check` and `mise run build`. [docs/README.md]
 
 The `commit-msg` git hook and the `pr-title` CI job enforce the format (`scripts/commit-message.ts`).
 
+## Issues
+
+Bugs and features are filed through the issue forms; security problems are reported privately, as [SECURITY.md](SECURITY.md) says.
+
+- **Labels:** one kind (`bug`, `feature`, `security`, `docs`), one priority (`p1` before the next release, `p2` soon, `p3` some day) and, where one fits, an area (`core`, `lighthouse`, `web`). New issues start with `triage`, which comes off when a priority goes on. The forms add the kind, and a workflow adds the area the form names.
+- **Lean:** short bullets of fact, not paragraphs. Point at `path:line`, say who can do what, and don't restate the title.
+- **Shape:** what's wrong, how it's reproduced (steps, a failing test or a command, or that it wasn't), and what "done" means: a check someone else could run.
+- **Closing:** a PR that fixes an issue says `Fixes #N` in its description. Duplicates and ideas that won't happen are closed with GitHub's own reasons, not labels.
+
 ## Writing docs and comments
 
 Pigeon is public, so write every doc and comment for someone who has never met the project or the people behind it.
