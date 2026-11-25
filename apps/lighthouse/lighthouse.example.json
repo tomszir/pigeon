@@ -1,6 +1,6 @@
 {
-  "name": "Toms's Lighthouse",
+  "name": "My Lighthouse",
   "url": "wss://lighthouse.example.ts.net/",
   "port": 8787,
-  "trustForwardedFor": true
+  "trustForwardedFor": false
 }

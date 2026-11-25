@@ -3,7 +3,8 @@
 # repository root:
 #   docker build -f apps/lighthouse/Dockerfile -t pigeon-lighthouse .
 # Run with a folder holding lighthouse.json; the key and the mail are kept there too:
-#   docker run -v ./lighthouse:/data -p 8787:8787 pigeon-lighthouse
+# Published on this computer only, for a proxy such as Tailscale Funnel in front of it:
+#   docker run -v ./lighthouse:/data -p 127.0.0.1:8787:8787 pigeon-lighthouse
 FROM node:24.11.1-slim
 WORKDIR /app
 RUN npm install --global pnpm@12.15.0
