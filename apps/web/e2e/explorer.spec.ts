@@ -49,6 +49,27 @@ test('Explorer opens its start page on the desktop', async ({ page }) => {
   expect(blocked).toEqual([])
 })
 
+test('Explorer follows the start page to Help and on into it', async ({ page }) => {
+  const blocked = blockedLoads(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Pigeon menu' }).click()
+  await page
+    .getByRole('menuitem', { name: /Pigeon Explorer/ })
+    .first()
+    .click()
+  const explorer = page.getByRole('dialog', { name: 'Pigeon Explorer' })
+  const frame = page.frameLocator('iframe')
+  const address = explorer.getByRole('textbox', { name: 'Address' })
+  await frame.getByRole('link', { name: 'Pigeon Help' }).click()
+  // Explorer spells an address without its trailing slash.
+  await expect(address).toHaveValue('pigeon://help')
+  await expect(frame.locator('body')).toContainText('How Pigeon Works')
+  await expect(explorer.getByRole('status')).toContainText('On this computer')
+  await frame.getByRole('link', { name: 'How Pigeon Works' }).first().click()
+  await expect(address).toHaveValue(/^pigeon:\/\/help\/./)
+  expect(blocked).toEqual([])
+})
+
 /** A Pixel 7 in the same Chromium, since a group can't change the browser. */
 const { defaultBrowserType: _, ...pixel7 } = devices['Pixel 7']
 

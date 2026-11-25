@@ -69,8 +69,9 @@ apps/
                 leaves alone since they're written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
                 pigeon://help (decision 0032), with no window of its own:
-                help-pages/ exports HELP_PAGES, every page by address, for app/
-                to hand to Explorer; how-pigeon-works/ is the hand-written guide;
+                help-pages/ exports HELP_PAGES, every page by address, which app/
+                hands to Explorer after the start page, and Help in the Pigeon
+                menu opens; how-pigeon-works/ is the hand-written guide;
                 protocol-spec/ builds "The Pigeon Protocol" from docs/protocol.md,
                 flows.md and glossary.md, imported with ?raw, so it can't drift;
                 markdown/ is the small converter it uses, and page/ the parts

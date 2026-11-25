@@ -9,8 +9,10 @@ import {
 } from '@pigeon/core'
 import { type Accessor, createEffect, createSignal, on, Show } from 'solid-js'
 import { About, SOURCE_URL } from '../apps/about/about/about.tsx'
+import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
-import { findLocalPage } from '../apps/explorer/local-pages/local-pages.ts'
+import { localPageFinder, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
+import { HELP_HOME, HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
 import { AddFriend } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
 import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
@@ -676,8 +678,15 @@ export function createPrograms(
       ),
     })
 
-  /** Pigeon Explorer, at its start page (decision 0032). */
-  const openExplorer = () =>
+  /** Every page that comes with Pigeon: the start page, then Help (decision 0032). */
+  const findPage = localPageFinder(START_PAGES, HELP_PAGES)
+  const favorites = [
+    { label: 'Pigeon &Home', address: HOME_ADDRESS },
+    { label: 'Pigeon &Help', address: HELP_HOME },
+  ]
+
+  /** Pigeon Explorer, at its start page or at `start` (decision 0032). */
+  const openExplorer = (start?: string) =>
     api.open('explorer', {
       title: 'Pigeon Explorer',
       icon: tangoIcon('internet-web-browser', 16),
@@ -685,7 +694,9 @@ export function createPrograms(
       resizable: true,
       content: (window) => (
         <Explorer
-          findPage={findLocalPage}
+          start={start}
+          findPage={findPage}
+          favorites={favorites}
           copyText={host.copyText}
           onClose={window.close}
           onAbout={openAbout}
@@ -710,7 +721,7 @@ export function createPrograms(
     description: 'Browse peer pages',
     icon16: tangoIcon('internet-web-browser', 16),
     icon32: tangoIcon('internet-web-browser', 32),
-    onOpen: openExplorer,
+    onOpen: () => openExplorer(),
   }
   const readme: Launcher = {
     id: 'readme',
@@ -788,7 +799,7 @@ export function createPrograms(
     icon16: tangoIcon('help-browser', 16),
     icon22: tangoIcon('help-browser', 22),
     icon32: tangoIcon('help-browser', 32),
-    onOpen: openReadme,
+    onOpen: () => openExplorer(HELP_HOME),
   }
   const about: Launcher = {
     id: 'about',
