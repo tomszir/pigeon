@@ -4,6 +4,32 @@
      `---'       version, newest first
 ==============================================
 
+0.6.0, 25 November 2026
+----------------------------------------------
+  * Tell your devices apart by fingerprint in
+    My Devices.
+  * Notice a copied browser profile and offer
+    a fresh start.
+  * Save your data to a sealed file and import
+    it elsewhere.
+  * Save a conversation as a text file.
+  * Bring your Pigeon back with a recovery
+    key.
+  * Write pigeon's help pages.
+  * Open pages that come with pigeon.
+  * Keep pages to 2003's html and css.
+  * Open pigeon help from the menu and the
+    start page.
+  * Stack pages into one column on the pocket.
+  * Line up a stacked table's cells in one
+    column.
+  * Fit the pocket's toolbar and address in
+    one row.
+  * Step back inside pigeon with the browser's
+    back.
+  * Give lone links a finger's height in one
+    column.
+
 0.5.0, 25 November 2026
 ----------------------------------------------
   * Every friend has a pigeon of their own: a
