@@ -577,6 +577,23 @@ describe('your devices (decision 0024)', () => {
     expect(only(tablet.messenger.friends()).online).toBe(true)
   })
 
+  it('names each device by its own fingerprint, the same on every device', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const { a: laptop } = await pair(network, {}, 'link', clock)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock)
+    laptop.messenger.devices()
+    phone.messenger.devices()
+    await flush()
+    const prints = (views: readonly { id: string; fingerprint: string }[]) =>
+      Object.fromEntries(views.map((view) => [view.id, view.fingerprint]))
+    const onLaptop = prints(laptop.messenger.devices())
+    expect(Object.values(onLaptop)).toHaveLength(2)
+    for (const print of Object.values(onLaptop)) expect(print).toMatch(/^[0-9a-f]{4} [0-9a-f]{4}$/)
+    expect(new Set(Object.values(onLaptop)).size).toBe(2)
+    expect(prints(phone.messenger.devices())).toEqual(onLaptop)
+  })
+
   it('removes a lost device: friends and your other devices stop taking it', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)

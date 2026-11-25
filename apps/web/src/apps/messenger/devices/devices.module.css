@@ -70,6 +70,12 @@
   list-style: none;
 }
 
+/* A device's fingerprint, compared by eye with the one that device shows for itself. */
+.print {
+  font-family: var(--pg-font-mono);
+  font-weight: 400;
+}
+
 .device {
   display: flex;
   align-items: center;

@@ -298,6 +298,12 @@ export function MyDevices(props: MyDevicesProps) {
                 <div class={styles.column}>
                   <strong>
                     {device.name}
+                    <Show when={device.fingerprint}>
+                      {' · '}
+                      <span class={styles.print} data-device-fingerprint>
+                        {device.fingerprint}
+                      </span>
+                    </Show>
                     {device.here ? ' (this device)' : ''}
                   </strong>
                   <span class={styles.muted}>
