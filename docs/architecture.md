@@ -74,7 +74,9 @@ apps/
                 chats from the Store, runs a core pair session per friend, hosts and
                 answers invites, and exposes Solid state the windows draw;
                 service/devices.ts keeps your device log and friends', and says who
-                a device is. messenger/devices/ draws Link a Device, Link to My
+                a device is. service/mailbox.ts is mail through Lighthouses: an outbox
+                put again until each device's receipt comes, and fetching from a
+                cursor, taking each letter once. messenger/devices/ draws Link a Device, Link to My
                 Other Device and My Devices. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
                 (Changelog.txt, the release notes). explorer/ is

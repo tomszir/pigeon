@@ -1,5 +1,6 @@
 // Builds the Messenger from the browser's platform: the stored identity (made on first visit),
 // the Store main.tsx opened, WebCrypto and Trystero.
+import { createLighthouseClient } from '@pigeon/core'
 import {
   createMessenger,
   type Messenger,
@@ -20,6 +21,7 @@ import {
   type StoredSealingKey,
   sealerFor,
 } from '../platform/crypto/seal-crypto.ts'
+import { openBrowserSocket } from '../platform/lighthouse/browser-socket.ts'
 import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
 import { createBrowserTransport } from '../platform/transport/browser-transport.ts'
@@ -75,6 +77,14 @@ export async function startMessenger(
     events,
     seal: { crypto: createWebSealCrypto(), sealer: sealerFor(sealing as StoredSealingKey) },
     lighthouses: OFFICIAL_LIGHTHOUSES,
+    lighthouseClient: (address) =>
+      createLighthouseClient({
+        address,
+        crypto: createBrowserCrypto(),
+        open: openBrowserSocket(),
+        random: randomBytes,
+        sleep: browserClock.sleep,
+      }),
   })
   return { ok: true, messenger, persistent }
 }
