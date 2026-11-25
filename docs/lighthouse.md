@@ -24,10 +24,10 @@ One JSON file. `name` and `url` are needed; everything else has a default.
 
 ```json
 {
-  "name": "Toms's Lighthouse",
+  "name": "My Lighthouse",
   "url": "wss://lighthouse.example.ts.net/",
   "port": 8787,
-  "trustForwardedFor": true
+  "trustForwardedFor": false
 }
 ```
 
@@ -37,7 +37,7 @@ One JSON file. `name` and `url` are needed; everything else has a default.
 - `keyFile`: its key, `lighthouse.key` beside the config unless set. It's made on first start, readable only by its owner, and never replaced, since it is the Lighthouse's identity. Back it up with the mail; lose it and the Lighthouse becomes a new one that friends must add again.
 - `database`: the SQLite file mail is kept in, `lighthouse.sqlite` unless set.
 - `pass`: for a personal Lighthouse, a pass without which it answers only refusals. It's part of the address you hand out.
-- `trustForwardedFor`: take each client's address from `X-Forwarded-For`, which limits are counted by. Only behind a proxy that sets it, as Tailscale Funnel does; otherwise anyone could claim any address, and without it every client behind the proxy shares one address's limits.
+- `trustForwardedFor`: take each client's address from `X-Forwarded-For`, which limits are counted by. Off unless set. Turn it on only behind a proxy that sets it, as Tailscale Funnel does, and with the port reachable from that proxy alone; otherwise anyone could claim any address, and without it every client behind the proxy shares one address's limits.
 - `limits`: any of `putsPerHour`, `bytesPerHour`, `blobsPerTagPerDay` and `readsPerMinute` (per address range, an IPv4 address or an IPv6 /64), `totalPutsPerHour`, `maxRanges` and `maxBytes` (everyone together). The defaults are in `packages/lighthouse/src/limits/limits.ts`.
 
 On start it prints its address, `pigeon://lighthouse/<key>?url=...&name=...`, which is what you give Pigeon. A plain visit to its URL over HTTP shows the same.
