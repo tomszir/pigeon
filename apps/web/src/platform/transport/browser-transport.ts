@@ -10,7 +10,7 @@ import {
   type RoomName,
   type Transport,
 } from '@pigeon/core'
-import { joinRoom } from 'trystero'
+import { getRelaySockets, joinRoom } from 'trystero'
 import { type TurnServer, turnServers } from './turn-servers.ts'
 
 /** Rooms are namespaced by this, so Pigeon only ever meets Pigeon. */
@@ -38,6 +38,13 @@ export function createBrowserTransport(
   onNoRelay: () => void = () => undefined,
 ): Transport {
   return {
+    relays() {
+      const sockets = Object.values(getRelaySockets())
+      return {
+        reachable: sockets.filter((socket) => socket.readyState === WebSocket.OPEN).length,
+        total: sockets.length,
+      }
+    },
     async join(name: RoomName, options: JoinOptions = {}): Promise<Room> {
       const turnConfig = await getTurnServers()
       if (options.relayOnly === true && !hasRelay(turnConfig)) onNoRelay()

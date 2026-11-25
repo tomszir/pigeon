@@ -36,9 +36,9 @@ The Pigeon menu and taskbar follow the era's proportions more closely than the c
 
 ## Desktop and balloons
 
-The desktop shows Pigeon Messenger, Read Me.txt, Changelog.txt, Letters, Shared Files, Source Code and Trash, and on an iPhone or iPad in a Safari tab Add to Home Screen.txt, which says why and how to keep Pigeon there (also in the menu's tools, and offered once in a balloon). The text files open in Pigeon Reader (`apps/reader/`), a plain-text window with Word Wrap; What's New in the menu opens Changelog.txt too.
+The desktop shows Pigeon Messenger, Network, Read Me.txt, Changelog.txt, Letters, Shared Files, Source Code and Trash, and on an iPhone or iPad in a Safari tab Add to Home Screen.txt, which says why and how to keep Pigeon there (also in the menu's tools, and offered once in a balloon). The text files open in Pigeon Reader (`apps/reader/`), a plain-text window with Word Wrap; What's New in the menu opens Changelog.txt too.
 
-The Messenger's File menu has Always Go Through the Relay, a check item that reconnects everything through the TURN relay and says so in a balloon; Settings shows the same setting, on a Connection tab in Display Properties and in a Connection group on the Pocket, so it isn't only in the Messenger (the shell gets it from app/ as `connection`, since it can't reach the Messenger itself). With it on and no relay to be had, Pigeon doesn't connect directly; a balloon says the relay can't be reached and where to turn the setting off.
+The Messenger's File menu has Always Go Through the Relay, a check item that reconnects everything through the TURN relay and says so in a balloon; Network shows the same setting, so it isn't only in the Messenger. With it on and no relay to be had, Pigeon doesn't connect directly; a balloon says the relay can't be reached and where to turn the setting off.
 
 Balloons come from the tray, one at a time, and close themselves after 10 seconds. A balloon that does something, such as "Pigeon was updated to 0.4.0. See what's new?", does it when clicked anywhere but its close button, and its text is a button for the keyboard.
 
@@ -117,3 +117,7 @@ Birds stay put:
 - `hello` carries the version a person's bird is drawn with (1 when left out), so a new version only reaches new people and those who ask for it. A version this Pigeon doesn't know yet is drawn as the newest one it does.
 
 The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own logo.
+
+## Network
+
+Network (`apps/network/`, a desktop icon and in the Pigeon menu's tools) is how this Pigeon connects, kept out of Display Properties, which is about the display alone. On the desktop it has two tabs. Lighthouses lists where friends leave mail for you: each one's 22px server icon (faded when it isn't answering), its name in bold, its host and fingerprint, and a status line with a green or red dot ("Answering. Says it runs pigeon-lighthouse 0.7.1.", "Not answering. Mail is still left at the others."), checked when Network opens and every minute while it's open, and a Remove button, greyed out on the last one. A line under the list says what each says it runs is its own word, and its key is what's checked. Add a Lighthouse takes an address (`pigeon://lighthouse/...`) beside an Add button, and adds it only once it answers as the key in it; What a Lighthouse sees says plainly what it can and can't learn. Connection holds Always go through the relay and Right now: relays reachable, friends connected, Lighthouses answering. On the Pocket it's one page: the Lighthouses with a 32px icon, a short status and a 44px remove key, the address and a full-width Add Lighthouse, the relay setting, and What a Lighthouse sees opening in place.

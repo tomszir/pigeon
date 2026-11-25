@@ -68,7 +68,7 @@ apps/
                 the window layer and the phone layout (shell/phone-shell/, the
                 Kestrel Pocket; Today itself comes from apps/messenger/today/).
                 createShell() returns the ShellApi that app/ hands to programs.
-      apps/     One folder per app (messenger, reader, explorer, help, about),
+      apps/     One folder per app (messenger, network, reader, explorer, help, about),
                 each holding one folder per component: apps/<app>/<component>/. The
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
@@ -77,7 +77,7 @@ apps/
                 a device is. service/mailbox.ts is mail through Lighthouses: an outbox
                 put again until each device's receipt comes, and fetching from a
                 cursor, taking each letter once. messenger/devices/ draws Link a Device, Link to My
-                Other Device and My Devices. reader/ is
+                Other Device and My Devices. network/ is Network, the Lighthouses and the relay setting. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
                 (Changelog.txt, the release notes). explorer/ is
                 Pigeon Explorer: explorer/ (the window, history.ts

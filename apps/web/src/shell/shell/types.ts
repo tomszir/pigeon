@@ -113,15 +113,6 @@ export interface ScreenSpec {
   }[]
 }
 
-/**
- * How Pigeon connects, owned by the Messenger and shown in Settings too.
- * `relayOnly` is undefined while the Messenger is starting or can't run.
- */
-export interface ConnectionSetting {
-  readonly relayOnly: () => boolean | undefined
-  readonly setRelayOnly: (on: boolean) => void
-}
-
 /** Something the user can start from the desktop, the menu or the quick-launch bar. */
 export interface Launcher {
   readonly id: string

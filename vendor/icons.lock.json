@@ -331,6 +331,18 @@
     {
       "source": "brand",
       "icon": "buzz-22"
+    },
+    {
+      "source": "tango",
+      "icon": "network-workgroup",
+      "context": "places",
+      "sizes": [16, 22, 32]
+    },
+    {
+      "source": "tango",
+      "icon": "network-server",
+      "context": "places",
+      "sizes": [16, 22, 32]
     }
   ]
 }
