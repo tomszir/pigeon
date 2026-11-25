@@ -1613,3 +1613,147 @@ describe('invite links through Lighthouses', () => {
     expect(only(mika.messenger.sentAsks()).state).toBe('waiting')
   })
 })
+
+describe('letters', () => {
+  it('leaves messages for a friend who is offline, and says where each one is', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    const rookId = only(mika.messenger.friends()).id
+
+    // Mika closes Pigeon; Rook writes twice, a burst that goes as one letter, and closes his.
+    await away(mika)
+    await flush(200)
+    await rook.messenger.send(mikaId, 'are we still on for saturday?')
+    await rook.messenger.send(mikaId, 'bring the blue rope')
+    await rook.messenger.loadLetters(mikaId)
+    const route = () =>
+      only(rook.messenger.friends()).log.entries.map((entry) =>
+        rook.messenger.messageRoute(mikaId, entry),
+      )
+    expect(route()).toEqual([{ kind: 'sealing' }, { kind: 'sealing' }])
+    await clock.tick(5000)
+    await flush(400)
+    const left = { kind: 'left', where: ['Test Lighthouse'] }
+    expect(route()).toEqual([left, left])
+    expect(await rook.store.get('mail-outbox')).toHaveLength(1)
+    await rook.messenger.close()
+    rook.transport.disconnect()
+
+    // Mika opens Pigeon where she can't meet Rook: both messages are there, unread.
+    const back = await messenger(createMemoryNetwork(), 'mika', {
+      clock,
+      lighthouse,
+      store: mika.store,
+    })
+    await flush(800)
+    const chat = back.messenger.friend(rookId)
+    expect(chat?.log.entries.map((entry) => entry.text)).toEqual([
+      'are we still on for saturday?',
+      'bring the blue rope',
+    ])
+    expect(chat?.unread).toBe(2)
+    await back.messenger.loadLetters(rookId)
+    const first = chat?.log.entries[0]
+    if (first === undefined) throw new Error('no entry')
+    expect(back.messenger.messageRoute(rookId, first)).toEqual({
+      kind: 'arrived',
+      through: 'Test Lighthouse',
+    })
+
+    // Her receipt reaches Rook when he opens Pigeon: Mika has them.
+    const rookBack = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await flush(800)
+    await rookBack.messenger.loadLetters(mikaId)
+    const mine = only(rookBack.messenger.friends()).log.entries
+    expect(mine.map((entry) => rookBack.messenger.messageRoute(mikaId, entry))).toEqual([
+      { kind: 'has' },
+      { kind: 'has' },
+    ])
+    expect(await rookBack.store.get('mail-outbox')).toEqual([])
+  })
+
+  it('mails a message written just before Pigeon closed, when it opens again', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    const rookId = only(mika.messenger.friends()).id
+    await away(mika)
+    await flush(200)
+    // Closed before the letter's 5 seconds were up: nothing was mailed.
+    await rook.messenger.send(mikaId, 'see you at ten')
+    await rook.messenger.close()
+    rook.transport.disconnect()
+    expect((await rook.store.get('mail-outbox')) ?? []).toEqual([])
+    // Opened again, alone: its first mail check sends it.
+    await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse, store: rook.store })
+    await flush(400)
+    await clock.tick(5000)
+    await flush(400)
+    expect(await rook.store.get('mail-outbox')).toHaveLength(1)
+    const back = await messenger(createMemoryNetwork(), 'mika', {
+      clock,
+      lighthouse,
+      store: mika.store,
+    })
+    await flush(800)
+    expect(back.messenger.friend(rookId)?.log.entries.map((entry) => entry.text)).toEqual([
+      'see you at ten',
+    ])
+  })
+
+  it('splits long messages into letters that each fit a Lighthouse', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    await away(mika)
+    await flush(200)
+    for (let i = 0; i < 20; i++) await rook.messenger.send(mikaId, `${i} ${'x'.repeat(3900)}`)
+    await clock.tick(5000)
+    await flush(800)
+    await rook.messenger.loadLetters(mikaId)
+    const outbox = (await rook.store.get('mail-outbox')) as unknown[]
+    expect(outbox.length).toBeGreaterThan(1)
+    const routes = only(rook.messenger.friends()).log.entries.map(
+      (entry) => rook.messenger.messageRoute(mikaId, entry)?.kind,
+    )
+    expect(routes.every((kind) => kind === 'left')).toBe(true)
+  })
+
+  it('sends nothing by letter to a friend who is online', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    await rook.messenger.send(mikaId, 'hi')
+    await clock.tick(5000)
+    await flush(400)
+    expect((await rook.store.get('mail-outbox')) ?? []).toEqual([])
+    const entry = only(rook.messenger.friends()).log.entries[0]
+    if (entry === undefined) throw new Error('no entry')
+    expect(rook.messenger.messageRoute(mikaId, entry)).toBeUndefined()
+  })
+})

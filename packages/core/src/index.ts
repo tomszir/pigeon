@@ -15,6 +15,7 @@ export {
   appendMessage,
   batchEntries,
   emptyLog,
+  isLogEntry,
   MAX_TEXT_LENGTH,
   mergeEntries,
   missingFrom,

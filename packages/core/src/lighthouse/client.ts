@@ -132,6 +132,12 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
       opened: () => opened(),
       ready: Promise.resolve(err('unreachable')),
     }
+    // A socket that neither opens nor closes would hold every request to it, and whatever waits
+    // behind them, for good: one that hasn't opened in the time a request has is given up.
+    let isOpened = false
+    void options.sleep(timeoutMs).then(() => {
+      if (!isOpened) drop(connection)
+    })
     connection.ready = isOpen.then(async () => {
       if (connection.closed) return err('unreachable')
       const hello: LighthouseRequest = {
@@ -147,7 +153,10 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
     })
     try {
       connection.socket = options.open(address.url, {
-        onOpen: () => opened(),
+        onOpen: () => {
+          isOpened = true
+          opened()
+        },
         onMessage: (text) => void receive(connection, text),
         onClose: () => drop(connection),
       })

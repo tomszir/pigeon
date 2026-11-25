@@ -13,8 +13,13 @@ export interface Store {
 export function createMemoryStore(initial: Readonly<Record<string, unknown>> = {}): Store {
   const values = new Map<string, unknown>(Object.entries(initial))
   return {
-    get: async (key) => values.get(key),
-    set: async (key, value) => void values.set(key, value),
+    get: async (key) => {
+      const value = values.get(key)
+      return value === undefined ? undefined : structuredClone(value)
+    },
+    // Copied as IndexedDB copies them, so what it can't keep (a reactive store's proxy, a
+    // function) fails here as it would there, and later changes to the value don't leak in.
+    set: async (key, value) => void values.set(key, structuredClone(value)),
     delete: async (key) => void values.delete(key),
     clear: async () => values.clear(),
   }

@@ -20,13 +20,14 @@ import { err, ok, type Result } from '../result/result.ts'
 import type { SealCrypto, Sealer } from './seal-crypto.ts'
 
 /** What a letter is: each kind is its own `room`, mail:<kind>, so one can't pass as another. */
-export type MailKind = 'farewell' | 'self' | 'receipt' | 'invite' | 'invite-answer'
+export type MailKind = 'farewell' | 'self' | 'receipt' | 'invite' | 'invite-answer' | 'letter'
 const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'farewell',
   'self',
   'receipt',
   'invite',
   'invite-answer',
+  'letter',
 ])
 
 /** A device's sealing key, bound to it by its own signature. */

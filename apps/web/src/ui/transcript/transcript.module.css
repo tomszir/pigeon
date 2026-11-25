@@ -50,3 +50,22 @@
 .error {
   color: var(--pg-text-error);
 }
+
+/* A message's way, small under it (or, for one that came by letter, above it). */
+.route {
+  margin: 1px 0 2px 10px;
+  font-size: 0.9em;
+}
+
+.routeWaiting {
+  color: var(--pg-text-muted);
+}
+
+.routeDone {
+  color: var(--pg-text-ok);
+}
+
+.routeLetter {
+  margin-top: 2px;
+  color: #7a5a00;
+}

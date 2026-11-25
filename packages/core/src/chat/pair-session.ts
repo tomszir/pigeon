@@ -23,6 +23,7 @@ import {
   batchEntries,
   type ChatLog,
   type LogEntry,
+  type LogSummary,
   mergeEntries,
   missingFrom,
   summarize,
@@ -69,6 +70,11 @@ export type PairEvent =
   | { readonly type: 'typing'; readonly active: boolean }
   | { readonly type: 'buzz' }
   | { readonly type: 'log'; readonly log: ChatLog }
+  /**
+   * One of the friend's devices said how far it has the chat (its `log-sync`): what it holds
+   * of each author's entries, so letters need only carry what it lacks.
+   */
+  | { readonly type: 'has'; readonly have: LogSummary }
   /** The friend removed you. */
   | { readonly type: 'unfriended' }
   /** The friend proved who they are in `room`: sent on their first hello in each room. */
@@ -139,6 +145,11 @@ export interface ProfileChange {
 export interface PairSession {
   readonly online: () => boolean
   send(text: string): Promise<void>
+  /**
+   * Takes in entries that came another way (by letter), with the checks a sync uses, so the
+   * session's chat and what it syncs include them.
+   */
+  takeEntries(entries: readonly LogEntry[]): Promise<void>
   typing(active: boolean): void
   buzz(): void
   /**
@@ -334,6 +345,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     'pair-secret-ok': () => options.onEvent({ type: 'secret-ok' }),
     bye: drop,
     'log-sync': (from, body) => {
+      if (friendConnections.has(from)) options.onEvent({ type: 'has', have: body.have })
       for (const batch of batchEntries(missingFrom(log, body.have), ENTRY_BATCH_BYTES))
         sendTo(from, { type: 'log-entries', entries: batch })
     },
@@ -458,6 +470,12 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       const { log: next, entry } = await appendMessage(log, signer, text, options.now())
       setLog(next)
       sendTo('everyone', { type: 'log-entries', entries: [entry] })
+    },
+    takeEntries(entries) {
+      merging = merging.then(async () =>
+        setLog(await mergeEntries(crypto, log, entries, authors())),
+      )
+      return merging
     },
     typing: (active) => sendTo('all', { type: 'typing', active }),
     buzz: () => sendTo('all', { type: 'buzz' }),

@@ -161,3 +161,8 @@
   padding: 12px 8px;
   color: var(--pg-text-muted);
 }
+
+.letter {
+  color: #7a5a00;
+  font-size: 12px;
+}

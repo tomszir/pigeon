@@ -1,11 +1,12 @@
 // A conversation with a real friend: the chat log as a transcript, buzzes in between, the
 // typing line, and a status bar that says plainly how the words travel.
-import { formatFingerprint, type PeerId } from '@pigeon/core'
+import { formatFingerprint, type LogEntry, type PeerId } from '@pigeon/core'
 import { createEffect, Show } from 'solid-js'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
 import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import { Conversation } from '../conversation/conversation.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
+import type { MessageRoute } from '../service/letters.ts'
 import type { FriendView, Messenger, Note } from '../service/service.ts'
 
 export interface LiveConversationProps {
@@ -49,11 +50,42 @@ const NOTES: Record<
   offline: { kind: 'system', text: (name, at) => `${name} went offline at ${clockTime(at)}.` },
 }
 
-/** `mine` says which entries are yours: written on any of your devices. */
+const listOf = (names: readonly string[]) =>
+  names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+
+/** What a chat says under a message about its way, from the Messenger's word for it. */
+export function routeText(
+  route: MessageRoute | undefined,
+  friend: string,
+): Extract<TranscriptEntry, { kind: 'message' }>['route'] {
+  if (route === undefined) return undefined
+  switch (route.kind) {
+    case 'sealing':
+      return { kind: 'waiting', text: 'Sealing...' }
+    case 'left':
+      return { kind: 'waiting', text: `Left at ${listOf(route.where)} for when ${friend}'s back` }
+    case 'waiting':
+      return { kind: 'waiting', text: `Waits until ${friend} is online` }
+    case 'retrying':
+      return { kind: 'waiting', text: 'Not left at a Lighthouse yet: Pigeon tries again' }
+    case 'has':
+      return { kind: 'done', text: `✓ ${friend} has it` }
+    case 'arrived':
+      return {
+        kind: 'letter',
+        text: `Came by letter while you were away, through ${route.through}`,
+      }
+  }
+}
+
+/** `mine` says which entries are yours: written on any of your devices. `routeOf` says each one's way. */
 export function transcriptFor(
   view: FriendView,
   mine: PeerId | ((author: PeerId) => boolean),
   selfName: string,
+  routeOf: (entry: LogEntry) => MessageRoute | undefined = () => undefined,
 ) {
   const isMine = typeof mine === 'string' ? (author: PeerId) => author === mine : mine
   const entries: TranscriptEntry[] = []
@@ -80,12 +112,14 @@ export function transcriptFor(
   view.log.entries.forEach((entry, index) => {
     flush(index)
     const own = isMine(entry.author)
+    const route = routeText(routeOf(entry), view.name)
     entries.push({
       kind: 'message',
       id: entry.sig,
       from: own ? selfName : view.name,
       own,
       text: entry.text,
+      ...(route === undefined ? {} : { route }),
     })
   })
   flush(Number.POSITIVE_INFINITY)
@@ -138,6 +172,8 @@ export function conversationText(
 
 export function LiveConversation(props: LiveConversationProps) {
   const view = () => props.messenger.friend(props.friend)
+  // What's kept of letters with them, so each message can say its way.
+  void props.messenger.loadLetters(props.friend)
 
   createEffect(() => {
     const current = view()
@@ -165,6 +201,7 @@ export function LiveConversation(props: LiveConversationProps) {
             current(),
             props.messenger.isMine,
             props.messenger.profile().handle,
+            (entry) => props.messenger.messageRoute(props.friend, entry),
           )}
           typing={current().typing ? `${current().name} is writing a message...` : ''}
           closed={current().removedYouAt !== undefined}
