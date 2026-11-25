@@ -23,7 +23,7 @@ Chat entries are already signed log entries that any of the two sides' devices m
 ### For later
 
 - **One-time prekeys** for forward secrecy, a good deal later. Until then a letter is sealed to a device's long-term sealing key, as farewells are: someone who later steals that device's key could open letters still held at a Lighthouse, for up to 30 days. The maintainer judged that acceptable for now: someone holding your friend's unlocked device has more than Pigeon's letters. Prekeys get a decision of their own.
-- **Mutual friends as carriers**, and your own other devices getting the letters you sent.
+- **Mutual friends as carriers.** (Your own other devices getting the letters you sent, also listed here at first, was built soon after, with a copy of each letter in the self mailbox: see the protocol.)
 
 ## Consequences
 

@@ -1716,6 +1716,40 @@ describe('letters', () => {
     ])
   })
 
+  it('gives your other devices what you wrote by letter, though the friend is never there', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const mikaId = only(laptop.messenger.friends()).id
+    // Mika and the phone are both away when the laptop writes.
+    await away(mika)
+    await away(phone)
+    await laptop.messenger.send(mikaId, 'see you saturday')
+    await clock.tick(5000)
+    await flush(400)
+    await laptop.messenger.close()
+    laptop.transport.disconnect()
+    // The phone opens alone: the laptop's message is in its chat with Mika, and not as news.
+    const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(800)
+    const chat = back.messenger.friend(mikaId)
+    expect(chat?.log.entries.map((entry) => entry.text)).toEqual(['see you saturday'])
+    expect(chat?.unread).toBe(0)
+    await back.messenger.loadLetters(mikaId)
+    const entry = chat?.log.entries[0]
+    if (entry === undefined) throw new Error('no entry')
+    expect(back.messenger.messageRoute(mikaId, entry)).toBeUndefined()
+  })
+
   it('splits long messages into letters that each fit a Lighthouse', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
