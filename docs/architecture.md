@@ -27,7 +27,9 @@ packages/
                   AES-GCM the platform implements.
       lighthouse/ what a Pigeon and a Lighthouse say (decision 0037): plain requests,
                   replies signed by the Lighthouse over the request number, blob ids
-                  from their content, and pigeon://lighthouse addresses.
+                  from their content, pigeon://lighthouse addresses, and client.ts, a
+                  Pigeon's side of one Lighthouse over a socket the platform opens: a
+                  fresh nonce per connection, one checked reply per request.
       windows/    window-manager state.
       back/       the back stack: what the browser's Back closes next, kept in step
                   with the browser's history through a small port (decision 0034).
@@ -56,7 +58,8 @@ apps/
                 crypto/ (WebCrypto keys behind core's Crypto and Signer, a device's
                 sealing key and core's SealCrypto, and sealing with a passphrase), files/ (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
-                (Trystero, with TURN servers from /api/turn), clock/, clipboard/, tab-lock/ (one tab at a time, with Web
+                (Trystero, with TURN servers from /api/turn), clock/, clipboard/, lighthouse/ (the WebSocket core's Lighthouse client talks over,
+                decision 0037), tab-lock/ (one tab at a time, with Web
                 Locks and a BroadcastChannel; decision 0028), back/ (core's back stack over
                 `history`, decision 0034). Each is an interface plus a
                 browser implementation; audio and files come later.
