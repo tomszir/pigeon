@@ -6,8 +6,8 @@
 #   2. Every file in docs/ is listed in docs/README.md (a listed folder, such as
 #      "decisions/", covers everything inside it).
 #   3. Every doc opens with a heading and then a one-line summary.
-#   4. Docs and code are written for a stranger: outside docs/decisions/ and
-#      docs/roadmap.md, nothing cites a decision record or a milestone, links to
+#   4. Docs and code are written for a stranger: outside docs/decisions/,
+#      docs/roadmap.md and its companions (docs/roadmap-*.md), nothing cites a decision record or a milestone, links to
 #      the roadmap, or mentions a homelab.
 #
 # Usage: scripts/check-docs [--base <ref>] [--hook claude]
@@ -131,10 +131,10 @@ fi
 # "0024 says", links to roadmap.md, and milestone tags such as M13, but not SVG path
 # data such as "M3 10" or the docs index's own roadmap entry. Untracked files count.
 cite='[Dd]ecisions?( records?)?[ /-]+0[0-9]{3}|ADR[ -]?0[0-9]{3}|\((0[0-9]{3}[,;) ]|[^)]*; 0[0-9]{3})|\[0[0-9]{3}\]|\b(see|before|since|from) 0[0-9]{3}([^-0-9]|$)|\b0[0-9]{3} says|\bM[0-9]{1,2}([^0-9 .,]| [^0-9-]|[.,]( |$)|$)|[Hh]omelab|[(/]roadmap\.md(\)([^:]|$)|[^)]|$)'
-if git grep --untracked -nIE "$cite" -- . ':!docs/decisions/' ':!docs/roadmap.md' ':!scripts/check-docs' \
+if git grep --untracked -nIE "$cite" -- . ':!docs/decisions/' ':!docs/roadmap.md' ':!docs/roadmap-*.md' ':!scripts/check-docs' \
 	':!*.svg' ':!*.lock.json' ':!pnpm-lock.yaml' ':!**/LICENSES/**' >"$tmp/cites"; then
 	{
-		echo "Decision, milestone or personal references outside docs/decisions/ and docs/roadmap.md:"
+		echo "Decision, milestone or personal references outside docs/decisions/ and the roadmap:"
 		sed 's/^/  /' "$tmp/cites"
 		echo "  Write for a stranger: say what is so, and why, without pointing at a record (AGENTS.md)."
 	} >>"$problems"

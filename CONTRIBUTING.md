@@ -32,7 +32,7 @@ The `commit-msg` git hook and the `pr-title` CI job enforce the format (`scripts
 Pigeon is public, so write every doc and comment for someone who has never met the project or the people behind it.
 
 - **Say what is so, and why.** A comment explains what the code does or why it does it that way, in its own words. "Kept to one tab, because two tabs would be the same device twice in every room" beats a bare pointer to a decision record.
-- **No pointers to plans or records.** Docs and comments don't cite decision records, milestones or the roadmap, and don't say what's coming "later" or "for now". The decision records and the roadmap, both in docs/, are where those live, and nothing else needs to link to them to make sense.
+- **No pointers to plans or records.** Docs and comments don't cite decision records, milestones or the roadmap, and don't say what's coming "later" or "for now". The decision records and the roadmap, that is roadmap.md and its companions roadmap-*.md, all in docs/, are where those live, and nothing else needs to link to them to make sense.
 - **Nothing personal.** Describe what anyone running Pigeon would do, not one person's machines, home network, accounts or other projects.
 
 `scripts/check-docs` rejects decision and milestone citations outside those two places.

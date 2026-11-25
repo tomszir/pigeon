@@ -14,7 +14,7 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
 - Write docs and code comments for a stranger, as [CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments)
   says: what is so and, where it isn't obvious, why, in the text itself. No citing decision
   records, milestone numbers or the roadmap, and nothing about the maintainer's own machines,
-  accounts or plans. The decision records and the roadmap, both in docs/, are the only places
+  accounts or plans. The decision records and the roadmap, that is roadmap.md and roadmap-*.md, all in docs/, are the only places
   those live.
 - Git history is the developers' change log. Don't keep one in docs/. Release notes for people
   are Changelog.txt, written on each release PR.
