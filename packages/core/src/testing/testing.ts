@@ -3,6 +3,7 @@
 import { base32Encode, bytesEqual, concatBytes, utf8Encode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
+import type { SealCrypto, Sealer } from '../mail/seal-crypto.ts'
 import type {
   ConnectionId,
   JoinOptions,
@@ -34,6 +35,82 @@ export const fakeCrypto: Crypto = {
 export function fakeSigner(name: string): Signer {
   const id = base32Encode(fakeHash(utf8Encode(`fake-key:${name}`)))
   return { id, sign: async (data) => fakeSignature(id, data) }
+}
+
+/**
+ * Sealing that behaves like the real thing and is worth nothing: a "public key" is the hash of
+ * its private half, a shared secret the hash of both public keys in order, and sealing XORs a
+ * hash stream with a hash tag. Deterministic given `seed`, so tests repeat.
+ */
+export function fakeSealCrypto(seed = 1): SealCrypto & { sealer(name: string): Sealer } {
+  let counter = seed
+  const random = (length: number) => {
+    const out = new Uint8Array(length)
+    for (let at = 0; at < length; at += 32) {
+      counter += 1
+      out.set(fakeHash(utf8Encode(`random:${counter}`)).subarray(0, length - at), at)
+    }
+    return out
+  }
+  const publicOf = (secret: Uint8Array) =>
+    concatBytes(new Uint8Array([4]), fakeHash(secret), fakeHash(fakeHash(secret)))
+  const shared = (a: Uint8Array, b: Uint8Array) => {
+    const [low, high] = [a, b].sort((x, y) => (base32Encode(x) < base32Encode(y) ? -1 : 1))
+    return fakeHash(concatBytes(low ?? a, high ?? b))
+  }
+  const stream = (key: Uint8Array, nonce: Uint8Array, length: number) => {
+    const out = new Uint8Array(length)
+    for (let at = 0, block = 0; at < length; at += 32, block++)
+      out.set(
+        fakeHash(concatBytes(key, nonce, new Uint8Array([block & 255, block >> 8]))).subarray(
+          0,
+          length - at,
+        ),
+        at,
+      )
+    return out
+  }
+  const tag = (key: Uint8Array, nonce: Uint8Array, data: Uint8Array) =>
+    fakeHash(concatBytes(key, nonce, data)).subarray(0, 16)
+  return {
+    async ephemeralShare(peer) {
+      // As WebCrypto does with a key that isn't a point it can use.
+      if (peer.length !== 65 || peer[0] !== 4) throw new Error('DataError: Invalid keyData')
+      const secret = random(32)
+      const publicKey = publicOf(secret)
+      return { publicKey, shared: shared(publicKey, peer) }
+    },
+    hkdf: async (ikm, info, length) => {
+      const out = new Uint8Array(length)
+      for (let at = 0, block = 0; at < length; at += 32, block++)
+        out.set(
+          fakeHash(concatBytes(ikm, utf8Encode(`${info}/${block}`))).subarray(0, length - at),
+          at,
+        )
+      return out
+    },
+    async seal(key, data) {
+      const nonce = random(12)
+      const body = stream(key, nonce, data.length).map((byte, i) => byte ^ (data[i] ?? 0))
+      return concatBytes(nonce, body, tag(key, nonce, body))
+    },
+    async open(key, sealed) {
+      if (sealed.length < 28) return undefined
+      const nonce = sealed.subarray(0, 12)
+      const body = sealed.subarray(12, sealed.length - 16)
+      if (!bytesEqual(sealed.subarray(sealed.length - 16), tag(key, nonce, body))) return undefined
+      return stream(key, nonce, body.length).map((byte, i) => byte ^ (body[i] ?? 0))
+    },
+    random,
+    sealer(name) {
+      const publicKey = publicOf(utf8Encode(`sealer:${name}`))
+      return {
+        publicKey,
+        share: async (peer) =>
+          peer.length === 65 && peer[0] === 4 ? shared(publicKey, peer) : undefined,
+      }
+    },
+  }
 }
 
 /** Lets queued deliveries and the async handlers they start run to completion. */

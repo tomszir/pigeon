@@ -21,6 +21,10 @@ packages/
                   a new device (link.ts, decision 0024).
       devices/    the signed device log that ties several devices to one identity
                   (decision 0024).
+      mail/       mail sealed to devices (decision 0037): mail tags from the pair or
+                  self secret and the UTC date, sealing keys bound to their devices,
+                  sealMail and openMail, and SealCrypto and Sealer, the ECDH, HKDF and
+                  AES-GCM the platform implements.
       lighthouse/ what a Pigeon and a Lighthouse say (decision 0037): plain requests,
                   replies signed by the Lighthouse over the request number, blob ids
                   from their content, and pigeon://lighthouse addresses.
@@ -49,8 +53,8 @@ apps/
                 TURN credentials (decision 0022). Holds no user data.
     src/
       platform/ The only code that touches browser APIs, one folder per concern:
-                crypto/ (WebCrypto keys behind core's Crypto and Signer, and sealing
-                with a passphrase), files/ (saving and opening text files), storage/
+                crypto/ (WebCrypto keys behind core's Crypto and Signer, a device's
+                sealing key and core's SealCrypto, and sealing with a passphrase), files/ (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
                 (Trystero, with TURN servers from /api/turn), clock/, clipboard/, tab-lock/ (one tab at a time, with Web
                 Locks and a BroadcastChannel; decision 0028), back/ (core's back stack over
