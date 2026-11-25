@@ -42,6 +42,7 @@ import { MessageBox } from '../../ui/message-box/message-box.tsx'
 import { Window, type WindowAlert } from '../../ui/window/window.tsx'
 import { Backdrop } from '../backdrop/backdrop.tsx'
 import { DisplayProperties } from '../display-properties/display-properties.tsx'
+import { Elsewhere } from '../elsewhere/elsewhere.tsx'
 import { MazeSaver } from '../maze-saver/maze-saver.tsx'
 import { Monitor } from '../monitor/monitor.tsx'
 import { PhoneShell } from '../phone-shell/phone-shell.tsx'
@@ -62,6 +63,7 @@ import { BUZZ_VIBRATION, buzzAlert } from './buzz.ts'
 import styles from './shell.module.css'
 import type {
   ConnectionSetting,
+  ElsewhereSpec,
   Launcher,
   MessageSpec,
   Notice,
@@ -119,6 +121,7 @@ export function createShell(env: ShellEnv): CreatedShell {
     screensaverWait: 5,
   })
   const [running, setRunning] = createSignal(true)
+  const [elsewhere, setElsewhere] = createSignal<ElsewhereSpec | undefined>()
   let messages = 0
 
   const screen = createMemo(() => resolution(settings().resolution))
@@ -226,6 +229,7 @@ export function createShell(env: ShellEnv): CreatedShell {
     settings,
     setSettings,
     shutDown,
+    setElsewhere: (spec) => setElsewhere(spec),
   }
 
   const handle = (id: WindowId): WindowHandle => ({
@@ -420,6 +424,9 @@ export function createShell(env: ShellEnv): CreatedShell {
         pixelMode={settings().pixelMode}
         crt={settings().crtEffect}
       >
+        <Show when={elsewhere()}>
+          {(spec) => <Elsewhere title={spec().title} onTakeOver={spec().onTakeOver} />}
+        </Show>
         <Show
           when={running()}
           fallback={
@@ -453,6 +460,7 @@ export function createShell(env: ShellEnv): CreatedShell {
             onShutDown={shutDown}
             asleep={!running()}
             onWake={wake}
+            elsewhere={elsewhere()}
             handle={handle}
           />
         }
