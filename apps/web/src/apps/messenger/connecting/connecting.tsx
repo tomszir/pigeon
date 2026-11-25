@@ -30,6 +30,10 @@ export interface ConnectingProps {
   now: () => number
   /** Shown once the wait has gone on this long, if the current step hasn't moved. */
   hint?: { readonly afterMs: number; readonly text: string } | undefined
+  /** What the countdown says; "Pigeon stops trying in 12 seconds." unless given. */
+  countdown?: ((seconds: number) => string) | undefined
+  /** The one button's label; Cancel unless given. */
+  cancelLabel?: string | undefined
   onCancel: () => void
 }
 
@@ -93,7 +97,8 @@ export function Connecting(props: ConnectingProps) {
 
         <Progress label={`${current() === undefined ? 'Working' : 'Waiting'}...`} />
         <p class={styles.countdown} aria-live="off">
-          Pigeon stops trying in {left()} {left() === 1 ? 'second' : 'seconds'}.
+          {props.countdown?.(left()) ??
+            `Pigeon stops trying in ${left()} ${left() === 1 ? 'second' : 'seconds'}.`}
         </p>
         <Show when={props.hint !== undefined && elapsed() >= (props.hint?.afterMs ?? 0)}>
           <p class={styles.hint} role="status">
@@ -103,7 +108,11 @@ export function Connecting(props: ConnectingProps) {
         </Show>
       </div>
       <div class={styles.buttons}>
-        <Button label="Cancel" onClick={props.onCancel} class={phone ? styles.wide : undefined} />
+        <Button
+          label={props.cancelLabel ?? 'Cancel'}
+          onClick={props.onCancel}
+          class={phone ? styles.wide : undefined}
+        />
       </div>
     </div>
   )

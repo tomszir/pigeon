@@ -269,7 +269,8 @@ export function createPrograms(
     api.open('join-device', {
       title: 'Link to My Other Device',
       icon: deviceIcon,
-      bounds: { x: 252, y: 130, width: 480, height: 300 },
+      // Tall enough for leaving's progress (decision 0035), Don't Wait and all.
+      bounds: { x: 252, y: 110, width: 480, height: 400 },
       controls: { maximize: false },
       content: (window) => (
         <Show

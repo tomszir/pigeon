@@ -143,16 +143,56 @@ render(() => {
   })
   let storage: { readonly store: Store; readonly persistent: boolean } | undefined
   const offerHere = (title: string) =>
-    api.setElsewhere({
+    api.setScreen({
+      kind: 'notice',
       title,
-      onTakeOver: () => {
-        api.setElsewhere(undefined)
-        void lock.takeOver().then(() => {
-          setProblem(undefined)
-          if (storage !== undefined) void run(storage, false)
-        })
-      },
+      text: 'Only one tab runs Pigeon at a time, so this one can’t be used. Go back to the other tab, or use Pigeon here instead.',
+      buttons: [
+        {
+          label: '&Use Pigeon Here',
+          isDefault: true,
+          onClick: () => {
+            api.setScreen(undefined)
+            void lock.takeOver().then(() => {
+              setProblem(undefined)
+              if (storage !== undefined) void run(storage, false)
+            })
+          },
+        },
+      ],
     })
+
+  // Pigeon failed while starting: say so over the whole screen, with the error for a report,
+  // and the two ways out: try again, or forget this browser's Pigeon and start over.
+  const cantStart = (error: unknown) => {
+    const details = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    const forget = async () => {
+      await storage?.store.clear()
+      location.reload()
+    }
+    const sure = () =>
+      api.setScreen({
+        kind: 'error',
+        title: 'Start over in this browser?',
+        text: 'This forgets everything Pigeon keeps in this browser: its key, your friends and your chats. Your other devices and your friends keep theirs. If this is your only device, you can bring your Pigeon back afterwards with your recovery key or an exported file.',
+        buttons: [
+          { label: '&Forget and Start Over', onClick: () => void forget() },
+          { label: '&Back', isDefault: true, onClick: show },
+        ],
+      })
+    const show = () =>
+      api.setScreen({
+        kind: 'error',
+        title: 'Pigeon couldn’t start',
+        text: 'Something in this browser’s copy of Pigeon stopped it starting. Your friends and chats are still here. Try again, or, if it keeps happening, start over.',
+        details,
+        buttons: [
+          { label: '&Try Again', isDefault: true, onClick: () => location.reload() },
+          { label: '&Start Over...', onClick: sure },
+        ],
+      })
+    show()
+  }
 
   // "Make This a New Device" on a copied profile, or leaving this Pigeon for another (0035):
   // forget everything here and link it again, to the other one's code if there is one.
@@ -224,6 +264,7 @@ render(() => {
     })
     .catch((error: unknown) => {
       setProblem('Pigeon couldn’t start in this browser.')
+      cantStart(error)
       console.error(error)
     })
 

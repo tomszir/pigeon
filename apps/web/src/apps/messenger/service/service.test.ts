@@ -705,7 +705,14 @@ describe('your devices (decision 0024)', () => {
     const clock = fakeClock(NOON)
     const { a: laptop, b: mika } = await pair(network, {}, 'link', clock)
     const rookId = only(mika.messenger.friends()).id
-    expect(await laptop.messenger.leave(never)).toBe(0)
+    const progress: string[] = []
+    expect(
+      await laptop.messenger.leave(never, (step) =>
+        progress.push(`${step.step} ${step.done}/${step.total}`),
+      ),
+    ).toBe(0)
+    expect(progress[0]).toBe('removing 0/1')
+    expect(progress.at(-1)).toBe('telling 1/1')
     expect(laptop.messenger.friends()).toEqual([])
     expect(mika.messenger.friend(rookId)?.removedYouAt).toBeTypeOf('number')
     const linking = await mika.messenger.startLink()

@@ -91,14 +91,26 @@ export interface ShellApi {
   readonly settings: () => Settings
   readonly setSettings: (settings: Settings) => void
   readonly shutDown: () => void
-  /** Covers the whole screen while Pigeon runs in another tab, or clears it (decision 0028). */
-  readonly setElsewhere: (elsewhere: ElsewhereSpec | undefined) => void
+  /**
+   * Covers the whole screen, for a state nothing behind it works in: Pigeon in another tab
+   * (decision 0028), or Pigeon unable to start. Undefined clears it.
+   */
+  readonly setScreen: (screen: ScreenSpec | undefined) => void
 }
 
-/** What the screen says while another tab has Pigeon, and how to move it here. */
-export interface ElsewhereSpec {
+/** What a full screen says, and the few things it lets you do. */
+export interface ScreenSpec {
+  /** An error shows the error icon; a notice, Pigeon's own. */
+  readonly kind: 'notice' | 'error'
   readonly title: string
-  readonly onTakeOver: () => void
+  readonly text: string
+  /** What went wrong, in a developer's words, for a bug report. */
+  readonly details?: string | undefined
+  readonly buttons: readonly {
+    readonly label: string
+    readonly onClick: () => void
+    readonly isDefault?: boolean
+  }[]
 }
 
 /**

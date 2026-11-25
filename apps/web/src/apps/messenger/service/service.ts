@@ -226,6 +226,14 @@ export interface DeviceOffer {
   cancel(): Promise<void>
 }
 
+/** How far leaving a Pigeon has got (decision 0035): removing friends here, then telling them. */
+export interface LeaveProgress {
+  readonly step: 'removing' | 'telling'
+  /** Friends removed, or friends who have heard, so far. */
+  readonly done: number
+  readonly total: number
+}
+
 export type JoinedIdentity =
   | { readonly ok: true; readonly offer: DeviceOffer }
   | {
@@ -363,7 +371,10 @@ export async function createMessenger(deps: MessengerDeps) {
   let closed = false
   // Leaving this Pigeon waits for its farewells to be said (decision 0035).
   let farewellsSaid: (() => void)[] = []
+  /** Told each time a farewell is said, while leaving shows how many have heard. */
+  let onFarewellSaid: (() => void) | undefined
   const saidFarewells = () => {
+    onFarewellSaid?.()
     if (farewells.length > 0) return
     for (const resolve of farewellsSaid) resolve()
     farewellsSaid = []
@@ -1140,17 +1151,30 @@ export async function createMessenger(deps: MessengerDeps) {
    * Before this Pigeon is forgotten to link it to another (decision 0035): when `leavingTells`,
    * each friend is removed and told, as removing them one by one does, and this waits until
    * every one has heard or `until` resolves. Otherwise the Pigeon lives on elsewhere, so nobody
-   * is told. Returns how many friends haven't heard yet.
+   * is told. `onProgress` hears how far it has got. Returns how many friends haven't heard yet.
    */
-  async function leave(until: Promise<void>): Promise<number> {
+  async function leave(
+    until: Promise<void>,
+    onProgress?: (progress: LeaveProgress) => void,
+  ): Promise<number> {
     if (!leavingTells()) return 0
-    for (const { id } of friendList()) {
+    const leaving = friendList().map((view) => view.id)
+    const total = leaving.length
+    const told = () => total - farewells.filter((record) => leaving.includes(record.id)).length
+    for (const [index, id] of leaving.entries()) {
       // Closed meanwhile, as when Pigeon moves to another tab: that tab keeps everyone.
       if (closed) return farewells.length
+      onProgress?.({ step: 'removing', done: index, total })
       await removeFriend(id, { block: false })
     }
-    if (farewells.length > 0)
-      await Promise.race([until, new Promise<void>((resolve) => farewellsSaid.push(resolve))])
+    onProgress?.({ step: 'telling', done: told(), total })
+    onFarewellSaid = () => onProgress?.({ step: 'telling', done: told(), total })
+    try {
+      if (farewells.length > 0)
+        await Promise.race([until, new Promise<void>((resolve) => farewellsSaid.push(resolve))])
+    } finally {
+      onFarewellSaid = undefined
+    }
     return farewells.length
   }
 

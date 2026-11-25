@@ -8,8 +8,10 @@ import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
+import { Connecting, type StepState } from '../connecting/connecting.tsx'
+import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
-import type { DeviceOffer, Messenger } from '../service/service.ts'
+import type { DeviceOffer, LeaveProgress, Messenger } from '../service/service.ts'
 import styles from './devices.module.css'
 
 /** How long the new device waits for you to confirm on the other one. */
@@ -141,7 +143,13 @@ type Join =
   | { readonly kind: 'failed'; readonly text: string }
   | { readonly kind: 'taken'; readonly target: Invite; readonly text: string }
   | { readonly kind: 'leave'; readonly target: Invite }
-  | { readonly kind: 'leaving' }
+  | {
+      readonly kind: 'leaving'
+      readonly startedAt: number
+      readonly progress: LeaveProgress | undefined
+      /** Forgetting has begun: nothing to wait for any more. */
+      readonly forgetting: boolean
+    }
 
 /** How long leaving waits for friends who are online to hear goodbye. */
 export const LEAVE_TIMEOUT_MS = 10_000
@@ -199,10 +207,22 @@ export function JoinDevice(props: JoinDeviceProps) {
     void props.sleep(1500).then(props.onLinked)
   }
   onCleanup(() => giveUp())
+  // Don't Wait ends the wait for friends who haven't heard yet.
+  let stopWaiting: () => void = () => undefined
   const leave = async (target: Invite) => {
-    setView({ kind: 'leaving' })
+    const startedAt = Date.now()
+    setView({ kind: 'leaving', startedAt, progress: undefined, forgetting: false })
+    const waited = new Promise<void>((resolve) => {
+      stopWaiting = resolve
+      void props.sleep(LEAVE_TIMEOUT_MS).then(resolve)
+    })
     try {
-      await props.messenger.leave(props.sleep(LEAVE_TIMEOUT_MS))
+      await props.messenger.leave(waited, (progress) =>
+        setView({ kind: 'leaving', startedAt, progress, forgetting: false }),
+      )
+      setView((current) =>
+        current.kind === 'leaving' ? { ...current, forgetting: true } : current,
+      )
     } catch (error) {
       console.error(error)
       setView({
@@ -331,8 +351,59 @@ export function JoinDevice(props: JoinDeviceProps) {
             </GroupBox>
           )}
         </Match>
-        <Match when={view().kind === 'leaving'}>
-          <p class={styles.text}>Telling your friends you left...</p>
+        <Match when={view().kind === 'leaving' && (view() as Join & { kind: 'leaving' })}>
+          {(leaving) => {
+            const progress = () => leaving().progress
+            const total = () => progress()?.total ?? 0
+            const telling = () => progress()?.step === 'telling'
+            const state = (step: 0 | 1 | 2): StepState => {
+              const at = leaving().forgetting ? 2 : telling() ? 1 : 0
+              return step < at ? 'done' : step === at ? 'current' : 'pending'
+            }
+            const friends = (count: number) => `${count} ${count === 1 ? 'friend' : 'friends'}`
+            return (
+              <Connecting
+                friend="Your friends"
+                you={
+                  <FriendAvatar
+                    messenger={props.messenger}
+                    id={props.messenger.self}
+                    name="You"
+                    size={32}
+                    decorative
+                  />
+                }
+                startedAt={leaving().startedAt}
+                timeoutMs={LEAVE_TIMEOUT_MS}
+                now={Date.now}
+                countdown={(seconds) =>
+                  `Pigeon goes on without the rest in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`
+                }
+                cancelLabel="&Don't Wait"
+                onCancel={() => stopWaiting()}
+                steps={[
+                  {
+                    label:
+                      progress() === undefined
+                        ? 'Removing your friends here'
+                        : `Removing ${friends(total())} here`,
+                    state: state(0),
+                  },
+                  {
+                    label: telling()
+                      ? `Telling them you left: ${progress()?.done ?? 0} of ${total()} heard`
+                      : 'Telling them you left',
+                    state: state(1),
+                  },
+                  { label: 'Forgetting this Pigeon and linking', state: state(2) },
+                ]}
+                hint={{
+                  afterMs: 4000,
+                  text: 'Only friends who are online now can hear it. The rest see this Pigeon go quiet.',
+                }}
+              />
+            )
+          }}
         </Match>
         <Match when={view().kind === 'failed' && (view() as { text: string }).text}>
           {(text) => (

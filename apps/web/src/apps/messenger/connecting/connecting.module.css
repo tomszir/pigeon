@@ -162,6 +162,8 @@
   display: flex;
   justify-content: center;
   margin-top: auto;
+  /* Clear of the window's bottom edge, even when the window is only just tall enough. */
+  padding-bottom: 6px;
 }
 
 /* Phone: the same page, centred, with Cancel full width along the bottom. */
