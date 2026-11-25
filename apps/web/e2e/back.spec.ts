@@ -72,12 +72,16 @@ test('going to the page already showing adds no step, and an invite link adds no
     .click()
   const explorer = page.getByRole('dialog', { name: 'Pigeon Explorer' })
   await expect(explorer.getByRole('textbox', { name: 'Address' })).toHaveValue('pigeon://home')
+  // The menu's step goes back out of the history on its own, a moment after it closes: until it
+  // has, a new entry would land under that move and be stepped over.
+  await expect.poll(() => page.evaluate('history.state?.pigeonBack')).toBe(0)
   await explorer.getByRole('button', { name: 'Home' }).click()
   // An invite link followed in this tab: a new entry, taken out of the address at once.
   await page.evaluate("location.hash = '#i/not-an-invite'")
   // Pigeon takes it out of the address once it has read it; Back before then races it.
   await expect(page).not.toHaveURL(/#i\//)
-  await back(page)
+  // One press: it passes the link's entry, which isn't Pigeon's, and Home added none, so Pigeon
+  // goes on out of the site by itself. A second press would race that move.
   await back(page)
   await expect(page).toHaveURL('about:blank')
 })
