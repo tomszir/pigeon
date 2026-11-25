@@ -27,6 +27,16 @@ Before opening a PR, run `mise run check` and `mise run build`. [docs/README.md]
 
 The `commit-msg` git hook and the `pr-title` CI job enforce the format (`scripts/commit-message.ts`).
 
+## Writing docs and comments
+
+Pigeon is public, so write every doc and comment for someone who has never met the project or the people behind it.
+
+- **Say what is so, and why.** A comment explains what the code does or why it does it that way, in its own words. "Kept to one tab, because two tabs would be the same device twice in every room" beats a bare pointer to a decision record.
+- **No pointers to plans or records.** Docs and comments don't cite decision records, milestones or the roadmap, and don't say what's coming "later" or "for now". The decision records and the roadmap, both in docs/, are where those live, and nothing else needs to link to them to make sense.
+- **Nothing personal.** Describe what anyone running Pigeon would do, not one person's machines, home network, accounts or other projects.
+
+`scripts/check-docs` rejects decision and milestone citations outside those two places.
+
 ## Releases
 
-[release-please](https://github.com/googleapis/release-please) reads the Conventional Commits on `main` and keeps a release PR open, `chore: release <version>`. Below 1.0, a `feat` raises the minor version and a `fix` the patch. The workflow drafts the release's section of Changelog.txt (`apps/web/src/apps/reader/changelog/changelog.txt`) on that PR from the `feat`, `fix` and `perf` summaries; the maintainer rewrites it in plain words for the people using Pigeon before merging ([decision 0025](docs/decisions/0025-release-notes-for-people.md)). Merging that PR tags `v<version>`, writes the GitHub release from the commit summaries, and deploys the site ([decision 0021](docs/decisions/0021-releases-with-release-please.md)). Merging it is the maintainer's call.
+[release-please](https://github.com/googleapis/release-please) reads the Conventional Commits on `main` and keeps a release PR open, `chore: release <version>`. Below 1.0, a `feat` raises the minor version and a `fix` the patch. The workflow drafts the release's section of Changelog.txt (`apps/web/src/apps/reader/changelog/changelog.txt`) on that PR from the `feat`, `fix` and `perf` summaries; the maintainer rewrites it in plain words for the people using Pigeon before merging. Merging that PR tags `v<version>`, writes the GitHub release from the commit summaries, and deploys the site. Merging it is the maintainer's call.

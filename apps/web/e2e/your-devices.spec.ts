@@ -1,4 +1,4 @@
-// M13's check (decision 0024), in three browser contexts over the public relays: Rook, already
+// One person's devices, in three browser contexts over the public relays: Rook, already
 // friends with Mika, links a second device by code; Mika still sees one Rook, and a message sent
 // from the second device shows on Rook's first device too.
 import { expect, type Page, test } from '@playwright/test'
@@ -23,7 +23,7 @@ test('a second device is the same Rook, and its messages reach the first', async
   const laptopMessenger = await openMessenger(laptop)
   await laptopMessenger.getByRole('textbox', { name: 'Your name:' }).fill('Rook')
   await laptopMessenger.getByRole('button', { name: 'OK' }).click()
-  // The recovery key is offered once a new Pigeon has its name (decision 0030): later.
+  // The recovery key is offered once a new Pigeon has its name: later.
   await laptop
     .getByRole('dialog', { name: 'Make a Recovery Key' })
     .getByRole('button', { name: 'Later' })

@@ -1,4 +1,4 @@
-// Chapter 4: linking and removing devices (docs/protocol.md, Devices; decisions 0024, 0028, 0035).
+// Chapter 4: linking and removing devices (docs/protocol.md, Devices).
 
 import { pre } from '../page/page.ts'
 import { aside, chapterAddress, figure, helpLink, steps } from './frame.ts'

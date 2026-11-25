@@ -1,4 +1,4 @@
-// "How Pigeon Works": the hand-written half of Help, for people (decision 0032).
+// "How Pigeon Works": the hand-written half of Help, for people.
 
 import type { HelpPage } from '../page/page.ts'
 import { ADDING_A_FRIEND } from './adding-a-friend.ts'

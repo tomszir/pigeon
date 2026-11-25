@@ -1,5 +1,5 @@
-// Drafts Changelog.txt's section for the version on a release PR (decision 0025), from the
-// feat, fix and perf summaries since the last release. The author rewrites it for people before
+// Drafts Changelog.txt's section for the version on a release PR, from the
+// feat, fix and perf summaries since the last release. The maintainer rewrites it for people before
 // merging; this only saves them a blank page.
 //
 // Usage, on the release PR's branch (the release-please workflow runs it):

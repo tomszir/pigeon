@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBrowserCrypto } from './browser-crypto.ts'
 import { generateRecoveryKey, recoverySigner, seedFromPkcs8 } from './recovery-key.ts'
 
-describe('recovery keys in WebCrypto (decision 0027)', () => {
+describe('recovery keys in WebCrypto', () => {
   it('sign again from the seed alone, as the same key', async () => {
     const made = await generateRecoveryKey()
     if (made === undefined) return // No Ed25519 here: nothing to test.

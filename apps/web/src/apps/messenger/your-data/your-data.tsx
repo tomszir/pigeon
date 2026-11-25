@@ -1,4 +1,4 @@
-// Your data in a file you keep (M13): Export My Data seals your friends, chats and settings with a
+// Your data in a file you keep: Export My Data seals your friends, chats and settings with a
 // passphrase; Import My Data merges such a file into another of your devices. Keys never go in
 // it, so a file only opens on a device of the same identity.
 import { canonicalBytes } from '@pigeon/core'

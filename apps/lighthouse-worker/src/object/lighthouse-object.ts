@@ -1,4 +1,4 @@
-// The Worker Lighthouse's Durable Object (decision 0037): one per Lighthouse, holding the mail
+// The Worker Lighthouse's Durable Object: one per Lighthouse, holding the mail
 // in its SQLite and every client's WebSocket. Sockets hibernate while idle, so an idle
 // Lighthouse costs nothing; each keeps what its connection needs (its client's address, whether
 // it said hello, its nonce) attached to it, and is picked up again when a frame wakes it.

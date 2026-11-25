@@ -1,4 +1,4 @@
-// One tab at a time (decision 0028). Two tabs would be the same device twice in every room, which
+// One tab at a time. Two tabs would be the same device twice in every room, which
 // is what a copied profile looks like, so a tab runs the Messenger only while it holds a Web Lock.
 // Another tab asks for it over a BroadcastChannel; the one holding it lets go and says so.
 

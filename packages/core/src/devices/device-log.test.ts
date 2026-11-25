@@ -126,7 +126,7 @@ describe('device logs', () => {
   })
 })
 
-describe('a recovery key (decision 0027)', () => {
+describe('a recovery key', () => {
   const key = fakeSigner('recovery-key-1')
   const nextKey = fakeSigner('recovery-key-2')
   const newPhone = fakeSigner('toms-new-phone')
@@ -360,7 +360,7 @@ describe('a recovery key (decision 0027)', () => {
   })
 })
 
-describe('a replaced recovery key (decision 0031)', () => {
+describe('a replaced recovery key', () => {
   const k1 = fakeSigner('k1')
   const k2 = fakeSigner('k2')
   const k3 = fakeSigner('k3')

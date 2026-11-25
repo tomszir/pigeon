@@ -116,7 +116,7 @@ describe('the invite handshake', () => {
     expect(opened.offer.checked).toBe(true)
     expect(paired).toEqual([])
 
-    // The accept carries the secret their room is named from (decision 0026).
+    // The accept carries the secret their room is named from.
     expect(await opened.offer.confirm(never)).toEqual({ secret: SECRET })
     await flush()
     expect(paired).toEqual([{ id: mika.id, handle: 'Mika' }])

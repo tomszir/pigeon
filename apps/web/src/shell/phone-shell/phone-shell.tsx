@@ -77,7 +77,7 @@ export interface PhoneShellProps {
 }
 
 /**
- * Below 1024×640 Pigeon runs on a Kestrel Pocket (decision 0019): a black handheld whose screen
+ * Below 1024×640 Pigeon runs on a Kestrel Pocket: a black handheld whose screen
  * fills the phone. One program at a time fills the screen under a title bar. Like a 2003
  * smartphone it has soft keys: the bottom of the screen names what the two oblong keys under it
  * do, the left one changing with the screen and the right one opening the Pigeon menu, and a
@@ -239,7 +239,7 @@ export function PhoneShell(props: PhoneShellProps) {
 
   const menuSections = () => [props.menu.programs, props.menu.places, props.menu.tools]
 
-  // Back steps back inside Pigeon (decision 0034): from the menu, then from the window in front
+  // Back steps back inside Pigeon: from the menu, then from the window in front
   // to Today, and from Today out of Pigeon. Pages inside a window (Explorer's) come first.
   const back = useBack()
   let windowEntry: { readonly id: WindowId; readonly entry: BackEntry } | undefined

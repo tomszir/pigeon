@@ -40,12 +40,12 @@ export function isFriendRecords(value: unknown): value is readonly FriendRecord[
   )
 }
 
-/** A pair secret, if any, and whether you've moved to its rooms (decision 0026). */
+/** A pair secret, if any, and whether you've moved to its rooms. */
 const isPlace = (record: Record<string, unknown>) =>
   (record['secret'] === undefined || isPairSecret(record['secret'])) &&
   (record['moved'] === undefined || typeof record['moved'] === 'boolean')
 
-/** Farewells: records, or the bare ids stored before 0026. */
+/** Farewells: records, or the bare ids stored before pair secrets. */
 export function isFarewells(value: unknown): value is readonly (PeerId | FarewellRecord)[] {
   return (
     Array.isArray(value) &&

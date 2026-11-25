@@ -1,13 +1,13 @@
 # 0006: Solid and the house toolchain
 
-The web app uses Solid, Vite, strict TypeScript, Biome, Vitest and mise, the same as the author's other web projects.
+The web app uses Solid, Vite, strict TypeScript, Biome, Vitest and mise, the same as the maintainer's other web projects.
 
 - Status: accepted
 - Date: 2026-11-24
 
 ## Context
 
-The original design spec on the canvas assumed React. The author's own web projects (boot-web, aloft, seams) consistently use Solid with Vite, plain CSS tokens, Biome and mise, and use React only where a tool forces it.
+The original design spec on the canvas assumed React. The maintainer's other web projects consistently use Solid with Vite, plain CSS tokens, Biome and mise, and use React only where a tool forces it.
 
 ## Decision
 
@@ -15,4 +15,4 @@ Solid for UI; Vite to build; TypeScript strict per `tsconfig.base.json`; Biome f
 
 ## Consequences
 
-Familiar patterns and configs can be copied from seams and aloft. Fine-grained signals suit a window manager with many small updates. Some React-only libraries are out, which matches the small-dependency goal anyway.
+Familiar patterns and configs can be copied from those projects. Fine-grained signals suit a window manager with many small updates. Some React-only libraries are out, which matches the small-dependency goal anyway.

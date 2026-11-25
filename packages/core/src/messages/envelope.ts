@@ -19,9 +19,9 @@ export type Status = 'online' | 'away' | 'busy'
 export type Body =
   /**
    * `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. `devices`:
-   * this Pigeon knows device logs (decision 0024); those before it don't say so. `instance`: a
+   * this Pigeon knows device logs; those before it don't say so. `instance`: a
    * random id for this run of Pigeon, so a device that hears its own key with another one knows
-   * it's open somewhere else too (decision 0028).
+   * it's open somewhere else too.
    */
   | {
       readonly type: 'hello'
@@ -34,7 +34,7 @@ export type Body =
   | { readonly type: 'device-log'; readonly log: DeviceLog }
   | { readonly type: 'presence'; readonly status: Status; readonly message: string }
   /**
-   * Between your own devices only (decision 0036): your name and personal message, and when
+   * Between your own devices only: your name and personal message, and when
    * they were last changed, so the newest change wins on every device.
    */
   | {
@@ -52,7 +52,7 @@ export type Body =
   | { readonly type: 'log-sync'; readonly have: LogSummary }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
   /**
-   * The invitee answers an invite; `code` proves they were given it (decision 0018). From a
+   * The invitee answers an invite; `code` proves they were given it. From a
    * device that isn't its identity's first, `identity` and its device log say who it speaks for.
    */
   | ({ readonly type: 'pair-request'; readonly code: string; readonly handle: string } & Speaker)
@@ -61,15 +61,15 @@ export type Body =
   /** The invitee agrees, having seen the inviter's name and fingerprint. */
   | { readonly type: 'pair-confirm'; readonly code: string }
   /**
-   * The inviter has added the invitee; both move to their pair room, named from `secret`
-   * (decision 0026). A Pigeon from before 0026 sends no secret.
+   * The inviter has added the invitee; both move to their pair room, named from `secret`.
+   * A Pigeon from before pair secrets sends none.
    */
   | { readonly type: 'pair-accept'; readonly code: string; readonly secret?: string }
-  /** Moving friends from before 0026: the lower id gives the secret, in the old room. */
+  /** Moving friends paired before pair secrets: the lower id gives the secret, in the old room. */
   | { readonly type: 'pair-secret'; readonly secret: string }
   /** The other side has the secret too: both leave the old room. */
   | { readonly type: 'pair-secret-ok' }
-  /** A new device asks to join the identity whose device showed `code` (decision 0024). */
+  /** A new device asks to join the identity whose device showed `code`. */
   | { readonly type: 'link-request'; readonly code: string }
   /** The existing device says whose it is, so both can show the same 6-digit check. */
   | ({ readonly type: 'link-offer'; readonly code: string; readonly handle: string } & Speaker)
@@ -109,7 +109,7 @@ function isSummary(value: unknown): boolean {
   )
 }
 
-/** A run's id, as `encodeInstance` makes it (decision 0028). */
+/** A run's id, as `encodeInstance` makes it. */
 const isInstance = (value: unknown) => typeof value === 'string' && /^[a-z2-7]{8,32}$/.test(value)
 
 const isSpeaker = (b: Fields) =>

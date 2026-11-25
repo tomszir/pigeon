@@ -1,4 +1,4 @@
-// The sealing core needs for mail (decision 0037), as interfaces the platform implements with
+// The sealing core needs for mail, as interfaces the platform implements with
 // WebCrypto: ECDH on P-256, HKDF-SHA256 and AES-256-GCM. Core never holds a private key: a
 // device's sealing key is a Sealer, which only says its public half and works out a shared
 // secret. Kept apart from Crypto so the Lighthouses, which seal nothing, needn't implement it.

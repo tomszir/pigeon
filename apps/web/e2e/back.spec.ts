@@ -1,4 +1,4 @@
-// Back steps back inside Pigeon (decision 0034): the browser's own Back goes back a page in
+// Back steps back inside Pigeon: the browser's own Back goes back a page in
 // Explorer, closes an open menu, and on the Pocket closes the window to Today; with nothing left
 // it leaves the site. The desktop's windows stay open. Needs no network.
 import { devices, expect, type Page, test } from '@playwright/test'

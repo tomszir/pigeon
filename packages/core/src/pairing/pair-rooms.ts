@@ -1,4 +1,4 @@
-// Where two friends meet (decision 0026). Pairing gives them a 256-bit secret only they hold;
+// Where two friends meet. Pairing gives them a 256-bit secret only they hold;
 // their room is named from it and the UTC date, so it changes every day, and it's locked with a
 // password derived from it. Friends from before the secret meet in the old room named from both
 // ids until they've moved (docs/protocol.md, "Rooms").
@@ -52,9 +52,9 @@ async function derivePassword(crypto: Crypto, secret: string, info: string): Pro
 }
 
 /**
- * Where your own devices meet (decision 0024): named and locked like a pair room, from a self
+ * Where your own devices meet: named and locked like a pair room, from a self
  * secret only your devices hold, with the `self` prefix and `pigeon/self/v1/` and
- * `pigeon/self/password` in place of the pair's. Device logs travel here until M8's self space.
+ * `pigeon/self/password` in place of the pair's. Device logs travel here.
  */
 export async function selfRoomsAt(
   crypto: Crypto,

@@ -1,6 +1,6 @@
 name: lighthouse-image
 
-# Builds the Lighthouse's Docker image (decision 0037, docs/lighthouse.md) and pushes it to
+# Builds the Lighthouse's Docker image (docs/lighthouse.md) and pushes it to
 # GitHub's container registry as ghcr.io/<owner>/pigeon-lighthouse, tagged with the release's
 # version and `latest`. release-please runs it for each release; it can also be run by hand,
 # which tags the image `edge` with the commit, for trying a Lighthouse before a release.

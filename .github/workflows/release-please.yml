@@ -2,8 +2,8 @@ name: release-please
 
 # Keeps a release PR open that bumps the version from the Conventional Commits on main. Merging
 # it tags the release and points the `release` branch at it, which Cloudflare deploys
-# (decision 0021). Releasing stays the author's call: it's a merge. On the release PR it drafts
-# Changelog.txt's notes for the author to rewrite before merging (decision 0025).
+# Releasing stays the maintainer's call: it's a merge. On the release PR it drafts
+# Changelog.txt's notes for the maintainer to rewrite before merging.
 on:
   push:
     branches: [main]
@@ -20,7 +20,8 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       sha: ${{ steps.release.outputs.sha }}
     steps:
-      # A token of the author's lets pushes to the release PR run CI; GITHUB_TOKEN alone can't.
+      # A personal access token, as a repository secret, lets pushes to the release PR run CI;
+      # GITHUB_TOKEN alone can't.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -37,7 +38,8 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          # A token of the author's lets CI run on the release PR; GITHUB_TOKEN alone can't.
+          # A personal access token, as a repository secret, lets CI run on the release PR;
+          # GITHUB_TOKEN alone can't.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
       - if: ${{ steps.release.outputs.release_created }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

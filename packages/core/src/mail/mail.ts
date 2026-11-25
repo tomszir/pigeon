@@ -1,4 +1,4 @@
-// Mail sealed to devices (decision 0037). A letter is a signed envelope of its own, sealed once
+// Mail sealed to devices. A letter is a signed envelope of its own, sealed once
 // with a random content key; the content key and each device's drop value are wrapped for each
 // recipient device with ECDH from a fresh key. Tags come from the pair or self secret, and only
 // say where to look: knowing one shows that mail is waiting, never what it says. A wrap names no
@@ -23,7 +23,7 @@ import type { SealCrypto, Sealer } from './seal-crypto.ts'
 export type MailKind = 'farewell' | 'self' | 'receipt'
 const KINDS: ReadonlySet<string> = new Set<MailKind>(['farewell', 'self', 'receipt'])
 
-/** A device's sealing key, bound to it by its own signature (0037). */
+/** A device's sealing key, bound to it by its own signature. */
 export interface SealingKey {
   readonly device: PeerId
   /** The raw P-256 public key, base64. */
@@ -78,7 +78,7 @@ const COMMIT_INFO = 'pigeon/mail/commit'
 /** The UTC date a time falls on, as tags and pair rooms name days. */
 export const utcDate = (at: number): string => new Date(at).toISOString().slice(0, 10)
 
-/** Where mail for `recipient` from the holder of `secret` waits on `date` (0037). */
+/** Where mail for `recipient` from the holder of `secret` waits on `date`. */
 export async function mailTag(
   crypto: Crypto,
   secret: Uint8Array,

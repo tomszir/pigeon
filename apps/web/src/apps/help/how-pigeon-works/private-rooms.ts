@@ -1,4 +1,4 @@
-// Chapter 3: pair rooms and the relay setting (docs/protocol.md, Rooms and Pairing; 0022, 0026).
+// Chapter 3: pair rooms and the relay setting (docs/protocol.md, Rooms and Pairing).
 
 import { pre } from '../page/page.ts'
 import { aside, figure, helpLink, steps } from './frame.ts'

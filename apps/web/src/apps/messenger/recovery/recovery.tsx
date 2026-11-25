@@ -1,4 +1,4 @@
-// The recovery key (decision 0027). Make a Recovery Key shows a new key's code once, to print or
+// The recovery key. Make a Recovery Key shows a new key's code once, to print or
 // copy, with a file sealed by a passphrase besides; only once you say it's kept does the list
 // commit to it. Recover My Pigeon, on an empty Pigeon, and Use My Recovery Key, on a device that
 // is already you, take the code or the file, show the next key first, then sign the recover.

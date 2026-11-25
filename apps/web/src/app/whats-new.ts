@@ -1,4 +1,4 @@
-// Whether to tell a returning visitor that Pigeon was updated (decision 0025). The last version
+// Whether to tell a returning visitor that Pigeon was updated. The last version
 // this browser saw is kept in the Store; a first visit is told nothing.
 import type { Store } from '../platform/storage/storage.ts'
 import { IDENTITY } from './start-messenger.ts'

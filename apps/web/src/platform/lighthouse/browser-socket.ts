@@ -1,4 +1,4 @@
-// The browser's socket for core's Lighthouse client (decision 0037): a WebSocket, text frames
+// The browser's socket for core's Lighthouse client: a WebSocket, text frames
 // only. Clients reach Lighthouses over WebSocket alone, so a Lighthouse sees this browser's
 // address and nobody else does.
 import type { OpenSocket } from '@pigeon/core'

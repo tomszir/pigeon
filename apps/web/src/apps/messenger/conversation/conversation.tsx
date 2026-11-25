@@ -35,7 +35,7 @@ export interface ConversationProps {
   onSend: (text: string) => void
   onDraft?: (text: string) => void
   onBuzz: () => void
-  /** File, Save Conversation As...: the chat as a .txt (M13). Absent for the sample. */
+  /** File, Save Conversation As...: the chat as a .txt. Absent for the sample. */
   onSaveAs?: (() => void) | undefined
   onClose: () => void
   onAbout: () => void

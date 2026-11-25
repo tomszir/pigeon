@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Static assets, plus one route that hands out short-lived TURN credentials (decision 0022).
+  // Static assets, plus one route that hands out short-lived TURN credentials.
   // TURN_KEY_ID is only a name for the key and lives here, so deploys keep it; the key's API
   // token is the secret TURN_KEY_API_TOKEN, set in the dashboard and kept across deploys.
   "name": "pigeon",

@@ -7,11 +7,11 @@ The web app is a static build served by Cloudflare Workers static assets on the 
 
 ## Context
 
-Pigeon needs no backend, only static files. The author already hosts tomszir.com on Cloudflare Workers static assets, and this is a pet project.
+Pigeon needs no backend, only static files. The maintainer already hosts tomszir.com on Cloudflare Workers static assets, and this is a pet project.
 
 ## Decision
 
-Deploy `apps/web/dist` with wrangler as a Workers static-assets project routed to `pigeon.tomszir.com`, following tomszir.com's setup. Deploying is the author's call, never an agent's. The Lighthouse is hosted separately (a small always-on machine) and is not part of this.
+Deploy `apps/web/dist` with wrangler as a Workers static-assets project routed to `pigeon.tomszir.com`, following tomszir.com's setup. Deploying is the maintainer's call, never an agent's. The Lighthouse is hosted separately (a small always-on machine) and is not part of this.
 
 ## Consequences
 

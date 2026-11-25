@@ -1,11 +1,11 @@
-// The document a sanitized page is shown in (decision 0032, docs/pigeonhtml.md): no doctype, so
+// The document a sanitized page is shown in (docs/pigeonhtml.md): no doctype, so
 // quirks mode; a CSP that loads nothing but inline styles, the page's own images and the fonts
 // below; and a base stylesheet that maps the era's font names to Pigeon's bundled clones.
 import monoFont from '../../../fonts/vera-sans-mono.ttf?url'
 import sansFont from '../../../fonts/wine-tahoma.ttf?url'
 import { type PageView, viewStylesheet } from './view.ts'
 
-/** Sans-serif families of the era, all drawn with the Wine Tahoma clone (decision 0009). */
+/** Sans-serif families of the era, all drawn with the Wine Tahoma clone. */
 const SANS_FAMILIES = ['Tahoma', 'Verdana', 'Arial', 'Helvetica', 'Geneva', 'Trebuchet MS']
 /** Monospace families of the era, all drawn with Bitstream Vera Sans Mono. */
 const MONO_FAMILIES = ['Courier New', 'Courier', 'Lucida Console', 'Monaco']
@@ -51,8 +51,9 @@ export const BASE_STYLESHEET = [
 const escapeAttribute = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
 
 /**
- * What's written into the frame. The policy, the base styles and the view's (decision 0033) come first, so the parser puts them in
- * the head before anything the page holds and the policy covers every image it loads. No doctype.
+ * What's written into the frame. The policy, the base styles and the view's styles come first,
+ * so the parser puts them in the head before anything the page holds and the policy covers every
+ * image it loads. No doctype.
  */
 export function frameDocument(
   html: string,

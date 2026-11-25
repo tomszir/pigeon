@@ -12,7 +12,7 @@ A static website that boots into a fake 2003 desktop on a CRT monitor, 1024×768
 - **Page builder**: make a GeoCities-style homepage in [PigeonHTML](pigeonhtml.md).
 - **Always on**: the Lighthouse peer and Coo, a bot that runs in your own tab, so a lone visitor still has something to do.
 
-Live at `pigeon.tomszir.com` once shipped. It is a portfolio pet project: small, finished, and fun beats complete.
+Live at `pigeon.tomszir.com`. It means to stay small and finished: fun beats complete.
 
 ## The premise
 
@@ -22,5 +22,5 @@ An alternate 2003 where peer-to-peer won. There is no cloud: computers talk to e
 
 - **Authentic, not a copy.** XP-era look and feel, but no Microsoft-owned assets, names or logos. See [design.md](design.md).
 - **Honest P2P.** The UI always says who is serving what: direct, mirrored, carried, or offline.
-- **No server of ours can read what you say or tie it to you.** Static hosting plus public signaling relays plus Lighthouses, peers with keys of their own that hold mail sealed to your devices and can't open or attribute it ([0037](decisions/0037-the-lighthouse-and-its-mailbox.md)). Anyone can run one, and you choose yours; the author runs the official ones, in a homelab and as a Cloudflare Worker. When two peers can't reach each other directly, a TURN relay passes their encrypted packets along and stores nothing ([0022](decisions/0022-turn-from-a-worker-route.md)).
+- **No server of ours can read what you say or tie it to you.** Static hosting plus public signaling relays plus Lighthouses, peers with keys of their own that hold mail sealed to your devices and can't open or attribute it. Anyone can run one, and you choose yours; the project runs its own, one in Node and one as a Cloudflare Worker, as the defaults. When two peers can't reach each other directly, a TURN relay passes their encrypted packets along and stores nothing.
 - **Of its era.** Pages are 2000s HTML/CSS only; screens are pixel-exact at 1× and scaled by whole numbers.

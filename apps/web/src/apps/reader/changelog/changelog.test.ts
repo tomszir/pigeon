@@ -3,7 +3,7 @@ import { CHANGELOG_TEXT, versionsIn } from './changelog.ts'
 
 describe('Changelog.txt', () => {
   it('opens with the version being built', () => {
-    // A release PR whose notes weren't drafted fails here (decision 0025).
+    // A release PR whose notes weren't drafted fails here.
     expect(versionsIn(CHANGELOG_TEXT)[0]).toBe(__PIGEON_VERSION__)
   })
 

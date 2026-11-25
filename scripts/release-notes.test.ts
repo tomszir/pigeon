@@ -22,7 +22,7 @@ describe('noteFor', () => {
   })
 
   it('leaves out what people would not notice', () => {
-    for (const subject of ['chore: release 0.4.0 (#21)', 'docs: plan M12', 'ci: cache pnpm'])
+    for (const subject of ['chore: release 0.4.0 (#21)', 'docs: plan groups', 'ci: cache pnpm'])
       assert.equal(noteFor(subject), undefined)
   })
 })

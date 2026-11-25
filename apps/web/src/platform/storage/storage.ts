@@ -5,7 +5,7 @@ export interface Store {
   get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<void>
   delete(key: string): Promise<void>
-  /** Forgets everything, the identity too: a copied profile made into a new device (0028). */
+  /** Forgets everything, the identity too: a copied profile made into a new device. */
   clear(): Promise<void>
 }
 

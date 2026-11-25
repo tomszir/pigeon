@@ -1,5 +1,5 @@
-// M2's check, in two browser contexts that share nothing but the public relays: pair by link,
-// chat both ways, see typing, send a buzz, and keep it all after a reload.
+// Two Pigeons talking, in two browser contexts that share nothing but the public relays: pair by
+// link, chat both ways, see typing, send a buzz, and keep it all after a reload.
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 async function openMessenger(page: Page) {
@@ -12,7 +12,7 @@ async function chooseName(scope: ReturnType<Page['getByRole']>, name: string) {
   await scope.getByRole('button', { name: 'OK' }).click()
 }
 
-/** Named in the buddy list, a new Pigeon is offered a recovery key (decision 0030): not now. */
+/** Named in the buddy list, a new Pigeon is offered a recovery key: not now. */
 async function later(page: Page) {
   const offer = page.getByRole('dialog', { name: 'Make a Recovery Key' })
   await expect(offer).toContainText('a recovery key brings you back')

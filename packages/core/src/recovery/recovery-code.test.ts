@@ -5,7 +5,7 @@ import { decodeRecoveryCode, encodeRecoveryCode } from './recovery-code.ts'
 const identity = fakeSigner('toms-laptop').id
 const seed = Uint8Array.from({ length: 32 }, (_, index) => index)
 
-describe('recovery codes (decision 0027)', () => {
+describe('recovery codes', () => {
   it('round-trip, typed any old way', async () => {
     const code = await encodeRecoveryCode(fakeCrypto, { identity, epoch: 1, seed })
     expect(code).toMatch(/^([A-Z2-7]{4}-)+[A-Z2-7]{1,4}$/)

@@ -1,4 +1,4 @@
-// How the screen fits the browser window (decisions 0008 and 0012): the CRT monitor around it at
+// How the screen fits the browser window: the CRT monitor around it at
 // a whole-number scale; the bare screen when the monitor won't fit; the one-app phone layout when
 // even the screen won't.
 

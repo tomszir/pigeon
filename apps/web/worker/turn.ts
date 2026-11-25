@@ -1,4 +1,4 @@
-// Short-lived TURN credentials from Cloudflare Realtime (decision 0022). The API token stays a
+// Short-lived TURN credentials from Cloudflare Realtime. The API token stays a
 // Worker secret; browsers only ever see a username and password that expire.
 
 export interface TurnEnv {

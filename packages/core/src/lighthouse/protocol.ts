@@ -1,4 +1,4 @@
-// What a Pigeon and a Lighthouse say to each other (decision 0037). Requests are plain JSON: a
+// What a Pigeon and a Lighthouse say to each other. Requests are plain JSON: a
 // client signs nothing and says nothing about itself. Replies are signed by the Lighthouse's
 // key over the hash of the exact request frame they answer and a nonce the client chose for the
 // connection, so whoever relays a connection can neither change a request and pass on the real
@@ -25,7 +25,7 @@ export const MAX_FRAME_BYTES = 96 * 1024
 export const MAX_MAIL_MS = 30 * 24 * 60 * 60 * 1000
 /** Tags, drop values and their hashes are 32 bytes, 52 base32 letters. */
 export const MAIL_KEY_BYTES = 32
-/** One drop per recipient device; a group (M8) of 12 with several devices each fits. */
+/** One drop per recipient device; mail to 12 people with several devices each fits. */
 export const MAX_DROPS = 64
 /** Tags asked for in one `list`: 30 days of a few hundred friends takes several. */
 export const MAX_LIST_TAGS = 512
@@ -35,7 +35,7 @@ export const LIST_PAGE = 256
 export interface LighthouseSoftware {
   readonly name: string
   readonly version: string
-  /** The build's hash, for the author's releases: the Lighthouse's own claim (0037). */
+  /** The build's hash: the Lighthouse's own claim, which nothing relies on. */
   readonly build?: string
 }
 
@@ -309,7 +309,7 @@ export type ReplyError = 'malformed' | 'bad-signature' | 'not-this-lighthouse' |
  * `sent` on the connection with `nonce`: one from anyone else, one whose signature fails, or one
  * answering another request or connection is refused.
  *
- * This holds only if a client keeps its side (0037): a fresh random nonce for every connection,
+ * This holds only if a client keeps its side: a fresh random nonce for every connection,
  * request numbers that only go up within one, and each request taking one reply. A client that
  * sent the same frame twice on one connection couldn't tell an old answer from a new one.
  */
@@ -355,8 +355,8 @@ export async function openReply(
 }
 
 /**
- * A blob's id is its content (0037): the same blob has the same id on every Lighthouse, which a
- * mesh (M6) needs, and its sender can check the id a Lighthouse gives back.
+ * A blob's id is its content: the same blob has the same id on every Lighthouse, and its sender
+ * can check the id a Lighthouse gives back.
  */
 export async function mailBlobId(
   crypto: Crypto,

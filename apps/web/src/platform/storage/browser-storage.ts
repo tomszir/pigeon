@@ -18,7 +18,7 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 /**
- * Asks the browser not to clear Pigeon's storage when space runs low (decision 0026), since
+ * Asks the browser not to clear Pigeon's storage when space runs low, since
  * losing it loses the identity. True when granted; some browsers ask the visitor first.
  */
 export async function keepStorage(): Promise<boolean> {

@@ -1,4 +1,4 @@
-// A Pigeon's side of talking to one Lighthouse (decision 0037), over a socket the platform
+// A Pigeon's side of talking to one Lighthouse, over a socket the platform
 // opens: a WebSocket in the browser. It keeps what makes the Lighthouse's signed replies mean
 // anything: a fresh random nonce for every connection, request numbers that only go up within
 // one, and each request taking exactly one reply, checked against the Lighthouse's key and the

@@ -2,7 +2,7 @@
 // It reads and writes storage, runs core's protocol over the transport, and exposes Solid state
 // the windows draw. Everything it touches comes in through platform interfaces. Friends meet in
 // rooms named from their pair secret, renamed each UTC day; friends from before the secret move
-// there the next time they meet (decision 0026).
+// there the next time they meet.
 import {
   avatarFor,
   type ChatLog,
@@ -97,7 +97,7 @@ export interface FriendRecord {
   readonly mutedUntil?: number | undefined
   /** They removed you: the chat stays, read-only, until you remove them too. */
   readonly removedYouAt?: number | undefined
-  /** The pair secret your rooms are named from (decision 0026); none for friends not yet moved. */
+  /** The pair secret your rooms are named from; none for friends not yet moved. */
   readonly secret?: string | undefined
   /** Both of you hold the secret, so the old room named from your ids is no longer used. */
   readonly moved?: boolean | undefined
@@ -126,7 +126,7 @@ export interface BlockedRecord {
 export const MUTED_FOREVER = -1
 
 export interface FriendView extends FriendRecord {
-  /** How many devices they have on their list (decision 0024). */
+  /** How many devices they have on their list. */
   readonly devices: number
   /**
    * Their Pigeon accepts messages from this device. False when this isn't your first device and
@@ -157,7 +157,7 @@ export interface MessengerEvents {
   readonly onPaired?: (friend: FriendView) => void
   /** Another of your devices took this one off your list. */
   readonly onDeviceRemoved?: () => void
-  /** This device's key is open somewhere else too: a copied profile (decision 0028). Once a run. */
+  /** This device's key is open somewhere else too: a copied profile. Once a run. */
   readonly onTwin?: () => void
   readonly onMessage?: (friend: FriendView, entry: LogEntry) => void
   readonly onBuzz?: (friend: FriendView) => void
@@ -189,9 +189,9 @@ const KEYS = {
   /** Friends you removed who haven't been told yet. */
   farewells: 'farewells',
   settings: 'messengerSettings',
-  /** When your name or personal message last changed, so the newest wins on your devices (0036). */
+  /** When your name or personal message last changed, so the newest wins on your devices. */
   profileChangedAt: 'profileChangedAt',
-  /** Set once the balloon reminding you to make a recovery key has been shown (0027). */
+  /** Set once the balloon reminding you to make a recovery key has been shown. */
   recoveryReminded: 'recoveryReminded',
   log: (id: PeerId) => `log:${id}`,
 } as const
@@ -206,7 +206,7 @@ export const EXPORT_KIND = 'pigeon-export'
 
 export type ImportResult = 'imported' | 'not-yours' | 'unreadable'
 
-/** Recovering onto this Pigeon: done, or why not (decision 0027). */
+/** Recovering onto this Pigeon: done, or why not. */
 export type RecoverResult = 'recovered' | 'own' | 'linked' | 'has-friends' | 'waiting' | 'refused'
 
 /** Linking a device from this one: the code it shows, and who asked, once someone has. */
@@ -226,7 +226,7 @@ export interface DeviceOffer {
   cancel(): Promise<void>
 }
 
-/** How far leaving a Pigeon has got (decision 0035): removing friends here, then telling them. */
+/** How far leaving a Pigeon has got: removing friends here, then telling them. */
 export interface LeaveProgress {
   readonly step: 'removing' | 'telling'
   /** Friends removed, or friends who have heard, so far. */
@@ -241,7 +241,7 @@ export type JoinedIdentity =
       readonly error: 'stopped' | 'impostor' | 'has-friends' | 'has-devices' | 'waiting' | 'own'
     }
 
-/** How far ahead of this device's clock another of yours may stamp a name (decision 0036). */
+/** How far ahead of this device's clock another of yours may stamp a name. */
 export const PROFILE_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
 
 /** How long a link code is shown before it lapses. */
@@ -270,7 +270,7 @@ export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, clock } = deps
   const events = deps.events ?? {}
   const devices = await loadDevices({ crypto, signer, store, clock })
-  /** The identity you are: your first device's key, on every device (decision 0024). */
+  /** The identity you are: your first device's key, on every device. */
   const self = devices.self
 
   const storedSettings = await store.get(KEYS.settings)
@@ -284,7 +284,7 @@ export async function createMessenger(deps: MessengerDeps) {
   }
   const newSecret = () => encodePairSecret(deps.random(PAIR_SECRET_BYTES))
 
-  // A copied profile (decision 0028): this run's id goes in every hello, and our own key heard
+  // A copied profile: this run's id goes in every hello, and our own key heard
   // from another run means this device is open somewhere else too.
   const instance = encodeInstance(deps.random(INSTANCE_BYTES))
   const [twin, setTwin] = createSignal(false)
@@ -359,7 +359,7 @@ export async function createMessenger(deps: MessengerDeps) {
   )
   const isBlocked = (id: PeerId) => blocked().some((record) => record.id === id)
   const storedFarewells = await store.get(KEYS.farewells)
-  // Before 0026 a farewell was just an id.
+  // A farewell stored before pair secrets was just an id.
   let farewells: readonly FarewellRecord[] = isFarewells(storedFarewells)
     ? storedFarewells.map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
     : []
@@ -369,7 +369,7 @@ export async function createMessenger(deps: MessengerDeps) {
    * from the last visit is said while the Messenger starts.
    */
   let closed = false
-  // Leaving this Pigeon waits for its farewells to be said (decision 0035).
+  // Leaving this Pigeon waits for its farewells to be said.
   let farewellsSaid: (() => void)[] = []
   /** Told each time a farewell is said, while leaving shows how many have heard. */
   let onFarewellSaid: (() => void) | undefined
@@ -380,7 +380,7 @@ export async function createMessenger(deps: MessengerDeps) {
     farewellsSaid = []
   }
 
-  // Where each friend is met (decision 0026): the old room from both ids until you've moved,
+  // Where each friend is met: the old room from both ids until you've moved,
   // the secret's rooms once you have one. The old room's name is also the chat's id.
   const legacyRoom = (id: PeerId) => pairRoom(crypto, self, id)
   const places = new Map<PairSession, () => Promise<readonly PairRoomSpec[]>>()
@@ -475,7 +475,7 @@ export async function createMessenger(deps: MessengerDeps) {
         if (view.secret !== undefined) void moveTo(id, view.secret)
         return
       }
-      // In the old room, the lower id gives the secret (decision 0026).
+      // In the old room, the lower id gives the secret.
       if (self > id) return
       const secret = view.secret ?? newSecret()
       void (async () => {
@@ -547,7 +547,7 @@ export async function createMessenger(deps: MessengerDeps) {
     ])
   }
 
-  /** Session options about devices: who's who, and device logs both ways (decision 0024). */
+  /** Session options about devices: who's who, and device logs both ways. */
   const deviceOptions = (id: PeerId) => ({
     ...twinOptions,
     accepts: (device: PeerId) => devices.classify(id, device),
@@ -597,7 +597,7 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /**
    * The log you keep for a friend, loaded from storage if their session never started (one who
-   * removed you, say): only a friend's own earlier log can vouch for their recovery (0027).
+   * removed you, say): only a friend's own earlier log can vouch for their recovery.
    */
   async function knownLog(id: PeerId): Promise<DeviceLog | undefined> {
     if (friend(id) === undefined) return undefined
@@ -694,7 +694,7 @@ export async function createMessenger(deps: MessengerDeps) {
     setInvite(undefined)
     await store.delete(KEYS.invite)
     // Straight to the secret's rooms, never the old one: offers there can be read by anyone who
-    // knows both ids (decision 0026). An invitee whose tab predates 0026 ignored the secret and
+    // knows both ids. An invitee on a Pigeon from before pair secrets ignores the secret and
     // will need to pair again.
     const view = await addFriend({
       id: paired.id,
@@ -747,7 +747,7 @@ export async function createMessenger(deps: MessengerDeps) {
       onEvent: (event) => {
         if (event.type !== 'online') return
         void session.unfriend().then(async () => {
-          // Closed meanwhile, perhaps to be forgotten (0035): the store may be another's now.
+          // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
           if (closed) return
           farewells = farewells.filter((other) => other.id !== id)
           await store.set(KEYS.farewells, farewells)
@@ -798,7 +798,7 @@ export async function createMessenger(deps: MessengerDeps) {
     }
   }
 
-  // Your devices (decision 0024). They meet in a self room named from the self secret, where
+  // Your devices. They meet in a self room named from the self secret, where
   // device logs travel, so an approval or a removal on one reaches the rest.
   let selfSession: PairSession | undefined
   const selfChat = `self:${self}`
@@ -847,7 +847,7 @@ export async function createMessenger(deps: MessengerDeps) {
     if (renamed && !first && current !== undefined) await host(current)
   }
 
-  /** Your name from another of your devices (decision 0036): the newest change wins. */
+  /** Your name from another of your devices: the newest change wins. */
   async function takeProfile(change: ProfileChange) {
     if (change.changedAt <= profileChangedAt || profile().handle === '') return
     // A time far ahead would outrank every later change, even after its device is removed.
@@ -875,7 +875,7 @@ export async function createMessenger(deps: MessengerDeps) {
     const status = devices.status()
     const was = lastStatus
     lastStatus = status
-    // A removed device stops talking: nobody takes anything from it any more (decision 0024).
+    // A removed device stops talking: nobody takes anything from it any more.
     if (status === 'removed' && was !== 'removed') {
       await disconnect()
       events.onDeviceRemoved?.()
@@ -915,8 +915,8 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   async function startLink(): Promise<LinkingState | undefined> {
-    // Only the first device puts devices on the list (decision 0024), and not while a recovered
-    // one waits for its whole list: a new device couldn't check it (decision 0030).
+    // Only the first device puts devices on the list, and not while a recovered
+    // one waits for its whole list: a new device couldn't check it.
     if (profile().handle === '' || !devices.isFirst() || isTailLog(devices.own())) return undefined
     await cancelLink()
     const code = inviteCode(deps.random(INVITE_CODE_BYTES))
@@ -980,7 +980,7 @@ export async function createMessenger(deps: MessengerDeps) {
     }) as unknown as Json
 
   /**
-   * Your data for a file (M13): friends with their pair secrets, petnames, blocks, chats,
+   * Your data for a file: friends with their pair secrets, petnames, blocks, chats,
    * friends' device logs, your profile and settings. No keys: a device's never leave it.
    */
   const exportData = (): Json => {
@@ -1111,9 +1111,9 @@ export async function createMessenger(deps: MessengerDeps) {
     await store.set(KEYS.profile, profileValue)
     await store.set(KEYS.friends, friends)
     await store.set(KEYS.blocked, blockedList)
-    // The profile is the other device's now; this one's old change time no longer applies (0036).
+    // The profile is the other device's now; this one's old change time no longer applies.
     await store.delete(KEYS.profileChangedAt)
-    // Nothing of a Pigeon left behind (0035) is said as this one.
+    // Nothing of a Pigeon left behind is said as this one.
     await store.set(KEYS.farewells, [])
     for (const [id, friendLog] of logs)
       if (
@@ -1132,7 +1132,7 @@ export async function createMessenger(deps: MessengerDeps) {
   /**
    * A Pigeon with nobody on it: no friends, and no devices of its own beyond naming itself (as
    * committing a recovery key does). It can be linked to another identity, or recovered onto. A
-   * recovered device waiting for its list isn't: wiping it would lose the recovery (0030).
+   * recovered device waiting for its list isn't: wiping it would lose the recovery.
    */
   function emptyHere(): boolean {
     if (friendList().length > 0) return false
@@ -1142,13 +1142,13 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /**
-   * Whether leaving tells this Pigeon's friends (decision 0035): only when this is its only
-   * device and no copy of it has been heard (0028). A copy that never met its twin can't know.
+   * Whether leaving tells this Pigeon's friends: only when this is its only
+   * device and no copy of it has been heard. A copy that never met its twin can't know.
    */
   const leavingTells = () => !twin() && devices.devices().every((device) => device.here)
 
   /**
-   * Before this Pigeon is forgotten to link it to another (decision 0035): when `leavingTells`,
+   * Before this Pigeon is forgotten to link it to another: when `leavingTells`,
    * each friend is removed and told, as removing them one by one does, and this waits until
    * every one has heard or `until` resolves. Otherwise the Pigeon lives on elsewhere, so nobody
    * is told. `onProgress` hears how far it has got. Returns how many friends haven't heard yet.
@@ -1192,7 +1192,7 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /**
-   * Brings an identity back onto this empty Pigeon with its recovery key (decision 0027): this
+   * Brings an identity back onto this empty Pigeon with its recovery key: this
    * device writes its list from now on, every other device is removed, and `next` is the key
    * from now on. Then the Messenger has to start again as that identity, with no friends: they
    * come back by pairing again, or from an export.
@@ -1206,7 +1206,7 @@ export async function createMessenger(deps: MessengerDeps) {
     const own = devices.own()
     if (isTailLog(own)) {
       // Waiting for the whole list, the tail is the only copy of this recovery: only the same
-      // code again may sign over it, never a later key or another identity (decision 0030).
+      // code again may sign over it, never a later key or another identity.
       if (identity !== self || epoch !== own.from || friendList().length > 0) return 'waiting'
     } else {
       if (identity === self) return 'own'
@@ -1239,10 +1239,10 @@ export async function createMessenger(deps: MessengerDeps) {
    * Messenger has to be started again to be that identity.
    */
   async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
-    // This Pigeon's own code or link is never a reason to leave it (0035).
+    // This Pigeon's own code or link is never a reason to leave it.
     if (target.code === linking()?.code || target.fingerprint === selfFingerprint)
       return { ok: false, error: 'own' }
-    // Waiting for its list, this is the only copy of a recovery: never offered to leave (0030).
+    // Waiting for its list, this is the only copy of a recovery: never offered to leave.
     if (isTailLog(devices.own())) return { ok: false, error: 'waiting' }
     if (!emptyHere())
       return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'has-devices' }
@@ -1296,12 +1296,12 @@ export async function createMessenger(deps: MessengerDeps) {
     /** Whether a chat entry is yours, from any of your devices. */
     isMine: devices.isMine,
     deviceStatus: devices.status,
-    /** This device's key was heard from another run: a copied profile (decision 0028). */
+    /** This device's key was heard from another run: a copied profile. */
     twin,
     devices: devices.devices,
     /** A first device with nobody on it: it can be linked to another identity. */
     canJoin: emptyHere,
-    /** Recovered, and waiting for an old friend to hand back the whole list (decision 0030). */
+    /** Recovered, and waiting for an old friend to hand back the whole list. */
     waitingForList: () => isTailLog(devices.own()),
     linking,
     startLink,
@@ -1314,7 +1314,7 @@ export async function createMessenger(deps: MessengerDeps) {
     importData,
     /** This is the first device, the only one that links and removes devices. */
     isFirstDevice: devices.isFirst,
-    /** Your recovery key's public half, while you have one (decision 0027). */
+    /** Your recovery key's public half, while you have one. */
     recoveryKey: devices.recoveryKey,
     /** The epoch a recover with your current key would start. */
     nextEpoch: () => devices.epoch() + 1,
@@ -1420,7 +1420,7 @@ export async function createMessenger(deps: MessengerDeps) {
             const accepted = await offer.confirm(confirmUntil)
             if (accepted === false) return false
             // The inviter made the secret, so they hold it: meet only in its rooms. An inviter
-            // from before 0026 sends none, and you move later.
+            // from before pair secrets sends none, and you move later.
             await addFriend({
               id: offer.friend.id,
               handle: offer.friend.handle,

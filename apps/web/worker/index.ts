@@ -1,4 +1,4 @@
-// The pigeon Worker (decision 0022): static assets for everything, and one route that hands out
+// The pigeon Worker: static assets for everything, and one route that hands out
 // TURN credentials. No user data passes through here.
 import { handleTurn, type TurnEnv } from './turn.ts'
 

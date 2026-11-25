@@ -1,4 +1,4 @@
-// A small Markdown-to-PigeonHTML converter for the subset docs/ uses (decision 0032): headings,
+// A small Markdown-to-PigeonHTML converter for the subset docs/ uses: headings,
 // paragraphs, bullet and numbered lists, tables, links, bold, italic, inline code and fenced
 // blocks. Everything taken from the Markdown is escaped; raw HTML in it shows as text.
 

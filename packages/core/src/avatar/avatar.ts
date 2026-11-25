@@ -1,4 +1,4 @@
-// Every Pigeon draws the same pixel pigeon for an id (roadmap M10): the hash of the id picks the
+// Every Pigeon draws the same pixel pigeon for an id: the hash of the id picks the
 // traits, the traits draw a 32×32 picture, and nothing is ever sent. It sits beside the
 // fingerprint, never instead of it: a bird is about 32 bits, so anyone could grind a key to
 // match one.

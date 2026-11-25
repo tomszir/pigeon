@@ -31,7 +31,7 @@ function fakeBrowser() {
   return { locks, channel }
 }
 
-describe('one tab at a time (decision 0028)', () => {
+describe('one tab at a time', () => {
   it('lets the first tab run, tells the second, and hands over when asked', async () => {
     const browser = fakeBrowser()
     const lost: string[] = []

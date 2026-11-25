@@ -1,5 +1,5 @@
 // The Lighthouse's WebSocket server: one connection per client, each frame one request, each
-// reply one frame back. Clients reach Lighthouses over WebSocket only (decision 0037), so the
+// reply one frame back. Clients reach Lighthouses over WebSocket only, so the
 // Lighthouse sees each client's address and nobody else does.
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { MAX_FRAME_BYTES } from '@pigeon/core'

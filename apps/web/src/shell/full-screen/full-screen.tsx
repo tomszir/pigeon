@@ -1,4 +1,4 @@
-// The whole screen, for a state where nothing behind it works (decision 0028): Pigeon open in
+// The whole screen, for a state where nothing behind it works: Pigeon open in
 // another tab, or Pigeon unable to start. The desktop or the Pocket is covered in the blue of a
 // locked computer, with what happened and the few things this tab can do about it.
 import { For, onMount, Show } from 'solid-js'

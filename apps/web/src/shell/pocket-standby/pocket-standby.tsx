@@ -1,4 +1,4 @@
-// The Pocket asleep (decision 0019): the backlight down to a third over the wallpaper, a big clock
+// The Pocket asleep: the backlight down to a third over the wallpaper, a big clock
 // and the date, and a line about anything new. A tap or any key wakes it.
 import { createSignal, onCleanup, onMount, Show } from 'solid-js'
 import wallpaper from '../../wallpapers/hills-800x600.jpg'

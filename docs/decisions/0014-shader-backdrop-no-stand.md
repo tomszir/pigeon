@@ -7,7 +7,7 @@ The monitor floats with no stand in a black room lit by a WebGL backdrop shader.
 
 ## Context
 
-[0012](0012-crt-monitor-and-resolutions.md) stood the monitor on a stand, and a later change put it on a CSS desk in front of a gradient wall. Built from gradients, the room read as a flat shadow plane rather than a place. A believable lived-in room would need drawn art. The author preferred a black room with something alive in it. Of the directions tried (a drifting haze, a peer mesh, dust in the light) the quietest won: just the screen's own faint light on the room.
+[0012](0012-crt-monitor-and-resolutions.md) stood the monitor on a stand, and a later change put it on a CSS desk in front of a gradient wall. Built from gradients, the room read as a flat shadow plane rather than a place. A believable lived-in room would need drawn art. The maintainer preferred a black room with something alive in it. Of the directions tried (a drifting haze, a peer mesh, dust in the light) the quietest won: just the screen's own faint light on the room.
 
 ## Decision
 

@@ -1,4 +1,4 @@
-// TURN servers from the site's own Worker (decision 0022), for when two peers can't reach each
+// TURN servers from the site's own Worker, for when two peers can't reach each
 // other directly, as on mobile data. Without them Pigeon still tries STUN alone.
 
 export interface TurnServer {

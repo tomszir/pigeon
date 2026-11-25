@@ -1,5 +1,5 @@
-// Sealing with a passphrase, for files you keep yourself: the export of your data (M13), and the
-// recovery key's file (decision 0027). PBKDF2-SHA256 at 600,000 rounds stretches the passphrase
+// Sealing with a passphrase, for files you keep yourself: the export of your data, and the
+// recovery key's file. PBKDF2-SHA256 at 600,000 rounds stretches the passphrase
 // into an AES-256-GCM key, all WebCrypto. The sealed text is one line, so it can sit in a .txt.
 
 const PREFIX = 'pigeon-sealed:v1'

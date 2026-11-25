@@ -67,8 +67,8 @@ describe('renderInline', () => {
   })
 
   it('links docs shown in Help and shows the rest as text', () => {
-    expect(renderInline('[the spec](protocol.md) and [0024](decisions/0024-x.md)', help)).toBe(
-      '<a href="pigeon://help/protocol/">the spec</a> and 0024',
+    expect(renderInline('[the spec](protocol.md) and [design](design.md)', help)).toBe(
+      '<a href="pigeon://help/protocol/">the spec</a> and design',
     )
   })
 

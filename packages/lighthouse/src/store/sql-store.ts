@@ -1,4 +1,4 @@
-// A MailStore over SQL, shared by the runners (decision 0037): the Node Lighthouse runs it on
+// A MailStore over SQL, shared by the runners: the Node Lighthouse runs it on
 // node:sqlite, the Worker on its Durable Object's SQLite. Each hands in a SqlDatabase, the one
 // call both have: run a statement with values, get rows back and how many it changed.
 import type { DropOutcome, ListedPage, MailStore, StoredBlob } from './store.ts'

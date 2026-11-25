@@ -27,12 +27,12 @@ Interactive bits are server-side-include comments that Explorer draws, so pages 
 
 ## Enforcement
 
-`@pigeon/pigeonhtml` holds the allowlists as tables in `src/allowlists.ts` and exposes `sanitize` and `validate` ([0032](decisions/0032-explorer-on-this-computer-first.md)).
+`@pigeon/pigeonhtml` holds the allowlists as tables in `src/allowlists.ts` and exposes `sanitize` and `validate`.
 
 - `sanitize(source, urls)` returns `{ html, title, bytes, removed }`: the page with everything off the lists dropped (never escaped and kept), its title, its size in UTF-8 bytes to hold against the 100 KB budget, and what was taken out. `urls` belongs to whoever shows the page. `urls.image(src)` gives the URL to load an image from and `urls.link(href)` the address a link goes to, and either can return nothing, which drops the image or the link (keeping its text).
 - `validate(source)` returns the problems, each with the line and column where it starts, and is empty for a valid page.
 
-It parses with parse5, which reads a page as the browser that renders it will. The page builder validates as you type and offers a "Valid PigeonHTML 1.0!" badge. Explorer and the Lighthouse sanitize every page before rendering or mirroring it, pages bundled with Pigeon included. Pages render without a doctype (quirks mode, on purpose) in an iframe with `sandbox="allow-same-origin"` and never `allow-scripts`, written into the frame's blank document rather than given as `srcdoc`, since an `srcdoc` document is always in standards mode, under a CSP that allows inline styles, only the page's own images (each by its exact URL) and the two bundled fonts, and nothing else (`default-src 'none'`). A base stylesheet comes first, so the page's own styles win: it maps the font names above with `@font-face`, sets monospace elements in Courier New, draws images pixelated, and makes `blink` blink (held still under reduced motion). After it comes the stylesheet for Explorer's view: One Column stacks a page's tables to the frame's width, and Text Size zooms it ([0033](decisions/0033-one-column-on-the-pocket.md)). Neither changes the page. Explorer reads link clicks from the frame and navigates itself. It refuses a page whose source is over the budget with its own error page; a bundled page's images aren't counted yet.
+It parses with parse5, which reads a page as the browser that renders it will. The page builder validates as you type and offers a "Valid PigeonHTML 1.0!" badge. Explorer and the Lighthouse sanitize every page before rendering or mirroring it, pages bundled with Pigeon included. Pages render without a doctype (quirks mode, on purpose) in an iframe with `sandbox="allow-same-origin"` and never `allow-scripts`, written into the frame's blank document rather than given as `srcdoc`, since an `srcdoc` document is always in standards mode, under a CSP that allows inline styles, only the page's own images (each by its exact URL) and the two bundled fonts, and nothing else (`default-src 'none'`). A base stylesheet comes first, so the page's own styles win: it maps the font names above with `@font-face`, sets monospace elements in Courier New, draws images pixelated, and makes `blink` blink (held still under reduced motion). After it comes the stylesheet for Explorer's view: One Column stacks a page's tables to the frame's width, and Text Size zooms it. Neither changes the page. Explorer reads link clicks from the frame and navigates itself. It refuses a page whose source is over the budget with its own error page; a bundled page's images aren't counted yet.
 
 Modern engines won't reproduce IE6's exact bugs; quirks mode plus the subset gets the feel, and that is the goal.
 
@@ -56,6 +56,6 @@ Modern engines won't reproduce IE6's exact bugs; quirks mode plus the subset get
 
 ### Deferred
 
-- **Framesets** are dropped with their frames and `noframes`, since each frame is another page to load and sandbox. They can come with M5's hosting.
+- **Framesets** are dropped with their frames and `noframes`, since each frame is another page to load and sandbox. They wait for pages hosted by peers.
 - **Forms** lose their tags and controls. Guestbooks and the like are widgets.
-- **Widgets**: the sanitizer drops every comment, widget ones included. Drawing them is M5's.
+- **Widgets**: the sanitizer drops every comment, widget ones included. Nothing draws them yet.

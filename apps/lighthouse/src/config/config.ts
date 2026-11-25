@@ -1,5 +1,5 @@
-// The one config file a Lighthouse runs from (decision 0037), JSON so it needs no parser:
-//   { "name": "Toms's Lighthouse", "port": 8787, "url": "wss://lighthouse.example.ts.net/" }
+// The one config file a Lighthouse runs from, JSON so it needs no parser:
+//   { "name": "Ada's Lighthouse", "port": 8787, "url": "wss://lighthouse.example.ts.net/" }
 // Everything but `name` and `url` has a default. Paths are relative to the config file.
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'

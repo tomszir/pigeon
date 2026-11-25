@@ -7,7 +7,7 @@ Peers connect with Trystero (Nostr signaling + WebRTC data channels), and only o
 
 ## Context
 
-Pigeon needs browser-to-browser connections with no server of its own. Trystero does signaling over public relays and hands back data channels, which gets two tabs talking fastest. The author may later want to write the signaling layer themselves to explore it.
+Pigeon needs browser-to-browser connections with no server of its own. Trystero does signaling over public relays and hands back data channels, which gets two tabs talking fastest. The maintainer may later want to write the signaling layer themselves to explore it.
 
 ## Decision
 

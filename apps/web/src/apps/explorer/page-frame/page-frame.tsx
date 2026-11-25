@@ -1,4 +1,4 @@
-// A sanitized page in a sandboxed frame (decision 0032). The sandbox allows same-origin, so Explorer
+// A sanitized page in a sandboxed frame. The sandbox allows same-origin, so Explorer
 // can write and read the frame's document, and never scripts, so the page can't run any. Explorer
 // catches link clicks in the frame and navigates itself; the frame never navigates.
 //
@@ -31,7 +31,7 @@ export interface PageFrameProps {
   imageUrls: readonly string[]
   /** What relative image URLs resolve against: the app's own address. */
   base: string
-  /** How the page is drawn (decision 0033), and whether on a phone. Read once, when it's written. */
+  /** How the page is drawn, and whether on a phone. Read once, when it's written. */
   view?: PageView | undefined
   phone?: boolean | undefined
   /** A link was followed: a pigeon:// address. In-page "#name" links are handled here. */

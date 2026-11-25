@@ -62,15 +62,15 @@ export interface MessageSpec {
 export type ScreensaverId = 'pigeons' | 'maze'
 
 export interface Settings {
-  /** The screen resolution the desktop is laid out at (decision 0012). */
+  /** The screen resolution the desktop is laid out at. */
   readonly resolution: ResolutionId
-  /** Scanlines, phosphor grille, curved glass and refresh roll over the screen; on (0012). */
+  /** Scanlines, phosphor grille, curved glass and refresh roll over the screen; on by default. */
   readonly crtEffect: boolean
-  /** Sample one pixel per 2×2 block at scale 2 (decision 0008). */
+  /** Sample one pixel per 2×2 block at scale 2. */
   readonly pixelMode: boolean
   /** Shake a window on a buzz; when off, or when motion is reduced, the title bar flashes. */
   readonly shakeOnBuzz: boolean
-  /** The Pocket's pixel grid and backlight on a phone; on (decision 0019). */
+  /** The Pocket's pixel grid and backlight on a phone; on by default. */
   readonly lcdEffect: boolean
   /** What the desktop shows while Pigeon is turned off. */
   readonly screensaver: ScreensaverId
@@ -92,8 +92,8 @@ export interface ShellApi {
   readonly setSettings: (settings: Settings) => void
   readonly shutDown: () => void
   /**
-   * Covers the whole screen, for a state nothing behind it works in: Pigeon in another tab
-   * (decision 0028), or Pigeon unable to start. Undefined clears it.
+   * Covers the whole screen, for a state nothing behind it works in: Pigeon in another tab,
+   * or Pigeon unable to start. Undefined clears it.
    */
   readonly setScreen: (screen: ScreenSpec | undefined) => void
 }
@@ -114,7 +114,7 @@ export interface ScreenSpec {
 }
 
 /**
- * How Pigeon connects, owned by the Messenger and shown in Settings too (decision 0026).
+ * How Pigeon connects, owned by the Messenger and shown in Settings too.
  * `relayOnly` is undefined while the Messenger is starting or can't run.
  */
 export interface ConnectionSetting {
@@ -157,7 +157,7 @@ export interface SoftKey {
   readonly onPress: () => void
 }
 
-/** What the phone layout needs from app/ beyond the menu (decision 0019). */
+/** What the phone layout needs from app/ beyond the menu. */
 export interface PhoneSpec {
   /** The Today screen, shown at start and on the home key. */
   readonly home: () => JSX.Element

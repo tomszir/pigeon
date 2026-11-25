@@ -1,4 +1,4 @@
-// Pigeon Explorer on this computer (decision 0032): it opens at the bundled start page in a
+// Pigeon Explorer on this computer: it opens at the bundled start page in a
 // sandboxed frame in quirks mode, says nobody is hosting anyone else's page, and goes back. On the desktop and on
 // the Pocket. Needs no network.
 import { devices, expect, type Page, test } from '@playwright/test'

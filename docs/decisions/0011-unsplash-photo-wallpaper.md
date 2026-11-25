@@ -7,7 +7,7 @@ The desktop wallpaper is a photo of rolling hills from Unsplash, not a drawing, 
 
 ## Context
 
-[0007](0007-original-and-openly-licensed-assets-only.md) listed the wallpaper as art drawn for Pigeon, and M1 shipped an SVG of hills and clouds. The author wants a real photo instead: wallpapers of the era were photographs, and a drawing reads as a placeholder. Bliss itself stays ruled out.
+[0007](0007-original-and-openly-licensed-assets-only.md) listed the wallpaper as art drawn for Pigeon, and M1 shipped an SVG of hills and clouds. The maintainer wants a real photo instead: wallpapers of the era were photographs, and a drawing reads as a placeholder. Bliss itself stays ruled out.
 
 ## Decision
 

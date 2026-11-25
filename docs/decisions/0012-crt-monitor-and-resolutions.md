@@ -7,7 +7,7 @@ The screen sits in a beige 2003 CRT monitor drawn in CSS, its resolution can be 
 
 ## Context
 
-[0008](0008-pixel-exact-1024x768-stage.md) fixed the screen at 1024×768, filled the rest of the page with a flat letterbox colour, and ruled out a CRT effect after a scanline filter on the canvas blurred the pixel art. The author wants something more fun around the desktop, a way to change its size, and a CRT look that doesn't get in the way. Whole-number scaling stays: it's what keeps 11px Tahoma and 1px bevels sharp.
+[0008](0008-pixel-exact-1024x768-stage.md) fixed the screen at 1024×768, filled the rest of the page with a flat letterbox colour, and ruled out a CRT effect after a scanline filter on the canvas blurred the pixel art. The maintainer wants something more fun around the desktop, a way to change its size, and a CRT look that doesn't get in the way. Whole-number scaling stays: it's what keeps 11px Tahoma and 1px bevels sharp.
 
 ## Decision
 

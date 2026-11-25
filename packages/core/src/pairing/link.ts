@@ -1,4 +1,4 @@
-// Linking a new device to an identity, in person (decision 0024). The existing device waits in
+// Linking a new device to an identity, in person. The existing device waits in
 // `link:<code>` and shows the code as a QR code and in letters; the new device joins and sends
 // a signed link-request. The existing device answers link-offer with whose it is, and both show
 // the same 6-digit check made from the code and both device keys. Only when you confirm on the

@@ -1,5 +1,5 @@
 // The dark room behind the monitor, as a WebGL fragment shader: the screen's light falling faintly
-// on a room you can't see, uneven and breathing slightly (decision 0014). It renders at half the
+// on a room you can't see, uneven and breathing slightly. It renders at half the
 // window's size at a steady 30 frames a second, pauses with the tab, draws one still frame when
 // motion is reduced, and leaves plain black where WebGL isn't available.
 import { createEffect, onCleanup, onMount } from 'solid-js'

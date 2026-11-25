@@ -1,4 +1,4 @@
-// Your devices and your friends' (decision 0024): which identity this device speaks for, its
+// Your devices and your friends': which identity this device speaks for, its
 // device log, and each friend's. Only your first device changes your log. The Messenger asks it who a device is and whose chat entries
 // count, and hands it every device log that arrives. Logs are checked and merged here, so the
 // rest of the Messenger only sees ones that verify.
@@ -34,7 +34,7 @@ export const DEVICE_KEYS = {
   /** The identity this device speaks for; absent on a first device, which is its own. */
   self: 'self',
   deviceLog: 'deviceLog',
-  /** Where your devices meet (decision 0024), shared with each device when it's linked. */
+  /** Where your devices meet, shared with each device when it's linked. */
   selfSecret: 'selfSecret',
   friendDevices: (id: PeerId) => `devices:${id}`,
 } as const
@@ -68,7 +68,7 @@ export async function loadDevices(deps: DevicesDeps) {
   const self: PeerId = typeof storedSelf === 'string' ? storedSelf : signer.id
   const storedLog = await store.get(DEVICE_KEYS.deviceLog)
   // A device brought back by its recovery key holds a tail until a friend sends the whole log;
-  // it's checked from the key the tail names, which this device signed with (decision 0027).
+  // it's checked from the key the tail names, which this device signed with.
   const holds = (log: DeviceLog) =>
     isTailLog(log) ? verifyOwnTail(crypto, log) : verifyDeviceLog(crypto, log)
   const own0 =
@@ -117,7 +117,7 @@ export async function loadDevices(deps: DevicesDeps) {
     status,
     /**
      * This device writes your list, the only one that links and removes devices: the first
-     * device, or the one your recovery key made the writer (decision 0027).
+     * device, or the one your recovery key made the writer.
      */
     isFirst: () => ownState().writer === signer.id,
     /** The recovery key that can start the next epoch, if you've made one. */
@@ -130,7 +130,7 @@ export async function loadDevices(deps: DevicesDeps) {
       if (committed === undefined) return false
       // A Pigeon from before recovery keys takes a log only when it has more entries, and then
       // keeps it whole: renaming this device to its own name gives it one, so friends who haven't
-      // updated still keep the commitment for when they do (decision 0030).
+      // updated still keep the commitment for when they do.
       const name = ownState().active.get(signer.id)?.name ?? FIRST_DEVICE_NAME
       const named = await appendDeviceEntry(
         crypto,
@@ -144,7 +144,7 @@ export async function loadDevices(deps: DevicesDeps) {
     },
     /**
      * Signs a recover with the recovery key onto this device, which already speaks for you,
-     * keeping `keep` (decision 0027). False when the key isn't your current one.
+     * keeping `keep`. False when the key isn't your current one.
      */
     async recoverHere(key: Signer, keep: readonly KeptDevice[], next: PeerId): Promise<boolean> {
       const state = ownState()
@@ -222,7 +222,7 @@ export async function loadDevices(deps: DevicesDeps) {
     friendLog,
     /** How many devices a friend has on their list now. */
     friendDeviceCount: (id: PeerId) => deviceState(friendLog(id)).active.size,
-    /** The friend's device, one of your own others, or nobody (decision 0024). */
+    /** The friend's device, one of your own others, or nobody. */
     classify(friend: PeerId, device: PeerId): 'friend' | 'self' | undefined {
       if (deviceState(friendLog(friend)).active.has(device)) return 'friend'
       if (device !== signer.id && ownState().active.has(device)) return 'self'
@@ -239,7 +239,7 @@ export async function loadDevices(deps: DevicesDeps) {
         const { author } = entry
         if (author === signer.id || theirs.active.has(author) || mine.active.has(author))
           return true
-        // A message's time is its writer's word, so a removed device can backdate (0024).
+        // A message's time is its writer's word, so a removed device can backdate.
         const removed = theirs.removedAt.get(author) ?? mine.removedAt.get(author)
         return removed !== undefined && entry.at <= removed
       }

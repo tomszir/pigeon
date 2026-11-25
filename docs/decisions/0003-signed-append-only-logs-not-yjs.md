@@ -7,7 +7,7 @@ Shared state (chats, guestbooks, receipts) is a set of per-author signed append-
 
 ## Context
 
-Everything Pigeon shares is append-only: messages, guestbook entries, letter receipts. A general CRDT (Yjs) solves concurrent editing of rich structures, which Pigeon doesn't need, and adds a dependency the author's projects usually avoid.
+Everything Pigeon shares is append-only: messages, guestbook entries, letter receipts. A general CRDT (Yjs) solves concurrent editing of rich structures, which Pigeon doesn't need, and adds a dependency the maintainer's projects usually avoid.
 
 ## Decision
 

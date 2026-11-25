@@ -6,7 +6,7 @@ export function takeInviteFromAddress(): Invite | undefined {
   return take('i/', decodeInvite)
 }
 
-/** A link from Link a Device on your other device (decision 0024), read the same way. */
+/** A link from Link a Device on your other device, read the same way. */
 export function takeDeviceLinkFromAddress(): Invite | undefined {
   return take('l/', decodeDeviceLink)
 }
@@ -14,7 +14,7 @@ export function takeDeviceLinkFromAddress(): Invite | undefined {
 function take(prefix: string, decode: typeof decodeInvite): Invite | undefined {
   const hash = location.hash.slice(1)
   if (!hash.startsWith(prefix)) return undefined
-  // The entry's state stays: the back stack marks entries there (decision 0034).
+  // The entry's state stays: the back stack marks entries there.
   history.replaceState(history.state, '', `${location.pathname}${location.search}`)
   const invite = decode(hash)
   return invite.ok ? invite.value : undefined

@@ -1,5 +1,5 @@
-// Display Properties: the stage's settings, kept in memory for now, and how Pigeon connects,
-// which the Messenger keeps (decision 0026).
+// Display Properties: the stage's settings, kept in memory only, and how Pigeon connects,
+// which the Messenger keeps.
 
 import { For } from 'solid-js'
 import { Button } from '../../ui/button/button.tsx'
@@ -101,7 +101,7 @@ function WaitSetting(props: DisplayPropertiesProps) {
 
 const WAITS = [0, 1, 3, 5, 10, 15] as const
 
-/** The Pocket's settings: its own screen, and the buzz (decision 0019). */
+/** The Pocket's settings: its own screen, and the buzz. */
 function PocketSettings(props: DisplayPropertiesProps) {
   return (
     <div class={`${styles.displayProperties} ${styles.pocket}`}>

@@ -1,4 +1,4 @@
-// The recovery key on paper (decision 0027): the key's 32-byte seed, the identity it brings
+// The recovery key on paper: the key's 32-byte seed, the identity it brings
 // back and the epoch it starts, with a checksum, in groups of four letters to copy by hand.
 //
 //   bytes: version (1) · epoch (1) · seed (32) · identity's public key (32 or 65) · checksum (2)

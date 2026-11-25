@@ -1,4 +1,4 @@
-// About Pigeon: version, links, and the credits the asset licences ask for (decision 0007).
+// About Pigeon: version, links, and the credits the asset licences ask for.
 import { For } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { brand } from '../../../ui/icons/icons.ts'

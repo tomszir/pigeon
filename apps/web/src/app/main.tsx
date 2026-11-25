@@ -32,17 +32,17 @@ document.addEventListener('contextmenu', (event) => {
 })
 
 render(() => {
-  // Before the invite is read, so its own entry in the history is marked first (decision 0034).
+  // Before the invite is read, so its own entry in the history is marked first.
   const back = createBrowserBack()
   const env = createBrowserEnv()
   const { api, Shell } = createShell(env)
   const [messenger, setMessenger] = createSignal<Messenger | undefined>(undefined)
   const [problem, setProblem] = createSignal<string | undefined>(undefined)
-  // ?demo opens the Desktop board's sample conversation (docs/roadmap.md, M1).
+  // ?demo opens the Desktop board's sample conversation.
   const sample = new URLSearchParams(window.location.search).has('demo')
   const homeScreen = needsHomeScreen()
   const incoming = takeInviteFromAddress()
-  // A link from Link a Device on your other device (decision 0024).
+  // A link from Link a Device on your other device.
   const linking = takeDeviceLinkFromAddress()
   const programs = createPrograms(
     api,
@@ -81,7 +81,7 @@ render(() => {
     if (device !== undefined) programs.openJoinDevice(device)
   })
 
-  // After an update, a returning visitor is told once, in place of the welcome (decision 0025).
+  // After an update, a returning visitor is told once, in place of the welcome.
   // It waits before the Messenger starts, which makes the identity a first visit lacks.
   const tellWhatsNew = async (store: Store) => {
     const version = __PIGEON_VERSION__
@@ -95,7 +95,7 @@ render(() => {
     await rememberVersion(store, version)
   }
 
-  // On an iPhone in a Safari tab, once: storage lasts 7 days there (decision 0026).
+  // On an iPhone in a Safari tab, once: storage lasts 7 days there.
   const HINTED = 'homeScreenHinted'
   const hintHomeScreen = async (store: Store) => {
     if (!homeScreen || (await store.get(HINTED)) === true) return
@@ -131,11 +131,11 @@ render(() => {
     await running?.close()
   }
 
-  // One tab at a time (decision 0028): another tab's Pigeon is the same device, so this one
+  // One tab at a time: another tab's Pigeon is the same device, so this one
   // waits behind a screen that says so, and "Use Pigeon Here" moves Pigeon over.
   const ELSEWHERE = 'Pigeon is open in another tab.'
   const lock = browserTabLock(async () => {
-    // Forgetting this Pigeon (0035) finishes, reload and all, before another tab may have it.
+    // Forgetting this Pigeon finishes, reload and all, before another tab may have it.
     if (startingOver !== undefined) await startingOver.catch(() => undefined)
     await stopMessenger()
     setProblem('Pigeon moved to another tab.')
@@ -194,7 +194,7 @@ render(() => {
     show()
   }
 
-  // "Make This a New Device" on a copied profile, or leaving this Pigeon for another (0035):
+  // "Make This a New Device" on a copied profile, or leaving this Pigeon for another:
   // forget everything here and link it again, to the other one's code if there is one.
   const JOIN_ON_START = 'joinOnStart'
   const isInvite = (value: unknown): value is Invite =>

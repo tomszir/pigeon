@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> Pigeon is in early development. Chatting with friends, on as many of your devices as you like, works today; files, letters and the Pigeonweb are coming.
+> Pigeon is in early development. Chatting with friends, on as many of your devices as you like, works today. Files, letters and pages hosted by friends aren't built yet.
 > Try it at **[pigeon.tomszir.com](https://pigeon.tomszir.com)**.
 
 ## What it does
@@ -27,7 +27,9 @@ It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenge
 - **Chat like it's 2003:** messages, buzzes that shake the window, "is writing a message…", away and busy, and a note when a friend comes online or goes offline.
 - **Chats that catch up:** conversations are kept in your browser, signed by both sides, and fill in what you missed the next time you're both online.
 - **A pigeon for everyone:** every friend gets a pixel bird drawn from their key, the same on every Pigeon, shown next to their fingerprint.
-- **Your phone and your laptop:** link a second device in person with a code and a 6-digit check, and it's you there too, with your friends. Your first device links and removes devices.
+- **Your phone and your laptop:** link a second device in person with a code and a 6-digit check, and it's you there too, with your friends and your name. Your first device links and removes devices.
+- **Yours to keep:** a recovery key brings your Pigeon back if you lose your devices, and Export My Data seals your friends, chats and settings in a file only your passphrase opens.
+- **Pigeon Explorer:** a browser for `pigeon://` pages, with Pigeon's own start page and Help, the protocol included, drawn in 2003's HTML and CSS.
 - **What's new:** after an update, a balloon offers Changelog.txt, release notes written for people.
 - **A whole desktop:** windows you can drag, a taskbar, a CRT monitor, and a 3D maze or pigeons in flight when you turn it off.
 - **The Kestrel Pocket on phones:** on a phone, Pigeon runs on a 2003 handheld with soft keys, an LCD screen and a buzz you can feel.
@@ -53,7 +55,7 @@ Browsers connect directly over WebRTC. To find each other, they post small signe
 
 Each browser makes its own identity, a WebCrypto key pair that never leaves it, and your fingerprint comes from it. Every message is signed, so a friend can't be impersonated, and each chat is a signed append-only log that two browsers merge when they meet. Friends meet in a room named and locked by a secret only the two of them hold, renamed every day, so knowing two people's ids says nothing about when they talk. Several devices are one person through a device log your first device signs. The protocol is in [docs/protocol.md](docs/protocol.md).
 
-Honest P2P has a cost: a friend has to be online for a message to arrive. Letters, sealed messages carried by mutual friends until the recipient is back, are the plan for that.
+Honest P2P has a cost: today a friend has to be online for a message to arrive. Lighthouses are how Pigeon gets around it: peers anyone can run that hold mail sealed to a friend's devices until they're back, without being able to open it or say whom it's from. The Lighthouse itself runs today ([docs/lighthouse.md](docs/lighthouse.md) says how to run one); Pigeon doesn't send mail through it yet.
 
 ## Privacy
 
@@ -71,7 +73,7 @@ mise run dev                     # the web app on Vite's dev server
 mise run check                   # lint, types, unit tests and docs
 ```
 
-Start with [docs/README.md](docs/README.md), then see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and how releases work.
+Start with [docs/README.md](docs/README.md), then see [CONTRIBUTING.md](CONTRIBUTING.md) for commits, how docs and comments are written, and how releases work.
 
 ## Credits
 

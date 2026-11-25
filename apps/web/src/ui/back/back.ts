@@ -1,4 +1,4 @@
-// Back steps back inside Pigeon (decision 0034). app/ provides the stack over the browser's
+// Back steps back inside Pigeon. app/ provides the stack over the browser's
 // history; anything you can step back from (a menu, a window on the Pocket, a page in Explorer)
 // pushes an entry while it's open and says it's done when it closes another way.
 import type { BackEntry, BackStack } from '@pigeon/core'

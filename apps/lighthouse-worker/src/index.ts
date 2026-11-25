@@ -1,4 +1,4 @@
-// The Worker Lighthouse (decision 0037): every request goes to the one Durable Object that is
+// The Worker Lighthouse: every request goes to the one Durable Object that is
 // this Lighthouse, with the client's address from Cloudflare, for the limits. A header a client
 // sends claiming an address of its own is dropped.
 import { CLIENT_ADDRESS, LighthouseObject } from './object/lighthouse-object.ts'

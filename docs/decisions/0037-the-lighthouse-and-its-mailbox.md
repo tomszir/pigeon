@@ -1,6 +1,6 @@
 # 0037: The Lighthouse and its mailbox
 
-A Lighthouse is a peer with its own key that holds mail sealed to devices under daily tags, so any Lighthouse, yours, the author's or a stranger's, can carry your mail without being able to read it, forge it or tie it to you.
+A Lighthouse is a peer with its own key that holds mail sealed to devices under daily tags, so any Lighthouse, yours, the maintainer's or a stranger's, can carry your mail without being able to read it, forge it or tie it to you.
 
 - Status: accepted
 - Date: 2026-11-25
@@ -9,7 +9,7 @@ A Lighthouse is a peer with its own key that holds mail sealed to devices under 
 
 Everything in Pigeon so far needs both ends online at once. A friend removed while offline is told only if you meet again; a device removed while another is offline hears of it only in the self room; an invite works only while the inviter's tab is open; a message waits in your own log until the friend comes back. The roadmap's M16, M7, M4, M8 and M14 all need the same thing underneath: somewhere that holds a sealed message until its recipient comes for it.
 
-The author wants Pigeon to be a federated internet: Lighthouses run by the author, in a homelab and as a Cloudflare Worker, and by anyone else, with people choosing whose to use. Nobody can check what code someone else's Lighthouse really runs, so the design has to make that not matter: a Lighthouse is trusted with nothing but keeping mail until it's fetched.
+The maintainer wants Pigeon to be a federated internet: Lighthouses run by the maintainer, on a home server and as a Cloudflare Worker, and by anyone else, with people choosing whose to use. Nobody can check what code someone else's Lighthouse really runs, so the design has to make that not matter: a Lighthouse is trusted with nothing but keeping mail until it's fetched.
 
 Three review rounds of a larger draft shaped this one. They found that a mailbox locked only by the pair and self secrets would let a removed device read, delete and forge mail (0024 lets it keep them), that clients in a public WebRTC room would publish their IP addresses, that hiding tags in shared buckets hides almost nothing once you fetch your own, and that proof of work costs honest phones more than attackers. The draft also had a mesh between Lighthouses, secrets replaced when a device is removed, introductions and a directory; those are split off (see Left for later) so M16 is a milestone that can be finished.
 
@@ -21,9 +21,9 @@ Three review rounds of a larger draft shaped this one. They found that a mailbox
 - **An address** is `{ id, name, url }`, `url` being a WebSocket (`wss://`), written as a link, `pigeon://lighthouse/<id>?url=...`, and a QR code. A personal Lighthouse can add a pass, a random value in the address without which it answers nothing.
 - **Clients reach Lighthouses over WebSocket only.** One connection to one server: the Lighthouse sees the client's IP address, as any server would, but nobody else does, and clients never meet each other through it.
 - **What a client says.** A connection opens with a Lighthouse `hello` carrying only `protocol` and a `nonce`, 32 random bytes chosen for that connection: no name, no identity, no `instance`. Clients sign nothing to the Lighthouse. Each reply is signed over the hash of the exact request frame it answers and the connection's nonce, so whoever relays a connection can't change a request and pass on the real answer, nor replay an answer on another connection. That holds while the client keeps its side: a fresh random nonce for every connection, request numbers that only go up within one, and each request taking one reply.
-- **What a Lighthouse says about itself.** Its `hello` carries `protocol` and `software` (name, version and, for the author's releases, the build's hash). Settings shows it as the Lighthouse's own claim, since a server can't prove what it runs. Nothing in Pigeon's safety depends on it.
-- **One package, two runners.** `packages/lighthouse` holds the mailbox and its limits against a storage interface and no platform. `apps/lighthouse` runs it in Node with a WebSocket server and SQLite (`node:sqlite`), in Docker from one config file, for the homelab and for anyone. `apps/lighthouse-worker` runs it as a Cloudflare Worker, with one Durable Object per Lighthouse and hibernating WebSockets, storing in its SQLite. Sharding by tag would need a cursor per shard, since `list` takes one cursor across many tags, and waits until one Durable Object is too small.
-- **The official Lighthouses** are run by the author: the Worker at `lighthouse.pigeon.tomszir.com` and a Node Lighthouse in the homelab. The homelab one is reached through Tailscale Funnel, which ends TLS on the homelab machine, so the tunnel carries encrypted traffic without seeing requests, keeps the home IP address out of the address, and keeps the two official Lighthouses from both being in Cloudflare's view. Pigeon ships with both and uses them by default; Settings lists your Lighthouses and lets you add or remove any, the official ones included. The UI says which Lighthouse carried what, as the brief's "Honest P2P" asks.
+- **What a Lighthouse says about itself.** Its `hello` carries `protocol` and `software` (name, version and, for the maintainer's releases, the build's hash). Settings shows it as the Lighthouse's own claim, since a server can't prove what it runs. Nothing in Pigeon's safety depends on it.
+- **One package, two runners.** `packages/lighthouse` holds the mailbox and its limits against a storage interface and no platform. `apps/lighthouse` runs it in Node with a WebSocket server and SQLite (`node:sqlite`), in Docker from one config file, for a home server and for anyone. `apps/lighthouse-worker` runs it as a Cloudflare Worker, with one Durable Object per Lighthouse and hibernating WebSockets, storing in its SQLite. Sharding by tag would need a cursor per shard, since `list` takes one cursor across many tags, and waits until one Durable Object is too small.
+- **The official Lighthouses** are run by the maintainer: the Worker at `lighthouse.pigeon.tomszir.com` and a Node Lighthouse on a home server. That one is reached through Tailscale Funnel, which ends TLS on the machine itself, so the tunnel carries encrypted traffic without seeing requests, keeps the home IP address out of the address, and keeps the two official Lighthouses from both being in Cloudflare's view. Pigeon ships with both and uses them by default; Settings lists your Lighthouses and lets you add or remove any, the official ones included. The UI says which Lighthouse carried what, as the brief's "Honest P2P" asks.
 
 ### Mail is sealed to devices
 
@@ -48,7 +48,7 @@ Three review rounds of a larger draft shaped this one. They found that a mailbox
 - **Per address range.** Limits count per IPv4 address and per IPv6 /64: puts and bytes an hour, blobs per tag a day, and lists, gets and drops a minute. IPv4 limits are set high enough for carriers that put many people behind one address, and an IPv4 address mapped into IPv6 counts as itself. IP addresses are used for counting and never written to storage.
 - **And everyone together.** IPv6 puts count against their /48 too, so many /64s from one block share a limit. A cap on all puts an hour, and on how many ranges are counted at once, keeps the store and the bill bounded; someone who trips either on purpose shuts everyone out until the window turns, which is the price of a Lighthouse that can't be filled. A blob counts against the store at what it costs to keep, its id, tag and drop hashes included, not only its bytes. A connection may have 16 requests waiting; more are refused rather than queued.
 - **A full Lighthouse refuses** rather than drops; the sender keeps the mail and tries another, or again later. Mail isn't put while a tab closes: a farewell is kept and put when Pigeon next starts.
-- **The Worker's bill** has the same guards as the TURN route (0022): a WAF rate limit, a usage alert, and switching it off leaves the homelab Lighthouse working.
+- **The Worker's bill** has the same guards as the TURN route (0022): a WAF rate limit, a usage alert, and switching it off leaves the home server Lighthouse working.
 
 ### What a Lighthouse can see
 
@@ -58,7 +58,7 @@ Said plainly on a privacy page in Read Me:
 - It sees each client's IP address, when it connects, how much it puts and fetches, and which tags it asks for.
 - While it watches, it can see that the address that put mail under a tag and the address that fetched it are talking, that one connection's tags belong together, and that the same address comes back day after day.
 - A Lighthouse can withhold or lose mail. Using two, and receipts, cover that.
-- The homelab Lighthouse's tunnel (Tailscale Funnel) sees that connections are made and their addresses, not what's in them, since TLS ends on the homelab machine.
+- The home server Lighthouse's tunnel (Tailscale Funnel) sees that connections are made and their addresses, not what's in them, since TLS ends on the home server machine.
 
 ### The protocol version
 
@@ -75,12 +75,12 @@ Said plainly on a privacy page in Read Me:
 - **Replacing secrets when a device is removed**, so a removed device can't even see that mail is waiting or put junk under your tags. It needs a round with every friend and care with a stolen first device (0024, 0027), and gets its own decision.
 - **Lighthouses meshing**, mirroring mail to each other, with content-addressed ids and tombstones so a dropped blob can't come back. It's how Lighthouses federate, and comes with M6.
 - **Introductions**, a friend introducing two friends who both agree, perhaps through private and third-party Lighthouses.
-- **A verified app.** A Lighthouse that serves Pigeon itself (M6) can't be trusted to serve the real thing; its build is checked against the author's signed release hash, which M6 decides.
+- **A verified app.** A Lighthouse that serves Pigeon itself (M6) can't be trusted to serve the real thing; its build is checked against the maintainer's signed release hash, which M6 decides.
 - **M4**'s one-time prekeys, **M7**'s invite tags, **M8**'s group tags, and **M14**'s push, which must not undo what daily tags protect.
 
 ### The brief and earlier decisions
 
-- "No server of ours in the middle" becomes: no server of ours can read what you say or tie it to you. The Worker Lighthouse is a server the author runs, as the TURN route is (0022), holding only mail it can't open or attribute, one Lighthouse among several, and removable.
+- "No server of ours in the middle" becomes: no server of ours can read what you say or tie it to you. The Worker Lighthouse is a server the maintainer runs, as the TURN route is (0022), holding only mail it can't open or attribute, one Lighthouse among several, and removable.
 - This supersedes [0005](0005-cloudflare-at-pigeon-tomszir-com.md)'s "the Lighthouse is hosted separately": one official Lighthouse is a Worker on Cloudflare.
 
 ## Consequences

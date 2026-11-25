@@ -28,9 +28,9 @@ export type StartResult =
 export async function startMessenger(
   events: MessengerEvents,
   { store, persistent }: { readonly store: Store; readonly persistent: boolean },
-  /** Relay-only is on, but the relay can't be reached (decision 0026). */
+  /** Relay-only is on, but the relay can't be reached. */
   onNoRelay?: () => void,
-  /** What My Devices calls this device: "Firefox on Linux" (decision 0024). */
+  /** What My Devices calls this device: "Firefox on Linux". */
   deviceName?: string,
 ): Promise<StartResult> {
   if (globalThis.crypto?.subtle === undefined || typeof RTCPeerConnection === 'undefined')
