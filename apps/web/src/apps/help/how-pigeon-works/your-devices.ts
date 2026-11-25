@@ -1,4 +1,4 @@
-// Chapter 4: linking and removing devices (docs/protocol.md, Devices; decisions 0024 and 0028).
+// Chapter 4: linking and removing devices (docs/protocol.md, Devices; decisions 0024, 0028, 0035).
 
 import { pre } from '../page/page.ts'
 import { aside, chapterAddress, figure, helpLink, steps } from './frame.ts'
@@ -11,7 +11,7 @@ export const YOUR_DEVICES = `
 <p>Your friends keep a copy of your list. They take messages from any device on it and see one of you, with one status. They can tell how many devices you have, and which one is connected.</p>
 
 <h2>Linking a new device</h2>
-<p>Linking is done in person, with both devices in front of you. The new device must be a Pigeon with no friends of its own yet, since it takes on yours.</p>
+<p>Linking is done in person, with both devices in front of you. The new device must be a Pigeon with no friends of its own yet, since it takes on yours. If it already has some, because you started Pigeon on both, <b>Link to My Other Device</b> on it offers to <b>leave</b> that Pigeon first: if it's on no other device, its friends who are online are told you left, everything on it is forgotten, and the link goes ahead. Check the code first: it's only tried once the old Pigeon is gone. Add those friends again from the Pigeon you keep.</p>
 ${steps([
   '<b>On the device that manages your list</b>, open Pigeon Messenger and choose <b>File</b>, <b>Link a Device</b>. It shows a code, a link and a QR code, good for 10 minutes.',
   '<b>On the new device</b>, choose <b>File</b>, <b>Link to My Other Device</b>, and type the code or paste the link. On a phone, scanning the QR code opens the link.',

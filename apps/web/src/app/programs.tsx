@@ -78,8 +78,11 @@ export interface MessengerHost {
   readonly sleep: (ms: number) => Promise<void>
   /** Starts Pigeon again, as a newly linked device must to become its identity. */
   readonly restart: () => void
-  /** Forgets everything here and starts again at Link to My Other Device (decision 0028). */
-  readonly startOver: () => Promise<void>
+  /**
+   * Forgets everything here and starts again at Link to My Other Device (decision 0028), linking
+   * to `target` straight away when it's given, as leaving a Pigeon does (0035).
+   */
+  readonly startOver: (target?: Invite) => Promise<void>
 }
 
 /** Things that come in later milestones say so, in the world's own voice. */
@@ -279,6 +282,10 @@ export function createPrograms(
               incoming={incoming}
               sleep={host.sleep}
               onLinked={host.restart}
+              onLeave={(left, target) => {
+                // Pigeon moved to another tab meanwhile: that tab's store isn't ours to clear.
+                if (host.messenger() === left) void host.startOver(target)
+              }}
               onClose={window.close}
             />
           )}

@@ -225,7 +225,10 @@ export interface DeviceOffer {
 
 export type JoinedIdentity =
   | { readonly ok: true; readonly offer: DeviceOffer }
-  | { readonly ok: false; readonly error: 'stopped' | 'impostor' | 'has-friends' | 'own' }
+  | {
+      readonly ok: false
+      readonly error: 'stopped' | 'impostor' | 'has-friends' | 'has-devices' | 'waiting' | 'own'
+    }
 
 /** How long a link code is shown before it lapses. */
 export const LINK_LIFETIME_MS = 10 * 60 * 1000
@@ -337,6 +340,13 @@ export async function createMessenger(deps: MessengerDeps) {
     ? storedFarewells.map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
     : []
   const farewellSessions = new Map<PeerId, PairSession>()
+  // Leaving this Pigeon waits for its farewells to be said (decision 0035).
+  let farewellsSaid: (() => void)[] = []
+  const saidFarewells = () => {
+    if (farewells.length > 0) return
+    for (const resolve of farewellsSaid) resolve()
+    farewellsSaid = []
+  }
 
   // Where each friend is met (decision 0026): the old room from both ids until you've moved,
   // the secret's rooms once you have one. The old room's name is also the chat's id.
@@ -682,7 +692,7 @@ export async function createMessenger(deps: MessengerDeps) {
   // Telling a removed friend: a session of its own that says unfriend once they're there.
   async function sayFarewell(record: FarewellRecord) {
     const { id } = record
-    if (farewellSessions.has(id)) return
+    if (closed || farewellSessions.has(id)) return
     const legacy = await legacyRoom(id)
     await devices.loadFriend(id)
     const session: PairSession = startPairSession({
@@ -699,11 +709,14 @@ export async function createMessenger(deps: MessengerDeps) {
       onEvent: (event) => {
         if (event.type !== 'online') return
         void session.unfriend().then(async () => {
+          // Closed meanwhile, perhaps to be forgotten (0035): the store may be another's now.
+          if (closed) return
           farewells = farewells.filter((other) => other.id !== id)
           await store.set(KEYS.farewells, farewells)
           farewellSessions.delete(id)
           forget(session)
           await session.close()
+          saidFarewells()
         })
       },
     })
@@ -716,7 +729,7 @@ export async function createMessenger(deps: MessengerDeps) {
 
   async function removeFriend(id: PeerId, options: { block: boolean }) {
     const view = friend(id)
-    if (view === undefined) return
+    if (closed || view === undefined) return
     const session = sessions.get(id)
     sessions.delete(id)
     if (session !== undefined) forget(session)
@@ -1031,6 +1044,8 @@ export async function createMessenger(deps: MessengerDeps) {
     await store.set(KEYS.profile, profileValue)
     await store.set(KEYS.friends, friends)
     await store.set(KEYS.blocked, blockedList)
+    // Nothing of a Pigeon left behind (0035) is said as this one.
+    await store.set(KEYS.farewells, [])
     for (const [id, friendLog] of logs)
       if (
         isDeviceLog(friendLog) &&
@@ -1055,6 +1070,30 @@ export async function createMessenger(deps: MessengerDeps) {
     const log = devices.own()
     if (self !== signer.id || (log.epochs?.length ?? 0) > 0) return false
     return log.entries.every((entry) => entry.kind === 'name' && entry.device === signer.id)
+  }
+
+  /**
+   * Whether leaving tells this Pigeon's friends (decision 0035): only when this is its only
+   * device and no copy of it has been heard (0028). A copy that never met its twin can't know.
+   */
+  const leavingTells = () => !twin() && devices.devices().every((device) => device.here)
+
+  /**
+   * Before this Pigeon is forgotten to link it to another (decision 0035): when `leavingTells`,
+   * each friend is removed and told, as removing them one by one does, and this waits until
+   * every one has heard or `until` resolves. Otherwise the Pigeon lives on elsewhere, so nobody
+   * is told. Returns how many friends haven't heard yet.
+   */
+  async function leave(until: Promise<void>): Promise<number> {
+    if (!leavingTells()) return 0
+    for (const { id } of friendList()) {
+      // Closed meanwhile, as when Pigeon moves to another tab: that tab keeps everyone.
+      if (closed) return farewells.length
+      await removeFriend(id, { block: false })
+    }
+    if (farewells.length > 0)
+      await Promise.race([until, new Promise<void>((resolve) => farewellsSaid.push(resolve))])
+    return farewells.length
   }
 
   /** Stops everything: no rooms, no sessions, no link or invite hosting. */
@@ -1118,7 +1157,13 @@ export async function createMessenger(deps: MessengerDeps) {
    * Messenger has to be started again to be that identity.
    */
   async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
-    if (!emptyHere()) return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'own' }
+    // This Pigeon's own code or link is never a reason to leave it (0035).
+    if (target.code === linking()?.code || target.fingerprint === selfFingerprint)
+      return { ok: false, error: 'own' }
+    // Waiting for its list, this is the only copy of a recovery: never offered to leave (0030).
+    if (isTailLog(devices.own())) return { ok: false, error: 'waiting' }
+    if (!emptyHere())
+      return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'has-devices' }
     if (target.code === linking()?.code) return { ok: false, error: 'own' }
     const result = await openLink({
       crypto,
@@ -1182,6 +1227,8 @@ export async function createMessenger(deps: MessengerDeps) {
     confirmLink,
     cancelLink,
     joinIdentity,
+    leavingTells,
+    leave,
     exportData,
     importData,
     /** This is the first device, the only one that links and removes devices. */

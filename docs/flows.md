@@ -74,7 +74,7 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
 
 ## Linking a device
 
-Toms puts his phone on his device log ([Devices](protocol.md#devices), [0024](decisions/0024-a-signed-list-of-devices.md)). The laptop is the device that writes the log; the phone must have no friends of its own.
+Toms puts his phone on his device log ([Devices](protocol.md#devices), [0024](decisions/0024-a-signed-list-of-devices.md)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first ([0035](decisions/0035-leave-a-pigeon-to-link-it.md)).
 
 ```text
   Laptop (writes the log)        link:<code>          Phone (new device)
