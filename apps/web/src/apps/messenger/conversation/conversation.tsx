@@ -35,6 +35,8 @@ export interface ConversationProps {
   onSend: (text: string) => void
   onDraft?: (text: string) => void
   onBuzz: () => void
+  /** File, Save Conversation As...: the chat as a .txt (M13). Absent for the sample. */
+  onSaveAs?: (() => void) | undefined
   onClose: () => void
   onAbout: () => void
 }
@@ -61,7 +63,18 @@ export function Conversation(props: ConversationProps) {
       <MenuBar
         label="Conversation"
         menus={[
-          { label: '&File', entries: [{ label: 'C&lose', onSelect: props.onClose }] },
+          {
+            label: '&File',
+            entries: [
+              {
+                label: 'Save Conversation &As...',
+                disabled: props.onSaveAs === undefined,
+                onSelect: () => props.onSaveAs?.(),
+              },
+              { kind: 'separator' },
+              { label: 'C&lose', onSelect: props.onClose },
+            ],
+          },
           { label: '&Edit', entries: [{ label: '&Clear my draft', onSelect: () => edit('') }] },
           {
             label: '&Actions',

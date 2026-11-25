@@ -19,6 +19,10 @@ export interface LiveConversationProps {
   onAbout: () => void
   /** The friend's own items for the Actions menu (profile, rename, mute, remove). */
   actions?: (() => readonly MenuEntry[]) | undefined
+  /** Hands the visitor a text file to save: Save Conversation As... (M13). */
+  saveText?: ((name: string, text: string) => void) | undefined
+  /** Now, for the line saying when it was saved. */
+  now?: (() => number) | undefined
 }
 
 /** "6:38 PM", in the visitor's own time zone, like the taskbar clock. */
@@ -101,6 +105,37 @@ export function transcriptFor(
   return entries
 }
 
+/** "Conversation with Mika.txt", without characters file systems refuse. */
+export function conversationFileName(name: string): string {
+  const safe = [...name]
+    .filter((char) => (char.codePointAt(0) ?? 0) >= 32 && !'\\/:*?"<>|'.includes(char))
+    .join('')
+    .trim()
+  return `Conversation with ${safe === '' ? 'a friend' : safe}.txt`
+}
+
+/** The chat as plain text, one message a line with its day and time, for Save Conversation As. */
+export function conversationText(
+  view: FriendView,
+  mine: (author: PeerId) => boolean,
+  selfName: string,
+  savedAt: number,
+): string {
+  const when = (at: number) => `${dayName(at)}, ${clockTime(at)}`
+  const lines = [
+    `Conversation with ${view.name} <${formatFingerprint(view.fingerprint)}>`,
+    `Saved from Pigeon on ${dayName(savedAt)}, ${new Date(savedAt).getFullYear()} at ${clockTime(savedAt)}`,
+    '',
+  ]
+  if (view.addedAt > 0)
+    lines.push(`${selfName} and ${view.name} became friends on ${when(view.addedAt)}.`, '')
+  for (const entry of view.log.entries)
+    lines.push(`[${when(entry.at)}] ${mine(entry.author) ? selfName : view.name}: ${entry.text}`)
+  if (view.removedYouAt !== undefined)
+    lines.push('', `${view.name} removed you as a friend on ${when(view.removedYouAt)}.`)
+  return `${lines.join('\n')}\n`
+}
+
 export function LiveConversation(props: LiveConversationProps) {
   const view = () => props.messenger.friend(props.friend)
 
@@ -147,6 +182,20 @@ export function LiveConversation(props: LiveConversationProps) {
             props.messenger.buzz(props.friend)
             props.onBuzz()
           }}
+          onSaveAs={
+            props.saveText === undefined
+              ? undefined
+              : () =>
+                  props.saveText?.(
+                    conversationFileName(current().name),
+                    conversationText(
+                      current(),
+                      props.messenger.isMine,
+                      props.messenger.profile().handle,
+                      props.now?.() ?? Date.now(),
+                    ),
+                  )
+          }
           onClose={props.onClose}
           onAbout={props.onAbout}
           actions={props.actions?.()}

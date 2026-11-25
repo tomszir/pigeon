@@ -43,7 +43,7 @@ The Messenger's File menu has My Devices..., Link a Device... (on the first devi
 
 ## Your data
 
-The Messenger's File menu has Export My Data... and Import My Data... ([0029](decisions/0029-your-data-in-a-file-for-your-own-devices.md); `apps/messenger/your-data/`). Export asks for a passphrase twice (at least 8 characters, with the problem said under the fields), says nobody can open the file without it, and saves `Pigeon data <date>.txt`, whose first lines say what it is and how to import it. Import has Choose File... and a passphrase. It says when the passphrase doesn't open the file, when the file is someone else's Pigeon, or when it isn't an export, and once it's in, says so and starts Pigeon again.
+The Messenger's File menu has Export My Data... and Import My Data... ([0029](decisions/0029-your-data-in-a-file-for-your-own-devices.md); `apps/messenger/your-data/`). Export asks for a passphrase twice (at least 8 characters, with the problem said under the fields), says nobody can open the file without it, and saves `Pigeon data <date>.txt`, whose first lines say what it is and how to import it. Import has Choose File... and a passphrase. It says when the passphrase doesn't open the file, when the file is someone else's Pigeon, or when it isn't an export, and once it's in, says so and starts Pigeon again. A conversation window's File menu has Save Conversation As..., which saves `Conversation with <name>.txt`: who it's with and their fingerprint, when it was saved, when you became friends, then each message on a line as `[November 24, 6:38 PM] Mika: text`. Buzzes and comings and goings are left out.
 
 ## Friends
 

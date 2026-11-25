@@ -191,6 +191,7 @@ export function createPrograms(
           onClose={window.close}
           onAbout={openAbout}
           actions={() => friendMenu(id, 'chat')}
+          saveText={browserFiles.saveText}
         />
       ),
     })
