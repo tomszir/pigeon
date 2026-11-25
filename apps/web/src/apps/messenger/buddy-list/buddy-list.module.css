@@ -93,18 +93,6 @@
   color: var(--pg-text-muted);
 }
 
-/* On a phone each task is a full-width row: the whole strip takes the tap. */
-.phoneTasks {
-  gap: 0;
-  padding: 2px 0;
-}
-
-.phoneTasks .task {
-  gap: 10px;
-  width: 100%;
-  padding: 0 12px;
-}
-
 /* People waiting for you to add them: a strip above the list, the whole of it a button. */
 .requests {
   display: flex;
