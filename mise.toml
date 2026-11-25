@@ -11,6 +11,10 @@ run = ["pnpm install", "lefthook install", "node scripts/css-module-types.mjs ap
 description = "Run the web app on Vite's dev server"
 run = "pnpm --filter web dev"
 
+[tasks.lighthouse]
+description = "Run a Lighthouse on this computer, from apps/lighthouse/lighthouse.json"
+run = "pnpm --filter lighthouse start"
+
 [tasks.build]
 description = "Build the static site into apps/web/dist"
 run = "pnpm --filter web build"

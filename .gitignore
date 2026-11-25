@@ -7,3 +7,8 @@ dist/
 *.module.d.css.ts
 test-results/
 playwright-report/
+
+# A Lighthouse run on this computer: its config, key and mail.
+apps/lighthouse/lighthouse.json
+apps/lighthouse/lighthouse.key
+apps/lighthouse/lighthouse.sqlite*
