@@ -4,6 +4,12 @@
      `---'       version, newest first
 ==============================================
 
+0.7.1, 25 November 2026
+----------------------------------------------
+  * Say over the whole screen when Pigeon
+    couldn't start.
+  * Start again with a farewell still owed.
+
 0.7.0, 25 November 2026
 ----------------------------------------------
   * Started Pigeon on your phone and your
