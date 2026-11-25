@@ -20,6 +20,9 @@ export interface IceServer {
  */
 export const TURN_TTL_SECONDS = 4 * 60 * 60
 
+/** The header Pigeon's pages send with `GET /api/turn`, set to `1`. */
+export const TURN_REQUEST_HEADER = 'x-pigeon-turn'
+
 /**
  * A tag for TURN analytics, so one visitor using a lot of relay stands out: the country and a
  * keyed hash of the address. The hash can't be turned back into the address without the secret.
@@ -70,9 +73,12 @@ export async function handleTurn(
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
   if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405)
-  // Only Pigeon's own pages ask; a browser says where a request comes from.
+  // Only Pigeon's own pages ask. They send a header of their own, which a page on another site
+  // can't add without a CORS preflight this route never answers, and which a bare script such as
+  // curl doesn't send. Old Safari sends no Sec-Fetch-Site, so that header only counts when sent.
   const site = request.headers.get('sec-fetch-site')
-  if (site !== null && site !== 'same-origin') return json({ error: 'forbidden' }, 403)
+  if (request.headers.get(TURN_REQUEST_HEADER) !== '1' || (site !== null && site !== 'same-origin'))
+    return json({ error: 'forbidden' }, 403)
   if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json({ error: 'not configured' }, 503)
 
   const token = env.TURN_KEY_API_TOKEN

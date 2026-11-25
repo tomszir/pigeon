@@ -35,7 +35,11 @@ export function turnServers(
 
   const load = async (): Promise<TurnServer[]> => {
     try {
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+      // The route only answers requests carrying this header (see worker/turn.ts).
+      const response = await fetchImpl(url, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        headers: { 'x-pigeon-turn': '1' },
+      })
       if (!response.ok) return []
       const body = (await response.json()) as { iceServers?: unknown }
       const servers = Array.isArray(body.iceServers) ? body.iceServers.filter(isServer) : []

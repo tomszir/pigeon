@@ -6,6 +6,7 @@ import { handleTurn, TURN_TTL_SECONDS, visitorTag } from './turn.ts'
 const env = { TURN_KEY_ID: 'key-id', TURN_KEY_API_TOKEN: 'secret-token' }
 const get = (
   headers: Record<string, string> = {
+    'x-pigeon-turn': '1',
     'sec-fetch-site': 'same-origin',
     'cf-connecting-ip': '203.0.113.7',
   },
@@ -85,10 +86,29 @@ describe('handleTurn', () => {
     expect((await handleTurn(get({ 'sec-fetch-site': 'cross-site' }), env, fetchImpl)).status).toBe(
       403,
     )
+    expect(
+      (
+        await handleTurn(
+          get({ 'x-pigeon-turn': '1', 'sec-fetch-site': 'cross-site' }),
+          env,
+          fetchImpl,
+        )
+      ).status,
+    ).toBe(403)
+    // curl and other scripts send neither header; a page elsewhere can't add Pigeon's.
+    expect((await handleTurn(get({}), env, fetchImpl)).status).toBe(403)
+    expect(
+      (await handleTurn(get({ 'sec-fetch-site': 'same-origin' }), env, fetchImpl)).status,
+    ).toBe(403)
     const post = new Request('https://pigeon.test/api/turn', { method: 'POST' })
     expect((await handleTurn(post, env, fetchImpl)).status).toBe(405)
     expect((await handleTurn(get(), {}, fetchImpl)).status).toBe(503)
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('answers old Safari, which sends Pigeon’s header but no Sec-Fetch-Site', async () => {
+    const response = await handleTurn(get({ 'x-pigeon-turn': '1' }), env, cloudflare())
+    expect(response.status).toBe(200)
   })
 
   it('tags each visitor by a keyed hash of their address, never the address itself', async () => {
