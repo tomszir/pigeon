@@ -7,6 +7,7 @@ import { copyText } from '../platform/clipboard/browser-clipboard.ts'
 import { browserClock } from '../platform/clock/browser-clock.ts'
 import { createBrowserStore } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
+import { browserTabLock } from '../platform/tab-lock/tab-lock.ts'
 import { createShell } from '../shell/shell/shell.tsx'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invite.ts'
@@ -49,6 +50,7 @@ render(() => {
       sleep: browserClock.sleep,
       // Linked: start again as the identity this device now speaks for.
       restart: () => location.reload(),
+      startOver: () => startOver(),
     },
     sample,
     homeScreen,
@@ -115,28 +117,83 @@ render(() => {
     })
   }
 
-  void createBrowserStore()
-    .then(async (storage) => {
-      await tellWhatsNew(storage.store).catch((error: unknown) => console.error(error))
-      if (storage.persistent)
-        await hintHomeScreen(storage.store).catch((error: unknown) => console.error(error))
-      return startMessenger(programs.messengerEvents, storage, sayNoRelay, deviceName())
+  // pagehide fires for closing, reloading and navigating away, including on phones.
+  window.addEventListener('pagehide', () => messenger()?.goodbye())
+
+  const stopMessenger = async () => {
+    const running = messenger()
+    setMessenger(undefined)
+    running?.goodbye()
+    await running?.close()
+  }
+
+  // One tab at a time (decision 0028): another tab's Pigeon is the same device, so this one
+  // waits, and "Use it here" moves Pigeon over.
+  const ELSEWHERE = 'Pigeon is open in another tab.'
+  const lock = browserTabLock(async () => {
+    await stopMessenger()
+    setProblem('Pigeon moved to another tab.')
+    offerHere('Pigeon moved to another tab')
+  })
+  let storage: { readonly store: Store; readonly persistent: boolean } | undefined
+  const offerHere = (title: string) =>
+    api.notify({
+      title,
+      icon: tangoIcon('dialog-information', 16),
+      body: 'Only one tab runs Pigeon at a time. Use it here?',
+      onClick: () => {
+        void lock.takeOver().then(() => {
+          setProblem(undefined)
+          if (storage !== undefined) void run(storage, false)
+        })
+      },
     })
-    .then((started) => {
-      if (!started.ok) {
-        setProblem(started.problem)
+
+  // "Make This a New Device" on a copied profile: forget everything here and link it again.
+  const JOIN_ON_START = 'joinOnStart'
+  const startOver = async () => {
+    if (storage === undefined) return
+    await stopMessenger()
+    await storage.store.clear()
+    await storage.store.set(JOIN_ON_START, true)
+    location.reload()
+  }
+
+  const run = async (opened: NonNullable<typeof storage>, first: boolean) => {
+    if (first) {
+      await tellWhatsNew(opened.store).catch((error: unknown) => console.error(error))
+      if (opened.persistent)
+        await hintHomeScreen(opened.store).catch((error: unknown) => console.error(error))
+      if ((await opened.store.get(JOIN_ON_START)) === true) {
+        await opened.store.delete(JOIN_ON_START)
+        programs.openJoinDevice()
+      }
+    }
+    const started = await startMessenger(programs.messengerEvents, opened, sayNoRelay, deviceName())
+    if (!started.ok) {
+      setProblem(started.problem)
+      return
+    }
+    setMessenger(started.messenger)
+    if (!first) return
+    if (!started.persistent)
+      api.notify({
+        title: 'Pigeon will forget you',
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'This browser won’t let Pigeon store anything, so your name and friends last only until you close the tab.',
+      })
+    showInvite(incoming)
+  }
+
+  void createBrowserStore()
+    .then(async (opened) => {
+      storage = opened
+      if (!(await lock.tryHold())) {
+        setProblem(ELSEWHERE)
+        offerHere(ELSEWHERE)
         return
       }
-      setMessenger(started.messenger)
-      // pagehide fires for closing, reloading and navigating away, including on phones.
-      window.addEventListener('pagehide', () => started.messenger.goodbye())
-      if (!started.persistent)
-        api.notify({
-          title: 'Pigeon will forget you',
-          icon: tangoIcon('dialog-warning', 16),
-          body: 'This browser won’t let Pigeon store anything, so your name and friends last only until you close the tab.',
-        })
-      showInvite(incoming)
+      await run(opened, true)
     })
     .catch((error: unknown) => {
       setProblem('Pigeon couldn’t start in this browser.')

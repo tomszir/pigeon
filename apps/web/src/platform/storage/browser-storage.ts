@@ -45,6 +45,7 @@ export async function createBrowserStore(): Promise<{ store: Store; persistent: 
       get: (key) => done(objects('readonly').get(key)),
       set: async (key, value) => void (await done(objects('readwrite').put(value, key))),
       delete: async (key) => void (await done(objects('readwrite').delete(key))),
+      clear: async () => void (await done(objects('readwrite').clear())),
     },
   }
 }

@@ -1,5 +1,5 @@
 // Your devices (decision 0024): Link a Device on the one you have, Link to My Other Device on the
-// new one, and My Devices to see and remove them. Only the first device links and removes. Linking is in person: the new
+// new one, and My Devices to see and remove them, or to make a copied profile a new device (0028). Only the first device links and removes. Linking is in person: the new
 // device scans or types the code, both show the same 6-digit check, and you confirm on the old one.
 import { decodeDeviceLink, formatInviteCode, type Invite } from '@pigeon/core'
 import { createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js'
@@ -267,6 +267,8 @@ export function JoinDevice(props: JoinDeviceProps) {
 export interface MyDevicesProps {
   messenger: Messenger
   onLinkDevice: () => void
+  /** Forget everything here and link this browser again as a new device (decision 0028). */
+  onStartOver: () => void
   onClose: () => void
 }
 
@@ -274,6 +276,7 @@ export interface MyDevicesProps {
 export function MyDevices(props: MyDevicesProps) {
   const phone = useLayout() === 'phone'
   const [confirming, setConfirming] = createSignal<string | undefined>()
+  const [startingOver, setStartingOver] = createSignal(false)
   // Only the first device changes the list (decision 0024).
   const first = () => props.messenger.isFirstDevice()
   return (
@@ -283,6 +286,44 @@ export function MyDevices(props: MyDevicesProps) {
           This device was removed from your Pigeon by your first device. It keeps the chats it had,
           but talks to nobody now.
         </p>
+      </Show>
+      <Show when={props.messenger.twin()}>
+        <GroupBox legend="Also open somewhere else">
+          <div class={styles.column}>
+            <p class={styles.warning} role="alert">
+              This Pigeon is also open somewhere else: another browser has this device's key, as a
+              copied browser profile would. Each copy should be a device of its own.
+            </p>
+            <Show
+              when={startingOver()}
+              fallback={
+                <p class={styles.muted}>
+                  On the copy you want to keep as it is, do nothing. On the other, make it a new
+                  device, then link it from your Pigeon.
+                </p>
+              }
+            >
+              <p class={styles.warning}>
+                This forgets everything in this browser, its chats too, and opens Link to My Other
+                Device. Your other copy keeps them. Sure?
+              </p>
+            </Show>
+            <div class={styles.buttons}>
+              <Show
+                when={startingOver()}
+                fallback={
+                  <Button
+                    label="&Make This a New Device..."
+                    onClick={() => setStartingOver(true)}
+                  />
+                }
+              >
+                <Button label="Forget and Link Again" onClick={props.onStartOver} />
+                <Button label="Cancel" onClick={() => setStartingOver(false)} />
+              </Show>
+            </div>
+          </div>
+        </GroupBox>
       </Show>
       <Show when={!first() && props.messenger.deviceStatus() === 'active'}>
         <p class={styles.muted}>

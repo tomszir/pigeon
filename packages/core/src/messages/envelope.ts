@@ -19,13 +19,16 @@ export type Status = 'online' | 'away' | 'busy'
 export type Body =
   /**
    * `avatar` is the version your bird is drawn with; Pigeons that leave it out mean 1. `devices`:
-   * this Pigeon knows device logs (decision 0024); those before it don't say so.
+   * this Pigeon knows device logs (decision 0024); those before it don't say so. `instance`: a
+   * random id for this run of Pigeon, so a device that hears its own key with another one knows
+   * it's open somewhere else too (decision 0028).
    */
   | {
       readonly type: 'hello'
       readonly handle: string
       readonly avatar?: number
       readonly devices?: boolean
+      readonly instance?: string
     }
   /** Your device log: which devices speak for you. Sent before hello by an identity with one. */
   | { readonly type: 'device-log'; readonly log: DeviceLog }
@@ -96,6 +99,9 @@ function isSummary(value: unknown): boolean {
   )
 }
 
+/** A run's id, as `encodeInstance` makes it (decision 0028). */
+const isInstance = (value: unknown) => typeof value === 'string' && /^[a-z2-7]{8,32}$/.test(value)
+
 const isSpeaker = (b: Fields) =>
   (b['identity'] === undefined && b['devices'] === undefined) ||
   (typeof b['identity'] === 'string' && isPeerId(b['identity']) && isDeviceLog(b['devices']))
@@ -108,7 +114,8 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
       (Number.isSafeInteger(b['avatar']) &&
         (b['avatar'] as number) >= 1 &&
         (b['avatar'] as number) <= 255)) &&
-    (b['devices'] === undefined || b['devices'] === true),
+    (b['devices'] === undefined || b['devices'] === true) &&
+    (b['instance'] === undefined || isInstance(b['instance'])),
   'device-log': (b) => isDeviceLog(b['log']),
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&

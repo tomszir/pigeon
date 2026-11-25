@@ -19,7 +19,7 @@ export {
   summarize,
 } from './chat/chat-log.ts'
 export type { PairEvent, PairSession, PairSessionOptions, Presence } from './chat/pair-session.ts'
-export { startPairSession } from './chat/pair-session.ts'
+export { encodeInstance, INSTANCE_BYTES, startPairSession } from './chat/pair-session.ts'
 export type {
   AppendError,
   DeviceEntry,
