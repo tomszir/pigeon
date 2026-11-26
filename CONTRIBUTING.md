@@ -33,6 +33,7 @@ The `commit-msg` git hook and the `pr-title` CI job enforce the format (`scripts
 Bugs and features are filed through the issue forms; security problems are reported privately, as [SECURITY.md](SECURITY.md) says.
 
 - **Labels:** one kind (`bug`, `feature`, `security`, `docs`), one priority (`p1` before the next release, `p2` soon, `p3` some day) and, where one fits, an area (`core`, `lighthouse`, `web`). New issues start with `triage`, which comes off when a priority goes on. The forms add the kind, and a workflow adds the area the form names.
+- **Milestones:** each planned release has one. A `p1` goes into the next release; a `p2` into the release it belongs with; a `p3` stays without a milestone until it's chosen for one.
 - **Lean:** short bullets of fact, not paragraphs. Point at `path:line`, say who can do what, and don't restate the title.
 - **Shape:** what's wrong, how it's reproduced (steps, a failing test or a command, or that it wasn't), and what "done" means: a check someone else could run.
 - **Closing:** a PR that fixes an issue says `Fixes #N` in its description. Duplicates and ideas that won't happen are closed with GitHub's own reasons, not labels.

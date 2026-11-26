@@ -43,6 +43,8 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
 ## Issues and decisions
 
 - Issues follow the forms in `.github/ISSUE_TEMPLATE/` and [CONTRIBUTING.md](CONTRIBUTING.md#issues). Filed from the command line, the body uses the form's headings (`### What happened`, `### Why`, `### Done when`, ...) and the labels the form would add, with `triage` swapped for a priority once one is known.
+- Nothing found gets lost. Every bug, gap or vulnerability that turns up, in a review, a report or while doing something else, is filed before the task ends: a private draft advisory if it's a vulnerability, an issue otherwise. Or it's dismissed in writing where it was raised, with the reason.
+- Decide its impact before filing it, and give it the priority that follows instead of `triage`. Only a `p1`, or a `p2` that belongs with a planned release, goes into a release milestone. A `p3` is filed with no milestone, to be picked up later, not prioritised straight away. Moving a filed issue into a milestone is the maintainer's call.
 - A new decision record takes the number after the highest in docs/decisions/; check no other record has it.
 - To choose a release's version rather than let release-please pick it, end a pull request's description with `Release-As: x.y.z`.
 
