@@ -19,7 +19,7 @@ import { createMailbox, RESEND_AFTER_MS, type Recipient, type Source } from './m
 const DAY = 24 * 60 * 60 * 1000
 const NOON = Date.UTC(2026, 10, 25, 12)
 
-function setup(options: { skew?: number } = {}) {
+function setup(options: { skew?: number; understate?: boolean } = {}) {
   let now = NOON
   const lighthouseSigner = fakeSigner('lighthouse')
   const lighthouse = createLighthouse({
@@ -36,7 +36,21 @@ function setup(options: { skew?: number } = {}) {
     url: 'wss://l.example/',
   }
   let n = 0
-  const client = (): LighthouseClient =>
+  const client = (): LighthouseClient => {
+    const real = connect()
+    if (options.understate !== true) return real
+    // A Lighthouse that lists every blob as one byte, whatever it then hands over.
+    return {
+      ...real,
+      request: async (request) => {
+        const answer = await real.request(request)
+        if (!answer.ok || answer.value.type !== 'listed') return answer
+        const items = answer.value.items.map((item) => ({ ...item, size: 1 }))
+        return { ...answer, value: { ...answer.value, items } }
+      },
+    }
+  }
+  const connect = (): LighthouseClient =>
     createLighthouseClient({
       address,
       crypto: fakeCrypto,
@@ -135,6 +149,36 @@ describe('the mailbox', () => {
     const fromMika: Source = { sender: toMika.identity, secret, kinds: ['receipt'] }
     await rook.mailbox.fetch([address], [fromMika], async () => true)
     expect(await rook.mailbox.waitingOn()).toEqual([])
+  })
+
+  it('measures each blob it gets, whatever size the Lighthouse listed', async () => {
+    for (const [maxBytes, understate, taken] of [
+      [64 * 1024, true, 1],
+      [16 * 1024, false, 0],
+      // A Lighthouse that lists it as one byte doesn't get it opened either.
+      [16 * 1024, true, 0],
+    ] as const) {
+      const { address, device } = setup({ understate })
+      const rook = device('rook-laptop', 'rook')
+      const mika = device('mika-phone', 'mika')
+      const toMika: Recipient = {
+        identity: fakeSigner('mika').id,
+        secret,
+        keys: [await bindSealingKey(mika.signer, mika.sealer)],
+        lighthouses: [address],
+      }
+      const reason = 'x'.repeat(20_000)
+      expect(await rook.mailbox.send('farewell', toMika, { reason })).toBe(true)
+      const take = vi.fn(async () => true)
+      const fromRook: Source = {
+        sender: fakeSigner('rook').id,
+        secret,
+        kinds: ['farewell'],
+        maxBytes,
+      }
+      await mika.mailbox.fetch([address], [fromRook], take)
+      expect(take).toHaveBeenCalledTimes(taken)
+    }
   })
 
   it('puts a letter again after a few days without receipt, taken only once', async () => {

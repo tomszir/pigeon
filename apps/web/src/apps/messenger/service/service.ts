@@ -83,6 +83,7 @@ import {
   type SealingKey,
   type Signer,
   type Status,
+  sealingKeyToKeep,
   selfRoomsAt,
   startPairSession,
   type Transport,
@@ -574,7 +575,9 @@ export async function createMessenger(deps: MessengerDeps) {
   ): Promise<boolean> {
     const book = await mailBook(id)
     const keys =
-      event.sealing === undefined ? book.keys : { ...book.keys, [event.device]: event.sealing }
+      event.sealing === undefined
+        ? book.keys
+        : { ...book.keys, [event.device]: sealingKeyToKeep(book.keys[event.device], event.sealing) }
     const next: MailBook = { keys, lighthouses: event.lighthouses ?? book.lighthouses }
     if (JSON.stringify(next) === JSON.stringify(book)) return false
     mailBooks.set(id, next)

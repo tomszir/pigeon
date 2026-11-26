@@ -148,11 +148,12 @@ export {
   isSealingKey,
   mailTag,
   openMail,
+  sealingKeyToKeep,
   sealMail,
   utcDate,
   verifySealingKey,
 } from './mail/mail.ts'
-export type { SealCrypto, Sealer } from './mail/seal-crypto.ts'
+export type { HpkeSealed, SealCrypto, Sealer } from './mail/seal-crypto.ts'
 export type {
   Body,
   BodyType,

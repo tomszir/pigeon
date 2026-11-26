@@ -99,12 +99,18 @@ export function fakeSealCrypto(seed = 1): SealCrypto & { sealer(name: string): S
   }
   const tag = (key: Uint8Array, nonce: Uint8Array, data: Uint8Array) =>
     fakeHash(concatBytes(key, nonce, data)).subarray(0, 16)
+  // As WebCrypto does with a key that isn't a point it can use; a key whose 64 bytes are all the
+  // same stands for one of the right shape that isn't on the curve.
+  const usable = (peer: Uint8Array) =>
+    peer.length === 65 && peer[0] === 4 && !peer.subarray(1).every((b) => b === peer[1])
+  // HPKE's stand-in: a key from the shared secret, `info` and both public keys, and the
+  // sealing below with `aad` in the tag's place of the nonce.
+  const hpkeKey = (enc: Uint8Array, recipient: Uint8Array, info: Uint8Array) =>
+    fakeHash(concatBytes(shared(enc, recipient), info, enc, recipient))
+  const zero = new Uint8Array(12)
   return {
     async ephemeralShare(peer) {
-      // As WebCrypto does with a key that isn't a point it can use; a key whose 64 bytes are all
-      // the same stands for one of the right shape that isn't on the curve.
-      if (peer.length !== 65 || peer[0] !== 4 || peer.subarray(1).every((b) => b === peer[1]))
-        throw new Error('DataError: Invalid keyData')
+      if (!usable(peer)) throw new Error('DataError: Invalid keyData')
       const secret = random(32)
       const publicKey = publicOf(secret)
       return { publicKey, shared: shared(publicKey, peer) }
@@ -131,12 +137,27 @@ export function fakeSealCrypto(seed = 1): SealCrypto & { sealer(name: string): S
       return stream(key, nonce, body.length).map((byte, i) => byte ^ (body[i] ?? 0))
     },
     random,
+    async hpkeSeal(peer, info, aad, data) {
+      if (!usable(peer)) throw new Error('DataError: Invalid keyData')
+      const enc = publicOf(random(32))
+      const key = hpkeKey(enc, peer, info)
+      const body = stream(key, zero, data.length).map((byte, i) => byte ^ (data[i] ?? 0))
+      return { enc, sealed: concatBytes(body, tag(key, aad, body)) }
+    },
     sealer(name) {
       const publicKey = publicOf(utf8Encode(`sealer:${name}`))
       return {
         publicKey,
         share: async (peer) =>
           peer.length === 65 && peer[0] === 4 ? shared(publicKey, peer) : undefined,
+        async hpkeOpen(enc, info, aad, sealed) {
+          if (enc.length !== 65 || enc[0] !== 4 || sealed.length < 16) return undefined
+          const key = hpkeKey(enc, publicKey, info)
+          const body = sealed.subarray(0, sealed.length - 16)
+          if (!bytesEqual(sealed.subarray(sealed.length - 16), tag(key, aad, body)))
+            return undefined
+          return stream(key, zero, body.length).map((byte, i) => byte ^ (body[i] ?? 0))
+        },
       }
     },
   }
