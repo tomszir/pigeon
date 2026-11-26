@@ -11,6 +11,7 @@ import {
   type LighthouseClient,
   pairRoom,
   pairRoomOn,
+  type RoomName,
 } from '@pigeon/core'
 import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
 import { createRoot } from 'solid-js'
@@ -644,6 +645,110 @@ describe('private rooms', () => {
     expect(only(a.messenger.friends()).online).toBe(true)
     const again = await messenger(network, 'rook', { store: a.store })
     expect(again.messenger.settings().relayOnly).toBe(true)
+  })
+})
+
+describe('relay-only for your own devices', () => {
+  it('joins the self room and a shown device link again through the relay', async () => {
+    const { network, laptop } = await laptopAndPhone()
+    const shown = await laptop.messenger.startLink()
+    const before = network.joins.length
+    await laptop.messenger.setRelayOnly(true)
+    await flush()
+    const after = network.joins.slice(before)
+    expect(after.some((join) => join.name.startsWith('self:'))).toBe(true)
+    expect(after.some((join) => join.name.startsWith('link:'))).toBe(true)
+    expect(after.every((join) => join.options.relayOnly === true)).toBe(true)
+    // The old link's room is left, and the link shown now is a new one.
+    const code = laptop.messenger.linking()?.code
+    expect(code).toBeDefined()
+    expect(code).not.toBe(shown?.code)
+    expect(network.occupants(`link:${shown?.code}` as RoomName)).toBe(0)
+  })
+
+  it('leaves nothing hosted after quick toggles and a close', async () => {
+    const network = createMemoryNetwork()
+    const laptop = await messenger(network, 'rook', { clock: fakeClock(NOON) })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await laptop.messenger.newInvite()
+    await laptop.messenger.startLink()
+    // Joins that take a while, some longer than others, as over a real network.
+    const transport = laptop.transport as { join: typeof laptop.transport.join }
+    const join = transport.join.bind(laptop.transport)
+    let n = 0
+    transport.join = async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, (n++ % 3) * 3))
+      return join(...args)
+    }
+    const toggles = Promise.all([
+      laptop.messenger.setRelayOnly(true),
+      laptop.messenger.setRelayOnly(false),
+      laptop.messenger.setRelayOnly(true),
+    ])
+    // Closed while they're under way.
+    await new Promise((resolve) => setTimeout(resolve, 4))
+    await laptop.messenger.close()
+    await toggles
+    await flush()
+    const hosted = [...new Set(network.joins.map((join) => join.name))].filter(
+      (name) => network.occupants(name) > 0 && /^(link|invite):/.test(name),
+    )
+    expect(hosted).toEqual([])
+  })
+
+  it('hosts no link nobody shows, when it is closed or started again during a toggle', async () => {
+    const network = createMemoryNetwork()
+    const laptop = await messenger(network, 'rook', { clock: fakeClock(NOON) })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await laptop.messenger.startLink()
+    const transport = laptop.transport as { join: typeof laptop.transport.join }
+    const join = transport.join.bind(laptop.transport)
+    transport.join = async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      return join(...args)
+    }
+    const hosted = () =>
+      [...new Set(network.joins.map((j) => j.name))].filter(
+        (name) => name.startsWith('link:') && network.occupants(name) > 0,
+      )
+    // The dialog closes while relay-only is being turned on.
+    const toggle = laptop.messenger.setRelayOnly(true)
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    await laptop.messenger.cancelLink()
+    await toggle
+    await flush()
+    expect(laptop.messenger.linking()).toBeUndefined()
+    expect(hosted()).toEqual([])
+    // It opens again while relay-only is being turned off: one link, the one shown.
+    const off = laptop.messenger.setRelayOnly(false)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await laptop.messenger.startLink()
+    await off
+    await flush()
+    expect(hosted()).toEqual([`link:${laptop.messenger.linking()?.code}`])
+    await laptop.messenger.close()
+    await flush()
+    expect(hosted()).toEqual([])
+  })
+
+  it('leaves a link a device has answered to finish', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const laptop = await messenger(network, 'rook', { clock })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const fresh = await messenger(network, 'rook-phone', { clock })
+    const linking = await laptop.messenger.startLink()
+    const target = decodeDeviceLink(linking?.link ?? '')
+    if (!target.ok) throw new Error('bad link')
+    const joined = await fresh.messenger.joinIdentity(target.value, never)
+    if (!joined.ok) throw new Error(joined.error)
+    await flush()
+    await laptop.messenger.setRelayOnly(true)
+    await flush()
+    expect(laptop.messenger.linking()?.code).toBe(linking?.code)
+    const confirmed = joined.offer.confirmed(never)
+    expect(await laptop.messenger.confirmLink('rook-phone')).toBe('linked')
+    expect(await confirmed).toBe(true)
   })
 })
 
