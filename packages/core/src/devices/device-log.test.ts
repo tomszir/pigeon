@@ -272,6 +272,12 @@ describe('a recovery key', () => {
     const ab = await mergeDeviceLogs(fakeCrypto, a, b)
     const ba = await mergeDeviceLogs(fakeCrypto, b, a)
     expect(deviceState(ab).writer).toBe(deviceState(ba).writer)
+    // The lower signature wins, in the order of its base32 spelling, as every Pigeon has settled
+    // it, so one before this one still settles on the same recover.
+    const sigs = [a, b].map((log) => log.epochs?.[0]?.recover.sig ?? '')
+    const lower = [...sigs].sort()[0]
+    expect(ab.epochs?.[0]?.recover.sig).toBe(lower)
+    expect(ba.epochs?.[0]?.recover.sig).toBe(lower)
   })
 
   it('can’t be broken by a stolen first device writing to the epoch it lost', async () => {
@@ -552,6 +558,27 @@ describe('a first device that signs with P-256', () => {
         await speakerIdentity(strict, d2, { identity: owner.id, devices: removed }, friend),
       ).toBeUndefined()
     }
+  })
+
+  it('chains each entry to the exact bytes of the one before, not another spelling of them', async () => {
+    const owner = await p256Signer('low')
+    const added = await step(owner, emptyDeviceLog(owner.id), 'add')
+    const first = added.entries[0]
+    if (first === undefined) throw new Error('no entry')
+    // The owner's own next entry, signed naming the first entry's other spelling.
+    const twin = { ...added, entries: [{ ...first, sig: flip(first.sig) }] }
+    const next = (await step(owner, twin, 'remove')).entries[1]
+    if (next === undefined) throw new Error('no entry')
+    expect(decode(next.prev)).toEqual(flipS(decode(first.sig)))
+    // Beside the first entry as it was signed, it names something else: the chain breaks.
+    const mixed = { ...added, entries: [first, next] }
+    expect(await verifyDeviceLog(strict, mixed)).toBe(false)
+    expect(await mergeDeviceLogs(strict, added, mixed)).toBe(added)
+    // Nor does a spelling that doesn't decode, or one in capitals, stand for the bytes.
+    const spelled = (prev: string) => ({ ...added, entries: [first, { ...next, prev }] })
+    const unpadded = `${first.sig.slice(0, -1)}${first.sig.endsWith('7') ? '6' : '7'}`
+    for (const prev of [unpadded, first.sig.toUpperCase()])
+      expect(await verifyDeviceLog(strict, spelled(prev))).toBe(false)
   })
 
   it('takes a high-S signature only where the next entry’s signed prev fixes it', async () => {

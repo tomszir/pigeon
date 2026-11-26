@@ -53,6 +53,13 @@ const signedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
     text: entry.text,
   })
 
+/**
+ * What an entry is known by in its chat: its author and number. A chat holds one entry for each,
+ * the first it saw, so this names it however its signature is spelled.
+ */
+export const entryKey = (entry: Pick<LogEntry, 'author' | 'seq'>): string =>
+  `${entry.author}/${entry.seq}`
+
 const compare = (a: LogEntry, b: LogEntry): number =>
   a.lamport - b.lamport || (a.author < b.author ? -1 : a.author > b.author ? 1 : a.seq - b.seq)
 
@@ -166,10 +173,10 @@ export async function mergeEntries(
 ): Promise<ChatLog> {
   const takes =
     typeof authors === 'function' ? authors : (entry: LogEntry) => authors.has(entry.author)
-  const held = new Set(log.entries.map((entry) => `${entry.author}/${entry.seq}`))
+  const held = new Set(log.entries.map(entryKey))
   const added: LogEntry[] = []
   for (const entry of incoming) {
-    const key = `${entry.author}/${entry.seq}`
+    const key = entryKey(entry)
     if (held.has(key) || !takes(entry) || entry.lamport > Number.MAX_SAFE_INTEGER) continue
     if (!(await verifyEntry(crypto, log.id, entry))) continue
     held.add(key)

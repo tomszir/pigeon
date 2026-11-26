@@ -8,6 +8,7 @@ import {
   batchEntries,
   type ChatLog,
   emptyLog,
+  entryKey,
   isLogEntry,
   type LogEntry,
   MAX_LAMPORT_LEAD,
@@ -205,7 +206,8 @@ describe('a P-256 author', () => {
     expect(sent[0]?.sig).not.toBe(entry?.sig)
     const taken = await mergeEntries(strict, emptyLog('pair:x'), sent, authors)
     expect(taken.entries.map((e) => e.text)).toEqual(['from before'])
-    // One who holds it already in the old spelling keeps one copy.
+    // One who holds it already in the old spelling keeps one copy, and knows it by one key.
     expect((await mergeEntries(strict, kept, sent, authors)).entries.length).toBe(1)
+    expect(entryKey(sent[0] as LogEntry)).toBe(entryKey(entry as LogEntry))
   })
 })

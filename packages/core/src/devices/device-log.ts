@@ -24,12 +24,14 @@
 // already has your earlier epochs takes a tail, and the tail's owner takes a whole log only if it
 // runs through the key in `by`.
 //
-// A P-256 signature has a second spelling that verifies too (see identity/signature.ts), and an
-// entry's `prev` names the one before by its spelling. So copies are compared by their content
-// and the low-S spelling, and a high-S one is taken only where the next entry's signed `prev`
-// fixes it in place: the last entry of each chain, and every recover and recovery commitment,
-// has to be low-S. Pigeons from before low-S signed either way, so a log they kept has its last
-// spellings made low-S when it's read back (`lowSDeviceLog`); nothing before them changes.
+// Signatures are compared as the bytes they decode to, never as text, whether they're chained,
+// matched or ordered. A P-256 signature has a second spelling that verifies too (see
+// identity/signature.ts), and an entry's `prev` names the one before by its exact bytes. So
+// copies are compared by their content and the low-S bytes, and a high-S one is taken only where
+// the next entry's signed `prev` fixes it in place: the last entry of each chain, and every
+// recover and recovery commitment, has to be low-S. Pigeons from before low-S signed either way,
+// so a log they kept has its last spellings made low-S when it's read back (`lowSDeviceLog`);
+// nothing before them changes.
 import { base32DecodeExact, base32Encode, bytesEqual } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
@@ -361,39 +363,66 @@ export function deviceState(log: DeviceLog): DeviceState {
 }
 
 /**
- * Whether `sig` is `signer`'s over `bytes`. Crypto takes only the low-S spelling; `fixed` says
- * a later signed `prev` names this spelling, so a high-S one from before low-S is read as its
- * low-S twin there and nowhere else.
+ * Whether `signature` is `signer`'s over `bytes`. Crypto takes only the low-S spelling; `fixed`
+ * says a later signed `prev` names this spelling, so a high-S one from before low-S is read as
+ * its low-S twin there and nowhere else.
  */
-async function checkSig(
+function checkSig(
   crypto: Crypto,
   signer: PeerId,
-  sig: string,
+  signature: Uint8Array,
   bytes: Uint8Array,
   fixed = false,
 ) {
-  const signature = base32DecodeExact(sig)
-  if (!signature.ok) return false
-  const spelled = fixed ? canonicalSignature(signer, signature.value) : signature.value
+  const spelled = fixed ? canonicalSignature(signer, signature) : signature
   return crypto.verify(signer, spelled, bytes)
 }
 
-/** `sig` in the low-S spelling, as text; anything that doesn't decode comes back as it is. */
-function lowS(signer: PeerId, sig: string): string {
+/** `checkSig` on a signature as it's written, which has to decode first. */
+async function checkWritten(crypto: Crypto, signer: PeerId, sig: string, bytes: Uint8Array) {
   const signature = base32DecodeExact(sig)
-  if (!signature.ok) return sig
+  return signature.ok && checkSig(crypto, signer, signature.value, bytes)
+}
+
+/** `sig` in the low-S spelling, as text, or undefined when it's spelled that way already. */
+function lowS(signer: PeerId, sig: string): string | undefined {
+  const signature = base32DecodeExact(sig)
+  if (!signature.ok) return undefined
   const canonical = canonicalSignature(signer, signature.value)
-  return canonical === signature.value ? sig : base32Encode(canonical)
+  return canonical === signature.value ? undefined : base32Encode(canonical)
+}
+
+/**
+ * A signature by `signer` as the bytes it's compared by: decoded, and made low-S when the
+ * signer's kind of key has a second spelling. Undefined when it doesn't decode. With no signer
+ * known, the bytes as written.
+ */
+function sigBytes(signer: PeerId | undefined, sig: string): Uint8Array | undefined {
+  const signature = base32DecodeExact(sig)
+  if (!signature.ok) return undefined
+  return signer === undefined ? signature.value : canonicalSignature(signer, signature.value)
 }
 
 /** Two spellings of one signature by `signer` are the same signature. */
 function sameSig(signer: PeerId | undefined, a: string, b: string): boolean {
-  if (a === b) return true
-  if (signer === undefined) return false
-  const left = base32DecodeExact(a)
-  const right = base32DecodeExact(b)
-  if (!left.ok || !right.ok) return false
-  return bytesEqual(canonicalSignature(signer, left.value), canonicalSignature(signer, right.value))
+  const left = sigBytes(signer, a)
+  const right = sigBytes(signer, b)
+  return left !== undefined && right !== undefined && bytesEqual(left, right)
+}
+
+/**
+ * Orders two signatures by `signer`, from their decoded bytes. The order is that of their
+ * base32 spelling, the order Pigeons have always settled a tie by, so every Pigeon still picks
+ * the same one; spelling them from the bytes means no second spelling can change it. One that
+ * doesn't decode sorts last.
+ */
+function compareSigs(signer: PeerId | undefined, a: string, b: string): number {
+  const left = sigBytes(signer, a)
+  const right = sigBytes(signer, b)
+  if (left === undefined || right === undefined)
+    return Number(left === undefined) - Number(right === undefined)
+  const [x, y] = [base32Encode(left), base32Encode(right)]
+  return x < y ? -1 : x > y ? 1 : 0
 }
 
 /** One epoch's chain: numbered, linked, signed by its writer and allowed step by step. */
@@ -404,15 +433,19 @@ async function checkChain(
   state: EpochState,
   entries: readonly DeviceEntry[],
 ): Promise<boolean> {
-  let prev = ''
+  // Each entry names the one before by its signature's bytes, exactly as they were signed.
+  let prev: Uint8Array = new Uint8Array()
   for (const [index, entry] of entries.entries()) {
-    if (entry.seq !== index + 1 || entry.prev !== prev) return false
+    const named = base32DecodeExact(entry.prev)
+    const signature = base32DecodeExact(entry.sig)
+    if (!named.ok || !signature.ok) return false
+    if (entry.seq !== index + 1 || !bytesEqual(named.value, prev)) return false
     // The next entry's signed `prev` fixes this one's spelling; the last one's isn't fixed.
     const fixed = index < entries.length - 1
     const bytes = entryBytes(identity, epoch, entry)
-    if (!(await checkSig(crypto, state.writer, entry.sig, bytes, fixed))) return false
+    if (!(await checkSig(crypto, state.writer, signature.value, bytes, fixed))) return false
     if (apply(state, entry) !== undefined) return false
-    prev = entry.sig
+    prev = signature.value
   }
   return true
 }
@@ -429,7 +462,8 @@ async function checkEpochs(
   for (const [index, { recover, entries }] of epochs.entries()) {
     if (recover.epoch !== firstNumber + index || key === undefined) return false
     if (!recoverHolds(recover)) return false
-    if (!(await checkSig(crypto, key, recover.sig, recoverBytes(identity, recover)))) return false
+    if (!(await checkWritten(crypto, key, recover.sig, recoverBytes(identity, recover))))
+      return false
     if (!(await checkChain(crypto, identity, recover.epoch, recoveredState(recover), entries)))
       return false
     key = recover.next
@@ -444,7 +478,7 @@ export async function verifyDeviceLog(crypto: Crypto, log: DeviceLog): Promise<b
   if (!(await checkChain(crypto, identity, 0, firstEpochState(identity), log.entries))) return false
   if (
     recovery !== undefined &&
-    !(await checkSig(
+    !(await checkWritten(
       crypto,
       identity,
       recovery.sig,
@@ -625,7 +659,8 @@ function settleEpochs(
     if (b === undefined) return [...out, ...ours.slice(index)]
     if (!sameRecover(key, a.recover, b.recover)) {
       const replaced = index < ours.length - 1
-      return [...out, ...(replaced || a.recover.sig < b.recover.sig ? ours : theirs).slice(index)]
+      const lower = compareSigs(key, a.recover.sig, b.recover.sig) < 0
+      return [...out, ...(replaced || lower ? ours : theirs).slice(index)]
     }
     const entries = longerChain(a.recover.writer, a.entries, b.entries) ?? a.entries
     out.push({ recover: a.recover, entries })
@@ -639,7 +674,7 @@ function lowSLast(writer: PeerId, entries: readonly DeviceEntry[]): readonly Dev
   const last = entries.at(-1)
   if (last === undefined) return entries
   const sig = lowS(writer, last.sig)
-  return sig === last.sig ? entries : [...entries.slice(0, -1), { ...last, sig }]
+  return sig === undefined ? entries : [...entries.slice(0, -1), { ...last, sig }]
 }
 
 /**
@@ -656,19 +691,19 @@ export function lowSDeviceLog(log: DeviceLog): DeviceLog {
   let recovery = log.recovery
   if (recovery !== undefined) {
     const sig = lowS(log.identity, recovery.sig)
-    if (sig !== recovery.sig) {
+    if (sig !== undefined) {
       recovery = { ...recovery, sig }
       changed = true
     }
   }
   let key = isTail(log) ? log.by : log.recovery?.key
   const epochs = epochsOf(log).map((epoch) => {
-    const sig = key === undefined ? epoch.recover.sig : lowS(key, epoch.recover.sig)
+    const sig = key === undefined ? undefined : lowS(key, epoch.recover.sig)
     key = epoch.recover.next
     const kept = lowSLast(epoch.recover.writer, epoch.entries)
-    if (sig === epoch.recover.sig && kept === epoch.entries) return epoch
+    if (sig === undefined && kept === epoch.entries) return epoch
     changed = true
-    return { recover: { ...epoch.recover, sig }, entries: kept }
+    return { recover: { ...epoch.recover, sig: sig ?? epoch.recover.sig }, entries: kept }
   })
   if (!changed) return log
   return withEpochs({ ...log, entries, ...(recovery === undefined ? {} : { recovery }) }, epochs)
