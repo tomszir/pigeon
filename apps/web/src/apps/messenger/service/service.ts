@@ -53,7 +53,6 @@ import {
   newCode,
   type OpenStep,
   openInvite,
-  openLink,
   PAIR_SECRET_BYTES,
   type PairEvent,
   type PairPlace,
@@ -69,7 +68,6 @@ import {
   type Result,
   type RoomName,
   readRekey,
-  recoverDeviceLog,
   rekeyBody,
   type SealCrypto,
   type Sealer,
@@ -90,6 +88,7 @@ import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
 import { DEVICE_KEYS, loadDevices } from './devices.ts'
+import { createIdentityMoves } from './identity-moves.ts'
 import {
   type InviteLinks,
   type LinkFriend,
@@ -101,13 +100,10 @@ import { createMailbox, type Mailbox, type Recipient, type Source } from './mail
 import type {
   CodeAsk,
   FriendView,
-  JoinedIdentity,
-  LeaveProgress,
   LinkingState,
   MessengerEvents,
   Note,
   OpenedInvite,
-  RecoverResult,
 } from './messenger.ts'
 import {
   begin,
@@ -2361,54 +2357,37 @@ export async function createMessenger(deps: MessengerDeps) {
     return true
   }
 
-  /**
-   * A Pigeon with nobody on it: no friends, and no devices of its own beyond naming itself (as
-   * committing a recovery key does). It can be linked to another identity, or recovered onto. A
-   * recovered device waiting for its list isn't: wiping it would lose the recovery.
-   */
-  function emptyHere(): boolean {
-    if (friendList().length > 0) return false
-    const log = devices.own()
-    if (self !== signer.id || (log.epochs?.length ?? 0) > 0) return false
-    return log.entries.every((entry) => entry.kind === 'name' && entry.device === signer.id)
-  }
-
-  /**
-   * Whether leaving tells this Pigeon's friends: only when this is its only
-   * device and no copy of it has been heard. A copy that never met its twin can't know.
-   */
-  const leavingTells = () => !twin() && devices.devices().every((device) => device.here)
-
-  /**
-   * Before this Pigeon is forgotten to link it to another: when `leavingTells`,
-   * each friend is removed and told, as removing them one by one does, and this waits until
-   * every one has heard or `until` resolves. Otherwise the Pigeon lives on elsewhere, so nobody
-   * is told. `onProgress` hears how far it has got. Returns how many friends haven't heard yet.
-   */
-  async function leave(
-    until: Promise<void>,
-    onProgress?: (progress: LeaveProgress) => void,
-  ): Promise<number> {
-    if (!leavingTells()) return 0
-    const leaving = friendList().map((view) => view.id)
-    const total = leaving.length
-    const told = () => total - farewells.filter((record) => leaving.includes(record.id)).length
-    for (const [index, id] of leaving.entries()) {
-      // Closed meanwhile, as when Pigeon moves to another tab: that tab keeps everyone.
-      if (closed) return farewells.length
-      onProgress?.({ step: 'removing', done: index, total })
-      await removeFriend(id, { block: false })
-    }
-    onProgress?.({ step: 'telling', done: told(), total })
-    onFarewellSaid = () => onProgress?.({ step: 'telling', done: told(), total })
-    try {
-      if (farewells.length > 0)
-        await Promise.race([until, new Promise<void>((resolve) => farewellsSaid.push(resolve))])
-    } finally {
-      onFarewellSaid = undefined
-    }
-    return farewells.length
-  }
+  const { emptyHere, leavingTells, leave, recoverIdentity, joinIdentity } = createIdentityMoves({
+    crypto,
+    signer,
+    store,
+    clock,
+    transport,
+    pake: deps.pake,
+    ...(deps.deviceName === undefined ? {} : { deviceName: deps.deviceName }),
+    seal: deps.seal,
+    ownSealing,
+    self,
+    selfFingerprint,
+    devices,
+    friends: friendList,
+    farewells: () => farewells,
+    farewellWatch: {
+      hear: (onSaid) => {
+        onFarewellSaid = onSaid
+      },
+      wait: (resolve) => {
+        farewellsSaid.push(resolve)
+      },
+    },
+    twin,
+    closed: () => closed,
+    linking,
+    newSecret,
+    removeFriend,
+    close,
+    takeBundle,
+  })
 
   /** Relay-only changes, one at a time: two that overlapped could each host a room. */
   let relayChange: Promise<void> = Promise.resolve()
@@ -2457,100 +2436,6 @@ export async function createMessenger(deps: MessengerDeps) {
     if (leaving !== undefined) {
       forget(leaving)
       await leaving.close()
-    }
-  }
-
-  /**
-   * Brings an identity back onto this empty Pigeon with its recovery key: this
-   * device writes its list from now on, every other device is removed, and `next` is the key
-   * from now on. Then the Messenger has to start again as that identity, with no friends: they
-   * come back by pairing again, or from an export.
-   */
-  async function recoverIdentity(
-    identity: PeerId,
-    epoch: number,
-    key: Signer,
-    next: PeerId,
-  ): Promise<RecoverResult> {
-    const own = devices.own()
-    if (isTailLog(own)) {
-      // Waiting for the whole list, the tail is the only copy of this recovery: only the same
-      // code again may sign over it, never a later key or another identity.
-      if (identity !== self || epoch !== own.from || friendList().length > 0) return 'waiting'
-    } else {
-      if (identity === self) return 'own'
-      if (!emptyHere()) return friendList().length > 0 ? 'has-friends' : 'linked'
-    }
-    const log = await recoverDeviceLog(
-      identity,
-      undefined,
-      key,
-      {
-        epoch,
-        writer: signer.id,
-        keep: [{ device: signer.id, name: deps.deviceName ?? 'Recovered device' }],
-        next,
-      },
-      clock.now(),
-    )
-    if (log === undefined) return 'refused'
-    await close()
-    await store.set(DEVICE_KEYS.deviceLog, log)
-    const secret = newSecret()
-    await store.set(DEVICE_KEYS.selfSecretState, { secret, sealed: true })
-    await store.set(DEVICE_KEYS.selfSecret, secret)
-    // Last: with `self` set, this browser is that identity from its next start.
-    await store.set(DEVICE_KEYS.self, identity)
-    return 'recovered'
-  }
-
-  /**
-   * Links this device to the identity whose device showed `target`. Only a device with no
-   * friends of its own can be linked, since it takes on the other's. Once confirmed, the
-   * Messenger has to be started again to be that identity.
-   */
-  async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
-    // This Pigeon's own code or link is never a reason to leave it.
-    if (isOwnCode(linking()?.code, target) || target.fingerprint === selfFingerprint)
-      return { ok: false, error: 'own' }
-    // Waiting for its list, this is the only copy of a recovery: never offered to leave.
-    if (isTailLog(devices.own())) return { ok: false, error: 'waiting' }
-    if (!emptyHere())
-      return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'has-devices' }
-    if (deps.seal === undefined || ownSealing === undefined) return { ok: false, error: 'stopped' }
-    const result = await openLink({
-      crypto,
-      seal: deps.seal.crypto,
-      sealer: deps.seal.sealer,
-      sealing: ownSealing,
-      pake: deps.pake,
-      signer,
-      transport,
-      now: clock.now,
-      invite: target,
-      until,
-      sleep: clock.sleep,
-    })
-    if (!result.ok) return result
-    const { offer } = result
-    if (offer.identity === self) {
-      await offer.cancel()
-      return { ok: false, error: 'own' }
-    }
-    return {
-      ok: true,
-      offer: {
-        handle: offer.handle,
-        fingerprint: offer.fingerprint,
-        identityFingerprint: offer.identityFingerprint,
-        checked: offer.checked,
-        cancel: offer.cancel,
-        async confirmed(confirmUntil) {
-          const sent = await offer.accepted(confirmUntil)
-          if (sent === false) return false
-          return takeBundle(sent, offer.identity)
-        },
-      },
     }
   }
 
