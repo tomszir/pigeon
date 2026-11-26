@@ -34,7 +34,6 @@ import {
   isLighthouseAddress,
   isOwnCode,
   isPairSecret,
-  isPeerId,
   isPublicLighthouseUrl,
   isTailLog,
   type Json,
@@ -88,6 +87,7 @@ import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
 import { DEVICE_KEYS, loadDevices } from './devices.ts'
+import { createFriends, type FriendStore, nameOf } from './friends.ts'
 import { createIdentityMoves } from './identity-moves.ts'
 import {
   type InviteLinks,
@@ -126,7 +126,6 @@ import {
 } from './rekeys.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
-  type BlockedRecord,
   type FarewellRecord,
   type FriendRecord,
   type HostedInvite,
@@ -141,7 +140,6 @@ import {
   type MailBook,
   type MessengerSettings,
   type Profile,
-  secretFlags,
   splitBlockedRecords,
   splitFarewells,
   splitFriendRecords,
@@ -151,9 +149,6 @@ import { createYourData } from './your-data.ts'
 /** How long a "typing" lasts without a refresh, and how often the sender refreshes it. */
 export const TYPING_EXPIRES_MS = 6000
 export const TYPING_REFRESH_MS = 3000
-
-/** Stored for "until I unmute". */
-export const MUTED_FOREVER = -1
 
 export interface MessengerDeps {
   readonly crypto: Crypto
@@ -623,7 +618,7 @@ export async function createMessenger(deps: MessengerDeps) {
     const asked = new Set(sources.map((source) => source.sender))
     for (const waiting of await mailbox.waitingOn())
       if (!asked.has(waiting.identity)) {
-        const record = farewells.find((other) => other.id === waiting.identity)
+        const record = farewells().find((other) => other.id === waiting.identity)
         // Under the new secret too, when they may have moved to it before hearing.
         const secrets = new Set([waiting.secret, record?.secret, record?.old])
         for (const secret of secrets)
@@ -650,7 +645,7 @@ export async function createMessenger(deps: MessengerDeps) {
     // A farewell every device of theirs has a receipt for was heard: nothing more to say.
     // One that only expired wasn't, and goes on being said in person.
     for (const id of heard)
-      if (farewells.some((record) => record.id === id && record.mailed === true))
+      if (farewells().some((record) => record.id === id && record.mailed === true))
         await farewellHeard(id)
   }
 
@@ -664,9 +659,7 @@ export async function createMessenger(deps: MessengerDeps) {
   })
   const { checkMail, lookSoon, gapLeft, lookedAt, lookState, stopWaking } = mailSchedule
 
-  // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
-  type Mutable<T> = { -readonly [K in keyof T]: T[K] }
-  const [state, setState] = createStore<{ friends: Record<PeerId, Mutable<FriendView>> }>({
+  const [state, setState] = createStore<FriendStore>({
     friends: {},
   })
   const sessions = new Map<PeerId, PairSession>()
@@ -683,42 +676,6 @@ export async function createMessenger(deps: MessengerDeps) {
     return kept === undefined ? undefined : mailSecret(kept)
   }
 
-  const saveFriends = () =>
-    store.set(
-      KEYS.friends,
-      friendList().map(
-        ({
-          id,
-          handle,
-          addedAt,
-          petname,
-          mutedUntil,
-          removedYouAt,
-          secret,
-          moved,
-          sealed,
-          replacing,
-          prior,
-          renew,
-          begun,
-        }): FriendRecord => ({
-          id,
-          handle,
-          addedAt,
-          ...(petname === undefined ? {} : { petname }),
-          ...(mutedUntil === undefined ? {} : { mutedUntil }),
-          ...(removedYouAt === undefined ? {} : { removedYouAt }),
-          ...(secret === undefined ? {} : { secret }),
-          ...(moved === true ? { moved } : {}),
-          ...secretFlags({ sealed, replacing, prior, renew, begun }),
-        }),
-      ),
-    )
-  // Names saved before they were checked, petnames included, are shown cleaned, so none can break
-  // a line or turn text around; one with nothing left shows as "Friend".
-  const nameOf = (handle: string, petname: string | undefined) =>
-    cleanHandle(petname ?? '') || cleanHandle(handle) || 'Friend'
-
   /**
    * Keeps records that couldn't be read exactly as stored under `key`, never written over. Done
    * before anything saves the records that did load, which would drop these from their own list.
@@ -734,14 +691,34 @@ export async function createMessenger(deps: MessengerDeps) {
   }
   const storedBlocked = splitBlockedRecords(await store.get(KEYS.blocked))
   const blockedAside = await setAside(KEYS.unreadableBlocked, storedBlocked.unreadable)
-  const [blocked, setBlocked] = createSignal<readonly BlockedRecord[]>(storedBlocked.readable)
-  const isBlocked = (id: PeerId) => blocked().some((record) => record.id === id)
   const storedFarewells = splitFarewells(await store.get(KEYS.farewells))
   const farewellsAside = await setAside(KEYS.unreadableFarewells, storedFarewells.unreadable)
   // A farewell stored before pair secrets was just an id.
-  let farewells: readonly FarewellRecord[] = storedFarewells.readable.map((entry) =>
-    typeof entry === 'string' ? { id: entry } : entry,
-  )
+  const {
+    saveFriends,
+    blocked,
+    isBlocked,
+    block,
+    unblock,
+    farewells,
+    keepFarewell,
+    dropFarewell,
+    onlineCount,
+    isFriend,
+    rename,
+    mute,
+    muted,
+  } = createFriends({
+    store,
+    clock,
+    friends: friendList,
+    friend,
+    setState,
+    initialBlocked: storedBlocked.readable,
+    initialFarewells: storedFarewells.readable.map((entry) =>
+      typeof entry === 'string' ? { id: entry } : entry,
+    ),
+  })
   const farewellSessions = new Map<PeerId, PairSession>()
   /**
    * Set once `close` runs. Declared before anything that reads it can run: a farewell still owed
@@ -764,7 +741,7 @@ export async function createMessenger(deps: MessengerDeps) {
   let onFarewellSaid: (() => void) | undefined
   const saidFarewells = () => {
     onFarewellSaid?.()
-    if (farewells.length > 0) return
+    if (farewells().length > 0) return
     for (const resolve of farewellsSaid) resolve()
     farewellsSaid = []
   }
@@ -1781,8 +1758,7 @@ export async function createMessenger(deps: MessengerDeps) {
   async function farewellHeard(id: PeerId) {
     // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
     if (closed) return
-    farewells = farewells.filter((other) => other.id !== id)
-    await store.set(KEYS.farewells, farewells)
+    await dropFarewell(id)
     // Heard in person: the mailbox stops putting it again.
     await mailbox?.forget(id)
     const session = farewellSessions.get(id)
@@ -1859,8 +1835,7 @@ export async function createMessenger(deps: MessengerDeps) {
         : undefined
     await devices.forgetFriend(id)
     if (options.block && !isBlocked(id)) {
-      setBlocked([...blocked(), { id, handle: view.handle, at: clock.now() }])
-      await store.set(KEYS.blocked, blocked())
+      await block(id, view.handle)
     }
     // They removed you first: there's nobody to tell.
     if (view.removedYouAt === undefined) {
@@ -1874,8 +1849,7 @@ export async function createMessenger(deps: MessengerDeps) {
         ...(old === undefined ? {} : { old }),
         ...(mailed ? { mailed: true } : {}),
       }
-      farewells = [...farewells.filter((other) => other.id !== id), record]
-      await store.set(KEYS.farewells, farewells)
+      await keepFarewell(record)
       if (mailed) void mailbox.send('farewell', mailTo, {}).catch(() => undefined)
       await sayFarewell(record)
     }
@@ -2071,7 +2045,7 @@ export async function createMessenger(deps: MessengerDeps) {
     await startSelfSession()
     if (devices.status() === 'removed') return
     await Promise.all(friendList().map((view) => startSession(view.id)))
-    if (profile().handle !== '') await Promise.all(farewells.map((record) => sayFarewell(record)))
+    if (profile().handle !== '') await Promise.all(farewells().map((record) => sayFarewell(record)))
     const stored = await store.get(KEYS.invite)
     if (isHostedInvite(stored)) await host(stored)
     void checkMail().catch(() => undefined)
@@ -2329,7 +2303,7 @@ export async function createMessenger(deps: MessengerDeps) {
     selfFingerprint,
     devices,
     friends: friendList,
-    farewells: () => farewells,
+    farewells,
     farewellWatch: {
       hear: (onSaid) => {
         onFarewellSaid = onSaid
@@ -2587,7 +2561,7 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     friends: friendList,
     friend,
-    onlineCount: () => friendList().filter((view) => view.online).length,
+    onlineCount,
     /** How many signaling relays are reachable now, where the transport can tell. */
     relays: () => transport.relays?.(),
     invite,
@@ -2709,32 +2683,13 @@ export async function createMessenger(deps: MessengerDeps) {
     markRead: (id: PeerId) => {
       if (state.friends[id]?.unread !== 0) setState('friends', id, 'unread', 0)
     },
-    isFriend: (id: string) => isPeerId(id) && friend(id) !== undefined,
-    /** Calls a friend something of your own; an empty name goes back to theirs. */
-    async rename(id: PeerId, petname: string) {
-      const view = friend(id)
-      if (view === undefined) return
-      const trimmed = petname.trim().slice(0, MAX_HANDLE_LENGTH)
-      const next = trimmed === '' || trimmed === view.handle ? undefined : trimmed
-      setState('friends', id, { petname: next, name: nameOf(view.handle, next) })
-      await saveFriends()
-    },
-    /** Quiets a friend until `until` (a time, or MUTED_FOREVER); undefined unmutes. */
-    async mute(id: PeerId, until: number | undefined) {
-      if (friend(id) === undefined) return
-      setState('friends', id, 'mutedUntil', until)
-      await saveFriends()
-    },
-    muted(id: PeerId): boolean {
-      const until = friend(id)?.mutedUntil
-      return until !== undefined && (until === MUTED_FOREVER || until > clock.now())
-    },
+    isFriend,
+    rename,
+    mute,
+    muted,
     remove: removeFriend,
     blocked,
-    async unblock(id: PeerId) {
-      setBlocked(blocked().filter((record) => record.id !== id))
-      await store.set(KEYS.blocked, blocked())
-    },
+    unblock,
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
     setRelayOnly,
