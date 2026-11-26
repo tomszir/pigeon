@@ -1182,9 +1182,9 @@ describe('your devices through the self mailbox', () => {
     await laptop.store.delete('lighthousesChangedAt')
     await clock.tick(1000)
     await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse, store: laptop.store })
-    // Long enough for the laptop to take and drop what waited for it: a blob dropped between the
-    // phone's list and its get ends the phone's fetch from that Lighthouse until the next one.
-    await flush(800)
+    // No waiting for the laptop to take and drop what waited for it: a blob dropped between the
+    // phone's list and its get doesn't stop the rest of the phone's fetch.
+    await flush()
     const back = await messenger(createMemoryNetwork(), 'rook-phone', {
       clock,
       lighthouse,

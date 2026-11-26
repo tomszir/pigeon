@@ -432,13 +432,18 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
                   heldBack = true
                   continue
                 }
-                got.set(where.source, count + 1)
                 const blob = await client.request({ type: 'get', id: item.id })
+                // Gone since it was listed (taken by another device, dropped, expired): there's
+                // nothing to read and nothing to wait for, so the rest of the list goes on, and
+                // the cursor moves past it with the rest.
+                if (blob.ok && blob.value.type === 'error' && blob.value.error === 'unknown')
+                  continue
                 if (!blob.ok || blob.value.type !== 'blob') {
                   // Read again next time: the cursor isn't moved past what couldn't be got.
                   reachable = false
                   break
                 }
+                got.set(where.source, count + 1)
                 // The size listed is only the Lighthouse's word: the blob itself is measured too,
                 // so one that lists a small size can't hand over a big blob to open.
                 if (maxBytes !== undefined) {
