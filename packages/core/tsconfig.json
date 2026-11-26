@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node runs this package's TypeScript as is, stripping only the types, so syntax that
+    // has to be compiled (parameter properties, enums, namespaces) would stop it starting.
+    "erasableSyntaxOnly": true
+  },
   "include": ["src"]
 }

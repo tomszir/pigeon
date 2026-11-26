@@ -43,11 +43,18 @@ export const MAX_WIDE_BUFFERED_BYTES = 16 * 1024 * 1024
 export class SendBudget {
   used = 0
   private readonly byKey = new Map<string, number>()
+  readonly max: number
+  readonly maxRange: number
+  readonly maxWide: number
   constructor(
-    readonly max = MAX_SERVER_BUFFERED_BYTES,
-    readonly maxRange = MAX_RANGE_BUFFERED_BYTES,
-    readonly maxWide = MAX_WIDE_BUFFERED_BYTES,
-  ) {}
+    max = MAX_SERVER_BUFFERED_BYTES,
+    maxRange = MAX_RANGE_BUFFERED_BYTES,
+    maxWide = MAX_WIDE_BUFFERED_BYTES,
+  ) {
+    this.max = max
+    this.maxRange = maxRange
+    this.maxWide = maxWide
+  }
   held(key: string | undefined): number {
     return key === undefined ? 0 : (this.byKey.get(key) ?? 0)
   }
