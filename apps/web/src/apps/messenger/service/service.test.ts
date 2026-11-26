@@ -2683,6 +2683,46 @@ describe('Try Again', () => {
     expect(route()).toEqual({ kind: 'left', where: ['Test Lighthouse'] })
   })
 
+  it('puts an unsent message at the Lighthouses the friend uses now, not only the ones it was sealed for', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const old = testLighthouse(clock)
+    const moved = testLighthouse(clock, 'moved-lighthouse')
+    // Rook can reach both; Mika, when they paired, used only the old one.
+    const rook = await messenger(network, 'rook', { clock, lighthouse: old, more: [moved] })
+    const mika = await messenger(network, 'mika', { clock, lighthouse: old })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    await away(mika)
+    await flush(200)
+    // The first put finds the old Lighthouse down.
+    old.down(true)
+    await rook.messenger.send(mikaId, 'are you there?')
+    await rook.messenger.loadLetters(mikaId)
+    await clock.tick(5000)
+    await flush(400)
+    const entry = only(rook.messenger.friends()).log.entries[0]
+    if (entry === undefined) throw new Error('no entry')
+    expect(rook.messenger.messageRoute(mikaId, entry)).toEqual({ kind: 'retrying' })
+    expect(moved.lastSeq()).toBe(0)
+    // Mika moves to the other Lighthouse and tells Rook while they are both online, then goes.
+    const back = await messenger(network, 'mika', { clock, store: mika.store, lighthouse: moved })
+    await flush(400)
+    expect((await rook.messenger.mailBook(mikaId)).lighthouses).toEqual([moved.address])
+    await away(back)
+    await flush(200)
+    // Try Again puts the letter where Mika's mail goes now.
+    expect(await rook.messenger.tryAgain(mikaId)).toBe(true)
+    expect(moved.lastSeq()).toBe(1)
+    // Every put again after that keeps to the old one too, until a receipt comes.
+    old.down(false)
+    await clock.tick(4 * 24 * 60 * 60 * 1000)
+    await rook.messenger.checkMail()
+    await flush(400)
+    expect(old.lastSeq()).toBe(1)
+  })
+
   it('says it is trying while the try is under way', async () => {
     const { lighthouse, rook, mikaId, route } = await unsent()
     lighthouse.down(false)
