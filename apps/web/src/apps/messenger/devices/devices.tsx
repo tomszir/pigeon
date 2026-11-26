@@ -573,6 +573,23 @@ export function MyDevices(props: MyDevicesProps) {
           but talks to nobody now.
         </p>
       </Show>
+      <Show when={props.messenger.checkDevices() && props.messenger.deviceStatus() === 'active'}>
+        <GroupBox legend="Check your devices">
+          <div class={styles.column}>
+            <p class={styles.warning} role="alert">
+              Your devices have a new secret to meet with. Pigeon used to link devices in a way
+              someone watching closely could get between, so check that every device below is yours.
+              Remove any you don't know, from the device that manages your list.
+            </p>
+            <div class={styles.buttons}>
+              <Button
+                label="&They're All Mine"
+                onClick={() => void props.messenger.devicesChecked()}
+              />
+            </div>
+          </div>
+        </GroupBox>
+      </Show>
       <Show when={props.messenger.twin()}>
         <GroupBox legend="Also open somewhere else">
           <div class={styles.column}>

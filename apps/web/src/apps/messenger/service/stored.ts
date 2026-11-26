@@ -8,6 +8,7 @@ import {
   type LogEntry,
   type PeerId,
 } from '@pigeon/core'
+import { isReplacing } from './rekeys.ts'
 import type {
   BlockedRecord,
   FarewellRecord,
@@ -47,10 +48,17 @@ export function isFriendRecords(value: unknown): value is readonly FriendRecord[
   )
 }
 
-/** A pair secret, if any, and whether you've moved to its rooms. */
+/**
+ * A pair secret, if any, whether you've moved to its rooms, whether it's from before secrets
+ * were sealed, and an old one being replaced (`replacing` on a friend, `old` on a farewell).
+ */
 const isPlace = (record: Record<string, unknown>) =>
   (record['secret'] === undefined || isPairSecret(record['secret'])) &&
-  (record['moved'] === undefined || typeof record['moved'] === 'boolean')
+  (record['moved'] === undefined || typeof record['moved'] === 'boolean') &&
+  (record['sealed'] === undefined || typeof record['sealed'] === 'boolean') &&
+  (record['replacing'] === undefined ||
+    (isReplacing(record['replacing']) && record['secret'] !== undefined)) &&
+  (record['old'] === undefined || isPairSecret(record['old']))
 
 /** Farewells: records, or the bare ids stored before pair secrets. */
 export function isFarewells(value: unknown): value is readonly (PeerId | FarewellRecord)[] {

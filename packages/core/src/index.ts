@@ -256,6 +256,17 @@ export type {
   OpenStep,
 } from './pairing/pairing.ts'
 export { hostInvite, openInvite } from './pairing/pairing.ts'
+export type { Rekey, RekeyNews } from './pairing/rekey.ts'
+export {
+  MAX_REKEY_LOGS,
+  REKEY_VERSION,
+  readRekey,
+  rekeyBody,
+  rekeyWins,
+  replacesId,
+  signRekey,
+  verifyRekey,
+} from './pairing/rekey.ts'
 export type { Pake, PakeRole, PakeStart } from './pake/pake.ts'
 export { PAKE_KEY_BYTES } from './pake/pake.ts'
 export type { RecoveryCode, RecoveryCodeError } from './recovery/recovery-code.ts'

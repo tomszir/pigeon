@@ -15,6 +15,7 @@ import {
   fingerprint,
   formatFingerprint,
   isDeviceLog,
+  isPairSecret,
   isTailLog,
   type KeptDevice,
   type LogEntry,
@@ -30,6 +31,7 @@ import {
 import { createSignal } from 'solid-js'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
+import { isReplacing, type SecretState } from './rekeys.ts'
 
 export const DEVICE_KEYS = {
   /** The identity this device speaks for; absent on a first device, which is its own. */
@@ -37,6 +39,8 @@ export const DEVICE_KEYS = {
   deviceLog: 'deviceLog',
   /** Where your devices meet, shared with each device when it's linked. */
   selfSecret: 'selfSecret',
+  /** Whether the self secret was made or reached here sealed, and any replacement under way. */
+  selfSecretState: 'selfSecretState',
   friendDevices: (id: PeerId) => `devices:${id}`,
 } as const
 
@@ -80,8 +84,20 @@ export async function loadDevices(deps: DevicesDeps) {
       ? storedLog
       : emptyDeviceLog(self)
   const [own, setOwnSignal] = createSignal<DeviceLog>(own0)
-  const storedSecret = await store.get(DEVICE_KEYS.selfSecret)
+  const storedState = await store.get(DEVICE_KEYS.selfSecretState)
+  const stateFields =
+    typeof storedState === 'object' && storedState !== null && !Array.isArray(storedState)
+      ? (storedState as Record<string, unknown>)
+      : {}
+  // The state holds the secret too, so the two are written at once and can't disagree after a
+  // tab closes between writes. The secret on its own is from before it did, and is still
+  // written for a Pigeon that reads only that.
+  const storedSecret = isPairSecret(stateFields['secret'])
+    ? stateFields['secret']
+    : await store.get(DEVICE_KEYS.selfSecret)
   let selfSecret = typeof storedSecret === 'string' ? storedSecret : undefined
+  let selfSealed = stateFields['sealed'] === true
+  let selfReplacing = isReplacing(stateFields['replacing']) ? stateFields['replacing'] : undefined
 
   const friendLogs = new Map<PeerId, DeviceLog>()
   const [friendLogsVersion, bump] = createSignal(0)
@@ -165,9 +181,25 @@ export async function loadDevices(deps: DevicesDeps) {
       return true
     },
     selfSecret: () => selfSecret,
+    /** The self secret with whether it's from before and any replacement under way. */
+    selfSecretState: (): SecretState | undefined =>
+      selfSecret === undefined
+        ? undefined
+        : { secret: selfSecret, sealed: selfSealed, replacing: selfReplacing },
+    /** A new self secret, made here: nobody else has seen it. */
     async setSelfSecret(secret: string) {
-      selfSecret = secret
-      await store.set(DEVICE_KEYS.selfSecret, secret)
+      await this.setSelfSecretState({ secret, sealed: true })
+    },
+    async setSelfSecretState(next: SecretState) {
+      selfSecret = next.secret
+      selfSealed = next.sealed === true
+      selfReplacing = next.replacing
+      await store.set(DEVICE_KEYS.selfSecretState, {
+        secret: next.secret,
+        ...(selfSealed ? { sealed: true } : {}),
+        ...(selfReplacing === undefined ? {} : { replacing: selfReplacing }),
+      })
+      await store.set(DEVICE_KEYS.selfSecret, next.secret)
     },
     /** Who this device speaks for, for invites and links, when it isn't the first device. */
     speaker: () => (self === signer.id ? undefined : { identity: self, devices: own() }),

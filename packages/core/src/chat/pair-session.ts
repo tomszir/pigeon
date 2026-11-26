@@ -86,6 +86,8 @@ export type PairEvent =
   | { readonly type: 'unfriended' }
   /** The friend proved who they are in `room`: sent on their first hello in each room. */
   | { readonly type: 'met'; readonly room: RoomName }
+  /** One of the friend's devices proved itself with a hello in `room`: sent on every one. */
+  | { readonly type: 'seen'; readonly room: RoomName; readonly device: PeerId }
   /** The friend gave the pair secret, moving you both out of the old room. */
   | { readonly type: 'secret'; readonly secret: string }
   /** The friend has the secret you gave. */
@@ -429,6 +431,8 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         options.onEvent({ type: 'renamed', handle: body.handle })
       heardHandle = body.handle
       if (firstHere) options.onEvent({ type: 'met', room })
+      const device = deviceOf.get(from)
+      if (device !== undefined) options.onEvent({ type: 'seen', room, device })
       void heardKeys(from, body)
     },
     presence: (_from, body, at) => {

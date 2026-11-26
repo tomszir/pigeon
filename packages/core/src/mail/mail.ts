@@ -34,6 +34,7 @@ export type MailKind =
   | 'letter'
   | 'pair'
   | 'link'
+  | 'rekey'
 const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'farewell',
   'self',
@@ -43,6 +44,7 @@ const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'letter',
   'pair',
   'link',
+  'rekey',
 ])
 
 /** A device's sealing key, bound to it by its own signature. */
