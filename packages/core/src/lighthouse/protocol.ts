@@ -56,8 +56,16 @@ export type LighthouseRequest =
       readonly expires: number
       /** SHA-256 of each recipient device's drop value, base32. */
       readonly drops: readonly string[]
+      /**
+       * A value only the putter knows, which makes the blob claimed: once the tag holds a
+       * claimed blob, only a put with the same claim adds to the tag's claimed blobs, which
+       * `list-claimed` lists apart from the rest. Ordinary puts under the tag are untouched.
+       */
+      readonly claim?: string
     }
   | { readonly type: 'list'; readonly tags: readonly string[]; readonly cursor: number }
+  /** Like `list`, but only claimed blobs. A Lighthouse that predates claims calls it malformed. */
+  | { readonly type: 'list-claimed'; readonly tags: readonly string[]; readonly cursor: number }
   | { readonly type: 'get'; readonly id: string }
   | { readonly type: 'drop'; readonly id: string; readonly key: string }
 
@@ -76,6 +84,8 @@ export type LighthouseError =
   | 'unknown'
   /** That drop doesn't open this blob, or was used already. */
   | 'wrong-drop'
+  /** The tag's claimed blobs were put with another claim. */
+  | 'taken'
 
 export interface ListedItem {
   readonly id: string
@@ -153,6 +163,17 @@ function blobSize(value: unknown): number | undefined {
   return bytes.ok && bytes.value.length <= MAX_BLOB_BYTES ? bytes.value.length : undefined
 }
 
+function isListRequest(f: Fields): boolean {
+  const tags = f['tags']
+  return (
+    Array.isArray(tags) &&
+    tags.length > 0 &&
+    tags.length <= MAX_LIST_TAGS &&
+    tags.every(isMailKey) &&
+    isCount(f['cursor'])
+  )
+}
+
 const REQUEST_CHECKS: Readonly<Record<LighthouseRequest['type'], (fields: Fields) => boolean>> = {
   hello: (f) =>
     isCount(f['protocol']) &&
@@ -170,19 +191,12 @@ const REQUEST_CHECKS: Readonly<Record<LighthouseRequest['type'], (fields: Fields
       drops.length > 0 &&
       drops.length <= MAX_DROPS &&
       drops.every(isMailKey) &&
-      new Set(drops).size === drops.length
+      new Set(drops).size === drops.length &&
+      (f['claim'] === undefined || isMailKey(f['claim']))
     )
   },
-  list: (f) => {
-    const tags = f['tags']
-    return (
-      Array.isArray(tags) &&
-      tags.length > 0 &&
-      tags.length <= MAX_LIST_TAGS &&
-      tags.every(isMailKey) &&
-      isCount(f['cursor'])
-    )
-  },
+  list: (f) => isListRequest(f),
+  'list-claimed': (f) => isListRequest(f),
   get: (f) => isMailKey(f['id']),
   drop: (f) => isMailKey(f['id']) && isMailKey(f['key']),
 }
@@ -263,6 +277,7 @@ const ERRORS: ReadonlySet<string> = new Set<LighthouseError>([
   'limit',
   'unknown',
   'wrong-drop',
+  'taken',
 ])
 
 const isListed = (value: unknown) =>
@@ -357,16 +372,25 @@ export async function openReply(
 
 /**
  * A blob's id is its content: the same blob has the same id on every Lighthouse, and its sender
- * can check the id a Lighthouse gives back.
+ * can check the id a Lighthouse gives back. A claimed blob's covers its `owner` (the claim's
+ * hash) too, so the same bytes put unclaimed first, by anyone, never stand in for it; as each
+ * Lighthouse is given a claim of its own, its id is one of that Lighthouse's.
  */
 export async function mailBlobId(
   crypto: Crypto,
   tag: string,
   blob: string,
   drops: readonly string[],
+  owner?: string,
 ): Promise<string> {
   // Sorted, so the same drops in another order are the same blob.
-  const bytes = canonicalBytes({ v: 'pigeon/mail-id/v1', tag, blob, drops: [...drops].sort() })
+  const bytes = canonicalBytes({
+    v: 'pigeon/mail-id/v1',
+    tag,
+    blob,
+    drops: [...drops].sort(),
+    ...(owner === undefined ? {} : { owner }),
+  })
   return base32Encode(await crypto.sha256(bytes))
 }
 

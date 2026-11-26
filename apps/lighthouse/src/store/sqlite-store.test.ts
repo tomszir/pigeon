@@ -57,4 +57,35 @@ describe('the SQLite store', () => {
     db.close()
     return expect(onFile(path).totalBytes()).resolves.toBe(10)
   })
+
+  it('adds the claim column to a database from before claims, keeping its mail', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'lh-store-')), 'mail.sqlite')
+    const db = new DatabaseSync(path)
+    db.exec(`CREATE TABLE blobs (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      tag TEXT NOT NULL,
+      blob TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      cost INTEGER NOT NULL,
+      expires INTEGER NOT NULL,
+      drops TEXT NOT NULL,
+      used TEXT NOT NULL DEFAULT '[]'
+    )`)
+    const old = sampleBlob(1)
+    db.prepare(
+      'INSERT INTO blobs (id, tag, blob, size, cost, expires, drops) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run(old.id, old.tag, old.blob, old.size, old.cost, old.expires, '[]')
+    db.close()
+    const store = onFile(path)
+    expect((await store.get(old.id, 0))?.owner).toBeUndefined()
+    const claimed = sampleBlob(4, { tag: old.tag, owner: old.id })
+    expect(await store.put(claimed, 0)).toBe('stored')
+    expect((await store.list([old.tag], 0, 10, 0, true)).items.map((item) => item.id)).toEqual([
+      claimed.id,
+    ])
+    store.close()
+    // Opening it again finds the column there and leaves it be.
+    expect((await onFile(path).get(claimed.id, 0))?.owner).toBe(old.id)
+  })
 })

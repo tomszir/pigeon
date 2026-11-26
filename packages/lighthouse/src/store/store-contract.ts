@@ -77,6 +77,49 @@ export function describeMailStore(
       expect((await store.list([sampleBlob(1).tag], page.cursor, 10, 0)).items).toEqual([])
     })
 
+    it("keeps a tag's claimed blobs to their first owner while one is held", async () => {
+      const store = await make()
+      const tag = key(150)
+      expect(await store.put(sampleBlob(1, { tag }), 0)).toBe('stored')
+      expect(await store.put(sampleBlob(2, { tag, owner: key(160), expires: 500 }), 0)).toBe(
+        'stored',
+      )
+      // Another owner can't add to them; the same owner, or an ordinary put, can.
+      expect(await store.put(sampleBlob(3, { tag, owner: key(161) }), 0)).toBe('taken')
+      expect(await store.put(sampleBlob(4, { tag, owner: key(160) }), 0)).toBe('stored')
+      expect(await store.put(sampleBlob(5, { tag }), 0)).toBe('stored')
+      // A claim under another tag is its own.
+      expect(await store.put(sampleBlob(6, { tag: key(151), owner: key(161) }), 0)).toBe('stored')
+      const claimed = await store.list([tag], 0, 10, 0, true)
+      expect(claimed.items.map((item) => item.id)).toEqual([key(2), key(4)])
+      expect(claimed.items[0]).toEqual({ id: key(2), tag, size: 3 })
+      const all = await store.list([tag], 0, 10, 0)
+      expect(all.items.map((item) => item.id)).toEqual([key(1), key(2), key(4), key(5)])
+      expect((await store.get(key(2), 0))?.owner).toBe(key(160))
+      expect((await store.get(key(1), 0))?.owner).toBeUndefined()
+      // Once every claimed blob is gone, the claim is free again.
+      await store.useDrop(key(4), sampleBlob(4).drops[0] ?? '', 0)
+      await store.useDrop(key(4), sampleBlob(4).drops[1] ?? '', 0)
+      expect(await store.put(sampleBlob(7, { tag, owner: key(161) }), 0)).toBe('taken')
+      expect(await store.put(sampleBlob(7, { tag, owner: key(161) }), 600)).toBe('stored')
+      expect((await store.list([tag], 0, 10, 600, true)).items.map((item) => item.id)).toEqual([
+        key(7),
+      ])
+    })
+
+    it('pages claimed blobs past the ordinary ones between them', async () => {
+      const store = await make()
+      const tag = key(150)
+      for (let n = 1; n <= 9; n++)
+        await store.put(sampleBlob(n, { tag, ...(n % 3 === 0 ? { owner: key(160) } : {}) }), 0)
+      const first = await store.list([tag], 0, 2, 0, true)
+      expect(first.items.map((item) => item.id)).toEqual([key(3), key(6)])
+      expect(first.more).toBe(true)
+      const second = await store.list([tag], first.cursor, 2, 0, true)
+      expect(second.items.map((item) => item.id)).toEqual([key(9)])
+      expect(second.more).toBe(false)
+    })
+
     it('lists several tags at once, oldest first, paging from the cursor', async () => {
       const store = await make()
       for (const [n, tag] of [

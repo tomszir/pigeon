@@ -129,6 +129,23 @@ const tagFrom = async (crypto: Crypto, secret: Uint8Array, text: string) =>
 export const inviteCardTag = (crypto: Crypto, secret: string): Promise<string> =>
   tagFrom(crypto, secretOf(secret), 'pigeon/invite/v1/card')
 
+/** A link's claim key: 32 random bytes, base32, kept by the inviter's own devices. */
+export const isInviteClaimKey = (value: unknown): value is string => {
+  if (typeof value !== 'string' || !/^[a-z2-7]{52}$/.test(value)) return false
+  const bytes = base32Decode(value)
+  return bytes.ok && bytes.value.length === 32
+}
+
+/**
+ * What a card is claimed with at the Lighthouse whose key is `lighthouse`: a value of its own
+ * at each one, so a Lighthouse, which sees it, can't claim the card's tag at any other.
+ */
+export const inviteCardClaim = (
+  crypto: Crypto,
+  claimKey: string,
+  lighthouse: PeerId,
+): Promise<string> => tagFrom(crypto, secretOf(claimKey), `pigeon/invite/v1/claim/${lighthouse}`)
+
 /** Where requests to be friends through an invite wait, on `date`. */
 export const inviteAskTag = (crypto: Crypto, secret: string, date: string): Promise<string> =>
   tagFrom(crypto, secretOf(secret), `pigeon/invite/v1/ask/${date}`)
@@ -323,7 +340,14 @@ export type InviteAnswer =
       readonly deviceLog: DeviceLog
     }
   | { readonly answer: 'declined' }
-  | { readonly answer: 'closed' }
+  | {
+      readonly answer: 'closed'
+      /**
+       * The inviter's device log as the device answering has it, so an asker whose request went
+       * through a card a removed device put hears of the removal. Missing from older Pigeons.
+       */
+      readonly deviceLog?: DeviceLog | undefined
+    }
   /** Too many requests are waiting on the link: ask again once some are answered. */
   | { readonly answer: 'busy' }
 
@@ -363,7 +387,13 @@ export function readInviteAnswer(sender: PeerId, body: unknown): InviteAnswer | 
   if (typeof body !== 'object' || body === null) return undefined
   const fields = body as Record<string, unknown>
   if (fields['answer'] === 'declined') return { answer: 'declined' }
-  if (fields['answer'] === 'closed') return { answer: 'closed' }
+  if (fields['answer'] === 'closed') {
+    // A log that isn't the sender's is left out, never the answer.
+    const deviceLog = fields['deviceLog']
+    return isDeviceLog(deviceLog) && deviceLog.identity === sender
+      ? { answer: 'closed', deviceLog }
+      : { answer: 'closed' }
+  }
   if (fields['answer'] === 'busy') return { answer: 'busy' }
   const { secret, name, deviceLog } = fields
   if (

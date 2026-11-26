@@ -33,7 +33,16 @@ describe('requests', () => {
         expires: 99,
         drops: [key(2), key(3)],
       },
+      {
+        type: 'put',
+        tag: key(1),
+        blob: base64Encode(new Uint8Array([1, 2, 3])),
+        expires: 99,
+        drops: [key(2)],
+        claim: key(6),
+      },
       { type: 'list', tags: [key(1)], cursor: 0 },
+      { type: 'list-claimed', tags: [key(1)], cursor: 0 },
       { type: 'get', id: key(4) },
       { type: 'drop', id: key(4), key: key(5) },
     ] as const) {
@@ -63,7 +72,10 @@ describe('requests', () => {
       { ...put, blob: base64Encode(new Uint8Array(MAX_BLOB_BYTES + 1)) },
       { ...put, drops: [] },
       { ...put, drops: [key(2), key(2)] },
+      { ...put, claim: 'short' },
+      { ...put, claim: key(6).toUpperCase() },
       { type: 'list', tags: [], cursor: 0 },
+      { type: 'list-claimed', tags: [], cursor: 0 },
       { type: 'list', tags: [key(1)], cursor: -1 },
       { type: 'drop', id: key(1) },
     ])

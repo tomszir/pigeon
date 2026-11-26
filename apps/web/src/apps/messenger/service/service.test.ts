@@ -6,8 +6,11 @@ import {
   createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
+  decodeInviteLink,
+  emptyDeviceLog,
   emptyLog,
   encodePairSecret,
+  encodeRequest,
   err,
   fakeCrypto,
   fakePake,
@@ -16,11 +19,16 @@ import {
   flush,
   formatCode,
   formatLighthouseAddress,
+  inviteCardClaim,
   inviteCardTag,
+  LIGHTHOUSE_PROTOCOL,
   type LighthouseAddress,
   type LighthouseClient,
+  type LighthouseReply,
+  type LighthouseRequest,
   MAX_WRONG_TRIES,
   mailTag,
+  openInviteCard,
   openMail,
   PAIR_SECRET_BYTES,
   pairPassword,
@@ -32,7 +40,12 @@ import {
   selfRoomsAt,
   startPairSession,
 } from '@pigeon/core'
-import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
+import {
+  createLighthouse,
+  createMemoryStore as createMailStore,
+  type LighthouseConnection,
+  type MailStore,
+} from '@pigeon/lighthouse'
 import { createRoot } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -141,16 +154,33 @@ interface TestLighthouse {
   readonly client: (address: LighthouseAddress) => LighthouseClient
   /** While down, it closes every connection and takes no new one. */
   down(value: boolean): void
+  /** While set, it keeps what's put unclaimed, as a Lighthouse from before claims does. */
+  unclaimed(value: boolean): void
+  /** A connection of someone else's, from `address`, frames in and replies out. */
+  connect(address: string): LighthouseConnection
+  /** The `seq` of the last blob it stored: a cursor past everything it holds now. */
+  lastSeq(): number
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
 function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse {
   const signer = fakeSigner(name)
   const url = name === 'test-lighthouse' ? 'wss://lighthouse.test/' : `wss://${name}.test/`
+  const inner = createMailStore()
+  let unclaimed = false
+  let stored = 0
+  const store: MailStore = {
+    ...inner,
+    put: async (blob, now) => {
+      const outcome = await inner.put(unclaimed ? { ...blob, owner: undefined } : blob, now)
+      if (outcome === 'stored') stored += 1
+      return outcome
+    },
+  }
   const lighthouse = createLighthouse({
     signer,
     crypto: fakeCrypto,
-    store: createMailStore(),
+    store,
     now: clock.now,
     name: 'Test Lighthouse',
     software: { name: 'pigeon-lighthouse', version: '0.0.0' },
@@ -163,6 +193,11 @@ function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse 
       isDown = value
       if (value) for (const close of [...open]) close()
     },
+    unclaimed(value) {
+      unclaimed = value
+    },
+    connect: (address) => lighthouse.connect(address),
+    lastSeq: () => stored,
     address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
@@ -2077,6 +2112,81 @@ describe('invite links through Lighthouses', () => {
     return result.link
   }
 
+  /**
+   * Someone holding `url` fills its card tag from `ranges` address ranges, as much as each may
+   * in a day: cards of their own, which open under the link's secret but aren't the inviter's,
+   * now and then tried as claimed ones too. Says how many the Lighthouse kept.
+   */
+  async function bury(
+    lighthouse: TestLighthouse,
+    clock: Clock,
+    url: string,
+    ranges = 2,
+    /** Put claimed with this claim key, as a device that kept it can, from a range of its own. */
+    claimKey?: string,
+    count = 205,
+  ) {
+    const decoded = decodeInviteLink(url)
+    if (!decoded.ok) throw new Error(decoded.error)
+    const { secret } = decoded.value
+    const tag = await inviteCardTag(fakeCrypto, secret)
+    const stranger = fakeSigner('stranger')
+    let kept = 0
+    const claim =
+      claimKey === undefined
+        ? undefined
+        : await inviteCardClaim(fakeCrypto, claimKey, lighthouse.address.id)
+    for (let range = 1; range <= ranges; range++) {
+      const connection = lighthouse.connect(
+        `198.51.100.${claim === undefined ? range : 50 + range}`,
+      )
+      let req = 0
+      const ask = async (request: LighthouseRequest): Promise<LighthouseReply> => {
+        const text = await connection.receive(encodeRequest({ req: ++req, request }))
+        if (text === undefined) throw new Error('closed')
+        return (JSON.parse(text) as { reply: LighthouseReply }).reply
+      }
+      await ask({
+        type: 'hello',
+        protocol: LIGHTHOUSE_PROTOCOL,
+        nonce: base32Encode(new Uint8Array(32)),
+      })
+      for (let n = 0; n < count; n++) {
+        const card = await sealInviteCard(fakeCrypto, fakeSealCrypto(), stranger, secret, {
+          identity: stranger.id,
+          deviceLog: emptyDeviceLog(stranger.id),
+          keys: [],
+          name: `Rook ${range} ${n}`,
+          lighthouses: [],
+          expires: clock.now() + DAY,
+          open: true,
+        })
+        if (!card.ok) throw new Error(card.error)
+        // It gets as far as the fingerprint before it's refused.
+        if (n === 0)
+          expect(
+            await openInviteCard(fakeCrypto, fakeSealCrypto(), decoded.value, card.value),
+          ).toEqual({ ok: false, error: 'not-theirs' })
+        const put = {
+          type: 'put',
+          tag,
+          blob: card.value,
+          expires: clock.now() + DAY,
+          drops: [base32Encode(new Uint8Array(32).fill(range))],
+        } as const
+        if (claim === undefined && n % 50 === 0 && n < 200)
+          expect(
+            await ask({ ...put, claim: base32Encode(new Uint8Array(32).fill(n + 1)) }),
+          ).toEqual({
+            type: 'error',
+            error: 'taken',
+          })
+        if ((await ask(claim === undefined ? put : { ...put, claim })).type === 'stored') kept += 1
+      }
+    }
+    return kept
+  }
+
   async function asks(who: Awaited<ReturnType<typeof messenger>>, url: string) {
     const opened = await who.messenger.openInviteLink(url)
     if (!opened.ok) throw new Error(opened.error)
@@ -2139,6 +2249,132 @@ describe('invite links through Lighthouses', () => {
     // Her receipt comes under their new pair secret, and Rook stops putting the answer again.
     await rook.messenger.checkMail()
     expect(await rook.store.get('mail-outbox')).toEqual([])
+  })
+
+  it('finds its card under a tag others filled with cards of their own', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    const link = await made(rook)
+    // More than an opener gets of everything under the tag, all of it newer than the card.
+    expect(await bury(lighthouse, clock, link.url)).toBe(400)
+    const opened = await mika.messenger.openInviteLink(link.url)
+    expect(opened.ok && opened.card.name).toBe('Rook')
+    // Put again after the junk, as a new name puts it: found as it is now.
+    await rook.messenger.setProfile({ handle: 'Rook Two', status: 'online', message: '' })
+    await flush(400)
+    await clock.tick(60_000)
+    const again = await mika.messenger.openInviteLink(link.url)
+    expect(again.ok && again.card.name).toBe('Rook Two')
+    await rook.messenger.cancelInviteLink(link.secret)
+    await clock.tick(60_000)
+    expect(await mika.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
+  })
+
+  it('claims the card of a link made before cards were claimed', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    lighthouse.unclaimed(true)
+    const link = await made(rook)
+    lighthouse.unclaimed(false)
+    await rook.messenger.close()
+    // As a Pigeon from before claims kept it.
+    const kept = (await rook.store.get('invite-links')) as Record<string, unknown>[]
+    await rook.store.set(
+      'invite-links',
+      kept.map(({ claim: _, ...rest }) => rest),
+    )
+    const back = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await flush(400)
+    expect(only(back.messenger.inviteLinks()).claim).toMatch(/^[a-z2-7]{52}$/)
+    expect(await bury(lighthouse, clock, link.url)).toBe(400)
+    await clock.tick(60_000)
+    const opened = await mika.messenger.openInviteLink(link.url)
+    expect(opened.ok && opened.card.name).toBe('Rook')
+  })
+
+  it('claims an old link once its Lighthouse is back, if it was away at the start', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    lighthouse.unclaimed(true)
+    const link = await made(rook)
+    lighthouse.unclaimed(false)
+    const old = only(rook.messenger.inviteLinks()).cards
+    await rook.messenger.close()
+    const kept = (await rook.store.get('invite-links')) as Record<string, unknown>[]
+    await rook.store.set(
+      'invite-links',
+      kept.map(({ claim: _, ...rest }) => rest),
+    )
+    // Pigeon starts with the Lighthouse out of reach: the old card is still known, and owed.
+    lighthouse.down(true)
+    const back = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await flush(400)
+    const waiting = only(back.messenger.inviteLinks())
+    expect(waiting.claim).toMatch(/^[a-z2-7]{52}$/)
+    expect(waiting.cards).toEqual(old)
+    expect(waiting.behind).toEqual([lighthouse.address.id])
+    // Back at the next mail check: put claimed, and the old card taken down.
+    lighthouse.down(false)
+    await clock.tick(30_000)
+    await flush(400)
+    const caught = only(back.messenger.inviteLinks())
+    expect(caught.behind).toBeUndefined()
+    expect(caught.cards).not.toEqual(old)
+    expect(await bury(lighthouse, clock, link.url)).toBe(400)
+    await clock.tick(60_000)
+    const opened = await mika.messenger.openInviteLink(link.url)
+    expect(opened.ok && opened.card.name).toBe('Rook')
+  })
+
+  it('shows a new link only once a Lighthouse every opener reads holds its card', async () => {
+    const clock = fakeClock(NOON)
+    const first = testLighthouse(clock)
+    const second = testLighthouse(clock, 'second')
+    const lighthouse: TestLighthouse = {
+      ...first,
+      client: (address) =>
+        address.id === second.address.id ? second.client(address) : first.client(address),
+    }
+    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse })
+    await rook.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    await rook.messenger.setLighthouses([first.address, second.address])
+    await flush(400)
+    const options = { lifetime: 7 * DAY, uses: 5 }
+    // Only the official one is read, and it's away: the link isn't shown.
+    first.down(true)
+    expect(await rook.messenger.makeInviteLink(options)).toEqual({
+      ok: false,
+      error: 'not-stored',
+    })
+    expect(rook.messenger.inviteLinks()).toEqual([])
+    first.down(false)
+    // The other one away: shown, and its card put there once it's back.
+    second.down(true)
+    const result = await rook.messenger.makeInviteLink(options)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.link.behind).toEqual([second.address.id])
+    second.down(false)
+    await clock.tick(30_000)
+    await flush(400)
+    const link = only(rook.messenger.inviteLinks())
+    expect(link.behind).toBeUndefined()
+    expect(Object.keys(link.cards).sort()).toEqual([first.address.id, second.address.id].sort())
+  })
+
+  it('still opens a link whose card a Lighthouse keeps unclaimed', async () => {
+    const { clock, lighthouse, rook, mika } = await apart()
+    lighthouse.unclaimed(true)
+    const link = await made(rook)
+    const opened = await mika.messenger.openInviteLink(link.url)
+    expect(opened.ok && opened.card.name).toBe('Rook')
+    await rook.messenger.cancelInviteLink(link.secret)
+    await clock.tick(60_000)
+    expect(await mika.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
   })
 
   it('tells whoever is waiting when the link is closed', async () => {
@@ -2248,6 +2484,28 @@ describe('invite links through Lighthouses', () => {
     })
   })
 
+  it('closes the links of a device you remove with a card nobody else can bury', async () => {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
+    if (!result.ok) throw new Error(result.error)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    expect(only(laptop.messenger.inviteLinksElsewhere()).claim).toBe(result.link.claim)
+    await away(phone)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    // The laptop's closed card is claimed like the phone's open one, so junk put after it
+    // can't leave the open card the only one found.
+    expect(await bury(lighthouse, clock, result.link.url)).toBe(400)
+    await clock.tick(60_000)
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
+    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
+      ok: false,
+      error: 'closed',
+    })
+  })
+
   it('leaves a stolen phone unable to open again a link it made', async () => {
     const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
     const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
@@ -2275,6 +2533,83 @@ describe('invite links through Lighthouses', () => {
       ok: false,
       error: 'closed',
     })
+  })
+
+  /**
+   * A phone that made a link is stolen and taken off the list; the laptop closes its link. The
+   * thief's Pigeon, which heard nothing of it, buries the closed card under claimed blobs (it
+   * kept the claim key) and puts its open card again, signed on the list from before. Mika opens
+   * the link and sees that card.
+   */
+  async function reopenedByThief() {
+    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
+    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
+    if (!result.ok) throw new Error(result.error)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    const claim = only(laptop.messenger.inviteLinksElsewhere()).claim ?? ''
+    await away(phone)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    // Past everything put so far, so the thief hears nothing of the removal.
+    await phone.store.set('mail-fetched', {
+      [lighthouse.address.id]: { cursor: lighthouse.lastSeq(), at: clock.now() },
+    })
+    expect(await bury(lighthouse, clock, result.link.url, 1, claim, 20)).toBe(20)
+    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
+      clock,
+      lighthouse,
+      store: phone.store,
+    })
+    await flush(400)
+    await thief.messenger.setLighthouses([lighthouse.address])
+    await flush(400)
+    expect(await bury(lighthouse, clock, result.link.url)).toBe(400)
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
+    await clock.tick(60_000)
+    const opened = await mika.messenger.openInviteLink(result.link.url)
+    if (!opened.ok) throw new Error(opened.error)
+    expect(await mika.messenger.askThroughLink(opened)).toBe('sent')
+    /** The thief's Pigeon looks for requests, and adds Mika. */
+    const thiefAdds = async () => {
+      await thief.messenger.checkMail()
+      const request = only(only(thief.messenger.inviteLinks()).requests)
+      expect(await thief.messenger.approveRequest(result.link.secret, request.identity)).toBe(true)
+      await flush(400)
+    }
+    return { laptop, phone, thief, mika, thiefAdds }
+  }
+
+  it('tells someone who asked through a removed device’s card that the link closed', async () => {
+    const { laptop, mika, thiefAdds } = await reopenedByThief()
+    // The laptop looks under the removed phone's links too, and answers with the list as it is.
+    await laptop.messenger.checkMail()
+    await flush(400)
+    await mika.messenger.checkMail()
+    expect(only(mika.messenger.sentAsks()).state).toBe('closed')
+    // The thief adds her after: it isn't taken.
+    await thiefAdds()
+    await mika.messenger.checkMail()
+    await flush(400)
+    expect(mika.messenger.friends()).toEqual([])
+  })
+
+  it('stops counting a removed device that added someone first, once they hear', async () => {
+    const { laptop, phone, mika, thiefAdds } = await reopenedByThief()
+    await thiefAdds()
+    await mika.messenger.checkMail()
+    await flush(400)
+    // Added by the phone, with the list from before: Rook has two devices, as far as she knows.
+    expect(only(mika.messenger.friends()).devices).toBe(2)
+    expect(mika.messenger.sentAsks()).toEqual([])
+    await laptop.messenger.checkMail()
+    await flush(400)
+    await mika.messenger.checkMail()
+    await flush(400)
+    // The laptop's answer carries the list without the phone: it no longer counts as Rook.
+    expect(only(mika.messenger.friends()).devices).toBe(1)
+    expect(phone.messenger.device).not.toBe(laptop.messenger.device)
   })
 
   it('says nothing to someone blocked, and refuses your own link', async () => {

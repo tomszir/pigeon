@@ -3,7 +3,10 @@
 // mail is from or for: a tag, sealed bytes, when it expires, and a hash per recipient device.
 
 export interface StoredBlob {
-  /** SHA-256 of the tag, blob and drops (core's mailBlobId), so a blob has one id everywhere. */
+  /**
+   * SHA-256 of the tag, blob and drops (core's mailBlobId), and the owner for a claimed blob: an
+   * unclaimed blob has one id everywhere, a claimed one an id at each Lighthouse.
+   */
   readonly id: string
   readonly tag: string
   /** The sealed blob, base64, as it was put. */
@@ -19,6 +22,8 @@ export interface StoredBlob {
   readonly used: readonly string[]
   /** The order blobs reached this Lighthouse: `list`'s cursor counts it. It only rises. */
   readonly seq: number
+  /** For a claimed blob, SHA-256 of its claim, base32; never told to anyone. */
+  readonly owner?: string | undefined
 }
 
 export interface ListedPage {
@@ -36,11 +41,22 @@ export type DropOutcome =
 export interface MailStore {
   /**
    * Stores a blob unless one with its id is held and hasn't expired, and says which. An expired
-   * one not yet swept is replaced, with a new seq, so it lists again.
+   * one not yet swept is replaced, with a new seq, so it lists again. A claimed blob (one with an
+   * `owner`) is refused as `taken` while its tag holds a claimed blob, not expired, of another
+   * owner; the check and the write come together, so two claims at once can't both win.
    */
-  put(blob: Omit<StoredBlob, 'seq' | 'used'>, now: number): Promise<'stored' | 'exists'>
-  /** Blobs under `tags` with a seq after `cursor` that haven't expired, oldest first. */
-  list(tags: readonly string[], cursor: number, limit: number, now: number): Promise<ListedPage>
+  put(blob: Omit<StoredBlob, 'seq' | 'used'>, now: number): Promise<'stored' | 'exists' | 'taken'>
+  /**
+   * Blobs under `tags` with a seq after `cursor` that haven't expired, oldest first; with
+   * `claimed`, only the claimed ones.
+   */
+  list(
+    tags: readonly string[],
+    cursor: number,
+    limit: number,
+    now: number,
+    claimed?: boolean,
+  ): Promise<ListedPage>
   get(id: string, now: number): Promise<StoredBlob | undefined>
   /**
    * Uses one of a blob's drops, and deletes the blob once every drop is used. Two calls with the

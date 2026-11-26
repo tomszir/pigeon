@@ -11,7 +11,9 @@ import {
   type InviteLink,
   inviteAnswerTag,
   inviteAskTag,
+  inviteCardClaim,
   inviteCardTag,
+  isInviteClaimKey,
   linkFingerprint,
   newestCard,
   openInviteCard,
@@ -81,6 +83,19 @@ describe('invite links', () => {
       await inviteAnswerTag(fakeCrypto, secret, '2026-11-25'),
     ])
     expect(tags.size).toBe(4)
+  })
+
+  it("claims a card's tag with a value of its own at each Lighthouse", async () => {
+    const claimKey = base32Encode(new Uint8Array(32).fill(7))
+    expect(isInviteClaimKey(claimKey)).toBe(true)
+    expect(isInviteClaimKey(secret)).toBe(false)
+    expect(isInviteClaimKey(claimKey.toUpperCase())).toBe(false)
+    const here = await inviteCardClaim(fakeCrypto, claimKey, rook.id)
+    expect(here).toMatch(/^[a-z2-7]{52}$/)
+    expect(await inviteCardClaim(fakeCrypto, claimKey, rook.id)).toBe(here)
+    expect(await inviteCardClaim(fakeCrypto, claimKey, stranger.id)).not.toBe(here)
+    const otherKey = base32Encode(new Uint8Array(32).fill(8))
+    expect(await inviteCardClaim(fakeCrypto, otherKey, rook.id)).not.toBe(here)
   })
 })
 
@@ -228,5 +243,17 @@ describe('requests and answers', () => {
       answer: 'declined',
     })
     expect(readInviteAnswer(rook.id, { answer: 'maybe' })).toBeUndefined()
+    const log = emptyDeviceLog(rook.id)
+    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: log })).toEqual({
+      answer: 'closed',
+      deviceLog: log,
+    })
+    // Someone else's log, or none that reads, leaves the answer without one.
+    expect(
+      readInviteAnswer(rook.id, { answer: 'closed', deviceLog: emptyDeviceLog(stranger.id) }),
+    ).toEqual({ answer: 'closed' })
+    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: 7 })).toEqual({
+      answer: 'closed',
+    })
   })
 })

@@ -163,7 +163,8 @@ The link, on the device that made it. Only that device answers through it.
 
 ```text
          Make an Invite Link: 1 hour to 30 days, for 1 to 25 people;
-         its card put at each of this device's Lighthouses without a pass
+         its card put, claimed, at each of this device's Lighthouses
+         without a pass
                                    |
                                    v
                               +---------+   the device log, name or Lighthouses
@@ -181,7 +182,8 @@ The link, on the device that made it. Only that device answers through it.
                               +---------+  an open one on the same log;
                                            everyone waiting is told `closed`
 
-   (*) Another of your devices closes it, with a card signed on the newer log.
+   (*) Another of your devices closes it, with a card signed on the newer log
+       and claimed with the link's claim key.
 ```
 
 One person's request through it, kept per identity:
@@ -219,9 +221,10 @@ One person's request through it, kept per identity:
 The asker's side of one request:
 
 ```text
-     opens the link: up to 100 cards under its card tag, newest first,
-     at the official Lighthouses and the one the link names; of the cards
-     that hold, the newest log wins
+     opens the link: at the official Lighthouses and the one the link
+     names, up to 16 claimed cards under its card tag, then up to 100 of
+     everything there, newest first; of the cards that hold, the newest
+     log wins
                                    |
                                    | Ask to Be Friends: mail:invite sealed to
                                    | the card's devices, put once
@@ -231,13 +234,19 @@ The asker's side of one request:
                              +-----------+
                                |   |   |
                                |   |   +-- `declined`, `closed` or `busy`, from
-                               |   |       a device on the card --> that answer
+                               |   |       a device on the card, or `closed` with
+                               |   |       a log its device is on --> that answer;
+                               |   |       no `added` taken after `closed`
                                |   +------ the link's end and 2 days more -> stops looking
                                |
-                               | `added`, from a device on the log it carries, the
-                               | sender being the identity the card named
+                               | `added`, from a device on the log it carries, merged
+                               | with any a `closed` answer carried, the sender being
+                               | the identity the card named
                                v
-                             FRIENDS, with that secret
+                             FRIENDS, with that secret; its answers still looked
+                             at (every 10 minutes) until the link's end and 2 days
+                             more: a `closed` answer's log is merged into the friend's,
+                             so a device it took off their list stops counting
 ```
 
 ## Linking a device

@@ -92,7 +92,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
   const counter = createLimitCounter(limits)
   const error = (e: ErrorReply['error']): ErrorReply => ({ type: 'error', error: e })
 
-  /** A drop value's hash, as `put` stores it: SHA-256 of its 32 bytes. */
+  /** A drop value's hash, as `put` stores it: SHA-256 of its 32 bytes. A claim's the same. */
   async function dropHash(key: string): Promise<string | undefined> {
     const bytes = base32Decode(key)
     return bytes.ok ? base32Encode(await crypto.sha256(bytes.value)) : undefined
@@ -128,7 +128,12 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
       refund()
       return error('full')
     }
-    const id = await mailBlobId(crypto, request.tag, request.blob, request.drops)
+    const owner = request.claim === undefined ? undefined : await dropHash(request.claim)
+    if (request.claim !== undefined && owner === undefined) {
+      refund()
+      return error('malformed')
+    }
+    const id = await mailBlobId(crypto, request.tag, request.blob, request.drops, owner)
     // A sender's retry finds it held: the same id, and the expiry it was first put with. It
     // stores nothing, so it isn't counted.
     const held = await store.get(id, at)
@@ -145,9 +150,14 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
         cost,
         expires,
         drops: request.drops,
+        ...(owner === undefined ? {} : { owner }),
       },
       at,
     )
+    if (outcome === 'taken') {
+      refund()
+      return error('taken')
+    }
     if (outcome === 'exists') {
       // Put by someone else a moment ago: say what's actually held.
       refund()
@@ -182,8 +192,10 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     if (request.type === 'put') return put(request, range, at)
     if (!counter.allowRead(range, at)) return error('limit')
     switch (request.type) {
-      case 'list': {
-        const page = await store.list(request.tags, request.cursor, LIST_PAGE, at)
+      case 'list':
+      case 'list-claimed': {
+        const claimed = request.type === 'list-claimed'
+        const page = await store.list(request.tags, request.cursor, LIST_PAGE, at, claimed)
         return { type: 'listed', items: page.items, cursor: page.cursor, more: page.more }
       }
       case 'get': {

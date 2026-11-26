@@ -7,6 +7,10 @@
 // made a link answers through it, and only it can take its cards down: the drop value never
 // leaves it. Your other devices hear of your links in the self mailbox, and close those of a
 // device taken off your list with a closed card signed on the newer list, which wins.
+//
+// Anyone holding a link can put blobs under its card tag, enough to bury the card among them. So
+// your devices put its cards claimed, with a claim key each link has and your devices share, and
+// whoever opens it reads the tag's claimed cards first, which nobody else can add to.
 import {
   base32Decode,
   base32Encode,
@@ -24,8 +28,11 @@ import {
   type InviteCard,
   type InviteLink,
   inviteAnswerBody,
+  inviteCardClaim,
   inviteCardTag,
   inviteRequestBody,
+  isDeviceLog,
+  isInviteClaimKey,
   isInviteSecret,
   isLighthouseAddress,
   isPairSecret,
@@ -39,6 +46,7 @@ import {
   MAX_INVITE_REQUEST_BYTES,
   MAX_INVITE_REQUESTS_PER_DAY,
   MAX_MAIL_MS,
+  mergeDeviceLogs,
   newestCard,
   openInviteCard,
   type PeerId,
@@ -63,6 +71,12 @@ const KEEP_AFTER_EXPIRY = 2 * 24 * HOUR
 /** Items under a card tag read when a link is opened, and cards got of them, newest first. */
 const MAX_CARD_ITEMS = 500
 const MAX_CARD_GETS = 100
+/**
+ * The same for the tag's claimed cards, which only the inviter's devices can put: the card as it
+ * is now, the one it replaces until that's dropped, and closed ones from the other devices.
+ */
+const MAX_CLAIMED_ITEMS = 256
+const MAX_CLAIMED_GETS = 16
 /** A card bigger than this is junk: a real one is a few kilobytes. */
 const MAX_CARD_BYTES = 32 * 1024
 /** Requests waiting on one link at most: more are left unread until some are answered. */
@@ -129,8 +143,19 @@ export interface OwnLink {
   readonly secret: string
   /** 32 random bytes, base32: what takes its cards down. It never leaves this device. */
   readonly drop: string
+  /**
+   * 32 random bytes, base32: what its cards are claimed with, shared with your other devices so
+   * the closed cards they put count too. Missing on a link made before cards were claimed,
+   * until its card is put again.
+   */
+  readonly claim?: string | undefined
   /** Each Lighthouse's id for the card it holds now. */
   readonly cards: Readonly<Record<string, string>>
+  /**
+   * Lighthouses the card as it is now didn't reach when last put: each keeps the card it had,
+   * if any, and the card is put there again at the next start or mail check.
+   */
+  readonly behind?: readonly string[] | undefined
   readonly madeAt: number
   readonly expires: number
   readonly uses: number
@@ -156,6 +181,13 @@ export interface OtherLink {
   readonly uses: number
   readonly used: number
   readonly open: boolean
+  /** What its cards are claimed with; missing from a device that doesn't claim them. */
+  readonly claim?: string | undefined
+  /**
+   * Kept only here: "closed" answers this device sent to requests through it, once the device
+   * that made it was taken off your list.
+   */
+  readonly answered?: number | undefined
 }
 
 /** A request this device sent through someone's link, waiting for their answer. */
@@ -169,7 +201,14 @@ export interface SentAsk {
   readonly reply: string
   readonly expires: number
   readonly at: number
-  readonly state: 'waiting' | 'declined' | 'closed' | 'busy'
+  /**
+   * `added` once they added you: kept, and its answers still looked for, until a while after
+   * the link expires, in case another of their devices says the one that added you was removed.
+   * Not shown.
+   */
+  readonly state: 'waiting' | 'declined' | 'closed' | 'busy' | 'added'
+  /** Their device log, the newest an answer carried, merged with what you knew. */
+  readonly log?: DeviceLog | undefined
 }
 
 /** What opening someone's link found: their card, or why there's nothing to ask. */
@@ -185,7 +224,17 @@ export type OpenedLink =
       readonly error: 'malformed' | 'not-found' | 'closed' | 'expired' | 'own' | 'friend'
     }
 
-export type MakeLinkError = 'no-lighthouse' | 'not-stored' | 'no-name' | 'removed'
+/**
+ * Why a link wasn't made. `not-stored`: no official Lighthouse on your list took its card, and
+ * they're where whoever opens it looks; `named-not-stored`: the same for the Lighthouse a link
+ * names when your list has no official one.
+ */
+export type MakeLinkError =
+  | 'no-lighthouse'
+  | 'not-stored'
+  | 'named-not-stored'
+  | 'no-name'
+  | 'removed'
 export type AskResult = 'sent' | 'no-lighthouse' | 'not-sent'
 
 /** Someone new to be friends with, through a link, either way round. */
@@ -229,6 +278,11 @@ export interface InviteLinksDeps {
   readonly friendRecipient: (id: PeerId) => Promise<Recipient | undefined>
   /** Your links changed: tell your other devices. */
   readonly changed: () => void
+  /**
+   * A friend's device log, newer than yours perhaps, from an answer to a request: merged into
+   * the one kept for them, so a device it took off their list stops counting.
+   */
+  readonly friendLogHeard: (id: PeerId, log: DeviceLog) => Promise<void>
   readonly stopped: () => boolean
 }
 
@@ -257,6 +311,7 @@ const isOwnLink = (value: unknown): value is OwnLink => {
   return (
     isInviteSecret(l.secret) &&
     typeof l.drop === 'string' &&
+    (l.claim === undefined || isInviteClaimKey(l.claim)) &&
     typeof l.cards === 'object' &&
     l.cards !== null &&
     typeof l.expires === 'number' &&
@@ -266,6 +321,8 @@ const isOwnLink = (value: unknown): value is OwnLink => {
     typeof l.url === 'string' &&
     typeof l.closedAnswers === 'number' &&
     (l.closing === undefined || typeof l.closing === 'boolean') &&
+    (l.behind === undefined ||
+      (Array.isArray(l.behind) && l.behind.every((id) => typeof id === 'string'))) &&
     Array.isArray(l.requests) &&
     l.requests.every(isRequest)
   )
@@ -282,7 +339,9 @@ export function isOtherLink(value: unknown): value is OtherLink {
     Number.isSafeInteger(l.expires) &&
     Number.isSafeInteger(l.uses) &&
     Number.isSafeInteger(l.used) &&
-    typeof l.open === 'boolean'
+    typeof l.open === 'boolean' &&
+    (l.claim === undefined || isInviteClaimKey(l.claim)) &&
+    (l.answered === undefined || Number.isSafeInteger(l.answered))
   )
 }
 
@@ -298,7 +357,8 @@ const isAsk = (value: unknown): value is SentAsk => {
     Array.isArray(a.lighthouses) &&
     a.lighthouses.every(isLighthouseAddress) &&
     typeof a.expires === 'number' &&
-    ['waiting', 'declined', 'closed', 'busy'].includes(a.state)
+    ['waiting', 'declined', 'closed', 'busy', 'added'].includes(a.state) &&
+    (a.log === undefined || (isDeviceLog(a.log) && a.log.identity === a.identity))
   )
 }
 
@@ -359,24 +419,29 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   }
 
   /**
-   * Puts the link's card as things are now, open or closed, at your Lighthouses, and takes down
-   * the cards it replaces with `drop`, which only this device has. Says where each now is.
+   * Puts the link's card as things are now, open or closed, at your Lighthouses (only at
+   * `targets`, if given), claimed with the link's claim key if it has one, and takes down the cards
+   * it replaces with `drop`, which only this device has. Says where each card now is, and which
+   * Lighthouses it was meant for but didn't reach: each of those keeps the card it had, if any,
+   * until a later put there takes its place.
    */
-  async function putCard(
-    link: { secret: string; expires: number },
+  async function putCardAt(
+    link: { secret: string; expires: number; claim?: string | undefined },
     open: boolean,
     drop: string,
     before: Readonly<Record<string, string>> = {},
     /**
-     * `before` are closed cards: each stays where no new card replaced it, or an older open card
-     * could win there.
+     * `before` are closed cards: each stays where no new card replaced it, even at a Lighthouse
+     * no longer yours, or an older open card could win there.
      */
     keepClosed = false,
     /** Where to put it, when not at every one of your Lighthouses. */
     targets?: readonly LighthouseAddress[],
-  ): Promise<Record<string, string>> {
-    const where = targets ?? cardLighthouses()
+  ): Promise<{ cards: Record<string, string>; missed: string[] }> {
+    const where = cardLighthouses()
+    const tried = targets ?? where
     const cards: Record<string, string> = {}
+    const missed: string[] = []
     const hash = await dropHashOf(drop)
     const expires = Math.min(link.expires, now() + MAX_MAIL_MS - CARD_EXPIRES_SLACK)
     const sealed =
@@ -392,23 +457,38 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             open,
           })
     const tag = await inviteCardTag(crypto, link.secret)
-    for (const lighthouse of where) {
-      if (sealed === undefined || !sealed.ok || hash === undefined || expires <= now()) break
-      const put = await deps.client(lighthouse).request({
-        type: 'put',
-        tag,
-        blob: sealed.value,
-        expires,
-        drops: [hash],
-      })
+    for (const lighthouse of tried) {
+      if (sealed === undefined || !sealed.ok || hash === undefined || expires <= now()) {
+        missed.push(lighthouse.id)
+        continue
+      }
+      const client = deps.client(lighthouse)
+      const request = { type: 'put', tag, blob: sealed.value, expires, drops: [hash] } as const
+      const claim =
+        link.claim === undefined
+          ? undefined
+          : await inviteCardClaim(crypto, link.claim, lighthouse.id)
+      let put = await client.request(claim === undefined ? request : { ...request, claim })
+      // Claimed by someone else first, which only a link made before cards were claimed can be:
+      // left unclaimed there, as it was.
+      if (put.ok && put.value.type === 'error' && put.value.error === 'taken')
+        put = await client.request(request)
       if (put.ok && put.value.type === 'stored') cards[lighthouse.id] = put.value.id
+      else missed.push(lighthouse.id)
     }
-    // The old cards come down once the new ones are up, wherever they were. Where no new card
-    // went up, an old one stays known until a Lighthouse says it's gone, so it can be taken
-    // down, or replaced, next time: forgotten while still up, it would go on being read.
+    // The old cards come down once the new ones are up, wherever they were. Where the new one
+    // wasn't put, or didn't get there, the old one stays up, to come down once one does: taken
+    // down with nothing in its place, that Lighthouse would have no card at all. Elsewhere, where
+    // no new card went up, an old one stays known until a Lighthouse says it's gone, so it can be
+    // taken down, or replaced, next time: forgotten while still up, it would go on being read.
+    const triedIds = new Set(tried.map((address) => address.id))
+    const kept = new Set([
+      ...missed,
+      ...where.filter((address) => !triedIds.has(address.id)).map((address) => address.id),
+    ])
     for (const [id, blob] of Object.entries(before)) {
       if (cards[id] === blob) continue
-      if (keepClosed && cards[id] === undefined) {
+      if (cards[id] === undefined && (kept.has(id) || keepClosed)) {
         cards[id] = blob
         continue
       }
@@ -425,7 +505,54 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
           (dropped.value.type === 'error' && dropped.value.error === 'unknown'))
       if (!gone && cards[id] === undefined) cards[id] = blob
     }
-    return cards
+    return { cards, missed }
+  }
+
+  /** `putCardAt`, saying only where the card now is. */
+  const putCard = async (...args: Parameters<typeof putCardAt>) => (await putCardAt(...args)).cards
+
+  /**
+   * Puts an own link's card, as `putCardAt` does, and says where it now is and where it still
+   * has to go, so `catchUp` tries those again. Cards held before are closed ones only if the
+   * link was closed already.
+   */
+  async function putOwnCard(link: OwnLink, open: boolean, only?: ReadonlySet<string>) {
+    const targets =
+      only === undefined ? undefined : cardLighthouses().filter((address) => only.has(address.id))
+    const put = await putCardAt(link, open, link.drop, link.cards, !link.open, targets)
+    const tried = (id: string) => only === undefined || only.has(id)
+    const behind = [...(link.behind ?? []).filter((id) => !tried(id)), ...put.missed]
+    return { cards: put.cards, behind: behind.length === 0 ? undefined : behind }
+  }
+
+  /** Lighthouses of yours where an own link's card, as it is now, isn't yet. */
+  function behindAt(link: OwnLink): Set<string> {
+    const behind = new Set(link.behind ?? [])
+    return new Set(
+      cardLighthouses()
+        .map((address) => address.id)
+        .filter((id) => link.cards[id] === undefined || behind.has(id)),
+    )
+  }
+
+  /**
+   * "Closed", with your device log: someone who asked through a card a device since taken off
+   * your list put learns it's off, and stops taking what it says.
+   */
+  const closedAnswer = () => inviteAnswerBody({ answer: 'closed', deviceLog: deps.deviceLog() })
+
+  /** Another device's link, whose maker has since been taken off your list. */
+  function orphanOf(secret: string): OtherLink | undefined {
+    const active = deviceState(deps.deviceLog()).active
+    return others.find((link) => link.secret === secret && !active.has(link.owner))
+  }
+
+  /** Where whoever opens a new link looks: your official Lighthouses, or the one it names. */
+  function readLighthouses(): LighthouseAddress[] {
+    const where = cardLighthouses()
+    const official = new Set(deps.official.map((address) => address.id))
+    const yours = where.filter((address) => official.has(address.id))
+    return yours.length > 0 ? yours : where.slice(0, 1)
   }
 
   /** What the link names: your official Lighthouses, or one of yours when you've none of them. */
@@ -472,8 +599,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         ),
       })),
     )
-    for (const request of waiting)
-      await answer(request, inviteAnswerBody({ answer: 'closed' }), false)
+    for (const request of waiting) await answer(request, closedAnswer(), false)
   }
 
   /**
@@ -487,7 +613,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       const link = linkOf(secret)
       if (link === undefined || !(link.open || link.closing === true)) return undefined
       await updateLink(secret, (other) => ({ ...other, open: false, closing: true }))
-      const cards = await putCard(link, false, link.drop, link.cards, true)
+      const { cards, missed } = await putCardAt(link, false, link.drop, link.cards, true)
       // Closed only once every Lighthouse it's put at, and every one that held a card of it,
       // holds the closed card just put: one still holding an old card could show it open.
       const places = new Set([
@@ -500,6 +626,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       await updateLink(secret, (other) => ({
         ...other,
         cards,
+        behind: missed.length === 0 ? undefined : missed,
         closing: closing ? true : undefined,
       }))
       return linkOf(secret)
@@ -543,11 +670,12 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   async function takeRequest(source: Source, letter: Letter): Promise<boolean> {
     if (!deps.active()) return false
     const link = linkOf(source.secret)
-    if (link === undefined) return true
+    const orphan = link === undefined ? orphanOf(source.secret) : undefined
+    if (link === undefined && orphan === undefined) return true
     const sender = letter.sender
     if (sender === deps.self || deps.isBlocked(sender)) return true
     const request = readInviteRequest(sender, letter.body)
-    if (request === undefined || request.link !== (await inviteCardTag(crypto, link.secret)))
+    if (request === undefined || request.link !== (await inviteCardTag(crypto, source.secret)))
       return true
     const speaks = await speakerIdentity(
       crypto,
@@ -574,6 +702,23 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       replies: [reply],
       at: letter.at,
       state: 'waiting',
+    }
+    if (link === undefined) {
+      // Through a card its removed maker put, or one from before: told it's closed, with your
+      // list as it is now, a few times a link at most.
+      const told = await serial(async () => {
+        const current = orphanOf(source.secret)
+        if (current === undefined || (current.answered ?? 0) >= MAX_CLOSED_ANSWERS) return false
+        others = others.map((other) =>
+          other.secret === current.secret
+            ? { ...other, answered: (other.answered ?? 0) + 1 }
+            : other,
+        )
+        if (!deps.stopped()) await store.set(KEYS.others, others)
+        return true
+      })
+      if (told) void answer(view, closedAnswer(), false).catch(() => undefined)
+      return true
     }
     const addedAnswer = (pairSecret: string) =>
       inviteAnswerBody({
@@ -613,7 +758,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             ...other,
             closedAnswers: other.closedAnswers + 1,
           }))
-          return { to: view, body: inviteAnswerBody({ answer: 'closed' }), kept: false }
+          return { to: view, body: closedAnswer(), kept: false }
         }
         if (before?.state === 'waiting') {
           await updateLink(link.secret, (other) => ({
@@ -652,27 +797,58 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     if (deps.isBlocked(ask.identity)) return true
     const body = readInviteAnswer(letter.sender, letter.body)
     if (body === undefined) return true
+    // What you know of their list: the log you keep for them, and what answers said.
+    const kept = await deps.knownLog(ask.identity)
+    const known =
+      kept === undefined || ask.log === undefined
+        ? (ask.log ?? kept)
+        : await mergeDeviceLogs(crypto, kept, ask.log)
     if (body.answer !== 'added') {
-      // Only from one of the devices their card named.
-      if (!ask.keys.some((key) => key.device === letter.from)) return false
+      // Only from one of the devices their card named, or with a list it's on.
+      const log = body.answer === 'closed' ? body.deviceLog : undefined
+      const merged =
+        log === undefined ||
+        (await speakerIdentity(
+          crypto,
+          letter.from,
+          { identity: ask.identity, devices: log },
+          known,
+        )) !== ask.identity
+          ? undefined
+          : known === undefined
+            ? log
+            : await mergeDeviceLogs(crypto, known, log)
+      if (merged === undefined && !ask.keys.some((key) => key.device === letter.from)) return false
       await serial(() =>
         saveAsks(
           asks().map((other) =>
-            other.reply === ask.reply ? { ...other, state: body.answer } : other,
+            other.reply !== ask.reply
+              ? other
+              : {
+                  ...other,
+                  // Once added, only what it says of their list counts.
+                  state: other.state === 'added' ? 'added' : body.answer,
+                  ...(merged === undefined ? {} : { log: merged }),
+                },
           ),
         ),
       )
+      // Added by a device this says was removed: it stops counting for that friend.
+      if (merged !== undefined) await deps.friendLogHeard(ask.identity, merged)
       return true
     }
+    // Answered already, or closed by another of their devices: nothing more is taken.
+    if (ask.state !== 'waiting') return true
     if (!isPairSecret(body.secret)) return true
     const speaks = await speakerIdentity(
       crypto,
       letter.from,
       { identity: ask.identity, devices: body.deviceLog },
-      await deps.knownLog(ask.identity),
+      known,
     )
-    // From a device not on their list as this one knows it: left, to be looked at again.
-    if (speaks !== ask.identity) return false
+    // From a device not on their list as this one knows it: left, to be looked at again, unless
+    // an answer already said it was taken off.
+    if (speaks !== ask.identity) return ask.log !== undefined
     await deps.befriend({
       id: ask.identity,
       handle: body.name,
@@ -681,7 +857,13 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       keys: ask.keys,
       lighthouses: ask.lighthouses,
     })
-    await serial(() => saveAsks(asks().filter((other) => other.reply !== ask.reply)))
+    await serial(() =>
+      saveAsks(
+        asks().map((other) =>
+          other.reply === ask.reply ? { ...other, state: 'added' as const } : other,
+        ),
+      ),
+    )
     return true
   }
 
@@ -694,7 +876,8 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
 
   const api = {
     links,
-    asks,
+    /** Requests you sent and haven't been added through. */
+    asks: () => asks().filter((ask) => ask.state !== 'added'),
 
     /** Finishes adds a closed Pigeon left half done. */
     async resume() {
@@ -704,6 +887,43 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       // A link whose last place was taken just before Pigeon closed: closed now.
       for (const link of links())
         if (link.open && link.used >= link.uses) await api.cancel(link.secret)
+      await api.catchUp()
+    },
+
+    /**
+     * Puts each link's card again where it didn't get to, as it is now: at a Lighthouse that
+     * was out of reach or refused it last time. A link still closing is closed again everywhere,
+     * as `closeLink` does. A link made before cards were claimed is given a claim key first, and
+     * its card put again everywhere with it. Run at each start and mail check.
+     */
+    async catchUp() {
+      if (!deps.active()) return
+      let claimed = false
+      for (const { secret } of links()) {
+        const link = linkOf(secret)
+        if (link === undefined || link.expires <= now()) continue
+        if (link.closing === true) {
+          await closeLink(secret)
+          continue
+        }
+        await serial(async () => {
+          const current = linkOf(secret)
+          if (current === undefined) return
+          if (current.claim === undefined) {
+            if (!current.open) return
+            const withClaim = { ...current, claim: base32Encode(deps.random(32)) }
+            const put = await putOwnCard(withClaim, true)
+            await updateLink(secret, (other) => ({ ...other, claim: withClaim.claim, ...put }))
+            claimed = true
+            return
+          }
+          const targets = behindAt(current)
+          if (targets.size === 0) return
+          const put = await putOwnCard(current, current.open, targets)
+          await updateLink(secret, (other) => ({ ...other, ...put }))
+        })
+      }
+      if (claimed) deps.changed()
     },
 
     /** Makes a link for `uses` people, lasting `lifetime`, and leaves its card. */
@@ -717,14 +937,31 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       const at = now()
       const secret = base32Encode(deps.random(16))
       const drop = base32Encode(deps.random(32))
+      // Claimed before the link is shown to anyone, so nobody holding it can claim it first.
+      const claim = base32Encode(deps.random(32))
       const lifetime = preset(options.lifetime, INVITE_LINK_LIFETIMES, DEFAULT_INVITE_LINK_LIFETIME)
       const expires = at + lifetime
-      const cards = await putCard({ secret, expires }, true, drop)
-      if (Object.keys(cards).length === 0) return { ok: false, error: 'not-stored' }
+      const { cards, missed } = await putCardAt({ secret, expires, claim }, true, drop)
+      // Shown only once a Lighthouse that everyone opening it reads holds its card, claimed:
+      // where the first put missed, someone holding the link could claim the tag before it's
+      // put again, and the card would have nowhere it can't be buried.
+      const read = readLighthouses()
+      if (!read.some((address) => cards[address.id] !== undefined)) {
+        for (const lighthouse of cardLighthouses()) {
+          const id = cards[lighthouse.id]
+          if (id !== undefined)
+            await deps.client(lighthouse).request({ type: 'drop', id, key: drop })
+        }
+        const official = new Set(deps.official.map((address) => address.id))
+        const named = !read.some((address) => official.has(address.id))
+        return { ok: false, error: named ? 'named-not-stored' : 'not-stored' }
+      }
       const link: OwnLink = {
         secret,
         drop,
+        claim,
         cards,
+        ...(missed.length === 0 ? {} : { behind: missed }),
         madeAt: at,
         expires,
         uses: preset(options.uses, INVITE_LINK_USES, DEFAULT_INVITE_LINK_USES),
@@ -805,28 +1042,40 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       const cards: InviteCard[] = []
       for (const lighthouse of where) {
         const client = deps.client(lighthouse)
-        const items: { id: string; size: number }[] = []
-        for (let cursor = 0, more = true; more && items.length < MAX_CARD_ITEMS; ) {
-          const listed = await client.request({ type: 'list', tags: [tag], cursor })
-          if (!listed.ok || listed.value.type !== 'listed') break
-          items.push(...listed.value.items)
-          cursor = listed.value.cursor
-          more = listed.value.more
-        }
-        // Newest first: a card put again, or closed, comes after anything put to hide it.
-        const worth = items.filter((item) => item.size <= MAX_CARD_BYTES).reverse()
-        for (const item of worth.slice(0, MAX_CARD_GETS)) {
-          const got = await client.request({ type: 'get', id: item.id })
-          if (!got.ok || got.value.type !== 'blob') continue
-          const opened = await openInviteCard(crypto, deps.seal, link, got.value.blob)
-          if (!opened.ok) continue
-          // Checked again against the log you keep for them, if you know them.
-          const known = await deps.knownLog(opened.value.identity)
-          const checked =
-            known === undefined
-              ? opened
-              : await openInviteCard(crypto, deps.seal, link, got.value.blob, known)
-          if (checked.ok) cards.push(checked.value)
+        const seen = new Set<string>()
+        // The claimed cards first, which only the inviter's devices can put. Then everything
+        // under the tag, as far as the limits go: a Lighthouse from before claims, a card put
+        // before its link was claimed, or a closed one from a device that doesn't claim them.
+        for (const [type, maxItems, maxGets] of [
+          ['list-claimed', MAX_CLAIMED_ITEMS, MAX_CLAIMED_GETS],
+          ['list', MAX_CARD_ITEMS, MAX_CARD_GETS],
+        ] as const) {
+          const items: { id: string; size: number }[] = []
+          for (let cursor = 0, more = true; more && items.length < maxItems; ) {
+            const listed = await client.request({ type, tags: [tag], cursor })
+            if (!listed.ok || listed.value.type !== 'listed') break
+            items.push(...listed.value.items)
+            cursor = listed.value.cursor
+            more = listed.value.more
+          }
+          // Newest first: a card put again, or closed, comes after anything put to hide it.
+          const worth = items
+            .filter((item) => item.size <= MAX_CARD_BYTES && !seen.has(item.id))
+            .reverse()
+          for (const item of worth.slice(0, maxGets)) {
+            seen.add(item.id)
+            const got = await client.request({ type: 'get', id: item.id })
+            if (!got.ok || got.value.type !== 'blob') continue
+            const opened = await openInviteCard(crypto, deps.seal, link, got.value.blob)
+            if (!opened.ok) continue
+            // Checked again against the log you keep for them, if you know them.
+            const known = await deps.knownLog(opened.value.identity)
+            const checked =
+              known === undefined
+                ? opened
+                : await openInviteCard(crypto, deps.seal, link, got.value.blob, known)
+            if (checked.ok) cards.push(checked.value)
+          }
         }
       }
       const card = newestCard(cards)
@@ -907,9 +1156,26 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             maxBytes: MAX_INVITE_REQUEST_BYTES,
             maxItems: MAX_INVITE_REQUESTS_PER_DAY,
           })
-      // Until a while after the link ends: an answer put just before it may come late.
+      // Links of a device since taken off your list: whoever asks through a card it put is
+      // told they're closed, until a while after they end.
+      const active = deviceState(deps.deviceLog()).active
+      for (const link of others)
+        if (!active.has(link.owner) && link.expires + KEEP_AFTER_EXPIRY > at)
+          out.push({
+            sender: undefined,
+            secret: link.secret,
+            tags: 'invite-ask',
+            kinds: ['invite'],
+            maxBytes: MAX_INVITE_REQUEST_BYTES,
+            maxItems: MAX_INVITE_REQUESTS_PER_DAY,
+          })
+      // Until a while after the link ends: an answer put just before it may come late, and
+      // after being added, another device of theirs may say the one that added you was removed.
       for (const ask of asks())
-        if (ask.state === 'waiting' && ask.expires + KEEP_AFTER_EXPIRY > at)
+        if (
+          (ask.state === 'waiting' || ask.state === 'added') &&
+          ask.expires + KEEP_AFTER_EXPIRY > at
+        )
           out.push({
             sender: ask.identity,
             secret: ask.reply,
@@ -950,8 +1216,8 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         const at = now()
         for (const link of links()) {
           if (link.expires <= at || !(link.open || closedToo)) continue
-          const cards = await putCard(link, link.open, link.drop, link.cards, !link.open)
-          await updateLink(link.secret, (other) => ({ ...other, cards }))
+          const put = await putOwnCard(link, link.open)
+          await updateLink(link.secret, (other) => ({ ...other, ...put }))
         }
         const active = deviceState(deps.deviceLog()).active
         const gone = others.filter(
@@ -1051,6 +1317,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         uses: link.uses,
         used: link.used,
         open: link.open,
+        ...(link.claim === undefined ? {} : { claim: link.claim }),
       }))
     },
 

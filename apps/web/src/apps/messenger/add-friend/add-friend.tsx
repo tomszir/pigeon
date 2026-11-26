@@ -586,6 +586,8 @@ const ASK_STATES: Record<SentAsk['state'], string> = {
   declined: 'they said no',
   closed: 'the link had closed',
   busy: 'too many were waiting on the link; ask again later',
+  // Never shown: an added request leaves the list.
+  added: 'they added you',
 }
 
 /** Requests you sent through friends' links, until each is answered and forgotten. */

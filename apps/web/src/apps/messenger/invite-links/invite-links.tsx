@@ -58,10 +58,14 @@ export function inviteMessage(name: string, url: string): string {
   return `${from === '' ? "You're invited to Pigeon!" : `${from} invites you to Pigeon!`}\n${url}`
 }
 
-const MAKE_ERRORS = {
+/** What Add a Friend says when a link couldn't be made. */
+export const MAKE_ERRORS = {
   'no-lighthouse':
     "Links wait at your Lighthouses, and yours all need a pass. Add one that doesn't in Network.",
-  'not-stored': 'None of your Lighthouses took the link. Check Network, then try again.',
+  'not-stored':
+    "An official Lighthouse can't be reached right now, and it's where people opening the link look for it. Try again in a moment.",
+  'named-not-stored':
+    "The first Lighthouse on your list in Network can't be reached right now, and it's where people opening the link look for it. Try again in a moment, or put one that's up first.",
   'no-name': 'Choose a name first.',
   removed: 'This device was taken off your list.',
 } as const

@@ -22,6 +22,15 @@ export interface SqlDatabase {
  */
 export const MAX_BOUND_VALUES = 90
 
+/**
+ * Added after `blobs` was first made, so a database from before gets it on opening: SHA-256 of a
+ * claimed blob's claim, null for every other blob.
+ */
+const OWNER_COLUMN = 'ALTER TABLE blobs ADD COLUMN owner TEXT'
+/** Claimed blobs by tag: few beside the rest, so a tag full of ordinary mail isn't walked. */
+const CLAIMED_INDEX =
+  'CREATE INDEX IF NOT EXISTS blobs_claimed ON blobs (tag, seq) WHERE owner IS NOT NULL'
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS blobs (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +68,7 @@ const toBlob = (row: Readonly<Record<string, SqlValue>>): StoredBlob => ({
   drops: JSON.parse(text(row['drops'])) as string[],
   used: JSON.parse(text(row['used'])) as string[],
   seq: num(row['seq']),
+  ...(row['owner'] === null || row['owner'] === undefined ? {} : { owner: text(row['owner']) }),
 })
 
 /**
@@ -83,6 +93,9 @@ export function createSqlStore(
   } = {},
 ): MailStore {
   for (const statement of SCHEMA) db.exec(statement)
+  const columns = db.exec('PRAGMA table_info(blobs)').rows
+  if (!columns.some((column) => column['name'] === 'owner')) db.exec(OWNER_COLUMN)
+  db.exec(CLAIMED_INDEX)
   const live = (id: string, now: number) =>
     db.exec('SELECT * FROM blobs WHERE id = ? AND expires > ?', id, now).rows[0]
 
@@ -105,6 +118,15 @@ export function createSqlStore(
     async put(blob, now) {
       const held = db.exec('SELECT expires, cost FROM blobs WHERE id = ?', blob.id).rows[0]
       if (held !== undefined && num(held['expires']) > now) return 'exists'
+      if (blob.owner !== undefined) {
+        const other = db.exec(
+          'SELECT 1 FROM blobs WHERE tag = ? AND owner IS NOT NULL AND owner != ? AND expires > ? LIMIT 1',
+          blob.tag,
+          blob.owner,
+          now,
+        ).rows[0]
+        if (other !== undefined) return 'taken'
+      }
       // Expired but not swept: replaced, with a new seq, so it lists again. AUTOINCREMENT means
       // a seq is never given twice, even after the highest row is deleted.
       if (held !== undefined) {
@@ -112,7 +134,7 @@ export function createSqlStore(
         add(-num(held['cost']))
       }
       db.exec(
-        'INSERT INTO blobs (id, tag, blob, size, cost, expires, drops) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO blobs (id, tag, blob, size, cost, expires, drops, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         blob.id,
         blob.tag,
         blob.blob,
@@ -120,11 +142,12 @@ export function createSqlStore(
         blob.cost,
         blob.expires,
         JSON.stringify(blob.drops),
+        blob.owner ?? null,
       )
       add(blob.cost)
       return 'stored'
     },
-    async list(tags, cursor, limit, now): Promise<ListedPage> {
+    async list(tags, cursor, limit, now, claimed = false): Promise<ListedPage> {
       // In chunks under the bound-value limit, each the first limit + 1 rows past the cursor,
       // merged in seq order: the page is the same as one query over every tag would give.
       const unique = [...new Set(tags)]
@@ -135,7 +158,7 @@ export function createSqlStore(
         const marks = chunk.map(() => '?').join(', ')
         rows.push(
           ...db.exec(
-            `SELECT id, tag, size, seq FROM blobs WHERE tag IN (${marks}) AND seq > ? AND expires > ? ORDER BY seq LIMIT ?`,
+            `SELECT id, tag, size, seq FROM blobs WHERE tag IN (${marks}) AND seq > ? AND expires > ?${claimed ? ' AND owner IS NOT NULL' : ''} ORDER BY seq LIMIT ?`,
             ...chunk,
             cursor,
             now,

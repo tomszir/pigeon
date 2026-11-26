@@ -2,7 +2,7 @@
 
 An invite link leaves a sealed card at the inviter's Lighthouses, so friends can use it while the inviter is offline; each link has its own time limit and number of uses, and everyone who asks through it waits for the inviter's approval.
 
-- Status: accepted
+- Status: accepted; superseded in part by [0053](0053-claimed-invite-cards.md): cards are put claimed, and whoever opens a link reads the claimed ones first, so someone else holding it can no longer bury the card
 - Date: 2026-11-25
 
 ## Context

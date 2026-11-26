@@ -919,6 +919,8 @@ export async function createMessenger(deps: MessengerDeps) {
               })
         }
       await mailbox.resend()
+      // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
+      await inviteLinks?.catchUp().catch(() => undefined)
       const all = [...sources, ...(inviteLinks?.sources() ?? [])]
       const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
       // Old secrets with no replacement under way yet, now that any proposal waiting for this
@@ -2016,6 +2018,13 @@ export async function createMessenger(deps: MessengerDeps) {
       befriend: befriendByLink,
       friendRecipient: (id) => recipient(id, friendMailSecret(id)),
       changed: () => tellOwnDevices(),
+      friendLogHeard: async (id, log) => {
+        if (friend(id) === undefined) return
+        await devices.loadFriend(id)
+        if (!(await devices.takeFriend(id, log))) return
+        setState('friends', id, 'devices', devices.friendDeviceCount(id))
+        sessions.get(id)?.recheck()
+      },
       stopped: () => closed,
     })
   // Once on every device, whatever its own key: a card also carries your device log, which a

@@ -26,19 +26,32 @@ export function createMemoryStore(): MailStore {
   return {
     async put(blob, now) {
       if (live(blob.id, now) !== undefined) return 'exists'
+      if (blob.owner !== undefined)
+        for (const id of byTag.get(blob.tag) ?? []) {
+          const owner = live(id, now)?.owner
+          if (owner !== undefined && owner !== blob.owner) return 'taken'
+        }
       remove(blob.id)
       seq += 1
-      blobs.set(blob.id, { ...blob, drops: [...blob.drops], used: [], seq })
+      const { owner, ...rest } = blob
+      blobs.set(blob.id, {
+        ...rest,
+        drops: [...blob.drops],
+        used: [],
+        seq,
+        ...(owner === undefined ? {} : { owner }),
+      })
       byTag.set(blob.tag, [...(byTag.get(blob.tag) ?? []), blob.id])
       total += blob.cost
       return 'stored'
     },
-    async list(tags, cursor, limit, now): Promise<ListedPage> {
+    async list(tags, cursor, limit, now, claimed = false): Promise<ListedPage> {
       const found: StoredBlob[] = []
       for (const tag of new Set(tags))
         for (const id of byTag.get(tag) ?? []) {
           const blob = live(id, now)
-          if (blob !== undefined && blob.seq > cursor) found.push(blob)
+          if (blob !== undefined && blob.seq > cursor && (!claimed || blob.owner !== undefined))
+            found.push(blob)
         }
       found.sort((a, b) => a.seq - b.seq)
       const page = found.slice(0, limit)

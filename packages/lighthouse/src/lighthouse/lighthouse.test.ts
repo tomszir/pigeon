@@ -167,6 +167,67 @@ describe('the Lighthouse', () => {
     expect(await late({ type: 'get', id })).toEqual({ type: 'error', error: 'unknown' })
   })
 
+  it('keeps claimed blobs to whoever claimed the tag first, and lists them apart', async () => {
+    const { open } = setup({ limits: { ...DEFAULT_LIMITS, blobsPerTagPerDay: 3 } })
+    const owner = open('198.51.100.1')
+    await owner(hello)
+    const card = { ...(await put(1, [2])), claim: key(40) }
+    const stored = await owner(card)
+    expect(stored.type).toBe('stored')
+    // Someone else who knows the tag: ordinary puts as ever, but no claimed ones.
+    const other = open('203.0.113.7')
+    await other(hello)
+    const junk = { ...(await put(1, [3])), blob: base64Encode(new Uint8Array([9])) }
+    expect((await other(junk)).type).toBe('stored')
+    for (let n = 0; n < 4; n++)
+      expect(
+        await other({
+          ...junk,
+          blob: base64Encode(new Uint8Array([10, n])),
+          claim: key(41),
+        }),
+      ).toEqual({ type: 'error', error: 'taken' })
+    // A refused claim isn't counted against the range's limit on the tag.
+    expect((await other({ ...junk, blob: base64Encode(new Uint8Array([11])) })).type).toBe('stored')
+    // The owner puts again under the same claim, as a card put again does.
+    const again = { ...card, blob: base64Encode(new Uint8Array([1, 9])) }
+    expect((await owner(again)).type).toBe('stored')
+    const reader = open('192.0.2.5')
+    await reader(hello)
+    const claimed = await reader({ type: 'list-claimed', tags: [key(1)], cursor: 0 })
+    if (claimed.type !== 'listed') throw new Error(claimed.type)
+    const claimedBy = await hashOf(40)
+    expect(claimed.items.map((item) => item.id)).toEqual([
+      await mailBlobId(fakeCrypto, card.tag, card.blob, card.drops, claimedBy),
+      await mailBlobId(fakeCrypto, again.tag, again.blob, again.drops, claimedBy),
+    ])
+    const all = await reader({ type: 'list', tags: [key(1)], cursor: 0 })
+    expect(all.type === 'listed' && all.items.length).toBe(4)
+    // The same bytes put unclaimed first don't stand in for the claimed blob.
+    const early = { ...(await put(5, [2])), blob: base64Encode(new Uint8Array([5, 5])) }
+    expect((await other(early)).type).toBe('stored')
+    const late = await owner({ ...early, claim: key(40) })
+    expect(late).toEqual({
+      type: 'stored',
+      id: await mailBlobId(fakeCrypto, early.tag, early.blob, early.drops, claimedBy),
+      expires: HOUR,
+    })
+    expect(
+      await reader({ type: 'list-claimed', tags: [key(5)], cursor: 0 }).then(
+        (page) => page.type === 'listed' && page.items.length,
+      ),
+    ).toBe(1)
+    // What claimed a blob is never told: its get is like any other's.
+    if (stored.type !== 'stored') throw new Error(stored.type)
+    expect(Object.keys(await reader({ type: 'get', id: stored.id })).sort()).toEqual([
+      'blob',
+      'expires',
+      'id',
+      'tag',
+      'type',
+    ])
+  })
+
   it("lets nobody drop a copy without that device's value", async () => {
     const ask = setup().open()
     await ask(hello)

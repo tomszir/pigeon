@@ -1,4 +1,4 @@
-import { emptyDeviceLog, fakeSigner, type LighthouseAddress } from '@pigeon/core'
+import { base32Encode, emptyDeviceLog, fakeSigner, type LighthouseAddress } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
 import { readSelfNews, selfNewsBody } from './self-mail.ts'
 
@@ -37,5 +37,25 @@ describe('self mail', () => {
       profile: undefined,
       lighthouses: undefined,
     })
+  })
+
+  it("carries each invite link's claim key, and leaves out a link whose key is off", () => {
+    const link = {
+      secret: base32Encode(new Uint8Array(16).fill(1)),
+      owner: rook,
+      expires: 9,
+      uses: 5,
+      used: 0,
+      open: true,
+    }
+    const claim = base32Encode(new Uint8Array(32).fill(2))
+    const news = {
+      log: emptyDeviceLog(rook),
+      keys: [],
+      invites: [{ ...link, claim }, link],
+    }
+    expect(readSelfNews(rook, selfNewsBody(news))?.invites).toEqual(news.invites)
+    const off = { ...news, invites: [{ ...link, claim: claim.slice(1) }, link] }
+    expect(readSelfNews(rook, selfNewsBody(off))?.invites).toEqual([link])
   })
 })
