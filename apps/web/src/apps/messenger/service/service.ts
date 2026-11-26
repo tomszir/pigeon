@@ -96,6 +96,7 @@ import {
   type OpenedLink,
 } from './invite-links.ts'
 import { createLetters, type Letters } from './letters.ts'
+import { createMailSchedule, MAIL_AFTER_SEND_MS } from './mail-schedule.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import type {
   CodeAsk,
@@ -187,21 +188,6 @@ export interface MessengerDeps {
    */
   readonly lighthouseClient?: ((address: LighthouseAddress) => LighthouseClient) | undefined
 }
-
-/** How often a running Messenger looks for mail. */
-export const MAIL_EVERY_MS = 10 * 60 * 1000
-/** How often mail is looked for while a link of yours is open, or a request you sent waits. */
-export const INVITE_MAIL_EVERY_MS = 30 * 1000
-/**
- * The least time between two looks that something other than a timer asked for (a tab shown,
- * a window focused, the network back, a message sent), so a burst of them is one look.
- */
-export const MAIL_MIN_GAP_MS = 5 * 1000
-/**
- * How long after you send something mail is looked for: long enough for a letter that has to
- * go through a Lighthouse to be put there, so the look can hear its receipt or a reply.
- */
-export const MAIL_AFTER_SEND_MS = 10 * 1000
 
 const DEFAULT_PROFILE: Profile = { handle: '', status: 'online', message: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -605,106 +591,78 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /** Looks for mail at this Pigeon's Lighthouses, puts again what waits, and acts on what came. */
-  let checking: Promise<void> | undefined
-  let lastLookAt = Number.NEGATIVE_INFINITY
-  // What the Messenger says about its looking: when the last one finished, and whether one is
-  // under way or asked for and waiting its turn.
-  const [lookedAt, setLookedAt] = createSignal<number | undefined>(undefined)
-  const [lookState, setLookState] = createSignal<'idle' | 'waiting' | 'checking'>('idle')
-  function checkMail(): Promise<void> {
-    if (mailbox === undefined || closed) return Promise.resolve()
-    if (checking === undefined) lastLookAt = clock.now()
-    checking ??= (async () => {
-      await settleSecrets()
-      const sources: Source[] = []
-      // Your own other devices, under the self secret (and one being replaced): what they
-      // changed, and their receipts.
-      const selfState = devices.selfSecretState()
-      if (selfState !== undefined && devices.status() === 'active')
-        for (const secret of fetchSecrets(selfState))
-          sources.push({
-            sender: self,
-            secret,
-            kinds: ['self', 'receipt', 'letter', 'rekey'],
-            replyTo: () => selfRecipient(),
-          })
-      for (const view of friendList()) {
-        const kept = secretState(view)
-        if (kept === undefined || view.removedYouAt !== undefined) continue
-        const replyTo = await recipient(view.id, mailSecret(kept))
-        for (const secret of fetchSecrets(kept))
-          sources.push({
-            sender: view.id,
-            secret,
-            kinds: ['farewell', 'receipt', 'letter', 'rekey'],
-            replyTo,
-          })
+  async function lookForMail(): Promise<void> {
+    if (mailbox === undefined) return
+    await settleSecrets()
+    const sources: Source[] = []
+    // Your own other devices, under the self secret (and one being replaced): what they
+    // changed, and their receipts.
+    const selfState = devices.selfSecretState()
+    if (selfState !== undefined && devices.status() === 'active')
+      for (const secret of fetchSecrets(selfState))
+        sources.push({
+          sender: self,
+          secret,
+          kinds: ['self', 'receipt', 'letter', 'rekey'],
+          replyTo: () => selfRecipient(),
+        })
+    for (const view of friendList()) {
+      const kept = secretState(view)
+      if (kept === undefined || view.removedYouAt !== undefined) continue
+      const replyTo = await recipient(view.id, mailSecret(kept))
+      for (const secret of fetchSecrets(kept))
+        sources.push({
+          sender: view.id,
+          secret,
+          kinds: ['farewell', 'receipt', 'letter', 'rekey'],
+          replyTo,
+        })
+    }
+    // Friends you removed: their receipts for your farewell come under the same secret, and
+    // so does a farewell of theirs if they removed you too.
+    const asked = new Set(sources.map((source) => source.sender))
+    for (const waiting of await mailbox.waitingOn())
+      if (!asked.has(waiting.identity)) {
+        const record = farewells.find((other) => other.id === waiting.identity)
+        // Under the new secret too, when they may have moved to it before hearing.
+        const secrets = new Set([waiting.secret, record?.secret, record?.old])
+        for (const secret of secrets)
+          if (secret !== undefined)
+            sources.push({
+              sender: waiting.identity,
+              secret,
+              kinds: ['receipt', 'farewell'],
+              replyTo: waiting,
+            })
       }
-      // Friends you removed: their receipts for your farewell come under the same secret, and
-      // so does a farewell of theirs if they removed you too.
-      const asked = new Set(sources.map((source) => source.sender))
-      for (const waiting of await mailbox.waitingOn())
-        if (!asked.has(waiting.identity)) {
-          const record = farewells.find((other) => other.id === waiting.identity)
-          // Under the new secret too, when they may have moved to it before hearing.
-          const secrets = new Set([waiting.secret, record?.secret, record?.old])
-          for (const secret of secrets)
-            if (secret !== undefined)
-              sources.push({
-                sender: waiting.identity,
-                secret,
-                kinds: ['receipt', 'farewell'],
-                replyTo: waiting,
-              })
-        }
-      await mailbox.resend()
-      // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
-      await inviteLinks?.catchUp().catch(() => undefined)
-      const all = [...sources, ...(inviteLinks?.sources() ?? [])]
-      const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
-      // Old secrets with no replacement under way yet, now that any proposal waiting for this
-      // device has been taken.
-      await replaceOldSecrets()
-      // Invite links still to close after a removal, where a Lighthouse didn't take the card.
-      void closeLinksAfterRemoval().catch(() => undefined)
-      // What waits to be mailed to friends who are away: written before a close, or held back.
-      for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
-      // A farewell every device of theirs has a receipt for was heard: nothing more to say.
-      // One that only expired wasn't, and goes on being said in person.
-      for (const id of heard)
-        if (farewells.some((record) => record.id === id && record.mailed === true))
-          await farewellHeard(id)
-    })().finally(() => {
-      checking = undefined
-      setLookedAt(clock.now())
-      setLookState(looking ? 'waiting' : 'idle')
-    })
-    setLookState('checking')
-    return checking
+    await mailbox.resend()
+    // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
+    await inviteLinks?.catchUp().catch(() => undefined)
+    const all = [...sources, ...(inviteLinks?.sources() ?? [])]
+    const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
+    // Old secrets with no replacement under way yet, now that any proposal waiting for this
+    // device has been taken.
+    await replaceOldSecrets()
+    // Invite links still to close after a removal, where a Lighthouse didn't take the card.
+    void closeLinksAfterRemoval().catch(() => undefined)
+    // What waits to be mailed to friends who are away: written before a close, or held back.
+    for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
+    // A farewell every device of theirs has a receipt for was heard: nothing more to say.
+    // One that only expired wasn't, and goes on being said in person.
+    for (const id of heard)
+      if (farewells.some((record) => record.id === id && record.mailed === true))
+        await farewellHeard(id)
   }
 
-  /**
-   * Looks for mail soon, in `after` ms at the earliest and never within MAIL_MIN_GAP_MS of the
-   * last look. Asked again while one waits, it is that one: a tab shown, a window focused and a
-   * network back in the same moment are one look. A look in progress isn't joined, since what it
-   * has fetched may already be past what the person came back for; this one waits and goes after.
-   */
-  let looking = false
-  /** How long a look asked for now would wait: what's left of the gap since the last one. */
-  const gapLeft = () => Math.max(0, lastLookAt + MAIL_MIN_GAP_MS - clock.now())
-  function lookSoon(after: number) {
-    if (mailbox === undefined || closed || looking) return
-    looking = true
-    if (checking === undefined) setLookState('waiting')
-    void (async () => {
-      const wait = Math.max(after, gapLeft())
-      if (wait > 0) await clock.sleep(wait)
-      await checking?.catch(() => undefined)
-      looking = false
-      await checkMail().catch(() => undefined)
-    })()
-  }
-  const stopWaking = deps.wake?.on(() => lookSoon(0))
+  const mailSchedule = createMailSchedule({
+    clock,
+    wake: deps.wake,
+    enabled: mailbox !== undefined,
+    closed: () => closed,
+    look: lookForMail,
+    inviteWaiting: () => inviteLinks?.waiting() === true,
+  })
+  const { checkMail, lookSoon, gapLeft, lookedAt, lookState, stopWaking } = mailSchedule
 
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
   type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -2439,23 +2397,7 @@ export async function createMessenger(deps: MessengerDeps) {
     }
   }
 
-  // Mail is looked for every few minutes while the Messenger runs, as well as on start.
-  void (async () => {
-    while (!closed) {
-      await clock.sleep(MAIL_EVERY_MS)
-      if (closed) return
-      await checkMail().catch(() => undefined)
-    }
-  })()
-  // More often while a link of yours is open or a request you sent waits, so two people online
-  // together pair within a minute.
-  void (async () => {
-    while (!closed) {
-      await clock.sleep(INVITE_MAIL_EVERY_MS)
-      if (closed) return
-      if (inviteLinks?.waiting() === true) await checkMail().catch(() => undefined)
-    }
-  })()
+  mailSchedule.run()
 
   // Rooms are renamed each UTC day, with both joined around midnight.
   void (async () => {
