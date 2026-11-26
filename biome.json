@@ -41,6 +41,10 @@
       },
       "style": {
         "useImportType": "error",
+        "noExcessiveLinesPerFile": {
+          "level": "error",
+          "options": { "maxLines": 600 }
+        },
         "noNonNullAssertion": "error"
       },
       "complexity": {
@@ -56,6 +60,101 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 1000 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/apps/messenger/add-friend/add-friend.tsx",
+        "packages/core/src/avatar/avatar.ts",
+        "packages/core/src/chat/pair-session.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 700 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/core/src/devices/device-log.ts", "packages/pigeonhtml/src/css.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 800 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/app/programs.tsx", "packages/core/src/chat/pair-session.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 1100 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/messenger/service/invite-links.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 1300 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/messenger/service/service.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 3200 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/messenger/service/service.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": { "maxLines": 4500 }
+            }
+          }
+        }
+      }
+    },
     {
       "includes": ["packages/**"],
       "linter": {
