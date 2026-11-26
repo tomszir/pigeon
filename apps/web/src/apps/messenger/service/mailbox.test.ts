@@ -19,8 +19,16 @@ import { createMailbox, RESEND_AFTER_MS, type Recipient, type Source } from './m
 const DAY = 24 * 60 * 60 * 1000
 const NOON = Date.UTC(2026, 10, 25, 12)
 
-function setup(options: { skew?: number; understate?: boolean } = {}) {
+function setup(
+  options: {
+    skew?: number
+    understate?: boolean
+    /** What the first `get` of a blob gets instead of the blob: the blob gone, or no answer. */
+    firstGet?: 'gone' | 'unreachable'
+  } = {},
+) {
   let now = NOON
+  let firstGet = options.firstGet
   const lighthouseSigner = fakeSigner('lighthouse')
   const lighthouse = createLighthouse({
     signer: lighthouseSigner,
@@ -38,6 +46,22 @@ function setup(options: { skew?: number; understate?: boolean } = {}) {
   let n = 0
   const client = (): LighthouseClient => {
     const real = connect()
+    if (firstGet !== undefined) {
+      const wrapped: LighthouseClient = {
+        ...real,
+        request: async (request) => {
+          if (request.type === 'get' && firstGet !== undefined) {
+            const instead = firstGet
+            firstGet = undefined
+            return instead === 'gone'
+              ? { ok: true, value: { type: 'error', error: 'unknown' } }
+              : { ok: false, error: 'unreachable' }
+          }
+          return real.request(request)
+        },
+      }
+      return wrapped
+    }
     if (options.understate !== true) return real
     // A Lighthouse that lists every blob as one byte, whatever it then hands over.
     return {
@@ -309,5 +333,47 @@ describe('the mailbox', () => {
         async () => true,
       ),
     ).toEqual([])
+  })
+
+  describe('a blob that is gone or can’t be got mid-fetch', () => {
+    async function twoLetters(options: Parameters<typeof setup>[0]) {
+      const { address, device, recipient } = setup(options)
+      const rook = device('rook-laptop', 'rook')
+      const mika = device('mika-phone', 'mika')
+      const toMika = await recipient(mika, 'mika')
+      await rook.mailbox.send('farewell', toMika, { reason: 'first' })
+      await rook.mailbox.send('farewell', toMika, { reason: 'second' })
+      const from: Source = { sender: fakeSigner('rook').id, secret, kinds: ['farewell'] }
+      const reasons: unknown[] = []
+      const take = async (_source: Source, letter: Letter) => {
+        reasons.push((letter.body as { reason: string }).reason)
+        return true
+      }
+      return { address, mika, from, take, reasons }
+    }
+
+    it('skips it and still gets the rest of that Lighthouse’s list', async () => {
+      const { address, mika, from, take, reasons } = await twoLetters({ firstGet: 'gone' })
+      await mika.mailbox.fetch([address], [from], take)
+      expect(reasons).toEqual(['second'])
+      // The cursor moved past what's gone: the next fetch finds nothing left to read.
+      await mika.mailbox.fetch([address], [from], take)
+      expect(reasons).toEqual(['second'])
+    })
+
+    it('doesn’t count it against the source’s item limit', async () => {
+      const { address, mika, from, take, reasons } = await twoLetters({ firstGet: 'gone' })
+      await mika.mailbox.fetch([address], [{ ...from, maxItems: 1 }], take)
+      expect(reasons).toEqual(['second'])
+    })
+
+    it('still treats a Lighthouse that can’t be reached as unreachable, reading again next time', async () => {
+      const { address, mika, from, take, reasons } = await twoLetters({ firstGet: 'unreachable' })
+      await mika.mailbox.fetch([address], [from], take)
+      expect(reasons).toEqual([])
+      // Nothing was skipped for good: the cursor stayed where it was.
+      await mika.mailbox.fetch([address], [from], take)
+      expect(reasons).toEqual(['first', 'second'])
+    })
   })
 })
