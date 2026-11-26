@@ -6,20 +6,22 @@
 
 0.8.2, 26 November 2026
 ----------------------------------------------
-  * Follow image map links like ordinary
-    links.
-  * Replace pair and self secrets from before
-    sealed pairing.
-  * Keep friends loading and check imported
-    data.
-  * Compare log signatures as bytes and accept
-    typed entries.
-  * Seal mail with HPKE (RFC 9180) to devices
-    that open it.
-  * Make sealed files costlier to guess with
+  * Secrets you share with friends from
+    before 0.8.1 are replaced with new ones,
+    on their own.
+  * Letters are sealed with HPKE, a standard
+    way to seal to a key, when everyone they
+    go to can open it.
+  * Saved files are much harder to crack:
+    their passphrase is stretched with
     Argon2id.
-  * Keep farewells and blocks loading past an
-    unreadable one.
+  * Pigeon checks signatures more strictly.
+  * One damaged saved friend, block or
+    farewell no longer empties the whole
+    list, and imported files are checked like
+    anything you type.
+  * Image maps on pages work like ordinary
+    links.
   * Removing a device now replaces the secrets
     it knew, yours and each friend's, and
     closes the invite links that were open.
