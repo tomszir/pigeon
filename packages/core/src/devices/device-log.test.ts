@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { appendMessage, emptyLog, mergeEntries } from '../chat/chat-log.ts'
 import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
+import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Signer } from '../identity/crypto.ts'
 import { flipS, isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner, untypedSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntryKind,
@@ -127,6 +129,128 @@ describe('device logs', () => {
     expect(await speakerIdentity(fakeCrypto, phone.id, claim)).toBe(laptop.id)
     expect(await speakerIdentity(fakeCrypto, thief.id, claim)).toBe(undefined)
     expect(await speakerIdentity(fakeCrypto, laptop.id, {})).toBe(laptop.id)
+  })
+})
+
+describe('an entry’s signed bytes', () => {
+  const decode = (sig: string) => {
+    const bytes = base32DecodeExact(sig)
+    if (!bytes.ok) throw new Error('not base32')
+    return bytes.value
+  }
+  const fields = {
+    identity: laptop.id,
+    epoch: 0,
+    seq: 1,
+    prev: '',
+    kind: 'add',
+    device: phone.id,
+    name: 'Phone',
+    at: 1,
+  }
+  /** A log whose one entry is `add phone`, signed by the first device over `value`. */
+  const signedOver = async (value: Json): Promise<DeviceLog> => ({
+    ...start(),
+    entries: [
+      {
+        seq: 1,
+        prev: '',
+        kind: 'add',
+        device: phone.id,
+        name: 'Phone',
+        at: 1,
+        sig: base32Encode(await laptop.sign(canonicalBytes(value))),
+      },
+    ],
+  })
+
+  it('say it’s a device-log entry, and of which identity and epoch', async () => {
+    const log = await append(start(), 'add', phone.id, 'Phone')
+    const bytes = canonicalBytes({ v: 'pigeon/device-entry/v1', ...fields })
+    expect(await fakeCrypto.verify(laptop.id, decode(log.entries[0]?.sig ?? ''), bytes)).toBe(true)
+    expect(
+      await verifyDeviceLog(
+        fakeCrypto,
+        await signedOver({ v: 'pigeon/device-entry/v1', ...fields }),
+      ),
+    ).toBe(true)
+  })
+
+  it('refuse a signature made for anything else, or in a shape no Pigeon signed', async () => {
+    const { epoch: _, ...untyped } = fields
+    // As Pigeons signed entries before their bytes said what they're for: still taken.
+    expect(await verifyDeviceLog(fakeCrypto, await signedOver(untyped))).toBe(true)
+    for (const value of [
+      { v: 'pigeon/chat-entry/v1', ...fields },
+      { v: 'pigeon/device-entry/v2', ...fields },
+      { type: 'recover', ...fields },
+      { v: 'pigeon/device-entry/v1', ...untyped },
+      // Neither shape: untyped, yet naming epoch 0.
+      fields,
+    ])
+      expect(await verifyDeviceLog(fakeCrypto, await signedOver(value))).toBe(false)
+  })
+
+  it('keep a chat entry’s signature from standing as a device-log entry, and the other way', async () => {
+    const said = (await appendMessage(emptyLog('pair:x'), laptop, 'add phone', 1)).entry
+    const log = await append(start(), 'add', phone.id, 'Phone')
+    const entry = log.entries[0]
+    if (entry === undefined) throw new Error('no entry')
+    expect(await verifyDeviceLog(fakeCrypto, log)).toBe(true)
+    const asEntry = { ...log, entries: [{ ...entry, sig: said.sig }] }
+    expect(await verifyDeviceLog(fakeCrypto, asEntry)).toBe(false)
+    // A chat entry signed over a device-log entry's bytes, its fields made to match.
+    const chatFields = { log: 'pair:x', author: laptop.id, seq: 1, lamport: 1, at: 1, text: 'x' }
+    const sig = base32Encode(
+      await laptop.sign(canonicalBytes({ v: 'pigeon/device-entry/v1', ...chatFields })),
+    )
+    const { log: _, ...unsigned } = chatFields
+    const authors = new Set([laptop.id])
+    const taken = await mergeEntries(
+      fakeCrypto,
+      emptyLog('pair:x'),
+      [{ ...unsigned, sig }],
+      authors,
+    )
+    expect(taken.entries).toEqual([])
+  })
+
+  it('still verify as signed before they said what they are, beside entries signed now', async () => {
+    const old = untypedSigner(laptop)
+    const step = async (log: DeviceLog, signer: Signer, kind: DeviceEntryKind, device: string) => {
+      const result = await appendDeviceEntry(
+        fakeCrypto,
+        log,
+        signer,
+        { kind, device, ...(kind === 'remove' ? {} : { name: 'Device' }) },
+        1,
+      )
+      if (!result.ok) throw new Error(result.error)
+      return result.log
+    }
+    const before = await step(await step(start(), old, 'add', phone.id), old, 'add', tablet.id)
+    const now = await step(before, laptop, 'remove', tablet.id)
+    expect(await verifyDeviceLog(fakeCrypto, before)).toBe(true)
+    expect(await verifyDeviceLog(fakeCrypto, now)).toBe(true)
+    // A friend who kept the log from before takes the entry signed now on top of it.
+    expect(await mergeDeviceLogs(fakeCrypto, before, now)).toBe(now)
+    // And in a later epoch, whose writer signed as before.
+    const key = fakeSigner('typed-recovery')
+    const committed = await setRecoveryKey(now, laptop, key.id, 2)
+    if (committed === undefined) throw new Error('no key')
+    const recovered = await recoverDeviceLog(
+      laptop.id,
+      committed,
+      key,
+      { epoch: 1, writer: phone.id, keep: [{ device: phone.id, name: 'Phone' }], next: key.id },
+      3,
+    )
+    if (recovered === undefined) throw new Error('no recover')
+    const later = await step(recovered, untypedSigner(phone), 'add', thief.id)
+    expect(await verifyDeviceLog(fakeCrypto, later)).toBe(true)
+    expect(
+      deviceState(await mergeDeviceLogs(fakeCrypto, recovered, later)).active.has(thief.id),
+    ).toBe(true)
   })
 })
 

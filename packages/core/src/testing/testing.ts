@@ -1,6 +1,14 @@
 // Fakes for tests across the repo: a deterministic, insecure Crypto and an in-memory network.
 // Only tests import these; nothing here is safe for real use.
-import { base32Encode, bytesEqual, concatBytes, hexEncode, utf8Encode } from '../encoding/bytes.ts'
+import {
+  base32Encode,
+  bytesEqual,
+  concatBytes,
+  hexEncode,
+  utf8Decode,
+  utf8Encode,
+} from '../encoding/bytes.ts'
+import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import type { SealCrypto, Sealer } from '../mail/seal-crypto.ts'
@@ -35,6 +43,23 @@ export const fakeCrypto: Crypto = {
 export function fakeSigner(name: string): Signer {
   const id = base32Encode(fakeHash(utf8Encode(`fake-key:${name}`)))
   return { id, sign: async (data) => fakeSignature(id, data) }
+}
+
+/**
+ * `signer` as a Pigeon from before signed bytes said what they're for: a device-log or chat entry
+ * it's asked to sign, it signs over the bytes entries were signed over then, with no `v` and, in
+ * a device log's epoch 0, no `epoch`. Anything else it signs as it's given.
+ */
+export function untypedSigner(signer: Signer): Signer {
+  const untyped = (data: Uint8Array): Uint8Array => {
+    const text = utf8Decode(data)
+    if (!text.ok || !text.value.startsWith('{')) return data
+    const { v, epoch, ...rest } = JSON.parse(text.value) as Record<string, Json>
+    if (v === 'pigeon/chat-entry/v1') return canonicalBytes(rest)
+    if (v !== 'pigeon/device-entry/v1') return data
+    return canonicalBytes(epoch === 0 || epoch === undefined ? rest : { ...rest, epoch })
+  }
+  return { id: signer.id, sign: (data) => signer.sign(untyped(data)) }
 }
 
 /**

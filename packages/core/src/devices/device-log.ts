@@ -227,18 +227,31 @@ function withEpochs(log: DeviceLog, epochs: readonly Epoch[]): DeviceLog {
 
 type Unsigned = Omit<DeviceEntry, 'sig'>
 
-// Epoch 0's bytes are as they were before recovery keys, so older entries still verify.
+/** What an entry's signature is for, in its signed bytes, so nothing else signed can pass as one. */
+const ENTRY_CONTEXT = 'pigeon/device-entry/v1'
+
+const entryFields = (identity: PeerId, entry: Unsigned) => ({
+  identity,
+  seq: entry.seq,
+  prev: entry.prev,
+  kind: entry.kind,
+  device: entry.device,
+  ...(entry.name === undefined ? {} : { name: entry.name }),
+  at: entry.at,
+})
+
+/** The bytes an entry is signed over: what it's for, its identity and epoch, and the entry. */
 const entryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
-  canonicalBytes({
-    identity,
-    ...(epoch === 0 ? {} : { epoch }),
-    seq: entry.seq,
-    prev: entry.prev,
-    kind: entry.kind,
-    device: entry.device,
-    ...(entry.name === undefined ? {} : { name: entry.name }),
-    at: entry.at,
-  } as Json)
+  canonicalBytes({ v: ENTRY_CONTEXT, epoch, ...entryFields(identity, entry) } as Json)
+
+/**
+ * The bytes an entry was signed over before signed bytes said what they're for, still taken so
+ * a log written then keeps verifying: no `v`, and no `epoch` in epoch 0, as before recovery keys.
+ * Nothing Pigeon signs now has this shape, since every kind carries a `v` or a `type` and canonical
+ * JSON gives two different values different bytes, so no newer signature verifies over it.
+ */
+const untypedEntryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
+  canonicalBytes({ ...(epoch === 0 ? {} : { epoch }), ...entryFields(identity, entry) } as Json)
 
 const recoveryBytes = (identity: PeerId, key: PeerId, at: number) =>
   canonicalBytes({ identity, type: 'recovery-key', key, at })
@@ -442,8 +455,12 @@ async function checkChain(
     if (entry.seq !== index + 1 || !bytesEqual(named.value, prev)) return false
     // The next entry's signed `prev` fixes this one's spelling; the last one's isn't fixed.
     const fixed = index < entries.length - 1
-    const bytes = entryBytes(identity, epoch, entry)
-    if (!(await checkSig(crypto, state.writer, signature.value, bytes, fixed))) return false
+    const signed = async (bytes: Uint8Array) =>
+      checkSig(crypto, state.writer, signature.value, bytes, fixed)
+    const holds =
+      (await signed(entryBytes(identity, epoch, entry))) ||
+      (await signed(untypedEntryBytes(identity, epoch, entry)))
+    if (!holds) return false
     if (apply(state, entry) !== undefined) return false
     prev = signature.value
   }

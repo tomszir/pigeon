@@ -183,6 +183,38 @@ describe('mergeEntries', () => {
   })
 })
 
+describe('an entry’s signed bytes', () => {
+  it('say it’s a chat entry, and of which chat', async () => {
+    const { entry } = await appendMessage(emptyLog('pair:x'), rook, 'hi', 5)
+    const { sig, ...unsigned } = entry
+    const bytes = canonicalBytes({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned })
+    const signature = base32DecodeExact(sig)
+    expect(signature.ok && (await fakeCrypto.verify(rook.id, signature.value, bytes))).toBe(true)
+  })
+
+  it('still verify as signed before they said what they are, and in no other shape', async () => {
+    const unsigned = { author: mika.id, seq: 1, lamport: 1, at: 0, text: 'hi' }
+    const over = async (value: Record<string, string | number>) => ({
+      ...unsigned,
+      sig: base32Encode(await mika.sign(canonicalBytes(value))),
+    })
+    const take = async (entry: LogEntry) =>
+      (await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)).entries.length
+    // As a Pigeon signed it before, and as one signs it now.
+    expect(await take(await over({ log: 'pair:x', ...unsigned }))).toBe(1)
+    expect(await take(await over({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned }))).toBe(
+      1,
+    )
+    for (const value of [
+      { v: 'pigeon/device-entry/v1', log: 'pair:x', ...unsigned },
+      { v: 'pigeon/chat-entry/v2', log: 'pair:x', ...unsigned },
+      { type: 'chat-entry', log: 'pair:x', ...unsigned },
+      { v: 'pigeon/chat-entry/v1', ...unsigned },
+    ])
+      expect(await take(await over(value))).toBe(0)
+  })
+})
+
 it('batches entries under a byte budget, never splitting one', async () => {
   const log = await write(emptyLog('pair:x'), [rook, 'x'.repeat(300)], [rook, 'y'], [rook, 'z'])
   const batches = batchEntries(log.entries, 400)

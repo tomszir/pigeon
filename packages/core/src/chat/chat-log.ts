@@ -43,15 +43,30 @@ export type LogSummary = Readonly<Record<PeerId, number>>
 
 export const emptyLog = (id: string): ChatLog => ({ id, entries: [] })
 
+/** What an entry's signature is for, in its signed bytes, so nothing else signed can pass as one. */
+const ENTRY_CONTEXT = 'pigeon/chat-entry/v1'
+
+const entryFields = (log: string, entry: Omit<LogEntry, 'sig'>) => ({
+  log,
+  author: entry.author,
+  seq: entry.seq,
+  lamport: entry.lamport,
+  at: entry.at,
+  text: entry.text,
+})
+
+/** The bytes an entry is signed over: what it's for, the log it belongs to, and the entry. */
 const signedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
-  canonicalBytes({
-    log,
-    author: entry.author,
-    seq: entry.seq,
-    lamport: entry.lamport,
-    at: entry.at,
-    text: entry.text,
-  })
+  canonicalBytes({ v: ENTRY_CONTEXT, ...entryFields(log, entry) })
+
+/**
+ * The bytes an entry was signed over before signed bytes said what they're for, still taken so
+ * a chat written then keeps verifying. Nothing Pigeon signs now has this shape, since every kind
+ * carries a `v` or a `type` and canonical JSON gives two different values different bytes, so no
+ * newer signature verifies over it.
+ */
+const untypedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
+  canonicalBytes(entryFields(log, entry))
 
 /**
  * What an entry is known by in its chat: its author and number. A chat holds one entry for each,
@@ -155,10 +170,14 @@ export function isLogEntry(value: unknown): value is LogEntry {
   )
 }
 
+/** Whether `entry` is its author's, in `log`: signed over its bytes now, or as signed before. */
 export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry): Promise<boolean> {
   const sig = base32DecodeExact(entry.sig)
   if (!sig.ok) return false
-  return crypto.verify(entry.author, sig.value, signedBytes(log, entry))
+  return (
+    (await crypto.verify(entry.author, sig.value, signedBytes(log, entry))) ||
+    crypto.verify(entry.author, sig.value, untypedBytes(log, entry))
+  )
 }
 
 /**
