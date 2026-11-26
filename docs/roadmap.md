@@ -6,6 +6,8 @@ What each release brought, what the next releases will bring, in build order, an
 
 Private groups first. The releases from 0.8.0 on build toward one test: a small group of friends (5 to 12) has its own place on Pigeon, and it works even when they're never online at the same time. The Lighthouse came first because invites, letters, device sync, groups and push all need the same thing from it: somewhere that holds sealed mail while people are away. Public places wait until their moderation is designed.
 
+Verification of the crypto and protocol runs as a track of its own beside these releases, never holding one up: [roadmap-verification.md](roadmap-verification.md).
+
 ## How releases are named
 
 Work that has shipped sits under the version it shipped in. Work that is scheduled gets a version only once it's among the next few releases, and it matches a GitHub milestone of the same name; work further off is listed by name alone. Reordering what's far off therefore never renames anything. Pieces of work used to have numbered milestone names, which older decision records cite; the table at the end says where each now lives.
