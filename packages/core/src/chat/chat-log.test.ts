@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { base32Encode } from '../encoding/bytes.ts'
+import { canonicalBytes } from '../encoding/canonical.ts'
 import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
   appendMessage,
   batchEntries,
   type ChatLog,
   emptyLog,
+  isLogEntry,
   type LogEntry,
+  MAX_LAMPORT_LEAD,
   mergeEntries,
   missingFrom,
   summarize,
@@ -19,6 +23,19 @@ async function write(log: ChatLog, ...lines: [typeof rook, string][]): Promise<C
   let next = log
   for (const [signer, text] of lines) next = (await appendMessage(next, signer, text, 0)).log
   return next
+}
+
+/** An entry signed with any Lamport time, as a friend making one up could. */
+async function signed(
+  signer: typeof rook,
+  log: string,
+  seq: number,
+  lamport: number,
+  text: string,
+): Promise<LogEntry> {
+  const unsigned = { author: signer.id, seq, lamport, at: 0, text }
+  const sig = await signer.sign(canonicalBytes({ log, ...unsigned }))
+  return { ...unsigned, sig: base32Encode(sig) }
 }
 
 describe('appendMessage', () => {
@@ -78,6 +95,89 @@ describe('mergeEntries', () => {
     const second = (await appendMessage(emptyLog('pair:x'), mika, 'second', 5)).entry
     const merged = await mergeEntries(fakeCrypto, emptyLog('pair:x'), [first, second], both)
     expect(merged.entries.map((e) => e.text)).toEqual(['first'])
+  })
+
+  it('takes a made-up Lamport time, but leaves it out of the clock', async () => {
+    const log = await write(emptyLog('pair:x'), [rook, 'hi'])
+    const poisoned = await signed(mika, 'pair:x', 1, Number.MAX_SAFE_INTEGER, 'poison')
+    const unsafe = await signed(mika, 'pair:x', 2, Number.MAX_SAFE_INTEGER + 1, 'unsafe')
+    const merged = await mergeEntries(fakeCrypto, log, [poisoned, unsafe], both)
+    expect(merged.entries.map((e) => e.text)).toEqual(['hi', 'poison'])
+
+    const { log: after, entry } = await appendMessage(merged, rook, 'still here', 0)
+    expect(entry.lamport).toBe(2)
+    expect(isLogEntry(entry)).toBe(true)
+    // A peer that took the made-up time takes this one too.
+    const theirs = await mergeEntries(
+      fakeCrypto,
+      merged,
+      missingFrom(after, summarize(merged)),
+      both,
+    )
+    expect(theirs.entries.map((e) => e.text)).toEqual(['hi', 'still here', 'poison'])
+  })
+
+  it('follows honest times, however far one device is behind', async () => {
+    const entries = await Promise.all([1, 2, 3].map((n) => signed(mika, 'pair:x', n, n, `m${n}`)))
+    const merged = await mergeEntries(fakeCrypto, emptyLog('pair:x'), entries, both)
+    expect((await appendMessage(merged, rook, 'next', 0)).entry.lamport).toBe(4)
+  })
+
+  it('writes a reply after its question when only the asker holds a made-up time', async () => {
+    // Mika sends the phone a far-ahead entry and the laptop nothing; the laptop gets the
+    // phone's question by letter, without it.
+    const phone = fakeSigner('phone')
+    const laptop = fakeSigner('laptop')
+    const devices = new Set([phone.id, laptop.id, mika.id])
+    const shared = await write(emptyLog('pair:x'), [mika, 'm0'], [mika, 'm1'], [mika, 'm2'])
+    const poison = await signed(mika, 'pair:x', 4, Number.MAX_SAFE_INTEGER, 'poison')
+    const phones = await mergeEntries(fakeCrypto, shared, [poison], devices)
+    const { entry: question } = await appendMessage(phones, phone, 'question', 0)
+    const laptops = await mergeEntries(fakeCrypto, shared, [question], devices)
+    const { entry: answer } = await appendMessage(laptops, laptop, 'answer', 0)
+    expect(answer.lamport).toBeGreaterThan(question.lamport)
+  })
+
+  it("keeps a device's replies after what they answer when a friend tells devices apart", async () => {
+    // Mika sends the phone her seqs 1 and 2 at far-ahead times, and the laptop low ones.
+    const phone = fakeSigner('phone')
+    const laptop = fakeSigner('laptop')
+    const devices = new Set([phone.id, laptop.id, mika.id])
+    const shared = await write(emptyLog('pair:x'), [phone, 'hi'])
+    const high = [MAX_LAMPORT_LEAD, 2 * MAX_LAMPORT_LEAD]
+    let phones = await mergeEntries(
+      fakeCrypto,
+      shared,
+      await Promise.all(high.map((t, i) => signed(mika, 'pair:x', i + 1, t, 'to phone'))),
+      devices,
+    )
+    let laptops = await mergeEntries(
+      fakeCrypto,
+      shared,
+      await Promise.all([2, 3].map((t, i) => signed(mika, 'pair:x', i + 1, t, 'to laptop'))),
+      devices,
+    )
+    phones = (await appendMessage(phones, phone, 'question', 0)).log
+    laptops = await mergeEntries(
+      fakeCrypto,
+      laptops,
+      missingFrom(phones, summarize(laptops)),
+      devices,
+    )
+    const { entry: answer } = await appendMessage(laptops, laptop, 'answer', 0)
+    const question = phones.entries.find((e) => e.text === 'question') as LogEntry
+    expect(answer.lamport).toBeGreaterThan(question.lamport)
+  })
+
+  it('leaves out of a catch-up a time a log already holds past a safe integer', async () => {
+    // As a log could hold from before: the friend's entry, then your own reply to it, appended
+    // locally past a safe integer.
+    const huge = await signed(mika, 'pair:x', 1, Number.MAX_SAFE_INTEGER, 'poison')
+    const reply = await signed(rook, 'pair:x', 1, Number.MAX_SAFE_INTEGER + 1, 'reply')
+    const log: ChatLog = { id: 'pair:x', entries: [huge, reply] }
+    const { log: after, entry } = await appendMessage(log, rook, 'hi', 0)
+    expect(entry.lamport).toBe(1)
+    expect(missingFrom(after, { [mika.id]: 1 })).toEqual([entry])
   })
 })
 

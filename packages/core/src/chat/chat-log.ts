@@ -28,6 +28,15 @@ export interface ChatLog {
   readonly entries: readonly LogEntry[]
 }
 
+/**
+ * How far a Lamport time may run ahead of its place in the log and still be followed. An honest
+ * time is one past the highest its author had seen, so it's never more than the number of entries
+ * in the chat; one more than this many times its rank (how many entries sort at or below it) is
+ * made up, and the clock doesn't follow it. Followed times stay under this many times the
+ * number of entries, so pushing the clock out of reach takes billions of entries.
+ */
+export const MAX_LAMPORT_LEAD = 2 ** 20
+
 /** Per author, the highest seq held with nothing missing below it. */
 export type LogSummary = Readonly<Record<PeerId, number>>
 
@@ -62,12 +71,34 @@ export function summarize(log: ChatLog): LogSummary {
   return summary
 }
 
-/** What `log` holds that a peer with `theirs` lacks, oldest first. */
+/**
+ * What `log` holds that a peer with `theirs` lacks, oldest first. An entry whose Lamport time
+ * isn't a safe integer is left out: a peer refuses every entry sent alongside one.
+ */
 export function missingFrom(log: ChatLog, theirs: LogSummary): readonly LogEntry[] {
-  return log.entries.filter((entry) => entry.seq > (theirs[entry.author] ?? 0))
+  return log.entries.filter(
+    (entry) => entry.seq > (theirs[entry.author] ?? 0) && entry.lamport <= Number.MAX_SAFE_INTEGER,
+  )
 }
 
-/** Signs and appends a message by `signer`. */
+/**
+ * The Lamport time a new entry builds on: the highest held that is within `MAX_LAMPORT_LEAD`
+ * times its rank. A made-up time far ahead isn't followed, so it can't push new entries past what
+ * peers take; one at the edge of its rank's limit is, and can then make a device that lacks it
+ * sort a reply above the message it answers.
+ */
+function clockOf(log: ChatLog): number {
+  let high = 0
+  log.entries.forEach((entry, i) => {
+    if (entry.lamport <= (i + 1) * MAX_LAMPORT_LEAD) high = Math.max(high, entry.lamport)
+  })
+  return high
+}
+
+/**
+ * Signs and appends a message by `signer`, one Lamport time past `clockOf` the log and never past
+ * the largest safe integer, so every peer takes it.
+ */
 export async function appendMessage(
   log: ChatLog,
   signer: Signer,
@@ -75,7 +106,7 @@ export async function appendMessage(
   at: number,
 ): Promise<{ log: ChatLog; entry: LogEntry }> {
   const seq = (summarize(log)[signer.id] ?? 0) + 1
-  const lamport = log.entries.reduce((high, entry) => Math.max(high, entry.lamport), 0) + 1
+  const lamport = Math.min(clockOf(log) + 1, Number.MAX_SAFE_INTEGER)
   const unsigned = { author: signer.id, seq, lamport, at, text }
   const sig = base32Encode(await signer.sign(signedBytes(log.id, unsigned)))
   const entry: LogEntry = { ...unsigned, sig }
@@ -123,7 +154,7 @@ export async function mergeEntries(
   const added: LogEntry[] = []
   for (const entry of incoming) {
     const key = `${entry.author}/${entry.seq}`
-    if (held.has(key) || !takes(entry)) continue
+    if (held.has(key) || !takes(entry) || entry.lamport > Number.MAX_SAFE_INTEGER) continue
     if (!(await verifyEntry(crypto, log.id, entry))) continue
     held.add(key)
     added.push(entry)
