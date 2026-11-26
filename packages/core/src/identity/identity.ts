@@ -3,9 +3,9 @@
 import { base32Decode, base32Encode, hexEncode, utf8Encode } from '../encoding/bytes.ts'
 import { err, ok, type Result } from '../result/result.ts'
 import type { Crypto } from './crypto.ts'
+import type { PeerId } from './peer-id.ts'
 
-/** The base32 public signing key. A string so it can key maps and travel in JSON. */
-export type PeerId = string
+export type { PeerId }
 
 export type KeyKind = 'ed25519' | 'p256'
 

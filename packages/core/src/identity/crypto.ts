@@ -1,6 +1,6 @@
 // The cryptography core needs, as interfaces. The web app implements them with WebCrypto in
 // platform/crypto; tests use fakeCrypto from testing.ts. Core never touches keys itself.
-import type { PeerId } from './identity.ts'
+import type { PeerId } from './peer-id.ts'
 
 export interface Crypto {
   sha256(data: Uint8Array): Promise<Uint8Array>
