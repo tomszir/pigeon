@@ -20,6 +20,8 @@ Pigeon: a serverless peer-to-peer messenger and "Pigeonweb" inside an XP-era fak
 - [pigeonhtml.md](pigeonhtml.md): the 2000s-only HTML/CSS subset Pigeonweb pages are limited to.
 - [protocol.md](protocol.md): identities, rooms, messages, letters and pigeon:// addresses.
 - [flows.md](flows.md): the protocol's handshakes and state machines drawn in ASCII, which Help shows too.
+- [state-machines.md](state-machines.md): pairing, invite links, linking and recovery as the states each side goes through, and what moves it on.
+- [threat-model.md](threat-model.md): whom Pigeon defends against, what each can learn or do, what's out of scope, and every protocol message with the checks it gets.
 - [roadmap.md](roadmap.md): what's planned, in build order, and what "done" means for each piece.
 - [roadmap-pigeonweb.md](roadmap-pigeonweb.md): unscheduled ideas for a living Pigeonweb (homepages, guestbooks, boards, journals, finding things), with options for what the design doesn't cover yet.
 - [lighthouse.md](lighthouse.md): running a Lighthouse: its config file, Docker, reaching one at home through Tailscale Funnel, and the Cloudflare Worker one.
