@@ -2,7 +2,7 @@
 
 The verification track: independent checks of Pigeon's crypto and protocol, built in stages that run beside the product releases, with what each stage brings and the check that says it's done.
 
-This is a companion to [roadmap.md](roadmap.md), which links to it. [verification.md](verification.md) is the map of what is checked today; this file is the plan for what comes next. Why the track works this way is [0050](decisions/0050-a-verification-track-beside-the-releases.md).
+This is a companion to [roadmap.md](roadmap.md), which links to it. [verification.md](verification.md) is the map of what is checked today; this file is the plan for what comes next. Why the track works this way is [0054](decisions/0054-a-verification-track-beside-the-releases.md).
 
 ## Goal
 
