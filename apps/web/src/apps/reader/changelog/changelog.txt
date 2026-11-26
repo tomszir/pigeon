@@ -4,6 +4,40 @@
      `---'       version, newest first
 ==============================================
 
+0.8.2, 26 November 2026
+----------------------------------------------
+  * Secrets you share with friends from
+    before 0.8.1 are replaced with new ones,
+    on their own.
+  * Letters are sealed with HPKE, a standard
+    way to seal to a key, when everyone they
+    go to can open it.
+  * Saved files are much harder to crack:
+    their passphrase is stretched with
+    Argon2id.
+  * Pigeon checks signatures more strictly.
+  * One damaged saved friend, block or
+    farewell no longer empties the whole
+    list, and imported files are checked like
+    anything you type.
+  * Image maps on pages work like ordinary
+    links.
+  * Removing a device now replaces the secrets
+    it knew, yours and each friend's, and
+    closes the invite links that were open.
+  * Pigeon is stricter about where, and from
+    whom, it takes a new secret you share with
+    a friend.
+  * Invite links keep working when others who
+    hold the link put things at its
+    Lighthouses.
+  * An invite link's card is put again at a
+    Lighthouse that missed it, instead of
+    being lost there.
+  * Add a Friend says so when an official
+    Lighthouse can't be reached, instead of
+    showing a link nobody could open.
+
 0.8.1, 26 November 2026
 ----------------------------------------------
   * Adding a friend is safer. Typed codes now
