@@ -96,7 +96,7 @@ describe('PROTOCOL_SPEC', () => {
 
   it('carries the ASCII flows as preformatted text', () => {
     expect(PROTOCOL_SPEC.pages.get(`${PROTOCOL_HOME}flows/invite-handshake`)?.source).toContain(
-      'pair-accept { secret, 52 base32 chars } -------&gt;|',
+      '|------ pake-reply { SPAKE2 B } ------------------------&gt;|',
     )
   })
 })

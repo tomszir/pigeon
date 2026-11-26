@@ -1,8 +1,11 @@
-// WebCrypto behind core's Crypto and Signer. Ed25519 where the browser has it, ECDSA P-256 where
-// it doesn't (docs/protocol.md, "Identity"). The private key is made non-extractable and kept as
-// a CryptoKey in IndexedDB, so the page can sign with it but never read it.
+// WebCrypto behind core's Crypto and Signer. New keys are Ed25519; identities made with ECDSA
+// P-256, where a browser once lacked Ed25519, keep working (docs/protocol.md, "Identity"). The
+// private key is made non-extractable and kept as a CryptoKey in IndexedDB, so the page can sign
+// with it but never read it.
 import {
   type Crypto,
+  canonicalSignature,
+  isCanonicalSignature,
   type PeerId,
   parsePeerId,
   peerIdFromPublicKey,
@@ -23,12 +26,24 @@ const P256_SIGN = { name: 'ECDSA', hash: 'SHA-256' } as const
 
 const copy = (bytes: Uint8Array): Bytes => new Uint8Array(bytes)
 
+/** Thrown by `generateIdentity` in a browser whose WebCrypto has no Ed25519. */
+export class NoEd25519Error extends Error {
+  constructor() {
+    super('This browser’s WebCrypto has no Ed25519')
+    this.name = 'NoEd25519Error'
+  }
+}
+
+/**
+ * A new Ed25519 key. There's no fallback: a P-256 signature has two spellings, which Pigeon
+ * copes with only for identities made before, and every current browser has Ed25519.
+ */
 export async function generateIdentity(subtle = crypto.subtle): Promise<StoredIdentity> {
   let pair: CryptoKeyPair
   try {
     pair = (await subtle.generateKey(ED25519, false, ['sign', 'verify'])) as CryptoKeyPair
   } catch {
-    pair = await subtle.generateKey(P256, false, ['sign', 'verify'])
+    throw new NoEd25519Error()
   }
   const publicKey = new Uint8Array(await subtle.exportKey('raw', pair.publicKey))
   return { privateKey: pair.privateKey, publicKey }
@@ -45,8 +60,12 @@ export function signerFor(identity: StoredIdentity, subtle = crypto.subtle): Sig
   const algorithm = identity.privateKey.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN
   return {
     id,
+    // WebCrypto's ECDSA gives either spelling; Pigeon signs and takes only the low-S one.
     sign: async (data) =>
-      new Uint8Array(await subtle.sign(algorithm, identity.privateKey, copy(data))),
+      canonicalSignature(
+        id,
+        new Uint8Array(await subtle.sign(algorithm, identity.privateKey, copy(data))),
+      ),
   }
 }
 
@@ -73,6 +92,8 @@ export function createBrowserCrypto(subtle = crypto.subtle): Crypto {
         key = importKey(signer)
         keys.set(signer, key)
       }
+      // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+      if (!isCanonicalSignature(signer, signature)) return false
       const imported = await key
       if (imported === null) return false
       const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN

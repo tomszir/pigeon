@@ -11,6 +11,7 @@ import {
   createBrowserCrypto,
   generateIdentity,
   isStoredIdentity,
+  NoEd25519Error,
   randomBytes,
   signerFor,
 } from '../platform/crypto/browser-crypto.ts'
@@ -21,6 +22,7 @@ import {
   type StoredSealingKey,
   sealerFor,
 } from '../platform/crypto/seal-crypto.ts'
+import { createWasmPake } from '../platform/crypto/wasm-pake.ts'
 import { openBrowserSocket } from '../platform/lighthouse/browser-socket.ts'
 import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
@@ -32,6 +34,9 @@ export const IDENTITY = 'identity'
 export const SEALING_KEY = 'sealingKey'
 /** Set once Pigeon has asked the browser to keep its storage, so it asks only once. */
 const ASKED_TO_KEEP = 'askedToKeepStorage'
+/** Said where a new identity can't be made. Nothing is stored, so updating the browser is enough. */
+export const NO_ED25519 =
+  'This browser is too old to make a Pigeon identity: it can’t sign with Ed25519. Update it (Chrome and Edge 137, Firefox 129 and Safari 17 have it) or open Pigeon in another browser.'
 
 export type StartResult =
   | { readonly ok: true; readonly messenger: Messenger; readonly persistent: boolean }
@@ -52,7 +57,13 @@ export async function startMessenger(
     }
   let identity = await store.get(IDENTITY)
   if (!isStoredIdentity(identity)) {
-    identity = await generateIdentity()
+    try {
+      identity = await generateIdentity()
+    } catch (error) {
+      if (!(error instanceof NoEd25519Error)) throw error
+      // Identities made where a browser lacked Ed25519 still work; new ones need it.
+      return { ok: false, problem: NO_ED25519 }
+    }
     await store.set(IDENTITY, identity)
   }
   let sealing = await store.get(SEALING_KEY)
@@ -72,6 +83,7 @@ export async function startMessenger(
     transport: createBrowserTransport(undefined, onNoRelay),
     clock: browserClock,
     random: randomBytes,
+    pake: createWasmPake(),
     inviteBase: `${location.origin}${location.pathname}`,
     ...(deviceName === undefined ? {} : { deviceName }),
     events,

@@ -2,6 +2,7 @@
 import {
   base64Decode,
   type Crypto,
+  isCanonicalSignature,
   type PeerId,
   parsePeerId,
   peerIdFromPublicKey,
@@ -36,6 +37,8 @@ export function createWorkerCrypto(subtle: SubtleCrypto = crypto.subtle): Crypto
         key = importKey(signer)
         keys.set(signer, key)
       }
+      // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+      if (!isCanonicalSignature(signer, signature)) return false
       const imported = await key
       if (imported === null) return false
       const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN

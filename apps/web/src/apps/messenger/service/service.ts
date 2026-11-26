@@ -8,6 +8,8 @@ import {
   bindSealingKey,
   type ChatLog,
   type ClientError,
+  CODE_RANDOM_BYTES,
+  type CodeRequest,
   type Crypto,
   canonicalBytes,
   cleanHandle,
@@ -20,18 +22,18 @@ import {
   encodePairSecret,
   err,
   fingerprint,
-  formatInviteCode,
+  formatCode,
   hostInvite,
   hostLink,
   INSTANCE_BYTES,
-  INVITE_CODE_BYTES,
   INVITE_LIFETIME_MS,
   type Invite,
-  inviteCode,
   isDeviceLog,
   isLighthouseAddress,
+  isOwnCode,
   isPairSecret,
   isPeerId,
+  isPublicLighthouseUrl,
   isSealingKey,
   isTailLog,
   type Json,
@@ -40,12 +42,16 @@ import {
   type LighthouseClient,
   type LighthouseSoftware,
   type LinkRequest,
+  type LiveCode,
   type LogEntry,
+  lowSDeviceLog,
+  lowSEntry,
   MAX_HANDLE_LENGTH,
-  MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
+  MAX_WRONG_TRIES,
   mergeEntries,
   type NewFriend,
+  newCode,
   type Offer,
   type OpenResult,
   type OpenStep,
@@ -56,11 +62,13 @@ import {
   type PairPlace,
   type PairRoomSpec,
   type PairSession,
+  type Pake,
   type PeerId,
   type Presence,
   type ProfileChange,
   pairRoom,
   pairRoomsAt,
+  parsePeerId,
   type Result,
   type RoomName,
   recoverDeviceLog,
@@ -80,7 +88,7 @@ import { batch, createSignal } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
-import { DEVICE_KEYS, type DeviceView, loadDevices } from './devices.ts'
+import { DEVICE_KEYS, loadDevices } from './devices.ts'
 import {
   type InviteLinks,
   type LinkFriend,
@@ -181,6 +189,8 @@ export interface Note {
 
 export interface MessengerEvents {
   readonly onPaired?: (friend: FriendView) => void
+  /** Someone proved they hold your live code and asks to be friends: they wait for Add. */
+  readonly onCodeAsk?: (ask: CodeAsk) => void
   /** Another of your devices took this one off your list. */
   readonly onDeviceRemoved?: () => void
   /** This device's key is open somewhere else too: a copied profile. Once a run. */
@@ -198,6 +208,8 @@ export interface MessengerDeps {
   readonly transport: Transport
   readonly clock: Clock
   readonly random: (length: number) => Uint8Array
+  /** The key exchange live codes run: SPAKE2, in the browser. */
+  readonly pake: Pake
   /** The page address invite links start with: "https://pigeon.tomszir.com/". */
   readonly inviteBase: string
   /** What to call this device in My Devices when it's linked: "Firefox on Linux". */
@@ -254,6 +266,11 @@ const KEYS = {
   profileChangedAt: 'profileChangedAt',
   /** Set once the balloon reminding you to make a recovery key has been shown. */
   recoveryReminded: 'recoveryReminded',
+  /**
+   * Set once this device has put its open invite links' cards again, signed low-S: a card put
+   * before Pigeon took only low-S may be refused, and nothing else puts it again on its own.
+   */
+  cardsPutLowS: 'cardsPutLowS',
   /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
   lighthouses: 'lighthouses',
   /** When the Lighthouse list was last changed here, so the newest wins on your devices. */
@@ -265,7 +282,7 @@ const KEYS = {
 
 const DEFAULT_PROFILE: Profile = { handle: '', status: 'online', message: '' }
 
-export const inviteLink = (base: string, code: string, fingerprint: string): string =>
+export const inviteLink = (base: string, code: LiveCode, fingerprint: string): string =>
   `${base}#${encodeInviteLink(code, fingerprint)}`
 
 /** What an export file says it is. */
@@ -276,19 +293,36 @@ export type ImportResult = 'imported' | 'not-yours' | 'unreadable'
 /** Recovering onto this Pigeon: done, or why not. */
 export type RecoverResult = 'recovered' | 'own' | 'linked' | 'has-friends' | 'waiting' | 'refused'
 
-/** Linking a device from this one: the code it shows, and who asked, once someone has. */
+/**
+ * Linking a device from this one: the code it shows, and who asked, once someone has. Wrong
+ * tries are confirmations that didn't hold; `stopped` once there were too many.
+ */
 export interface LinkingState {
-  readonly code: string
+  readonly code: LiveCode
   readonly link: string
   readonly expiresAt: number
-  readonly request?: { readonly device: PeerId; readonly check: string; readonly name: string }
+  readonly wrongTries: number
+  readonly stopped: boolean
+  readonly request?: {
+    readonly device: PeerId
+    readonly fingerprint: string
+    readonly name: string
+  }
 }
 
-/** Linking this device to another's identity: who answered, and the check to compare. */
+/** Linking this device to another's identity: who answered, and this device's fingerprint. */
 export interface DeviceOffer {
   readonly handle: string
-  readonly check: string
-  /** Resolves true once confirmed on the other device and this one has taken it all in. */
+  /** This device's own fingerprint, which the other device shows too. */
+  readonly fingerprint: string
+  /** The identity's fingerprint: from a typed code, compare it with the other device's own. */
+  readonly identityFingerprint: string
+  /** It came from a link, whose fingerprint it matched. */
+  readonly checked: boolean
+  /**
+   * Asks to be linked, and resolves true once confirmed on the other device and this one has
+   * taken it all in.
+   */
   confirmed(until: Promise<void>): Promise<boolean>
   cancel(): Promise<void>
 }
@@ -305,7 +339,14 @@ export type JoinedIdentity =
   | { readonly ok: true; readonly offer: DeviceOffer }
   | {
       readonly ok: false
-      readonly error: 'stopped' | 'impostor' | 'has-friends' | 'has-devices' | 'waiting' | 'own'
+      readonly error:
+        | 'stopped'
+        | 'impostor'
+        | 'wrong-code'
+        | 'has-friends'
+        | 'has-devices'
+        | 'waiting'
+        | 'own'
     }
 
 /** How far ahead of this device's clock another of yours may stamp a name. */
@@ -314,16 +355,35 @@ export const PROFILE_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
 /** How long a link code is shown before it lapses. */
 export const LINK_LIFETIME_MS = 10 * 60 * 1000
 
+/**
+ * The most a new device can be handed: what fits one sealed letter (at most a Lighthouse's
+ * 64 KB blob, which base64 makes a third bigger), with room for the add about to be signed.
+ */
+export const MAX_LINK_BUNDLE_BYTES = 44 * 1024
+
 /** The invite this tab is hosting. */
 export interface HostedInvite {
-  readonly code: string
+  readonly code: LiveCode
   readonly expiresAt: number
+  /** Wrong tries it has had, kept so a reload doesn't give a guesser five more. */
+  readonly wrongTries?: number
+}
+
+/** Someone who proved they hold your code and asks to be friends, as Add a Friend shows them. */
+export interface CodeAsk {
+  readonly key: string
+  readonly id: PeerId
+  readonly handle: string
+  readonly fingerprint: string
 }
 
 /** An invite's answer as the Messenger hands it on: confirming adds the friend here too. */
 export interface FriendOffer extends Omit<Offer, 'confirm'> {
-  /** Agrees to be friends; true once you are, false if `until` gives up first. */
-  confirm(until: Promise<void>): Promise<boolean>
+  /**
+   * Asks to be friends; true once the inviter has added you, `declined` if they said no, false
+   * if `until` gives up first.
+   */
+  confirm(until: Promise<void>): Promise<boolean | 'declined'>
 }
 
 export type OpenedInvite =
@@ -449,16 +509,50 @@ export async function createMessenger(deps: MessengerDeps) {
     return JSON.stringify(keys[event.device]) !== JSON.stringify(book.keys[event.device])
   }
 
+  /**
+   * Whether this Pigeon may connect to a Lighthouse, whoever named it. Connecting shows it your
+   * IP address, and points your browser at its host. One you chose is always fine: on your list,
+   * on the list your other devices said, or an official one. Anyone else's is reached only at a
+   * public wss:// address, never a private, loopback or link-local one on your own network, and
+   * not at all while relay-only is on, since its operator would see the IP the relay hides.
+   */
+  function mayReach(address: LighthouseAddress): boolean {
+    const chosen = [
+      ...lighthouses(),
+      ...(deps.lighthouses ?? []),
+      ...(mailBooks.get(self)?.lighthouses ?? []),
+    ]
+    // Only the same URL: another path on the same host can be someone else's service behind it.
+    if (chosen.some((other) => other.url === address.url)) return true
+    return !settings().relayOnly && isPublicLighthouseUrl(address.url)
+  }
+
   // Mail through Lighthouses, when this Pigeon can seal and reach them.
   const lighthouseClients = new Map<string, LighthouseClient>()
+  /** The address each client is for, so the ones relay-only refuses can be closed. */
+  const clientAddresses = new Map<string, LighthouseAddress>()
+  /** The same clients unchecked, for a Lighthouse you're choosing in Network. */
+  const chosenClients = new Map<string, LighthouseClient>()
   const makeClient = deps.lighthouseClient
-  /** One client per key, URL and pass: an address a friend names never takes over yours. */
+  /**
+   * One client per key, URL and pass: an address a friend names never takes over yours. Each
+   * call is checked against `mayReach` as it's made, so a Lighthouse that stops being one this
+   * Pigeon may reach (relay-only turned on) isn't contacted again; refused, it's unreachable.
+   */
   function lighthouseClient(address: LighthouseAddress): LighthouseClient | undefined {
     if (makeClient === undefined) return undefined
     const key = `${address.id} ${address.url} ${address.pass ?? ''}`
     let client = lighthouseClients.get(key)
     if (client === undefined) {
-      client = makeClient(address)
+      const inner = makeClient(address)
+      chosenClients.set(key, inner)
+      clientAddresses.set(key, address)
+      client = {
+        hello: () => (mayReach(address) ? inner.hello() : Promise.resolve(err('unreachable'))),
+        request: (request) =>
+          mayReach(address) ? inner.request(request) : Promise.resolve(err('unreachable')),
+        close: () => inner.close(),
+      }
       lighthouseClients.set(key, client)
     }
     return client
@@ -488,8 +582,8 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /**
    * Who `id` is to mail: their pair secret, the sealing keys of their devices still on their
-   * list, and their Lighthouses (the official ones, if they never said). Undefined when there's
-   * no secret or no key to seal to.
+   * list, and their Lighthouses (the official ones, if they never said) that this Pigeon may
+   * reach. Undefined when there's no secret, no key to seal to or no Lighthouse to leave it at.
    */
   async function recipient(id: PeerId, secret: string | undefined): Promise<Recipient | undefined> {
     if (secret === undefined) return undefined
@@ -498,7 +592,10 @@ export async function createMessenger(deps: MessengerDeps) {
       (key) => devices.classify(id, key.device) === 'friend',
     )
     if (keys.length === 0) return undefined
-    const lighthouses = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
+    const named = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
+    // None this Pigeon may reach: their mail waits until you meet.
+    const lighthouses = named.filter(mayReach)
+    if (lighthouses.length === 0) return undefined
     return { identity: id, secret, keys, lighthouses }
   }
 
@@ -1046,26 +1143,57 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   // Invites: at most one live code at a time, kept across reloads until it's used or expires.
+  // Whoever proves they hold it waits in `codeAsks` until you add or decline them.
   const [invite, setInvite] = createSignal<HostedInvite | undefined>(undefined)
+  const [codeAsks, setCodeAsks] = createSignal<readonly CodeAsk[]>([])
+  const [wrongTries, setWrongTries] = createSignal(0)
+  /** The last code was stopped after too many wrong tries; cleared when a new one is made. */
+  const [inviteStopped, setInviteStopped] = createSignal(false)
+  const codeRequests = new Map<string, CodeRequest>()
   let stopHosting: (() => Promise<void>) | undefined
 
+  function clearAsks() {
+    codeRequests.clear()
+    setCodeAsks([])
+    setWrongTries(0)
+  }
+
+  /** Names each hosting, so one that was stopped never changes what a later one shows. */
+  let hosting = 0
+
   async function stopInvite() {
+    hosting += 1
     await stopHosting?.()
     stopHosting = undefined
     setInvite(undefined)
+    clearAsks()
     await store.delete(KEYS.invite)
   }
 
   async function host(hosted: HostedInvite) {
     await stopHosting?.()
     stopHosting = undefined
-    if (profile().handle === '' || hosted.expiresAt <= clock.now()) {
+    clearAsks()
+    setWrongTries(hosted.wrongTries ?? 0)
+    hosting += 1
+    const run = hosting
+    const seal = deps.seal
+    if (
+      profile().handle === '' ||
+      hosted.expiresAt <= clock.now() ||
+      seal === undefined ||
+      (hosted.wrongTries ?? 0) >= MAX_WRONG_TRIES
+    ) {
+      if ((hosted.wrongTries ?? 0) >= MAX_WRONG_TRIES) setInviteStopped(true)
       await stopInvite()
       return
     }
     setInvite(hosted)
-    stopHosting = await hostInvite({
+    const current = () => hosting === run && invite() !== undefined
+    const stopThis = await hostInvite({
       crypto,
+      seal: seal.crypto,
+      pake: deps.pake,
       signer,
       transport,
       handle: profile().handle,
@@ -1075,21 +1203,78 @@ export async function createMessenger(deps: MessengerDeps) {
       newSecret,
       speaker: devices.speaker,
       knownLog,
+      onRequest: (request) => {
+        if (!current()) return
+        codeRequests.set(request.key, request)
+        const ask: CodeAsk = {
+          key: request.key,
+          id: request.friend.id,
+          handle: request.friend.handle,
+          fingerprint: request.fingerprint,
+        }
+        setCodeAsks((asks) => [...asks.filter((other) => other.key !== request.key), ask])
+        events.onCodeAsk?.(ask)
+      },
+      onRequestGone: (key) => {
+        if (!current()) return
+        codeRequests.delete(key)
+        setCodeAsks((asks) => asks.filter((ask) => ask.key !== key))
+      },
+      wrongTries: hosted.wrongTries ?? 0,
+      onWrongTry: (count) => {
+        const shown = invite()
+        if (!current() || shown === undefined) return
+        setWrongTries(count)
+        const kept = { ...shown, wrongTries: count }
+        setInvite(kept)
+        void store.set(KEYS.invite, kept)
+      },
+      onTooManyTries: () => {
+        if (!current()) return
+        setInviteStopped(true)
+        // The host leaves the room itself, once its last pake-wrong has gone.
+        hosting += 1
+        stopHosting = undefined
+        setInvite(undefined)
+        clearAsks()
+        void store.delete(KEYS.invite)
+      },
       onPaired: (paired, secret) => void welcome(paired, secret),
       refuse: isBlocked,
     })
+    // Stopped or replaced while it was being joined: this one isn't wanted any more.
+    if (hosting !== run) {
+      await stopThis()
+      return
+    }
+    stopHosting = stopThis
     void clock.sleep(hosted.expiresAt - clock.now()).then(() => {
-      if (invite()?.code === hosted.code) void stopInvite()
+      if (current()) void stopInvite()
     })
   }
 
+  /** Adds someone who asked through your code. False if the code was used meanwhile. */
+  async function approveAsk(key: string): Promise<boolean> {
+    const request = codeRequests.get(key)
+    if (request === undefined) return false
+    return request.approve()
+  }
+
+  async function declineAsk(key: string): Promise<void> {
+    const request = codeRequests.get(key)
+    codeRequests.delete(key)
+    setCodeAsks((asks) => asks.filter((ask) => ask.key !== key))
+    await request?.decline()
+  }
+
   async function welcome(paired: NewFriend, secret: string) {
+    hosting += 1
     stopHosting = undefined
     setInvite(undefined)
+    clearAsks()
     await store.delete(KEYS.invite)
     // Straight to the secret's rooms, never the old one: offers there can be read by anyone who
-    // knows both ids. An invitee on a Pigeon from before pair secrets ignores the secret and
-    // will need to pair again.
+    // knows both ids.
     const view = await addFriend({
       id: paired.id,
       handle: paired.handle,
@@ -1104,9 +1289,11 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   async function newInvite(): Promise<HostedInvite | undefined> {
-    if (profile().handle === '' || devices.status() !== 'active') return undefined
+    if (profile().handle === '' || devices.status() !== 'active' || deps.seal === undefined)
+      return undefined
+    setInviteStopped(false)
     const hosted = {
-      code: inviteCode(deps.random(INVITE_CODE_BYTES)),
+      code: newCode(deps.random(CODE_RANDOM_BYTES)),
       expiresAt: clock.now() + INVITE_LIFETIME_MS,
     }
     await store.set(KEYS.invite, hosted)
@@ -1141,7 +1328,9 @@ export async function createMessenger(deps: MessengerDeps) {
       moved: true,
     })
     await devices.loadFriend(found.id)
-    await devices.takeFriend(found.id, found.deviceLog)
+    // A request is kept until you press Add, perhaps from before low-S signatures: read as a
+    // kept log is. One that just arrived was checked as it came, so this changes nothing there.
+    await devices.takeFriend(found.id, lowSDeviceLog(found.deviceLog))
     for (const key of found.keys)
       await heardKeys(found.id, { type: 'keys', device: key.device, sealing: key })
     if (found.lighthouses.length > 0)
@@ -1202,6 +1391,23 @@ export async function createMessenger(deps: MessengerDeps) {
       changed: () => tellOwnDevices(),
       stopped: () => closed,
     })
+  // Once on every device, whatever its own key: a card also carries your device log, which a
+  // P-256 first device may have signed high-S. Closed cards go again too, so an old open card
+  // can't win over a refused closed one. Kept unset, and so tried at the next start, until every
+  // open link holds a card again.
+  if (inviteLinks !== undefined && (await store.get(KEYS.cardsPutLowS)) !== true) {
+    const links = inviteLinks
+    void links
+      .refresh({ closedToo: true })
+      .then(async () => {
+        const at = clock.now()
+        const open = links.links().filter((link) => link.open && link.expires > at)
+        if (devices.status() !== 'active' || closed) return
+        if (open.some((link) => Object.keys(link.cards).length === 0)) return
+        await store.set(KEYS.cardsPutLowS, true)
+      })
+      .catch(() => undefined)
+  }
   /** A removed friend heard: in person, or by receipt for the farewell left in their mailbox. */
   async function farewellHeard(id: PeerId) {
     // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
@@ -1402,6 +1608,8 @@ export async function createMessenger(deps: MessengerDeps) {
   void inviteLinks?.resume().catch(() => undefined)
 
   async function disconnect() {
+    // A hosting still being joined sees this and stops itself.
+    hosting += 1
     await stopHosting?.()
     stopHosting = undefined
     const all = [...sessions.values(), ...farewellSessions.values()]
@@ -1429,17 +1637,32 @@ export async function createMessenger(deps: MessengerDeps) {
   async function startLink(): Promise<LinkingState | undefined> {
     // Only the first device puts devices on the list, and not while a recovered
     // one waits for its whole list: a new device couldn't check it.
-    if (profile().handle === '' || !devices.isFirst() || isTailLog(devices.own())) return undefined
+    const seal = deps.seal
+    if (
+      profile().handle === '' ||
+      !devices.isFirst() ||
+      isTailLog(devices.own()) ||
+      seal === undefined
+    )
+      return undefined
     await cancelLink()
-    const code = inviteCode(deps.random(INVITE_CODE_BYTES))
+    const code = newCode(deps.random(CODE_RANDOM_BYTES))
     const expiresAt = clock.now() + LINK_LIFETIME_MS
     setLinking({
       code,
       link: `${deps.inviteBase}#${encodeDeviceLink(code, selfFingerprint)}`,
       expiresAt,
+      wrongTries: 0,
+      stopped: false,
     })
+    const update = (change: (current: LinkingState) => LinkingState) => {
+      const current = linking()
+      if (current?.code === code) setLinking(change(current))
+    }
     const stop = await hostLink({
       crypto,
+      seal: seal.crypto,
+      pake: deps.pake,
       signer,
       transport,
       code,
@@ -1448,17 +1671,31 @@ export async function createMessenger(deps: MessengerDeps) {
       sleep: clock.sleep,
       speaker: devices.speaker,
       onRequest: (request) => {
-        const current = linking()
-        if (current?.code !== code) return
+        if (linking()?.code !== code) return
         linkRequest = request
-        setLinking({
+        update((current) => ({
           ...current,
           request: {
             device: request.device,
-            check: request.check,
+            fingerprint: request.fingerprint,
             name: deps.deviceName ?? 'Device',
           },
-        })
+        }))
+      },
+      onRequestGone: () => {
+        if (linking()?.code !== code) return
+        linkRequest = undefined
+        // Past its 10 minutes, the code ends with the request it was kept for.
+        if (clock.now() >= expiresAt) {
+          void cancelLink()
+          return
+        }
+        update(({ request: _gone, ...current }) => current)
+      },
+      onWrongTry: (count) => update((current) => ({ ...current, wrongTries: count })),
+      onTooManyTries: () => {
+        update((current) => ({ ...current, stopped: true }))
+        stopLinkHost = undefined
       },
     })
     // Closed, or another link started meanwhile: this one's room isn't kept.
@@ -1540,10 +1777,12 @@ export async function createMessenger(deps: MessengerDeps) {
         : []
     const ids = new Set(records.map((record) => record.id))
     // Friends' devices first, so entries from all of them count.
+    // An export is your own data, so what it keeps is read as kept data is: any signature
+    // spelled high-S before Pigeon took only low-S comes in low-S.
     for (const [id, log] of deviceLogs)
       if (ids.has(id) && isDeviceLog(log) && log.identity === id) {
         await devices.loadFriend(id)
-        await devices.takeFriend(id, log)
+        await devices.takeFriend(id, lowSDeviceLog(log))
       }
     const have = new Map(friendList().map((view) => [view.id, view]))
     const added = records.filter((record) => !have.has(record.id) && !isBlocked(record.id))
@@ -1563,7 +1802,12 @@ export async function createMessenger(deps: MessengerDeps) {
       }
       await store.set(
         KEYS.log(record.id),
-        await mergeEntries(crypto, current, incoming.entries, devices.authors(record.id)),
+        await mergeEntries(
+          crypto,
+          current,
+          incoming.entries.map(lowSEntry),
+          devices.authors(record.id),
+        ),
       )
     }
     const kept = await store.get(KEYS.friends)
@@ -1580,6 +1824,24 @@ export async function createMessenger(deps: MessengerDeps) {
     return 'imported'
   }
 
+  /**
+   * Not the device in your hand: its request is refused, and the code waits for yours, while it
+   * lasts.
+   */
+  async function refuseLink() {
+    const request = linkRequest
+    const current = linking()
+    if (request === undefined || current === undefined) return
+    request.refuse()
+    linkRequest = undefined
+    if (clock.now() >= current.expiresAt) {
+      await cancelLink()
+      return
+    }
+    const { request: _refused, ...rest } = current
+    setLinking(rest)
+  }
+
   /** Puts the device that asked on your list under `name` and hands it everything. */
   async function confirmLink(name: string): Promise<'linked' | 'failed' | 'too-big'> {
     const request = linkRequest
@@ -1588,15 +1850,24 @@ export async function createMessenger(deps: MessengerDeps) {
     // The first time, this device gets a name too, so My Devices can tell them apart.
     if (devices.own().entries.length === 0)
       await devices.change('name', signer.id, deps.deviceName ?? 'First device')
-    // Everything has to fit one envelope, with room for the add about to be signed; checked
-    // first, so a link that can't finish never puts a device on the list.
-    if (canonicalBytes(bundle()).length > MAX_MESSAGE_BYTES - 8 * 1024) return 'too-big'
-    if (!(await devices.change('add', request.device, name.trim() || 'Device'))) return 'failed'
-    try {
-      await request.accept(bundle())
-    } catch {
+    // Everything has to fit one sealed letter, with room for the add about to be signed;
+    // checked first, so a link that can't finish never puts a device on the list.
+    if (canonicalBytes(bundle()).length > MAX_LINK_BUNDLE_BYTES) return 'too-big'
+    // Gone already: nothing is signed for a device that can't be handed anything.
+    if (!request.alive()) return 'failed'
+    // Already on the list from a link that didn't finish: it's handed everything again.
+    const listed = devices.isOwnOther(request.device)
+    if (!listed && !(await devices.change('add', request.device, name.trim() || 'Device')))
       return 'failed'
+    let sent: Awaited<ReturnType<LinkRequest['accept']>> | 'threw'
+    try {
+      sent = await request.accept(bundle())
+    } catch {
+      sent = 'threw'
     }
+    // Left on the list rather than removed, since a removal is final and the same browser could
+    // never be linked again; linking it again hands it everything, and My Devices can remove it.
+    if (sent !== 'sent') return 'failed'
     linkRequest = undefined
     stopLinkHost = undefined
     setLinking(undefined)
@@ -1610,10 +1881,13 @@ export async function createMessenger(deps: MessengerDeps) {
   async function takeBundle(value: Json, expected: PeerId): Promise<boolean> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
     const fields = value as Record<string, unknown>
-    const log = fields['deviceLog']
+    const sent = fields['deviceLog']
     const identity = fields['self']
     // The identity whose fingerprint was checked, and nobody else's.
-    if (identity !== expected || !isDeviceLog(log) || log.identity !== identity) return false
+    if (identity !== expected || !isDeviceLog(sent) || sent.identity !== identity) return false
+    // The bundle is what your other device keeps, so its logs are read as kept logs are: any
+    // spelling from before low-S signatures made low-S.
+    const log = lowSDeviceLog(sent)
     if (!(await verifyDeviceLog(crypto, log))) return false
     const state = deviceState(log)
     if (!state.active.has(signer.id)) return false
@@ -1637,13 +1911,15 @@ export async function createMessenger(deps: MessengerDeps) {
     // Nothing of a Pigeon left behind is said as this one, and none of its mail is looked for.
     for (const key of ['mail-outbox', 'mail-fetched', 'mail-seen']) await store.delete(key)
     await store.set(KEYS.farewells, [])
-    for (const [id, friendLog] of logs)
+    for (const [id, value] of logs) {
+      const friendLog = isDeviceLog(value) ? lowSDeviceLog(value) : undefined
       if (
-        isDeviceLog(friendLog) &&
+        friendLog !== undefined &&
         friendLog.identity === id &&
         (await verifyDeviceLog(crypto, friendLog))
       )
         await store.set(DEVICE_KEYS.friendDevices(id), friendLog)
+    }
     await store.set(DEVICE_KEYS.deviceLog, log)
     await store.set(DEVICE_KEYS.selfSecret, secret)
     // Last: with `self` set, this browser is that identity from its next start.
@@ -1711,6 +1987,9 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed || settings().relayOnly === relayOnly) return
     setSettings({ ...settings(), relayOnly })
     await store.set(KEYS.settings, settings())
+    // A connection open to a Lighthouse relay-only now refuses closes, so it isn't kept up.
+    for (const [key, address] of clientAddresses)
+      if (!mayReach(address)) lighthouseClients.get(key)?.close()
     // Every room this Pigeon hosts is joined again under the new policy: friends', the code you
     // host, your own devices' room, and a device link you're showing, which gets a new code.
     // A link a device has already answered is left to finish: that device was reached the old
@@ -1795,21 +2074,25 @@ export async function createMessenger(deps: MessengerDeps) {
    */
   async function joinIdentity(target: Invite, until: Promise<void>): Promise<JoinedIdentity> {
     // This Pigeon's own code or link is never a reason to leave it.
-    if (target.code === linking()?.code || target.fingerprint === selfFingerprint)
+    if (isOwnCode(linking()?.code, target) || target.fingerprint === selfFingerprint)
       return { ok: false, error: 'own' }
     // Waiting for its list, this is the only copy of a recovery: never offered to leave.
     if (isTailLog(devices.own())) return { ok: false, error: 'waiting' }
     if (!emptyHere())
       return { ok: false, error: friendList().length > 0 ? 'has-friends' : 'has-devices' }
-    if (target.code === linking()?.code) return { ok: false, error: 'own' }
+    if (deps.seal === undefined || ownSealing === undefined) return { ok: false, error: 'stopped' }
     const result = await openLink({
       crypto,
+      seal: deps.seal.crypto,
+      sealer: deps.seal.sealer,
+      sealing: ownSealing,
+      pake: deps.pake,
       signer,
       transport,
       now: clock.now,
-      code: target.code,
-      fingerprint: target.fingerprint,
+      invite: target,
       until,
+      sleep: clock.sleep,
     })
     if (!result.ok) return result
     const { offer } = result
@@ -1821,7 +2104,9 @@ export async function createMessenger(deps: MessengerDeps) {
       ok: true,
       offer: {
         handle: offer.handle,
-        check: offer.check,
+        fingerprint: offer.fingerprint,
+        identityFingerprint: offer.identityFingerprint,
+        checked: offer.checked,
         cancel: offer.cancel,
         async confirmed(confirmUntil) {
           const sent = await offer.accepted(confirmUntil)
@@ -1879,6 +2164,7 @@ export async function createMessenger(deps: MessengerDeps) {
     linking,
     startLink,
     confirmLink,
+    refuseLink,
     cancelLink,
     joinIdentity,
     leavingTells,
@@ -1984,7 +2270,10 @@ export async function createMessenger(deps: MessengerDeps) {
     async checkLighthouse(
       address: LighthouseAddress,
     ): Promise<Result<LighthouseSoftware, ClientError | 'no-client'>> {
-      const client = lighthouseClient(address)
+      // Only Network asks, for one on your list or one you're adding: you chose it, so it's
+      // reached at any address, private and local ones included, relay-only or not.
+      if (lighthouseClient(address) === undefined) return err('no-client')
+      const client = chosenClients.get(`${address.id} ${address.url} ${address.pass ?? ''}`)
       if (client === undefined) return err('no-client')
       return client.hello()
     },
@@ -2015,9 +2304,17 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     inviteCode: () => {
       const current = invite()
-      return current === undefined ? undefined : formatInviteCode(current.code)
+      return current === undefined ? undefined : formatCode(current.code)
     },
     newInvite,
+    /** People who proved they hold your code, waiting for you to add or decline them. */
+    codeAsks,
+    approveAsk,
+    declineAsk,
+    /** Wrong confirmations your current code has had. */
+    wrongTries,
+    /** Your last code was stopped after too many wrong tries. */
+    inviteStopped,
     /**
      * Answers someone's invite and waits to hear who they are. Nothing is agreed until the
      * returned offer is confirmed, which adds the friend on both sides.
@@ -2027,16 +2324,23 @@ export async function createMessenger(deps: MessengerDeps) {
       until: Promise<void>,
       onStep?: (step: OpenStep) => void,
     ): Promise<OpenedInvite> {
-      if (target.code === invite()?.code || target.fingerprint === selfFingerprint)
+      if (isOwnCode(invite()?.code, target) || target.fingerprint === selfFingerprint)
         return { ok: false, error: 'own' }
+      if (deps.seal === undefined || ownSealing === undefined)
+        return { ok: false, error: 'stopped' }
       const result = await openInvite({
         crypto,
+        seal: deps.seal.crypto,
+        sealer: deps.seal.sealer,
+        sealing: ownSealing,
+        pake: deps.pake,
         signer,
         transport,
         handle: profile().handle,
         now: clock.now,
         invite: target,
         until,
+        sleep: clock.sleep,
         speaker: devices.speaker,
         knownLog,
         ...(onStep === undefined ? {} : { onStep }),
@@ -2057,14 +2361,14 @@ export async function createMessenger(deps: MessengerDeps) {
           ...offer,
           async confirm(confirmUntil: Promise<void>) {
             const accepted = await offer.confirm(confirmUntil)
-            if (accepted === false) return false
-            // The inviter made the secret, so they hold it: meet only in its rooms. An inviter
-            // from before pair secrets sends none, and you move later.
+            if (accepted === false || accepted === 'declined') return accepted
+            // The inviter made the secret, so they hold it: meet only in its rooms.
             await addFriend({
               id: offer.friend.id,
               handle: offer.friend.handle,
               addedAt: clock.now(),
-              ...(accepted.secret === undefined ? {} : { secret: accepted.secret, moved: true }),
+              secret: accepted.secret,
+              moved: true,
             })
             if (offer.friend.devices !== undefined)
               await devices.takeFriend(offer.friend.id, offer.friend.devices)

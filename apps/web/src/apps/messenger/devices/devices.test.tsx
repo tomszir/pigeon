@@ -7,7 +7,11 @@ describe('JoinDevice', () => {
   it('asks before linking to a Pigeon whose link opened it', async () => {
     const joinIdentity = vi.fn(() => new Promise<never>(() => undefined))
     const messenger = { joinIdentity, leavingTells: () => false } as unknown as Messenger
-    const target = { code: 'k7rtvp2b', fingerprint: 'abcdefghijklm' }
+    const target = {
+      via: 'link',
+      secret: 'abcdefghijklmnopqrstuvwxya',
+      fingerprint: '7f3a91c204bed817',
+    } as const
     render(() => (
       <JoinDevice
         messenger={messenger}
@@ -27,7 +31,7 @@ describe('JoinDevice', () => {
   it('goes ahead without asking when Link was chosen before leaving the old Pigeon', () => {
     const joinIdentity = vi.fn(() => new Promise<never>(() => undefined))
     const messenger = { joinIdentity, leavingTells: () => false } as unknown as Messenger
-    const target = { code: 'k7rtvp2b' }
+    const target = { via: 'code', nameplate: 'k7rt', secret: 'vp2bxq' } as const
     render(() => (
       <JoinDevice
         messenger={messenger}

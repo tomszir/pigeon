@@ -20,8 +20,20 @@ import { MAX_BLOB_BYTES, MAX_DROPS } from '../lighthouse/protocol.ts'
 import { err, ok, type Result } from '../result/result.ts'
 import type { SealCrypto, Sealer } from './seal-crypto.ts'
 
-/** What a letter is: each kind is its own `room`, mail:<kind>, so one can't pass as another. */
-export type MailKind = 'farewell' | 'self' | 'receipt' | 'invite' | 'invite-answer' | 'letter'
+/**
+ * What a letter is: each kind is its own `room`, mail:<kind>, so one can't pass as another.
+ * `pair` and `link` are never left at a Lighthouse: they're a live code's answer, sealed to the
+ * device that asked, and handed over the connection the code was proved on.
+ */
+export type MailKind =
+  | 'farewell'
+  | 'self'
+  | 'receipt'
+  | 'invite'
+  | 'invite-answer'
+  | 'letter'
+  | 'pair'
+  | 'link'
 const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'farewell',
   'self',
@@ -29,6 +41,8 @@ const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'invite',
   'invite-answer',
   'letter',
+  'pair',
+  'link',
 ])
 
 /** A device's sealing key, bound to it by its own signature. */

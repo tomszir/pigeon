@@ -18,6 +18,7 @@ import {
   type LighthouseAddress,
   type LighthouseClient,
   type LogHead,
+  lowSBody,
   MAX_LIST_TAGS,
   MAX_MAIL_MS,
   type MailKind,
@@ -351,11 +352,14 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             continue
           }
           const devices = letter.to.keys.filter((key) => letter.waiting.includes(key.device))
+          // Kept here, perhaps since before Pigeon took only low-S signatures: what's signed in
+          // it goes out spelled as it's taken now, or it would be refused at every put.
+          const body = lowSBody(letter.body)
           // The same id under today's tag: a device that has it already takes it once.
-          const where = await put(letter.kind, letter.id, letter.body, letter.to, devices)
+          const where = await put(letter.kind, letter.id, body, letter.to, devices)
           const stored = where.length > 0
           if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
-          next.push({ ...letter, putAt: stored ? at : letter.putAt })
+          next.push({ ...letter, body, putAt: stored ? at : letter.putAt })
         }
         if (!deps.stopped()) await saveOutbox(next)
       }),

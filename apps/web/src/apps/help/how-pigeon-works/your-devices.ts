@@ -14,27 +14,28 @@ export const YOUR_DEVICES = `
 <p>Linking is done in person, with both devices in front of you. The new device must be a Pigeon with no friends of its own yet, since it takes on yours. If it already has some, because you started Pigeon on both, <b>Link to My Other Device</b> on it offers to <b>leave</b> that Pigeon first: if it's on no other device, its friends who are online are told you left, everything on it is forgotten, and the link goes ahead. Check the code first: it's only tried once the old Pigeon is gone. Add those friends again from the Pigeon you keep.</p>
 ${steps([
   '<b>On the device that manages your list</b>, open Pigeon Messenger and choose <b>File</b>, <b>Link a Device</b>. It shows a code, a link and a QR code, good for 10 minutes.',
-  '<b>On the new device</b>, choose <b>File</b>, <b>Link to My Other Device</b>, and type the code or paste the link. On a phone, scanning the QR code opens the link; choose <b>Link</b> once you see it is from your own device.',
-  '<b>Compare the numbers.</b> Both screens show the same <b>6-digit number</b>. If they differ, someone else answered: cancel.',
+  "<b>On the new device</b>, choose <b>File</b>, <b>Link to My Other Device</b>, and type the code or paste the link. On a phone, scanning the QR code opens the link; choose <b>Link</b> once you see it is from your own device. If you typed the code, the new device shows whose Pigeon answered: check it's the fingerprint Link a Device shows for this Pigeon, then choose <b>Continue</b>.",
+  "<b>Compare the fingerprints.</b> The two devices first prove to each other that they hold the same code, over the very connection they're on, so nothing can sit in between. Then both screens show the <b>new device's fingerprint</b>, 16 letters and digits. Compare all 16: if the device that manages your list shows a different one from the device in your hand, someone else who saw the code answered. Choose <b>Not This Device</b>, and your own device can still ask. A wrong code goes no further, and after five wrong tries Pigeon stops the code.",
   '<b>Choose Link</b> on the device that manages your list. You can give the new device a name first, such as "Phone".',
   "<b>The new device becomes you.</b> It receives your name, your friends and their secrets, your blocked list and your friends' lists of devices, then starts again as you. Your chats aren't copied: they catch up from your friends, and from your other devices, as each comes online.",
 ])}
 <br>
 ${figure(
   4,
-  'Linking a phone. The number both devices show is worked out from the code and both keys, so only the two devices really talking can show the same one. The whole exchange is in ' +
+  "Linking a phone. Both devices prove they hold the same code, then both show the phone's fingerprint, which nobody else can match. The whole exchange is in " +
     helpLink('pigeon://help/protocol/flows/linking-a-device', 'The Pigeon Protocol, A.3') +
     '.',
   pre(`
      COMPUTER (manages your list)                       NEW PHONE
    +-------------------------+                 +-------------------------+
    | Link a Device           |                 | Link to My Other Device |
-   | code  ABCD-EFGH         |  -- typed in -> | code  ABCD-EFGH         |
+   | code  ABCD-EFG-HJK      |  -- typed in -> | code  ABCD-EFG-HJK      |
    +-------------------------+                 +-------------------------+
-                |<------------ "link me, please" -------------|
+                |<=========== "same code?" (proved) ==========>|
                 |------------- "you'd be Toms's" ------------>|
+                |<------------ "link me, please" -------------|
    +-------------------------+                 +-------------------------+
-   |   check:  482 913       |   same number?  |   check:  482 913       |
+   |  3f9a 21c0 77d1 0b4e    |  same print?    |  3f9a 21c0 77d1 0b4e    |
    |   [ Link ]   [Cancel]   |                 |   waiting...            |
    +-------------------------+                 +-------------------------+
                 |------------- your friends, your name, ----->|
@@ -44,7 +45,7 @@ ${figure(
 )}
 ${aside(
   'Good to know',
-  'A device gets your name and settings when it is linked. Afterwards, a new name or personal message on one of your devices reaches the others when they next meet; settings are not kept in step. If you have a great many friends, a few hundred or more, the link is refused before anything changes, because everything has to travel in one message.',
+  'A device gets your name and settings when it is linked. Afterwards, a new name or personal message on one of your devices reaches the others when they next meet; settings are not kept in step. If you have a great many friends, a few hundred or more, the link is refused before anything changes, because everything has to travel in one sealed letter.',
 )}
 
 <h2>Seeing and removing devices</h2>

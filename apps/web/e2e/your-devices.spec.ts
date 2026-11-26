@@ -40,7 +40,9 @@ test('a second device is the same Rook, and its messages reach the first', async
   const mikaAdd = mika.getByRole('dialog', { name: 'Add a Friend' })
   await mikaAdd.getByRole('textbox', { name: 'Your name:' }).fill('Mika')
   await mikaAdd.getByRole('button', { name: 'OK' }).click()
-  await mikaAdd.getByRole('button', { name: 'Add Rook' }).click()
+  await mikaAdd.getByRole('button', { name: 'Ask to be friends' }).click()
+  // Rook sees Mika asking, with her fingerprint and bird, and adds her.
+  await addFriend.getByRole('button', { name: 'Add', exact: true }).click()
   const mikaChat = mika.getByRole('dialog', { name: 'Rook - Conversation' })
   await expect(mikaChat).toContainText('Mika and Rook became friends on')
   const laptopChat = laptop.getByRole('dialog', { name: 'Mika - Conversation' })
@@ -50,7 +52,7 @@ test('a second device is the same Rook, and its messages reach the first', async
   await fileMenu(laptop, 'Link a Device...')
   const linkWindow = laptop.getByRole('dialog', { name: 'Link a Device' })
   const code = await linkWindow.locator('[data-link-code]').textContent()
-  expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)
+  expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{3}-[A-Z2-7]{3}$/)
 
   const phone = await (await browser.newContext()).newPage()
   await phone.goto('/')
@@ -59,10 +61,15 @@ test('a second device is the same Rook, and its messages reach the first', async
   const join = phone.getByRole('dialog', { name: 'Link to My Other Device' })
   await join.getByRole('textbox', { name: 'Code or link:' }).fill(code ?? '')
   await join.getByRole('button', { name: 'Link' }).click()
+  // Typed, the phone shows whose Pigeon answered, to compare with the laptop's before it asks.
+  await expect(join.locator('[data-identity-check]')).toHaveText(
+    (await linkWindow.locator('[data-self-fingerprint]').textContent()) ?? '',
+  )
+  await join.getByRole('button', { name: 'Continue' }).click()
 
-  // Both show the same check; confirming on the laptop links the phone, which starts again.
+  // Both show the phone's fingerprint; confirming on the laptop links it, and it starts again.
   const phoneCheck = join.locator('[data-link-check]')
-  await expect(phoneCheck).toHaveText(/^\d{3} \d{3}$/)
+  await expect(phoneCheck).toHaveText(/^[0-9a-f]{4}( [0-9a-f]{4}){3}$/)
   await expect(linkWindow.locator('[data-link-check]')).toHaveText(
     (await phoneCheck.textContent()) ?? '',
   )

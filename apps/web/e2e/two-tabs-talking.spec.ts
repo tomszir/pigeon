@@ -40,12 +40,14 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   const addFriend = rook.getByRole('dialog', { name: 'Add a Friend' })
   // A live code is on its own tab; invite links come first.
   await addFriend.getByRole('tab', { name: 'Quick code' }).click()
-  await expect(addFriend.locator('[data-invite-code]')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/)
+  await expect(addFriend.locator('[data-invite-code]')).toHaveText(
+    /^[A-Z2-7]{4}-[A-Z2-7]{3}-[A-Z2-7]{3}$/,
+  )
   const firstCode = (await addFriend.locator('[data-invite-code]').textContent()) ?? ''
   await expect(addFriend.getByRole('img', { name: 'Invite code as a QR code' })).toBeVisible()
   const link =
     (await addFriend.locator('[data-invite-link]').getAttribute('data-invite-link')) ?? ''
-  expect(link).toMatch(/#i\/[a-z2-7]{21}$/)
+  expect(link).toMatch(/#i\/[a-z2-7]{39}$/)
 
   // Mika opens the link in a browser of her own; the link vouches for Rook's fingerprint.
   const mika = await fresh(mikaContext, link.slice(link.indexOf('/#') + 1))
@@ -53,7 +55,10 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await chooseName(mikaAdd, 'Mika')
   await expect(mikaAdd).toContainText('Rook wants to be your friend.')
   await expect(mikaAdd).toContainText('It matches the link')
-  await mikaAdd.getByRole('button', { name: 'Add Rook' }).click()
+  await mikaAdd.getByRole('button', { name: 'Ask to be friends' }).click()
+  // Rook sees Mika asking, with her fingerprint and bird, and adds her.
+  await expect(addFriend.locator('[data-code-ask]')).toContainText('Mika asks to be friends')
+  await addFriend.getByRole('button', { name: 'Add', exact: true }).click()
   // Friends at once: both chats open, starting with when it happened.
   const mikaChat = mika.getByRole('dialog', { name: 'Rook - Conversation' })
   await expect(mikaChat).toContainText('Mika and Rook became friends on')
@@ -115,7 +120,8 @@ test('two people pair by invite link and chat', async ({ browser }) => {
   await samAdd.getByRole('button', { name: 'Open' }).click()
   await expect(samAdd).toContainText('Rook wants to be your friend.')
   await expect(samAdd).toContainText('Check it before you add them')
-  await samAdd.getByRole('button', { name: 'Add Rook' }).click()
+  await samAdd.getByRole('button', { name: 'Ask to be friends' }).click()
+  await addFriend.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(sam.getByRole('dialog', { name: 'Rook - Conversation' })).toContainText(
     'Sam and Rook became friends on',
   )

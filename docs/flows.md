@@ -6,24 +6,41 @@ Every diagram follows [protocol.md](protocol.md), which wins where the two diffe
 
 ## Invite handshake
 
-Toms makes an invite and Mika opens it ([Pairing](protocol.md#pairing)). Both sides are on their first device; from any other device, `pair-request` and `pair-offer` also carry `identity` and the device log, and the fingerprint is the identity's.
+Toms makes a live code and Mika opens it ([Pairing](protocol.md#pairing)). Both sides are on their first device; from any other device, `pair-offer` and `pair-request` also carry `identity` and the device log, and the fingerprint is the identity's.
 
 ```text
-  Toms (inviter)               invite:<code>              Mika (invitee)
-  --------------               -------------              --------------
-  makes K7RT-VP2B; hosts it
-  for 30 minutes, across
-  reloads; joins and waits
+  Toms (inviter)        invite/v2:<nameplate>, or       Mika (invitee)
+  --------------        the link's room                 --------------
+  makes K7RT-VP2-BXQ:
+  nameplate K7RT (public),
+  password VP2BXQ, and a
+  16-byte link secret; hosts
+  it for 30 minutes, across
+  reloads; waits in both
+  rooms: invite/v2:K7RT, and
+  invite/v2:<hash of the
+  link secret>
         |                                                        |
-        |                            types the code or opens the |
-        |                        link #i/<code><fingerprint>;    |
-        |                                                  joins |
-        |<-------------- pair-request { code, Mika's name } -----|
+        |                     types the code, and joins its room |
+        |                    or opens #i/<secret><fingerprint>   |
+        |                                and joins the link's    |
+        |<----- pake-start { via: code or link, SPAKE2 A } ------|
+        |------ pake-reply { SPAKE2 B } ------------------------>|
         |                                                        |
-        |------- pair-offer { code, Toms's name } -------------->|
+        |      both now hold a key, the same one only if both    |
+        |      used the same password or link secret             |
         |                                                        |
-        |                       Mika sees Toms's name and his    |
-        |                       16-hex fingerprint:              |
+        |<----- pake-prove { MAC a } ----------------------------|
+        |                                                        |
+  checks MAC a over the transcript: room, via, both SPAKE2
+  messages, both device keys, both DTLS fingerprints. Wrong:
+  pake-wrong, one wrong try shown to Toms; five stop the code,
+  and none that came at the same time is checked after that
+        |                                                        |
+        |------ pair-offer { MAC b, Toms's name } -------------->|
+        |                                                        |
+        |                       Mika checks MAC b, then sees     |
+        |                       Toms's name and fingerprint:     |
         |                       - from a link, an offer whose    |
         |                         fingerprint doesn't match the  |
         |                         link's is refused              |
@@ -31,17 +48,28 @@ Toms makes an invite and Mika opens it ([Pairing](protocol.md#pairing)). Both si
         |                         told to compare it with Toms's |
         |                         screen                         |
         |                                                        |
-        |<-------------- pair-confirm (Mika chose Add) ----------|
+        |<----- pair-request { Mika's name, sealing key } -------|
+        |              (Mika chose Ask to Be Friends)            |
         |                                                        |
-  adds Mika; makes a 32-byte
-  pair secret
-        |------- pair-accept { secret, 52 base32 chars } ------->|
+  Toms sees Mika's name, fingerprint and bird, and chooses:
+        |                                                        |
+  Add: makes a 32-byte pair secret
+        |------ pair-accept { mail:pair letter sealed to ------->|
+        |         Mika's key: the secret and the session }       |
+  Decline:                                                       |
+        |------ pair-decline ----------------------------------->|
+        |       (the code stays open for the right person)       |
         |                                                        |
   stops hosting the code                          saves Toms, with
   saves Mika, with the secret                     the secret
         |                                                        |
         +=========== pair:<daily name from the secret> ==========+
                      (never the old pair room)
+
+  someone in the middle, relaying every message unchanged, shows
+  each side a certificate of their own: the two transcripts name
+  different DTLS fingerprints, MAC a doesn't check, and nothing
+  past pake-wrong is sent
 ```
 
 ## Pair rooms by day
@@ -103,41 +131,55 @@ Every new connection in a pair or self room, between Toms's device and one of Mi
 
 ## Linking a device
 
-Toms puts his phone on his device log ([Devices](protocol.md#devices)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first.
+Toms puts his phone on his device log ([Devices](protocol.md#devices)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first. The code and the first four messages are an invite's ([Invite handshake](#invite-handshake)), in another room.
 
 ```text
-  Laptop (writes the log)        link:<code>          Phone (new device)
-  -----------------------        -----------          ------------------
+  Laptop (writes the log)    link/v2:<nameplate>,     Phone (new device)
+  -----------------------    or the link's room       ------------------
   File, Link a Device
-  hosts link:<code> for
-  10 minutes; shows the link
-  #l/<code><fingerprint>
-  as a QR code and in letters
+  hosts both rooms for 10
+  minutes; shows the code,
+  the link #l/<secret><fingerprint>
+  as a QR code, and its
+  Pigeon's fingerprint
         |                                                       |
         |                         File, Link to My Other Device |
         |                     types the code or opens the link; |
         |                                                 joins |
-        |<---------------------- link-request ------------------|
+        |<------ pake-start, pake-reply, pake-prove ----------->|
+        |        (as for an invite; a wrong MAC is a wrong      |
+        |        try, five stop the code)                       |
         |                                                       |
-        |-------- link-offer { whose it is (and the device ---->|
-        |                      log, if not the first device) }  |
+        |------ link-offer { MAC b, whose it is (and the ------>|
+        |                    device log, if not the first) }    |
         |                                                       |
-     +--------+                                            +--------+
-     | 482913 |   both show the same 6-digit check, from   | 482913 |
-     +--------+   SHA-256 of "pigeon/link/v1", the code    +--------+
-                  and both device keys
+        |                         from a link, its fingerprint  |
+        |                         must match; from a typed code |
+        |                         the phone shows it, you check |
+        |                         it's the laptop's and choose  |
+        |                         Continue                      |
         |                                                       |
-  you check the numbers match
-  and choose Link:
-  signs 'add phone' (refused
-  before, with nothing signed,
-  when the bundle wouldn't fit
-  one 64 KB envelope)
+        |<----- link-request { the phone's sealing key } -------|
         |                                                       |
-        |-------- link-accept { bundle } ---------------------->|
-        |           identity, device log, self secret,          |
-        |           profile, friends and their pair secrets,    |
-        |           blocked list, friends' device logs          |
+     +---------------------+                 +---------------------+
+     | 3f9a 21c0 77d1 0b4e |  both show the  | 3f9a 21c0 77d1 0b4e |
+     +---------------------+  phone's finger-+---------------------+
+                              print, which the
+                              transcript covered
+        |                                                       |
+  you check it's the phone
+  in your hand and choose
+  Link: signs 'add phone'
+  (refused before, with
+  nothing signed, when the
+  bundle wouldn't fit one
+  sealed letter, 44 KB)
+        |                                                       |
+        |------ link-accept { part, parts, mail:link letter --->|
+        |         sealed to the phone's key: the session and    |
+        |         the bundle: identity, device log, self        |
+        |         secret, profile, friends and their pair       |
+        |         secrets, blocked list, friends' device logs } |
         |                                                       |
         |                                keeps it all and starts
         |                                again as Toms; chats

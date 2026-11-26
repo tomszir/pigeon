@@ -49,8 +49,8 @@
 /* The 6-digit check is compared by eye across two screens. */
 .check {
   margin: 4px 0;
-  font: 700 28px / 32px var(--pg-font-mono);
-  letter-spacing: 0.1em;
+  font: 700 20px / 24px var(--pg-font-mono);
+  letter-spacing: 0.05em;
   text-align: center;
 }
 

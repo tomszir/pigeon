@@ -48,7 +48,7 @@ describe('the browser transport', () => {
       rtcConfig: { iceTransportPolicy: 'relay' },
       turnConfig: turn,
     })
-    await transport.join('invite:abc')
+    await transport.join('invite/v2:abcd')
     const plain = joinRoom.mock.calls[1]?.[0]
     expect(plain).not.toHaveProperty('password')
     expect(plain).not.toHaveProperty('rtcConfig')

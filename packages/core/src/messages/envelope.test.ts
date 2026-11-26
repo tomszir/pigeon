@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { utf8Decode, utf8Encode } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
-import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
+import { bindSealingKey } from '../mail/mail.ts'
+import { fakeCrypto, fakeSealCrypto, fakeSigner } from '../testing/testing.ts'
 import { cleanHandle, isHandle, MAX_MESSAGE_BYTES, openEnvelope, sealEnvelope } from './envelope.ts'
 
 const rook = fakeSigner('rook')
 const nonce = `${'a'.repeat(25)}q`
 const binding = { nonce, local: '0'.repeat(64), remote: 'f'.repeat(64) }
+const sealing = await bindSealingKey(rook, fakeSealCrypto().sealer('rook'))
 
 describe('envelopes', () => {
   it('round-trips each body type', async () => {
@@ -22,10 +24,17 @@ describe('envelopes', () => {
       { type: 'bye' },
       { type: 'log-sync', have: { [rook.id]: 3 } },
       { type: 'log-entries', entries: [] },
-      { type: 'pair-request', code: 'abc', handle: 'Mika' },
-      { type: 'pair-offer', code: 'abc', handle: 'Rook' },
-      { type: 'pair-confirm', code: 'abc' },
-      { type: 'pair-accept', code: 'abc' },
+      { type: 'pake-start', via: 'code', pake: 'AAAA' },
+      { type: 'pake-reply', pake: 'AAAA' },
+      { type: 'pake-prove', mac: 'AAAA' },
+      { type: 'pake-wrong' },
+      { type: 'pair-offer', mac: 'AAAA', handle: 'Rook' },
+      { type: 'pair-request', handle: 'Mika', sealing },
+      { type: 'pair-accept', sealed: 'AAAA' },
+      { type: 'pair-decline' },
+      { type: 'link-offer', mac: 'AAAA', handle: 'Rook' },
+      { type: 'link-request', sealing },
+      { type: 'link-accept', part: 0, parts: 2, sealed: 'AAAA' },
     ] as const
     for (const body of bodies) {
       const bytes = await sealEnvelope(rook, 'pair:x', 1000, body)
@@ -89,6 +98,10 @@ describe('envelopes', () => {
       await sealed({ type: 'hello', handle: 'Rook', instance: 'not base32!' }),
       await sealed({ type: 'presence', status: 'asleep', message: '' }),
       await sealed({ type: 'buzz' }, 2),
+      await sealed({ type: 'pake-start', via: 'guess', pake: 'AAAA' }),
+      await sealed({ type: 'pair-request', handle: 'Mika' }),
+      await sealed({ type: 'link-accept', part: 2, parts: 2, sealed: 'AAAA' }),
+      await sealed({ type: 'link-accept', part: 0, parts: 5, sealed: 'AAAA' }),
       utf8Encode('not json'),
       Uint8Array.from([0xff]),
     ])
@@ -133,7 +146,9 @@ describe('names', () => {
           ? { type, handle: 'Mika\n[9:41 AM] Rook\u202e' }
           : type === 'profile'
             ? { type, handle: 'Mika\n[9:41 AM] Rook\u202e', message: '', changedAt: 1 }
-            : { type, code: 'abc', handle: 'Mika\n[9:41 AM] Rook\u202e' }
+            : type === 'pair-request'
+              ? { type, sealing, handle: 'Mika\n[9:41 AM] Rook\u202e' }
+              : { type, mac: 'AAAA', handle: 'Mika\n[9:41 AM] Rook\u202e' }
       const bytes = await sealEnvelope(rook, 'pair:x', 1000, body as never)
       const opened = await openEnvelope(fakeCrypto, 'pair:x', bytes)
       expect(opened.ok && 'handle' in opened.value.body && opened.value.body.handle, type).toBe(

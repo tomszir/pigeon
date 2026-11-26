@@ -2,7 +2,7 @@
 
 One person can use Pigeon on several devices: each device keeps its own key, and a signed log of devices ties them to one identity.
 
-- Status: accepted; 0036 keeps your name and personal message in step on your devices before M8; 0027 adds a recovery key that can make another device the writer, and so a new identity is no longer the only way back from losing every device
+- Status: accepted; 0036 keeps your name and personal message in step on your devices before M8; 0027 adds a recovery key that can make another device the writer, and so a new identity is no longer the only way back from losing every device; [0046](0046-codes-through-spake2.md) replaces the 6-digit check, which someone in the middle could grind to match, with the new device's fingerprint after SPAKE2 key confirmation
 - Date: 2026-11-24
 
 ## Context

@@ -339,6 +339,11 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     open: boolean,
     drop: string,
     before: Readonly<Record<string, string>> = {},
+    /**
+     * `before` are closed cards: each stays where no new card replaced it, or an older open card
+     * could win there.
+     */
+    keepClosed = false,
   ): Promise<Record<string, string>> {
     const where = cardLighthouses()
     const cards: Record<string, string> = {}
@@ -371,6 +376,10 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     // The old cards come down once the new ones are up, wherever they were.
     for (const [id, blob] of Object.entries(before)) {
       if (cards[id] === blob) continue
+      if (keepClosed && cards[id] === undefined) {
+        cards[id] = blob
+        continue
+      }
       const lighthouse = [...where, ...deps.official, ...deps.lighthouses()].find(
         (address) => address.id === id,
       )
@@ -875,19 +884,21 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     /**
      * Your device log, name or Lighthouses changed: each open link's card is put again as you
      * are now, and a link another device made is closed if that device is no longer on the list.
+     * With `closedToo`, closed cards that may still be out are put again as well: one put before
+     * Pigeon took only low-S signatures may be refused, and the open card before it would win.
      */
-    refresh: () =>
+    refresh: ({ closedToo = false } = {}) =>
       serial(async () => {
         if (!deps.active()) return
         const at = now()
         for (const link of links()) {
-          if (!link.open || link.expires <= at) continue
-          const cards = await putCard(link, true, link.drop, link.cards)
+          if (link.expires <= at || !(link.open || closedToo)) continue
+          const cards = await putCard(link, link.open, link.drop, link.cards, !link.open)
           await updateLink(link.secret, (other) => ({ ...other, cards }))
         }
         const active = deviceState(deps.deviceLog()).active
         const gone = others.filter(
-          (link) => link.open && link.expires > at && !active.has(link.owner),
+          (link) => (link.open || closedToo) && link.expires > at && !active.has(link.owner),
         )
         // Closed with a drop of this device's own: the owner's cards stay, but lose to this one.
         // Tried again at the next change if no Lighthouse took it.

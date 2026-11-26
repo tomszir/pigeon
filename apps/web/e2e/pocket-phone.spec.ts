@@ -66,7 +66,11 @@ test('the Pocket runs Pigeon on a phone', async ({ page, browser }) => {
   await page.goto(link.slice(link.indexOf('/#') + 1))
   const add = page.getByRole('region', { name: 'Add a Friend' })
   await expect(add).toContainText('Rook wants to be your friend', { timeout: 60_000 })
-  await add.getByRole('button', { name: 'Add Rook' }).tap()
+  await add.getByRole('button', { name: 'Ask to be friends' }).tap()
+  await rook
+    .getByRole('dialog', { name: 'Add a Friend' })
+    .getByRole('button', { name: 'Add', exact: true })
+    .click()
   const chat = page.getByRole('region', { name: 'Rook - Conversation' })
   await expect(chat).toBeVisible({ timeout: 30_000 })
   await expect(keys.getByRole('button', { name: 'Left soft key: Friends' })).toBeVisible()

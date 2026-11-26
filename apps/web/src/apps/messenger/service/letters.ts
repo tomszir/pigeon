@@ -15,6 +15,7 @@ import {
   type Letter,
   type LighthouseAddress,
   type LogEntry,
+  lowSEntry,
   MAX_MAIL_MS,
   type PeerId,
 } from '@pigeon/core'
@@ -111,6 +112,12 @@ export function createLetters(deps: LettersDeps) {
   const known = new Map<PeerId, FriendLetters>()
   const loading = new Map<PeerId, Promise<FriendLetters>>()
   const forgotten = new Set<PeerId>()
+  /**
+   * How far your other devices were sent copies of what you wrote to a friend who couldn't be
+   * mailed (none of their Lighthouses is one this Pigeon may reach). Kept only while it runs: a
+   * restart sends a copy again, which merges as the same entries.
+   */
+  const copied = new Map<PeerId, number>()
   // Bumped on every change, so the chat says each message's way as it changes.
   const [version, bump] = createSignal(0)
   const waiting = new Set<PeerId>()
@@ -188,9 +195,14 @@ export function createLetters(deps: LettersDeps) {
       if (deps.stopped() || forgotten.has(friend) || deps.connected(friend)) return
       const chat = deps.chat(friend)
       const to = await deps.recipient(friend)
-      if (chat === undefined || to === undefined) return
+      if (chat === undefined) return
       let letters = await load(friend)
-      const from = Math.max(letters.delivered, stillOut(letters))
+      // With nowhere to leave the friend's letter, your other devices still get their copy.
+      const from = Math.max(
+        letters.delivered,
+        stillOut(letters),
+        to === undefined ? (copied.get(friend) ?? 0) : 0,
+      )
       const missing = ownEntries(friend).filter((entry) => entry.seq > from)
       const batches = batchEntries(missing, MAX_LETTER_BYTES).flatMap((batch) => {
         const out: (readonly LogEntry[])[] = []
@@ -199,19 +211,21 @@ export function createLetters(deps: LettersDeps) {
         return out
       })
       for (const batch of batches) {
-        if (outstanding(letters) >= MAX_LETTERS_WAITING) return
+        if (to !== undefined && outstanding(letters) >= MAX_LETTERS_WAITING) return
         const first = batch[0]
         const last = batch[batch.length - 1]
         if (first === undefined || last === undefined) return
         const id = base32Encode(deps.random(10))
         const where: string[] = []
         // Plain copies: the chat lives in a reactive store, which storage can't keep as it is.
-        const entries = batch.map((entry) => ({ ...entry }))
+        // Spelled as they're taken, so a message kept from before low-S signatures still counts.
+        const entries = batch.map((entry) => ({ ...lowSEntry(entry) }))
         const body = { log: chat.id, entries } as unknown as Json
-        await deps.mailbox.send('letter', to, body, {
-          id,
-          onStored: (stored) => where.push(...stored.map((address) => address.name)),
-        })
+        if (to !== undefined)
+          await deps.mailbox.send('letter', to, body, {
+            id,
+            onStored: (stored) => where.push(...stored.map((address) => address.name)),
+          })
         // A copy for your other devices, so the chat there has what you wrote here even when
         // the friend is never online with them.
         const own = await deps.ownDevices()
@@ -223,6 +237,10 @@ export function createLetters(deps: LettersDeps) {
           } as unknown as Json)
         // Closed meanwhile: it may not be queued, so it isn't counted as mailed.
         if (deps.stopped()) return
+        if (to === undefined) {
+          copied.set(friend, last.seq)
+          continue
+        }
         const sent: SentLetter = {
           id,
           from: first.seq,
@@ -393,6 +411,7 @@ export function createLetters(deps: LettersDeps) {
     async forget(friend: PeerId) {
       forgotten.add(friend)
       known.delete(friend)
+      copied.delete(friend)
       await store.delete(key(friend))
     },
   }

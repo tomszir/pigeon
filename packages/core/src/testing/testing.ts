@@ -74,8 +74,10 @@ export function fakeSealCrypto(seed = 1): SealCrypto & { sealer(name: string): S
     fakeHash(concatBytes(key, nonce, data)).subarray(0, 16)
   return {
     async ephemeralShare(peer) {
-      // As WebCrypto does with a key that isn't a point it can use.
-      if (peer.length !== 65 || peer[0] !== 4) throw new Error('DataError: Invalid keyData')
+      // As WebCrypto does with a key that isn't a point it can use; a key whose 64 bytes are all
+      // the same stands for one of the right shape that isn't on the curve.
+      if (peer.length !== 65 || peer[0] !== 4 || peer.subarray(1).every((b) => b === peer[1]))
+        throw new Error('DataError: Invalid keyData')
       const secret = random(32)
       const publicKey = publicOf(secret)
       return { publicKey, shared: shared(publicKey, peer) }
@@ -127,6 +129,8 @@ interface Member {
   readonly leaves: Set<(peer: ConnectionId) => void>
 }
 
+let networks = 0
+
 /**
  * Rooms shared by every transport made from one network. Delivery is asynchronous and in
  * order, like a data channel; `disconnect` cuts a transport off as if its network dropped. A
@@ -142,6 +146,8 @@ export function createMemoryNetwork() {
   const joins: { readonly name: RoomName; readonly options: JoinOptions }[] = []
   const key = (name: RoomName, password: string | undefined) => `${name}\u0000${password ?? ''}`
   let nextConnection = 0
+  networks += 1
+  const networkId = networks
   const later = (run: () => void) => void Promise.resolve().then(run)
 
   function transport(certificate?: string): Transport & { disconnect(): void } {
@@ -166,7 +172,10 @@ export function createMemoryNetwork() {
         const connection = `c${nextConnection}`
         const member: Member = {
           connection,
-          certificate: certificate ?? hexEncode(fakeHash(utf8Encode(`certificate:${connection}`))),
+          // Named by the network too: two networks' first connections are different browsers.
+          certificate:
+            certificate ??
+            hexEncode(fakeHash(utf8Encode(`certificate:${networkId}:${connection}`))),
           messages: new Set(),
           joins: new Set(),
           leaves: new Set(),
@@ -232,4 +241,31 @@ export function createMemoryNetwork() {
       .reduce((sum, [, members]) => sum + members.size, 0)
 
   return { transport, joins, occupants }
+}
+
+/**
+ * Someone in the middle of a room: joins `name` on two transports and passes every message
+ * across to everyone on the other side, through `change` if given (undefined drops it).
+ * Returns a function that stops it.
+ */
+export async function relayRoom(
+  left: Transport,
+  right: Transport,
+  name: RoomName,
+  change: (message: Uint8Array) => Promise<Uint8Array | undefined> = async (message) => message,
+): Promise<() => Promise<void>> {
+  const a = await left.join(name)
+  const b = await right.join(name)
+  const pass = (to: Room) => (_from: ConnectionId, message: Uint8Array) =>
+    void change(message).then((changed) => {
+      if (changed !== undefined) to.broadcast(changed)
+    })
+  const offA = a.onMessage(pass(b))
+  const offB = b.onMessage(pass(a))
+  return async () => {
+    offA()
+    offB()
+    await a.leave()
+    await b.leave()
+  }
 }

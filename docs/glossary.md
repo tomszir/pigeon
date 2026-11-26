@@ -10,11 +10,11 @@ The words Pigeon uses for its own things.
 - **Fingerprint**: 16 hex characters from a peer's key, compared out loud or on screen when pairing.
 - **Changelog.txt**: the release notes on the desktop, written for the people using Pigeon, newest first.
 - **Coo**: the opt-in bot that runs in your own tab.
-- **Invite**: an 8-character code, or a short link and QR code carrying it, that pairs one friend with you within 30 minutes while your Pigeon is open.
+- **Invite**: a 10-character code, or a short link and QR code standing for it, that pairs one friend with you within 30 minutes while your Pigeon is open, once you add them.
 - **Invite link**: a link that waits at your Lighthouses for up to 30 days and lets in up to 25 people, each once you add them, without either of you having to be online at the same time.
 - **Letter**: a message sealed to an offline friend and carried until they return.
 - **Lighthouse**: the always-on peer. Same protocol as everyone, labelled as such in the UI.
-- **Linking**: putting a new device on your device log, in person, by code and a 6-digit check.
+- **Linking**: putting a new device on your device log, in person, by a live code, with the new device's fingerprint shown on both.
 - **Lobby**: the opt-in public room of strangers who are online.
 - **Mirror**: a peer that keeps and serves a copy of someone's page.
 - **Monitor**: the beige Kestrel CRT drawn around the stage. Kestrel is a made-up maker.

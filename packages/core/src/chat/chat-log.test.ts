@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
+import { isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
 import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
   appendMessage,
@@ -186,4 +187,25 @@ it('batches entries under a byte budget, never splitting one', async () => {
   const batches = batchEntries(log.entries, 400)
   expect(batches.map((b) => b.length)).toEqual([1, 2])
   expect(batchEntries([], 400)).toEqual([])
+})
+
+describe('a P-256 author', () => {
+  it('has a high-S entry from before low-S refused as it arrives, and sent low-S, so it still reaches a device that lacks it', async () => {
+    const old = await p256Signer('high')
+    const kept = (await appendMessage(emptyLog('pair:x'), old, 'from before', 0)).log
+    const entry = kept.entries[0]
+    const signature = base32DecodeExact(entry?.sig ?? '')
+    expect(signature.ok && isHighS(signature.value)).toBe(true)
+    const strict = p256Crypto()
+    const authors = new Set([old.id])
+    expect((await mergeEntries(strict, emptyLog('pair:x'), kept.entries, authors)).entries).toEqual(
+      [],
+    )
+    const sent = missingFrom(kept, {})
+    expect(sent[0]?.sig).not.toBe(entry?.sig)
+    const taken = await mergeEntries(strict, emptyLog('pair:x'), sent, authors)
+    expect(taken.entries.map((e) => e.text)).toEqual(['from before'])
+    // One who holds it already in the old spelling keeps one copy.
+    expect((await mergeEntries(strict, kept, sent, authors)).entries.length).toBe(1)
+  })
 })

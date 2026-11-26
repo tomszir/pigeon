@@ -1,6 +1,13 @@
 // Shape checks for what the Messenger reads back from storage. A value that doesn't match is
 // treated as missing rather than trusted.
-import { type ChatLog, isPairSecret, isPeerId, type LogEntry, type PeerId } from '@pigeon/core'
+import {
+  type ChatLog,
+  isLiveCode,
+  isPairSecret,
+  isPeerId,
+  type LogEntry,
+  type PeerId,
+} from '@pigeon/core'
 import type {
   BlockedRecord,
   FarewellRecord,
@@ -101,8 +108,13 @@ export function isChatLog(value: unknown): value is ChatLog {
   )
 }
 
+/** A live code kept across reloads. One from before codes went through SPAKE2 isn't one. */
 export function isHostedInvite(value: unknown): value is HostedInvite {
+  const tries = isObject(value) ? value['wrongTries'] : undefined
   return (
-    isObject(value) && typeof value['code'] === 'string' && typeof value['expiresAt'] === 'number'
+    isObject(value) &&
+    isLiveCode(value['code']) &&
+    typeof value['expiresAt'] === 'number' &&
+    (tries === undefined || (Number.isSafeInteger(tries) && (tries as number) >= 0))
   )
 }
