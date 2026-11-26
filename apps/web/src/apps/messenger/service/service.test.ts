@@ -3,10 +3,12 @@ import {
   createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
+  err,
   fakeCrypto,
   fakeSealCrypto,
   fakeSigner,
   flush,
+  formatLighthouseAddress,
   type LighthouseAddress,
   type LighthouseClient,
   pairRoom,
@@ -90,7 +92,7 @@ function messenger(
 
 interface TestLighthouse {
   readonly address: LighthouseAddress
-  readonly client: () => LighthouseClient
+  readonly client: (address: LighthouseAddress) => LighthouseClient
   /** While down, it closes every connection and takes no new one. */
   down(value: boolean): void
 }
@@ -1925,5 +1927,267 @@ describe('letters', () => {
     const entry = only(rook.messenger.friends()).log.entries[0]
     if (entry === undefined) throw new Error('no entry')
     expect(rook.messenger.messageRoute(mikaId, entry)).toBeUndefined()
+  })
+})
+
+describe('Lighthouses someone else names', () => {
+  const at = (url: string, n = url): LighthouseAddress => ({
+    id: fakeSigner(n).id,
+    name: n.replace(/[^a-z0-9]/g, ''),
+    url,
+  })
+  const mikasOwn = at('wss://mika.example.com/')
+  const mikasPrivate = at('wss://192.168.1.10/')
+  const mikasLocal = at('ws://localhost:8787/')
+  const shared = at('wss://10.0.0.2/', 'home')
+
+  /**
+   * The test Lighthouse, and every other address this Pigeon opened a connection to, which go
+   * nowhere: what a friend's own Lighthouse would see.
+   */
+  function watched(base: TestLighthouse) {
+    const contacted: string[] = []
+    const closed: string[] = []
+    const lighthouse: TestLighthouse = {
+      ...base,
+      client: (address) =>
+        address.url === base.address.url
+          ? base.client(address)
+          : {
+              hello: async () => {
+                contacted.push(address.url)
+                return err('unreachable')
+              },
+              request: async () => {
+                contacted.push(address.url)
+                return err('unreachable')
+              },
+              close: () => closed.push(address.url),
+            },
+    }
+    return { lighthouse, contacted, closed }
+  }
+
+  /** Mika names `hers` in her hello and goes away; Rook writes to her. */
+  async function writeToMika(hers: readonly LighthouseAddress[], relayOnly: boolean) {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const base = testLighthouse(clock)
+    const { lighthouse, contacted } = watched(base)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse: base })
+    // Rook's own list has a Lighthouse at home, on a private address he chose.
+    await rook.messenger.setLighthouses([base.address, shared])
+    await mika.messenger.setLighthouses(hers)
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    if (relayOnly) await rook.messenger.setRelayOnly(true)
+    await away(mika)
+    await flush(200)
+    contacted.length = 0
+    await rook.messenger.send(mikaId, 'are you there?')
+    await rook.messenger.loadLetters(mikaId)
+    await clock.tick(5000)
+    await flush(400)
+    const entry = only(rook.messenger.friends()).log.entries[0]
+    if (entry === undefined) throw new Error('no entry')
+    return { contacted, route: rook.messenger.messageRoute(mikaId, entry) }
+  }
+
+  it("leaves a friend's mail at their public Lighthouse, never a private or local one", async () => {
+    const { contacted, route } = await writeToMika(
+      [testLighthouse(fakeClock()).address, mikasOwn, mikasPrivate, mikasLocal],
+      false,
+    )
+    expect(contacted).toContain(mikasOwn.url)
+    expect(contacted).not.toContain(mikasPrivate.url)
+    expect(contacted).not.toContain(mikasLocal.url)
+    expect(route).toEqual({ kind: 'left', where: ['Test Lighthouse'] })
+  })
+
+  it('takes a private address a friend names when it is one you chose', async () => {
+    const elsewhere = at('wss://10.0.0.2/api/websocket', 'proxy')
+    const { contacted } = await writeToMika([shared, mikasPrivate, elsewhere], false)
+    expect(contacted).toContain(shared.url)
+    expect(contacted).not.toContain(mikasPrivate.url)
+    // The same private host on another path isn't the Lighthouse you chose.
+    expect(contacted).not.toContain(elsewhere.url)
+  })
+
+  it('with relay-only on, leaves mail only at Lighthouses you chose', async () => {
+    const { contacted, route } = await writeToMika(
+      [testLighthouse(fakeClock()).address, mikasOwn, shared],
+      true,
+    )
+    expect(contacted).not.toContain(mikasOwn.url)
+    expect(contacted).toContain(shared.url)
+    expect(route).toEqual({ kind: 'left', where: ['Test Lighthouse'] })
+  })
+
+  it('with relay-only on, counts only the same URL as one you chose', async () => {
+    const { contacted } = await writeToMika(
+      [at('wss://lighthouse.test/someone-else', 'tenant'), at('wss://LIGHTHOUSE.test/', 'caps')],
+      true,
+    )
+    expect(contacted).toEqual([])
+  })
+
+  it('mails what waited as soon as relay-only is turned off', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const base = testLighthouse(clock)
+    const { lighthouse, contacted } = watched(base)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse: base })
+    await mika.messenger.setLighthouses([mikasOwn])
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    await rook.messenger.setRelayOnly(true)
+    await away(mika)
+    await flush(200)
+    await rook.messenger.send(mikaId, 'are you there?')
+    await rook.messenger.loadLetters(mikaId)
+    await clock.tick(5000)
+    await flush(400)
+    expect(contacted).not.toContain(mikasOwn.url)
+    await rook.messenger.setRelayOnly(false)
+    await flush(400)
+    await clock.tick(5000)
+    await flush(400)
+    expect(contacted).toContain(mikasOwn.url)
+  })
+
+  it('with relay-only on, sends no receipt to a friend who uses only their own Lighthouse', async () => {
+    const rooksOwn = at('wss://rook.example.com/')
+    for (const relayOnly of [false, true]) {
+      const network = createMemoryNetwork()
+      const clock = fakeClock(NOON)
+      const base = testLighthouse(clock)
+      const rook = await messenger(network, 'rook', { clock, lighthouse: base })
+      const mika = await messenger(network, 'mika', { clock, lighthouse: base })
+      // Rook's mail comes only to his own Lighthouse; Mika's to the shared one.
+      await rook.messenger.setLighthouses([rooksOwn])
+      await pairWith(rook, mika)
+      await flush(400)
+      const mikaId = only(rook.messenger.friends()).id
+      if (relayOnly) await mika.messenger.setRelayOnly(true)
+      await away(mika)
+      await flush(200)
+      await rook.messenger.send(mikaId, 'are you there?')
+      await clock.tick(5000)
+      await flush(400)
+      // Mika opens Pigeon alone, takes the letter, and would put her receipt at Rook's.
+      const { lighthouse, contacted } = watched(base)
+      const back = await messenger(createMemoryNetwork(), 'mika', {
+        clock,
+        lighthouse,
+        store: mika.store,
+      })
+      await flush(800)
+      const rookId = only(back.messenger.friends()).id
+      expect(back.messenger.friend(rookId)?.log.entries.map((entry) => entry.text)).toEqual([
+        'are you there?',
+      ])
+      if (relayOnly) expect(contacted).not.toContain(rooksOwn.url)
+      else expect(contacted).toContain(rooksOwn.url)
+      await back.messenger.close()
+      await rook.messenger.close()
+    }
+  })
+
+  it('with relay-only on, waits to meet a friend who uses only their own Lighthouse', async () => {
+    const { contacted, route } = await writeToMika([mikasOwn], true)
+    expect(contacted).toEqual([])
+    expect(route).toEqual({ kind: 'waiting' })
+  })
+
+  it('checks a Lighthouse you are adding at any address, relay-only or not', async () => {
+    const clock = fakeClock(NOON)
+    const { lighthouse, contacted } = watched(testLighthouse(clock))
+    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse })
+    await rook.messenger.checkLighthouse(mikasLocal)
+    await rook.messenger.setRelayOnly(true)
+    await rook.messenger.checkLighthouse(mikasPrivate)
+    await rook.messenger.checkLighthouse(mikasOwn)
+    expect(contacted).toEqual([mikasLocal.url, mikasPrivate.url, mikasOwn.url])
+  })
+
+  it('still gives your other devices what you wrote when the friend can’t be mailed', async () => {
+    for (const relayOnly of [true, false]) {
+      const network = createMemoryNetwork()
+      const clock = fakeClock(NOON)
+      const lighthouse = testLighthouse(clock)
+      const laptop = await messenger(network, 'rook', { clock, lighthouse })
+      const mika = await messenger(network, 'mika', { clock, lighthouse })
+      // Hers: public, which relay-only won't reach, or private, which nothing of Rook's will.
+      await mika.messenger.setLighthouses([relayOnly ? mikasOwn : mikasPrivate])
+      await pairWith(laptop, mika)
+      const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+      await flush(400)
+      const mikaId = only(laptop.messenger.friends()).id
+      if (relayOnly) await laptop.messenger.setRelayOnly(true)
+      await away(mika)
+      await away(phone)
+      await laptop.messenger.send(mikaId, 'see you saturday')
+      await clock.tick(5000)
+      await flush(400)
+      // A mail check doesn't send the copy again.
+      const outbox = async () => ((await laptop.store.get('mail-outbox')) as unknown[]).length
+      const queued = await outbox()
+      await clock.tick(10 * 60 * 1000)
+      await flush(400)
+      expect(await outbox()).toBeLessThanOrEqual(queued)
+      await laptop.messenger.close()
+      laptop.transport.disconnect()
+      const back = await messenger(createMemoryNetwork(), 'rook-phone', {
+        clock,
+        lighthouse,
+        store: phone.store,
+      })
+      await flush(800)
+      expect(back.messenger.friend(mikaId)?.log.entries.map((entry) => entry.text)).toEqual([
+        'see you saturday',
+      ])
+      await back.messenger.close()
+    }
+  })
+
+  it('closes a connection relay-only now refuses, and only that one', async () => {
+    const clock = fakeClock(NOON)
+    const { lighthouse, contacted, closed } = watched(testLighthouse(clock))
+    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse })
+    await rook.messenger.setLighthouses([lighthouse.address, mikasLocal])
+    // Both used once: Mika's public one as a friend's would be, and Rook's own local one.
+    await rook.messenger.checkLighthouse(mikasOwn)
+    await rook.messenger.checkLighthouse(mikasLocal)
+    expect(contacted).toEqual([mikasOwn.url, mikasLocal.url])
+    await rook.messenger.setRelayOnly(true)
+    expect(closed).toEqual([mikasOwn.url])
+  })
+
+  it("looks an invite link's Lighthouse up only when it may", async () => {
+    const clock = fakeClock(NOON)
+    const base = testLighthouse(clock)
+    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse: base })
+    await rook.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const made = await rook.messenger.makeInviteLink({ lifetime: 60 * 60 * 1000, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    const { lighthouse, contacted } = watched(base)
+    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
+    const naming = (address: LighthouseAddress) =>
+      `${made.link.url}?l=${encodeURIComponent(formatLighthouseAddress(address))}`
+
+    for (const address of [mikasPrivate, mikasLocal, at('wss://2130706433/', 'decimal')])
+      expect((await mika.messenger.openInviteLink(naming(address))).ok).toBe(true)
+    expect(contacted).toEqual([])
+    expect((await mika.messenger.openInviteLink(naming(mikasOwn))).ok).toBe(true)
+    expect(contacted).toContain(mikasOwn.url)
+
+    contacted.length = 0
+    await mika.messenger.setRelayOnly(true)
+    expect((await mika.messenger.openInviteLink(naming(mikasOwn))).ok).toBe(true)
+    expect(contacted).toEqual([])
   })
 })

@@ -315,7 +315,9 @@ export function LiveConversation(props: LiveConversationProps) {
               ? `${current().name} removed you. This chat stays here until you remove them too.`
               : current().online
                 ? `Connected directly to ${current().name}. Nothing passes through a server.`
-                : `${current().name} is offline. What you write waits at their Lighthouses for when they're back.`
+                : props.messenger.settings().relayOnly
+                  ? `${current().name} is offline. What you write waits at their Lighthouses if they use yours or the official ones, since the relay is always on; if not, until you're both online.`
+                  : `${current().name} is offline. What you write waits at their Lighthouses for when they're back.`
           }
           canBuzz={current().online}
           onSend={(text) => void props.messenger.send(props.friend, text)}

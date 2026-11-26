@@ -63,7 +63,7 @@ Connections aren't checked for where they come from (their `Origin`): Pigeon can
 
 ## On this computer
 
-`mise run lighthouse` runs it from `apps/lighthouse/lighthouse.json` (copy `lighthouse.example.json`). A `ws://localhost:...` URL works for a Lighthouse on the same computer as Pigeon; anywhere else needs `wss://`.
+`mise run lighthouse` runs it from `apps/lighthouse/lighthouse.json` (copy `lighthouse.example.json`). A `ws://localhost:...` URL works for a Lighthouse on the same computer as Pigeon; anywhere else needs `wss://`. A Lighthouse at such an address, or a private one at home, works for the Pigeon that has it on its list, and for friends who add it to theirs: friends who only hear of it from you won't connect to it, since Pigeon reaches a Lighthouse someone else names only at a public `wss://` address ([protocol.md](protocol.md#lighthouses-you-didnt-choose)).
 
 Node runs the Lighthouse's TypeScript as it is, stripping the types, with no build step. So the Lighthouse and the packages it uses (`@pigeon/core`, `@pigeon/lighthouse`) only use syntax that can be erased: no parameter properties, enums or namespaces. Their `tsconfig.json` sets `erasableSyntaxOnly` so the typecheck refuses the rest, and a test starts the Lighthouse under plain Node.
 

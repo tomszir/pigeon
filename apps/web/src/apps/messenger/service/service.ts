@@ -32,6 +32,7 @@ import {
   isLighthouseAddress,
   isPairSecret,
   isPeerId,
+  isPublicLighthouseUrl,
   isSealingKey,
   isTailLog,
   type Json,
@@ -457,16 +458,50 @@ export async function createMessenger(deps: MessengerDeps) {
     return JSON.stringify(keys[event.device]) !== JSON.stringify(book.keys[event.device])
   }
 
+  /**
+   * Whether this Pigeon may connect to a Lighthouse, whoever named it. Connecting shows it your
+   * IP address, and points your browser at its host. One you chose is always fine: on your list,
+   * on the list your other devices said, or an official one. Anyone else's is reached only at a
+   * public wss:// address, never a private, loopback or link-local one on your own network, and
+   * not at all while relay-only is on, since its operator would see the IP the relay hides.
+   */
+  function mayReach(address: LighthouseAddress): boolean {
+    const chosen = [
+      ...lighthouses(),
+      ...(deps.lighthouses ?? []),
+      ...(mailBooks.get(self)?.lighthouses ?? []),
+    ]
+    // Only the same URL: another path on the same host can be someone else's service behind it.
+    if (chosen.some((other) => other.url === address.url)) return true
+    return !settings().relayOnly && isPublicLighthouseUrl(address.url)
+  }
+
   // Mail through Lighthouses, when this Pigeon can seal and reach them.
   const lighthouseClients = new Map<string, LighthouseClient>()
+  /** The address each client is for, so the ones relay-only refuses can be closed. */
+  const clientAddresses = new Map<string, LighthouseAddress>()
+  /** The same clients unchecked, for a Lighthouse you're choosing in Network. */
+  const chosenClients = new Map<string, LighthouseClient>()
   const makeClient = deps.lighthouseClient
-  /** One client per key, URL and pass: an address a friend names never takes over yours. */
+  /**
+   * One client per key, URL and pass: an address a friend names never takes over yours. Each
+   * call is checked against `mayReach` as it's made, so a Lighthouse that stops being one this
+   * Pigeon may reach (relay-only turned on) isn't contacted again; refused, it's unreachable.
+   */
   function lighthouseClient(address: LighthouseAddress): LighthouseClient | undefined {
     if (makeClient === undefined) return undefined
     const key = `${address.id} ${address.url} ${address.pass ?? ''}`
     let client = lighthouseClients.get(key)
     if (client === undefined) {
-      client = makeClient(address)
+      const inner = makeClient(address)
+      chosenClients.set(key, inner)
+      clientAddresses.set(key, address)
+      client = {
+        hello: () => (mayReach(address) ? inner.hello() : Promise.resolve(err('unreachable'))),
+        request: (request) =>
+          mayReach(address) ? inner.request(request) : Promise.resolve(err('unreachable')),
+        close: () => inner.close(),
+      }
       lighthouseClients.set(key, client)
     }
     return client
@@ -496,8 +531,8 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /**
    * Who `id` is to mail: their pair secret, the sealing keys of their devices still on their
-   * list, and their Lighthouses (the official ones, if they never said). Undefined when there's
-   * no secret or no key to seal to.
+   * list, and their Lighthouses (the official ones, if they never said) that this Pigeon may
+   * reach. Undefined when there's no secret, no key to seal to or no Lighthouse to leave it at.
    */
   async function recipient(id: PeerId, secret: string | undefined): Promise<Recipient | undefined> {
     if (secret === undefined) return undefined
@@ -506,7 +541,10 @@ export async function createMessenger(deps: MessengerDeps) {
       (key) => devices.classify(id, key.device) === 'friend',
     )
     if (keys.length === 0) return undefined
-    const lighthouses = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
+    const named = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
+    // None this Pigeon may reach: their mail waits until you meet.
+    const lighthouses = named.filter(mayReach)
+    if (lighthouses.length === 0) return undefined
     return { identity: id, secret, keys, lighthouses }
   }
 
@@ -1750,6 +1788,9 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed || settings().relayOnly === relayOnly) return
     setSettings({ ...settings(), relayOnly })
     await store.set(KEYS.settings, settings())
+    // A connection open to a Lighthouse relay-only now refuses closes, so it isn't kept up.
+    for (const [key, address] of clientAddresses)
+      if (!mayReach(address)) lighthouseClients.get(key)?.close()
     // Every room this Pigeon hosts is joined again under the new policy: friends', the code you
     // host, your own devices' room, and a device link you're showing, which gets a new code.
     // A link a device has already answered is left to finish: that device was reached the old
@@ -2023,7 +2064,10 @@ export async function createMessenger(deps: MessengerDeps) {
     async checkLighthouse(
       address: LighthouseAddress,
     ): Promise<Result<LighthouseSoftware, ClientError | 'no-client'>> {
-      const client = lighthouseClient(address)
+      // Only Network asks, for one on your list or one you're adding: you chose it, so it's
+      // reached at any address, private and local ones included, relay-only or not.
+      if (lighthouseClient(address) === undefined) return err('no-client')
+      const client = chosenClients.get(`${address.id} ${address.url} ${address.pass ?? ''}`)
       if (client === undefined) return err('no-client')
       return client.hello()
     },

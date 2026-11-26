@@ -85,6 +85,7 @@ export type { LighthouseAddress } from './lighthouse/address.ts'
 export {
   formatLighthouseAddress,
   isLighthouseAddress,
+  isPublicLighthouseUrl,
   MAX_LIGHTHOUSE_NAME_LENGTH,
   parseLighthouseAddress,
 } from './lighthouse/address.ts'
