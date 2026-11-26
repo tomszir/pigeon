@@ -39,6 +39,15 @@ const PAGES = new Map<string, LocalPage>([
     },
   ],
   ['pigeon://home/about', { title: 'About', source: '<p>About this computer</p>' }],
+  [
+    'pigeon://map',
+    {
+      title: 'Map',
+      source:
+        '<map name="m"><area href="pigeon://home/about" shape="rect" coords="0,0,8,8" alt="About"><area href="#end" shape="rect" coords="8,0,16,8" alt="End"><area href="#%E0" shape="rect" coords="16,0,24,8" alt="Broken"></map><img src="logo.png" usemap="#m"><p id="end">End</p><p id="%E0">Broken</p>',
+      images: { 'logo.png': '/assets/logo.png' },
+    },
+  ],
   ['pigeon://big', { title: 'Big', source: `<p>${'x'.repeat(101 * 1024)}</p>` }],
 ])
 
@@ -72,6 +81,14 @@ async function loadedFrame(): Promise<Document> {
   })
   if (doc === undefined) throw new Error('frame not loaded')
   return doc
+}
+
+/** One of the page's image map areas, by its alt text. */
+async function area(alt: string): Promise<HTMLAreaElement> {
+  const doc = await loadedFrame()
+  const found = doc.querySelector<HTMLAreaElement>(`area[alt="${alt}"]`)
+  if (found === null) throw new Error(`no area ${alt}`)
+  return found
 }
 
 async function clickLink(text: string) {
@@ -142,6 +159,30 @@ describe('Explorer', () => {
     fireEvent.click(button('Home'))
     expect(address()).toBe('pigeon://home')
     expect(button('Forward').disabled).toBe(true)
+  })
+
+  it("follows an image map's area as it does a link, and shows where it goes", async () => {
+    renderExplorer('pigeon://map')
+    const about = await area('About')
+    about.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    expect(screen.getByRole('status').textContent).toContain('pigeon://home/about')
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+    about.dispatchEvent(click)
+    // Cancelled, so the frame doesn't try to go there by itself.
+    expect(click.defaultPrevented).toBe(true)
+    await waitFor(() => expect(address()).toBe('pigeon://home/about'))
+  })
+
+  it('scrolls to an in-page "#name" from an area, even one with a broken escape', async () => {
+    renderExplorer('pigeon://map')
+    const doc = await loadedFrame()
+    const scrolled: string[] = []
+    for (const target of doc.querySelectorAll('p'))
+      target.scrollIntoView = () => scrolled.push(target.id)
+    ;(await area('End')).click()
+    ;(await area('Broken')).click()
+    expect(scrolled).toEqual(['end', '%E0'])
+    expect(address()).toBe('pigeon://map')
   })
 
   it('forgets the pages ahead when a new one is opened after going back', async () => {
