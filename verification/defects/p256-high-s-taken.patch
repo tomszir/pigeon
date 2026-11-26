@@ -1,0 +1,17 @@
+defect: isCanonicalSignature takes the high-S spelling of a P-256 signature
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: p256
+
+diff --git a/packages/core/src/identity/signature.ts b/packages/core/src/identity/signature.ts
+index 7a7f656..dadcf23 100644
+--- a/packages/core/src/identity/signature.ts
++++ b/packages/core/src/identity/signature.ts
+@@ -46,7 +46,7 @@ export function isCanonicalSignature(signer: PeerId, signature: Uint8Array): boo
+   // r is a value mod n too, so r + n would be another spelling if a verifier let it through.
+   const r = toBig(signature.subarray(0, 32))
+   const s = toBig(signature.subarray(32))
+-  return r >= 1n && r < N && s >= 1n && s <= HALF_N
++  return r >= 1n && r < N && s >= 1n && s < N
+ }
+ 
+ /**

@@ -36,6 +36,14 @@ run = "node scripts/vendor.mjs vendor/icons.lock.json apps/web/src/icons"
 description = "Re-vendor the pinned wallpapers in vendor/wallpapers.lock.json into apps/web/src/wallpapers"
 run = "node scripts/vendor.mjs vendor/wallpapers.lock.json apps/web/src/wallpapers"
 
+[tasks."wycheproof:vendor"]
+description = "Re-vendor the pinned Wycheproof test vectors in vendor/wycheproof.lock.json into packages/core/src/testing/wycheproof"
+run = "node scripts/vendor.mjs vendor/wycheproof.lock.json packages/core/src/testing/wycheproof"
+
+[tasks.defects]
+description = "Plant each defect in verification/defects/ and check a test catches it (needs those files committed)"
+run = "node scripts/check-defects.ts"
+
 [tasks.fmt]
 description = "Format and fix everything Biome can"
 run = "pnpm biome check --write ."

@@ -40,7 +40,10 @@ packages/
                   with the browser's history through a small port.
       result/     the Result type.
       testing/    fakes for tests everywhere: fakeCrypto, fakeSigner, fakePake and
-                  an in-memory network. Never used outside tests.
+                  an in-memory network; and crypto-contract.ts (exported as
+                  @pigeon/core/testing), the tests every Crypto, SealCrypto and Sealer
+                  runs, against Wycheproof's vectors in testing/wycheproof/. Never used
+                  outside tests.
   lighthouse/   @pigeon/lighthouse: a Lighthouse's mailbox with no platform in it.
                 lighthouse/ answers each connection's request frames
                 with signed replies; store/ is the MailStore interface, a memory store,
@@ -165,4 +168,6 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - Folders by feature, never one flat directory: in a package, `src/<feature>/`; in the web app, the layer folders above and one folder per component.
 - In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses. Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
 - Tests sit beside the file they test (`name.test.ts`) and go at the lowest level that fails for the reason they guard. Playwright e2e lives in `apps/web/e2e/`.
+- Every implementation of `Crypto` (the web app's and both Lighthouses') and the web app's `SealCrypto` and `Sealer` run core's crypto contract in a `crypto-contract.test.ts` beside them: published vectors decide what they must accept and refuse, not answers worked out by the code under test. The contract covers signatures, HMAC and SHA-256, and for sealing ECDH, HKDF and AES-GCM; HPKE is checked against RFC 9180's vector in `seal-crypto.test.ts`. Each `Crypto` also runs the contract's signature refusals a second time, over a `SubtleCrypto` whose verify takes everything, so Pigeon's own refusals are checked apart from the platform's. All of them run on Node's WebCrypto, so they check Pigeon's code around WebCrypto and Node's WebCrypto itself, not each browser's or the Workers runtime's.
+- Planted defects in `verification/defects/` show the checks catch what they're for: each patch weakens one refusal and names the test that must fail. `mise run defects` (`scripts/check-defects.ts`) runs every test file once as it is, then plants each defect on its own, typechecks, and requires that test to fail; CI runs it on every PR. It won't start while a file a patch touches has uncommitted changes, since it puts the code back by checking those files out from HEAD, so it isn't part of `mise run check`. A change that makes a patch stop applying updates the patch so it plants the same defect.
 - Rules a peer settles alone, where an attacker picks the inputs and their order, also get property tests (`name.property.test.ts`, with fast-check): random histories and copies, merged in random orders, checked against what the rules promise rather than against hand-picked cases. Each run picks new cases; a failure prints the seed and the smallest case fast-check found.

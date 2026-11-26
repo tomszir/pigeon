@@ -1,0 +1,17 @@
+defect: the browser's HKDF spells its info in Latin-1 rather than UTF-8
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: its info is UTF-8
+
+diff --git a/apps/web/src/platform/crypto/seal-crypto.ts b/apps/web/src/platform/crypto/seal-crypto.ts
+index 9a6b7a2..4eb0a73 100644
+--- a/apps/web/src/platform/crypto/seal-crypto.ts
++++ b/apps/web/src/platform/crypto/seal-crypto.ts
+@@ -84,7 +84,7 @@ export function createWebSealCrypto(subtle = crypto.subtle): SealCrypto {
+         name: 'HKDF',
+         hash: 'SHA-256',
+         salt: new Uint8Array(),
+-        info: new TextEncoder().encode(info),
++        info: Uint8Array.from(info, (char) => char.charCodeAt(0) & 255),
+       }
+       return new Uint8Array(await subtle.deriveBits(params, key, length * 8))
+     },

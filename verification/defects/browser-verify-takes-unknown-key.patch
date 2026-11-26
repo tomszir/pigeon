@@ -1,0 +1,17 @@
+defect: the browser's Crypto takes a signature from a key it couldn't import
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: not points on the curve
+
+diff --git a/apps/web/src/platform/crypto/browser-crypto.ts b/apps/web/src/platform/crypto/browser-crypto.ts
+index 4638e93..d9c940c 100644
+--- a/apps/web/src/platform/crypto/browser-crypto.ts
++++ b/apps/web/src/platform/crypto/browser-crypto.ts
+@@ -95,7 +95,7 @@ export function createBrowserCrypto(subtle = crypto.subtle): Crypto {
+       // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+       if (!isCanonicalSignature(signer, signature)) return false
+       const imported = await key
+-      if (imported === null) return false
++      if (imported === null) return true
+       const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN
+       return subtle.verify(algorithm, imported, copy(signature), copy(data)).catch(() => false)
+     },

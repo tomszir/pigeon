@@ -1,0 +1,62 @@
+{
+  "sources": {
+    "ecdsa_secp256r1_sha256_p1363_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json",
+      "integrity": "sha512-AvFtwOV/UwOvZeGO6NG7IlKKVmdXIJaXxKVXwf5JLjs8rlU0pWKTD0oI7wneh1Bq2mwSZCrpCLwBTD8TNBSwlw=="
+    },
+    "ed25519_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/ed25519_test.json",
+      "integrity": "sha512-95+M2QIHBQPOlWUSMOySfN9xUkMvOo76+sILd309K0pO753Iy0L8FC9qmLv9n5idCe+ZoGMwpwU0lQE6QHBXUw=="
+    },
+    "hmac_sha256_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/hmac_sha256_test.json",
+      "integrity": "sha512-hTR36sI9bi2/EPwJUpGzSH+ShE1YZX7GrMOnhKlFnR58zjGmQ7BQ1YGj7ieJ3crqtI1xoCDSaj2zzYDlfIUeUg=="
+    },
+    "ecdh_secp256r1_webcrypto_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/ecdh_secp256r1_webcrypto_test.json",
+      "integrity": "sha512-XvV/SdPZansqFY674tcUoHZtuaInjMscDwrMQo/4qeuBq8HFTFEAObMCz9mOqQbJdMbQTkx3GZnamUlrdGlQaA=="
+    },
+    "hkdf_sha256_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/hkdf_sha256_test.json",
+      "integrity": "sha512-XgIMCEj+HTB6ssaVJ0IaXN/gDDOY3qjnmAqCtEH4HBq6VXGJP7SgXuIyEEgKcpTF4WCbGHqf/3PSe5LX5UeSbw=="
+    },
+    "aes_gcm_test": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/aes_gcm_test.json",
+      "integrity": "sha512-rMO6taJ1SPBwu4EpZwZnTcxuAT+yrS6Yfs/jIfDrTsvvbvF+x+mLXo1T1E4F5xpZwbGHU1njfk/r1P6AYoE0BA=="
+    },
+    "licence": {
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/LICENSE",
+      "integrity": "sha512-Mcw4BmZ4wDDo9jeNyuWa3WRWapd/kpg8OkySnJt2QkKRkV6kKD4TZ+zlC5U3+NUZcKqP1c4GMDeqOnxF8Gd9JQ=="
+    }
+  },
+  "files": [
+    {
+      "source": "ecdsa_secp256r1_sha256_p1363_test",
+      "out": "ecdsa_secp256r1_sha256_p1363_test.json"
+    },
+    {
+      "source": "ed25519_test",
+      "out": "ed25519_test.json"
+    },
+    {
+      "source": "hmac_sha256_test",
+      "out": "hmac_sha256_test.json"
+    },
+    {
+      "source": "ecdh_secp256r1_webcrypto_test",
+      "out": "ecdh_secp256r1_webcrypto_test.json"
+    },
+    {
+      "source": "hkdf_sha256_test",
+      "out": "hkdf_sha256_test.json"
+    },
+    {
+      "source": "aes_gcm_test",
+      "out": "aes_gcm_test.json"
+    },
+    {
+      "source": "licence",
+      "out": "LICENSE"
+    }
+  ]
+}

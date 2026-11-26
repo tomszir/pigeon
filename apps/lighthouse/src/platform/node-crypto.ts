@@ -19,7 +19,7 @@ const P256_SIGN = { name: 'ECDSA', hash: 'SHA-256' } as const
 
 const copy = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(bytes)
 
-export function createNodeCrypto(): Crypto {
+export function createNodeCrypto(subtle = webcrypto.subtle): Crypto {
   const keys = new Map<PeerId, Promise<webcrypto.CryptoKey | null>>()
   const importKey = (id: PeerId) => {
     const parsed = parsePeerId(id)
