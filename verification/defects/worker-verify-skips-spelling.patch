@@ -1,0 +1,16 @@
+defect: the Worker Lighthouse's Crypto verifies without checking the spelling first
+test: apps/lighthouse-worker src/platform/crypto-contract.test.ts
+expect: high-S
+
+diff --git a/apps/lighthouse-worker/src/platform/worker-crypto.ts b/apps/lighthouse-worker/src/platform/worker-crypto.ts
+index 548aaf4..e7ae9f5 100644
+--- a/apps/lighthouse-worker/src/platform/worker-crypto.ts
++++ b/apps/lighthouse-worker/src/platform/worker-crypto.ts
+@@ -38,7 +38,6 @@ export function createWorkerCrypto(subtle: SubtleCrypto = crypto.subtle): Crypto
+         keys.set(signer, key)
+       }
+       // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+-      if (!isCanonicalSignature(signer, signature)) return false
+       const imported = await key
+       if (imported === null) return false
+       const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN

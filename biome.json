@@ -13,6 +13,7 @@
       "!assets",
       "!apps/web/src/icons",
       "!apps/web/src/fonts",
+      "!packages/core/src/testing/wycheproof",
       "!apps/web/src/apps/**/*.html"
     ]
   },

@@ -129,10 +129,11 @@ fi
 # Rule 4. The patterns catch "decision 0024", "decision records 0024", "ADR 0024",
 # "decisions/0024-...", "(0024)", "(see x; 0024)", "[0024]", "see 0024", "before 0024",
 # "0024 says", links to roadmap.md, and milestone tags such as M13, but not SVG path
-# data such as "M3 10" or the docs index's own roadmap entry. Untracked files count.
+# data such as "M3 10" or the docs index's own roadmap entry. Untracked files count; vendored
+# test vectors, whose base64 and hex spell anything, are left out.
 cite='[Dd]ecisions?( records?)?[ /-]+0[0-9]{3}|ADR[ -]?0[0-9]{3}|\((0[0-9]{3}[,;) ]|[^)]*; 0[0-9]{3})|\[0[0-9]{3}\]|\b(see|before|since|from) 0[0-9]{3}([^-0-9]|$)|\b0[0-9]{3} says|\bM[0-9]{1,2}([^0-9 .,]| [^0-9-]|[.,]( |$)|$)|[Hh]omelab|[(/]roadmap\.md(\)([^:]|$)|[^)]|$)'
 if git grep --untracked -nIE "$cite" -- . ':!docs/decisions/' ':!docs/roadmap.md' ':!docs/roadmap-*.md' ':!scripts/check-docs' \
-	':!*.svg' ':!*.lock.json' ':!pnpm-lock.yaml' ':!**/LICENSES/**' >"$tmp/cites"; then
+	':!*.svg' ':!*.lock.json' ':!pnpm-lock.yaml' ':!**/LICENSES/**' ':!packages/core/src/testing/wycheproof/**' >"$tmp/cites"; then
 	{
 		echo "Decision, milestone or personal references outside docs/decisions/ and the roadmap:"
 		sed 's/^/  /' "$tmp/cites"

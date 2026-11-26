@@ -1,0 +1,17 @@
+defect: the browser's HKDF uses a salt where Pigeon's has none
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: hkdf
+
+diff --git a/apps/web/src/platform/crypto/seal-crypto.ts b/apps/web/src/platform/crypto/seal-crypto.ts
+index 1c62010..7259e0a 100644
+--- a/apps/web/src/platform/crypto/seal-crypto.ts
++++ b/apps/web/src/platform/crypto/seal-crypto.ts
+@@ -57,7 +57,7 @@ export function createWebSealCrypto(subtle = crypto.subtle): SealCrypto {
+       const params = {
+         name: 'HKDF',
+         hash: 'SHA-256',
+-        salt: new Uint8Array(),
++        salt: new Uint8Array([1]),
+         info: new TextEncoder().encode(info),
+       }
+       return new Uint8Array(await subtle.deriveBits(params, key, length * 8))

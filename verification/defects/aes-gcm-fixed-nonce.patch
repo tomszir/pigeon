@@ -1,0 +1,17 @@
+defect: the browser's AES-GCM seals every message under the same nonce
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: fresh nonce
+
+diff --git a/apps/web/src/platform/crypto/seal-crypto.ts b/apps/web/src/platform/crypto/seal-crypto.ts
+index 9a6b7a2..4254ba6 100644
+--- a/apps/web/src/platform/crypto/seal-crypto.ts
++++ b/apps/web/src/platform/crypto/seal-crypto.ts
+@@ -89,7 +89,7 @@ export function createWebSealCrypto(subtle = crypto.subtle): SealCrypto {
+       return new Uint8Array(await subtle.deriveBits(params, key, length * 8))
+     },
+     async seal(key, data) {
+-      const iv = random(12)
++      const iv = new Uint8Array(12)
+       const sealed = await subtle.encrypt(
+         { name: 'AES-GCM', iv },
+         await aes(key, 'encrypt'),

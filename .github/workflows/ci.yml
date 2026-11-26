@@ -28,6 +28,8 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: node --test scripts/*.test.ts
+      # Each planted defect must make the test meant for it fail (verification/defects/).
+      - run: node scripts/check-defects.ts
       - run: mise run build
 
   # PRs are squash-merged, so the PR title becomes the commit on main: it's checked here.

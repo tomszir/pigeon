@@ -1,0 +1,17 @@
+defect: the browser's HKDF ignores its info, so keys for different purposes come out the same
+test: apps/web src/platform/crypto/crypto-contract.test.ts
+expect: hkdf gives different keys
+
+diff --git a/apps/web/src/platform/crypto/seal-crypto.ts b/apps/web/src/platform/crypto/seal-crypto.ts
+index 9a6b7a2..34b5f35 100644
+--- a/apps/web/src/platform/crypto/seal-crypto.ts
++++ b/apps/web/src/platform/crypto/seal-crypto.ts
+@@ -84,7 +84,7 @@ export function createWebSealCrypto(subtle = crypto.subtle): SealCrypto {
+         name: 'HKDF',
+         hash: 'SHA-256',
+         salt: new Uint8Array(),
+-        info: new TextEncoder().encode(info),
++        info: new Uint8Array(),
+       }
+       return new Uint8Array(await subtle.deriveBits(params, key, length * 8))
+     },
