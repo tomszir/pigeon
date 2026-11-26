@@ -65,9 +65,11 @@ Connections aren't checked for where they come from (their `Origin`): Pigeon can
 
 `mise run lighthouse` runs it from `apps/lighthouse/lighthouse.json` (copy `lighthouse.example.json`). A `ws://localhost:...` URL works for a Lighthouse on the same computer as Pigeon; anywhere else needs `wss://`.
 
+Node runs the Lighthouse's TypeScript as it is, stripping the types, with no build step. So the Lighthouse and the packages it uses (`@pigeon/core`, `@pigeon/lighthouse`) only use syntax that can be erased: no parameter properties, enums or namespaces. Their `tsconfig.json` sets `erasableSyntaxOnly` so the typecheck refuses the rest, and a test starts the Lighthouse under plain Node.
+
 ## In Docker
 
-Each release publishes the image as `ghcr.io/tomszir/pigeon-lighthouse`, tagged with its version and `latest` (`.github/workflows/lighthouse-image.yml`, run by release-please; running it by hand tags `edge`). Run it with a folder holding `lighthouse.json`; its key and mail are kept in that folder too, and the folder must be writable by the container's `node` user (uid 1000).
+Each release publishes the image as `ghcr.io/tomszir/pigeon-lighthouse`, tagged with its version and `latest` (`.github/workflows/lighthouse-image.yml`, run by release-please; running it by hand tags `edge`). Follow `latest` to get each release, for example with Watchtower; `edge` changes only when someone runs the workflow by hand. Run it with a folder holding `lighthouse.json`; its key and mail are kept in that folder too, and the folder must be writable by the container's `node` user (uid 1000).
 
 ```sh
 docker run -d --name lighthouse --restart unless-stopped \
