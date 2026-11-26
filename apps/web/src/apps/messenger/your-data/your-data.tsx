@@ -95,7 +95,9 @@ export function ExportData(props: ExportDataProps) {
             >
               <p class={styles.text}>
                 Saves your friends, chats, blocked people and settings to a file, sealed with a
-                passphrase. Import it on another of your devices.
+                passphrase. Import it on another of your devices. It holds each friend's secret too,
+                so anyone with the file and the passphrase could find your friends online and see
+                their names and addresses.
               </p>
               <TextField
                 label="&Passphrase:"
