@@ -1,4 +1,4 @@
-# 0050: A verification track beside the releases
+# 0054: A verification track beside the releases
 
 Pigeon's crypto and protocol get independent checks, built as plain Vitest tests in the repo, planned as a track of their own that runs beside the product releases and never blocks one.
 
