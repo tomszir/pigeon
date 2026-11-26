@@ -20,6 +20,21 @@
     Argon2id.
   * Keep farewells and blocks loading past an
     unreadable one.
+  * Removing a device now replaces the secrets
+    it knew, yours and each friend's, and
+    closes the invite links that were open.
+  * Pigeon is stricter about where, and from
+    whom, it takes a new secret you share with
+    a friend.
+  * Invite links keep working when others who
+    hold the link put things at its
+    Lighthouses.
+  * An invite link's card is put again at a
+    Lighthouse that missed it, instead of
+    being lost there.
+  * Add a Friend says so when an official
+    Lighthouse can't be reached, instead of
+    showing a link nobody could open.
 
 0.8.1, 26 November 2026
 ----------------------------------------------
