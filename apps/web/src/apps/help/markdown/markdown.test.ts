@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DIAGRAM_NOTE, escapeHtml, markdownToHtml, parseBlocks, renderInline } from './markdown.ts'
+import { DIAGRAM_NOTE, markdownToHtml, parseBlocks, renderInline } from './markdown.ts'
 
 const help = (href: string) => (href === 'protocol.md' ? 'pigeon://help/protocol/' : undefined)
 const html = (md: string) => markdownToHtml(md, help)
@@ -124,10 +124,6 @@ describe('escaping hostile Markdown', () => {
     expect(out).toContain('&lt;i&gt;head&lt;/i&gt;')
     expect(out).toContain('&#39;q&#39;')
     expect(out).toContain('<pre>&lt;/pre&gt;&lt;script&gt;</pre>')
-  })
-
-  it('escapes every special character', () => {
-    expect(escapeHtml(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;')
   })
 })
 

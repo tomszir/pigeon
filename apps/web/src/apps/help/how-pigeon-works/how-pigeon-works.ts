@@ -1,17 +1,18 @@
 // "How Pigeon Works": the hand-written half of Help, for people.
 
-import type { HelpPage } from '../page/page.ts'
-import { ADDING_A_FRIEND } from './adding-a-friend.ts'
-import { COMING_SOON } from './coming-soon.ts'
-import { CHAPTERS, chapterAddress, chapterPage } from './frame.ts'
-import { ONE_PICTURE } from './one-picture.ts'
-import { PRIVATE_ROOMS } from './private-rooms.ts'
-import { RECOVERY_KEY } from './recovery-key.ts'
-import { SAVING_YOUR_DATA } from './saving-your-data.ts'
-import { YOUR_DEVICES } from './your-devices.ts'
+import type { Child } from '@pigeon/pigeonhtml/jsx-runtime'
+import type { HelpPage } from '../page/page.pigeon.tsx'
+import { ADDING_A_FRIEND } from './adding-a-friend.pigeon.tsx'
+import { COMING_SOON } from './coming-soon.pigeon.tsx'
+import { CHAPTERS, chapterAddress, chapterPage } from './frame.pigeon.tsx'
+import { ONE_PICTURE } from './one-picture.pigeon.tsx'
+import { PRIVATE_ROOMS } from './private-rooms.pigeon.tsx'
+import { RECOVERY_KEY } from './recovery-key.pigeon.tsx'
+import { SAVING_YOUR_DATA } from './saving-your-data.pigeon.tsx'
+import { YOUR_DEVICES } from './your-devices.pigeon.tsx'
 
 /** Each chapter's body, by its slug in CHAPTERS. */
-const BODIES: Readonly<Record<string, string>> = {
+const BODIES: Readonly<Record<string, Child>> = {
   '': ONE_PICTURE,
   'adding-a-friend': ADDING_A_FRIEND,
   'private-rooms': PRIVATE_ROOMS,

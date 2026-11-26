@@ -15,8 +15,19 @@ const commit = (process.env['WORKERS_CI_COMMIT_SHA'] ?? '').slice(0, 7)
  */
 const turnFrom = process.env['PIGEON_TURN_FROM'] ?? 'https://pigeon.tomszir.com'
 
+/**
+ * Pages written as typed string JSX (`*.pigeon.tsx`, and their tests) are not Solid components:
+ * their `@jsxImportSource @pigeon/pigeonhtml` makes elements call the PigeonHTML runtime, which
+ * builds text. Solid's plugin would compile them to DOM code instead.
+ */
+const PIGEON_PAGES = /\.pigeon\.(test\.)?tsx$/
+
 export default defineConfig({
-  plugins: [solid(), versionFile()],
+  plugins: [solid({ exclude: PIGEON_PAGES }), versionFile()],
+  // Vite follows tsconfig's `jsx: preserve` (Solid's), which would leave a PigeonHTML page's JSX
+  // in place. Whatever Solid doesn't compile is lowered here instead, to the automatic runtime of
+  // the page's own `@jsxImportSource`.
+  oxc: { jsx: { runtime: 'automatic' } },
   build: { target: 'es2023' },
   // A port of this checkout's own (ports.ts). Strict, so a clash fails loudly instead of moving
   // to another origin, which would be a different dev identity.

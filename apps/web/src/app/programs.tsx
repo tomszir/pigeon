@@ -6,9 +6,9 @@ import { type Accessor, createEffect, createSignal, onCleanup, Show } from 'soli
 import { About } from '../apps/about/about/about.tsx'
 import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
-import { localPageFinder, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
+import { localPageFinder } from '../apps/explorer/local-pages/local-pages.ts'
 import type { KeptView } from '../apps/explorer/page-frame/view.ts'
-import { HELP_HOME, HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
+import { HELP_HOME } from '../apps/help/help-pages/help-pages.pigeon.tsx'
 import type { AddFriendTab, IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 import {
   createNotifications,
@@ -26,6 +26,7 @@ import type { ShellApi, ShellEnv, TraySpec } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { OldCode } from './address-invite.ts'
+import { BUNDLED_PAGES } from './bundled-pages.ts'
 import { createLaunchers } from './launchers.ts'
 import { createMessageBalloons, remindAboutRecoveryKey } from './message-balloons.ts'
 import { createMessengerWindows } from './messenger-windows.tsx'
@@ -258,7 +259,7 @@ export function createPrograms(
   }
 
   /** Every page that comes with Pigeon: the start page, then Help. */
-  const findPage = localPageFinder(START_PAGES, HELP_PAGES)
+  const findPage = localPageFinder(...BUNDLED_PAGES)
   const favorites = [
     { label: 'Pigeon &Home', address: HOME_ADDRESS },
     { label: 'Pigeon &Help', address: HELP_HOME },

@@ -1,6 +1,9 @@
 // A small Markdown-to-PigeonHTML converter for the subset docs/ uses: headings,
 // paragraphs, bullet and numbered lists, tables, links, bold, italic, inline code and fenced
-// blocks. Everything taken from the Markdown is escaped; raw HTML in it shows as text.
+// blocks. Everything taken from the Markdown is escaped; raw HTML in it shows as text. It writes
+// strings, which a page written in JSX puts in with `raw()`.
+
+import { escapeHtml } from '@pigeon/pigeonhtml/jsx-runtime'
 
 export type Align = 'left' | 'center' | 'right' | undefined
 
@@ -23,17 +26,6 @@ export type Block =
 
 /** Where a link to `href` goes, or undefined to show the link's text alone. */
 export type LinkTo = (href: string) => string | undefined
-
-const ESCAPES: Readonly<Record<string, string>> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-}
-
-/** Text made safe for an element's content or a quoted attribute. */
-export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ESCAPES[c] ?? c)
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([\w-]*)/
 const HEADING = /^ {0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/
