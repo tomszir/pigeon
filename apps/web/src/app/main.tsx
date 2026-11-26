@@ -17,7 +17,9 @@ import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invi
 import { createBrowserEnv, deviceName, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { IDENTITY, startMessenger } from './start-messenger.ts'
+import { watchUnsavedWork } from './unsaved-work.ts'
 import { watchForUpdates } from './update-check.ts'
+import { createPendingReload } from './update-reload.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
 
 const root = document.getElementById('root')
@@ -90,20 +92,38 @@ render(() => {
   }
 
   // A tab keeps the code it loaded, so a long-open one asks the site now and then whether a newer
-  // Pigeon is out and offers a reload, once per version. It never reloads by itself: a message
-  // being typed, Link a Device or Add a Friend could be in the middle of something.
-  const watchForNewVersion = () =>
+  // Pigeon is out and reloads into it, when nothing would be lost (a message being typed, a
+  // pairing, a link or a recovery under way) and the tab is hidden or has been left alone for a
+  // little. tellWhatsNew then says so after the reload. Not where the browser keeps nothing: a
+  // reload there forgets the visitor. It also runs in a tab waiting behind "open in another
+  // tab", which has nothing to lose.
+  const UPDATED_FOR = 'pigeon.reloadedForVersion'
+  const watchForNewVersion = () => {
+    const work = watchUnsavedWork({ isOpen: api.isOpen })
+    const pending = createPendingReload({
+      current: __PIGEON_VERSION__,
+      isBusy: work.isBusy,
+      isQuiet: work.isQuiet,
+      reload: () => location.reload(),
+      // Session storage outlives the reload but not the tab.
+      attempted: {
+        get: () => {
+          try {
+            return sessionStorage.getItem(UPDATED_FOR) ?? undefined
+          } catch {
+            return undefined
+          }
+        },
+        // Throws where it can't be kept, and then the tab doesn't reload.
+        set: (version) => sessionStorage.setItem(UPDATED_FOR, version),
+      },
+    })
     watchForUpdates({
       current: __PIGEON_VERSION__,
       fetch: (input, init) => fetch(input, init),
-      onNewer: (version) =>
-        api.notify({
-          title: 'Pigeon was updated',
-          icon: brandIcon('pigeon-16'),
-          body: `Pigeon ${version} is out. Reload to get the new version.`,
-          onClick: () => location.reload(),
-        }),
+      onNewer: pending.want,
     })
+  }
 
   // On an iPhone in a Safari tab, once: storage lasts 7 days there.
   const HINTED = 'homeScreenHinted'
@@ -237,7 +257,6 @@ render(() => {
 
   const run = async (opened: NonNullable<typeof storage>, first: boolean) => {
     if (first) {
-      watchForNewVersion()
       await tellWhatsNew(opened.store).catch((error: unknown) => console.error(error))
       if (opened.persistent)
         await hintHomeScreen(opened.store).catch((error: unknown) => console.error(error))
@@ -268,6 +287,7 @@ render(() => {
   void createBrowserStore()
     .then(async (opened) => {
       storage = opened
+      if (opened.persistent) watchForNewVersion()
       if (!(await lock.tryHold())) {
         setProblem(ELSEWHERE)
         offerHere('Pigeon is open in another tab')
