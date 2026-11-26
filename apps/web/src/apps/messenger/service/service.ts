@@ -1404,7 +1404,10 @@ export async function createMessenger(deps: MessengerDeps) {
   let stopLinkHost: (() => Promise<void>) | undefined
   let linkRequest: LinkRequest | undefined
 
+  /** Counts cancels, so a relay-only change can tell a link was closed while it ran. */
+  let linkCancels = 0
   async function cancelLink() {
+    linkCancels += 1
     await stopLinkHost?.()
     stopLinkHost = undefined
     linkRequest = undefined
@@ -1423,7 +1426,7 @@ export async function createMessenger(deps: MessengerDeps) {
       link: `${deps.inviteBase}#${encodeDeviceLink(code, selfFingerprint)}`,
       expiresAt,
     })
-    stopLinkHost = await hostLink({
+    const stop = await hostLink({
       crypto,
       signer,
       transport,
@@ -1446,6 +1449,12 @@ export async function createMessenger(deps: MessengerDeps) {
         })
       },
     })
+    // Closed, or another link started meanwhile: this one's room isn't kept.
+    if (closed || linking()?.code !== code) {
+      await stop()
+      return undefined
+    }
+    stopLinkHost = stop
     void clock.sleep(LINK_LIFETIME_MS).then(() => {
       if (linking()?.code === code && linking()?.request === undefined) void cancelLink()
     })
@@ -1679,12 +1688,44 @@ export async function createMessenger(deps: MessengerDeps) {
     return farewells.length
   }
 
+  /** Relay-only changes, one at a time: two that overlapped could each host a room. */
+  let relayChange: Promise<void> = Promise.resolve()
+  function setRelayOnly(relayOnly: boolean): Promise<void> {
+    const next = relayChange.then(() => applyRelayOnly(relayOnly))
+    relayChange = next.catch(() => undefined)
+    return next
+  }
+  async function applyRelayOnly(relayOnly: boolean) {
+    if (closed || settings().relayOnly === relayOnly) return
+    setSettings({ ...settings(), relayOnly })
+    await store.set(KEYS.settings, settings())
+    // Every room this Pigeon hosts is joined again under the new policy: friends', the code you
+    // host, your own devices' room, and a device link you're showing, which gets a new code.
+    // A link a device has already answered is left to finish: that device was reached the old
+    // way already, and taking the room away would add it without handing it anything.
+    const showingLink = linking() !== undefined && linking()?.request === undefined
+    if (showingLink) await cancelLink()
+    const cancels = linkCancels
+    await disconnect()
+    await stopSelfSession()
+    if (closed) return
+    await connect()
+    // Not when the link was closed or another started meanwhile.
+    if (showingLink && !closed && linkCancels === cancels) await startLink()
+  }
+
   /** Stops everything: no rooms, no sessions, no link or invite hosting. */
   async function close() {
     closed = true
+    // A relay-only change halfway through would host rooms again after they're stopped.
+    await relayChange
     for (const client of lighthouseClients.values()) client.close()
     await cancelLink()
     await disconnect()
+    await stopSelfSession()
+  }
+
+  async function stopSelfSession() {
     const leaving = selfSession
     selfSession = undefined
     if (leaving !== undefined) {
@@ -2083,13 +2124,7 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
-    async setRelayOnly(relayOnly: boolean) {
-      if (settings().relayOnly === relayOnly) return
-      setSettings({ ...settings(), relayOnly })
-      await store.set(KEYS.settings, settings())
-      await disconnect()
-      await connect()
-    },
+    setRelayOnly,
     /** For a closing tab: friends see you go offline at once. */
     goodbye() {
       for (const session of sessions.values()) session.goodbye()
