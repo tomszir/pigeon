@@ -29,6 +29,6 @@ Pigeon: a serverless peer-to-peer messenger and "Pigeonweb" inside an XP-era fak
 - [lighthouse.md](lighthouse.md): running a Lighthouse: its config file, Docker, reaching one at home through Tailscale Funnel, and the Cloudflare Worker one.
 - [glossary.md](glossary.md): the project's own words.
 - [../vendor/VENDOR.md](../vendor/VENDOR.md): where the vendored fonts, icons and wallpapers come from and how to update them.
-- [../CONTRIBUTING.md](../CONTRIBUTING.md): commit, pull request and issue conventions, the first two enforced by the `commit-msg` hook and the `pr-title` CI job.
+- [../CONTRIBUTING.md](../CONTRIBUTING.md): commit, pull request and issue conventions, the first two enforced by the `commit-msg` hook and the `pr-title` CI job, and how docs and comments are written (no divider comments in code, which `scripts/check-docs` refuses).
 - [../SECURITY.md](../SECURITY.md): how to report a security problem privately.
 - [decisions/](decisions/): why things are the way they are. Start a new one from 0000-template.md, numbered after the last.
