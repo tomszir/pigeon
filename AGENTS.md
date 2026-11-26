@@ -38,7 +38,8 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
 - Anything signed, hashed or compared has exactly one accepted encoding. Compare decoded bytes, never the text of a signature or key.
 - Every signature says what it's for (its room or kind is in the signed bytes), so it can't be reused as something else.
 - A signature proves who wrote a message, not who is sending it now. A message that counts only when its sender is there (a hello, a handshake, anything a session acts on) is bound to the channel it arrives on and refused when replayed.
-- A change to crypto, pairing, linking, device logs, recovery, sessions or Lighthouse limits gets review rounds before it's merged: a fresh reviewer each round, given the diff, the decision records and the findings already fixed, asked for proven scenarios. The maintainer approves the merge.
+- A change to crypto, pairing, linking, device logs, recovery, sessions or Lighthouse limits gets review rounds before it's merged: a fresh reviewer each round, given the diff, the decision records and the findings already fixed, asked for proven scenarios. Only a high-severity finding holds the merge; anything less is filed, as Issues and decisions says, and settled through the protocol's model rather than patched round by round. The maintainer approves the merge.
+- A change to a signed format, a log, a secret, pairing, linking or a Lighthouse rule is modelled first: its state machine and invariants written from the docs, and a model-based test the implementation must pass, before the implementation. [docs/verification.md](docs/verification.md) lists what each boundary is checked by.
 
 ## Issues and decisions
 
