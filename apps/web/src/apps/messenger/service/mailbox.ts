@@ -7,6 +7,7 @@
 import {
   base32Decode,
   base32Encode,
+  base64Decode,
   type Crypto,
   dropHashes,
   inviteAnswerTag,
@@ -437,6 +438,12 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
                   // Read again next time: the cursor isn't moved past what couldn't be got.
                   reachable = false
                   break
+                }
+                // The size listed is only the Lighthouse's word: the blob itself is measured too,
+                // so one that lists a small size can't hand over a big blob to open.
+                if (maxBytes !== undefined) {
+                  const bytes = base64Decode(blob.value.blob)
+                  if (!bytes.ok || bytes.value.length > maxBytes) continue
                 }
                 const dayOf = Date.parse(`${where.date}T00:00:00Z`)
                 const open = await openMail(crypto, deps.seal, deps.sealer, blob.value.blob, {
