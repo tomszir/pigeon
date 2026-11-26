@@ -1,14 +1,12 @@
 /// <reference types="vitest/config" />
-import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import { devPort } from './ports.ts'
 import { siteHeaders } from './site-headers.ts'
+import { readVersion, versionFile } from './version-file.ts'
 
 /** The version release-please keeps in the root package.json. */
-const { version } = JSON.parse(
-  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-) as { version: string }
+const version = readVersion()
 /** The commit Cloudflare Workers Builds is building, when it is; empty locally. */
 const commit = (process.env['WORKERS_CI_COMMIT_SHA'] ?? '').slice(0, 7)
 /**
@@ -18,7 +16,7 @@ const commit = (process.env['WORKERS_CI_COMMIT_SHA'] ?? '').slice(0, 7)
 const turnFrom = process.env['PIGEON_TURN_FROM'] ?? 'https://pigeon.tomszir.com'
 
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid(), versionFile()],
   build: { target: 'es2023' },
   // A port of this checkout's own (ports.ts). Strict, so a clash fails loudly instead of moving
   // to another origin, which would be a different dev identity.
@@ -40,7 +38,12 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.{ts,tsx}', 'worker/**/*.test.ts', 'site-headers.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'worker/**/*.test.ts',
+      'site-headers.test.ts',
+      'version-file.test.ts',
+    ],
     setupFiles: ['src/test-setup.ts'],
   },
 })

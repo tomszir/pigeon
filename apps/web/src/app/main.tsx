@@ -17,6 +17,7 @@ import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invi
 import { createBrowserEnv, deviceName, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { IDENTITY, startMessenger } from './start-messenger.ts'
+import { watchForUpdates } from './update-check.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
 
 const root = document.getElementById('root')
@@ -87,6 +88,22 @@ render(() => {
     })
     await rememberVersion(store, version)
   }
+
+  // A tab keeps the code it loaded, so a long-open one asks the site now and then whether a newer
+  // Pigeon is out and offers a reload, once per version. It never reloads by itself: a message
+  // being typed, Link a Device or Add a Friend could be in the middle of something.
+  const watchForNewVersion = () =>
+    watchForUpdates({
+      current: __PIGEON_VERSION__,
+      fetch: (input, init) => fetch(input, init),
+      onNewer: (version) =>
+        api.notify({
+          title: 'Pigeon was updated',
+          icon: brandIcon('pigeon-16'),
+          body: `Pigeon ${version} is out. Reload to get the new version.`,
+          onClick: () => location.reload(),
+        }),
+    })
 
   // On an iPhone in a Safari tab, once: storage lasts 7 days there.
   const HINTED = 'homeScreenHinted'
@@ -220,6 +237,7 @@ render(() => {
 
   const run = async (opened: NonNullable<typeof storage>, first: boolean) => {
     if (first) {
+      watchForNewVersion()
       await tellWhatsNew(opened.store).catch((error: unknown) => console.error(error))
       if (opened.persistent)
         await hintHomeScreen(opened.store).catch((error: unknown) => console.error(error))
