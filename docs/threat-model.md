@@ -99,6 +99,16 @@ Someone who has your current recovery code, on paper or in a file.
 - Using the code replaces it with the next key it shows. The old code still counts until a friend has seen the new epoch, and two recovers for your latest epoch from the same key settle on the lower signature ([flows.md](flows.md#recovery-with-every-device-lost)).
 - Without a committed recovery key, nobody can bring your identity back once every device is lost.
 
+### Sealed-file holders
+
+Someone who gets a copy of a file sealed with a passphrase: an export from Export My Data, or a recovery key saved as a file. They can try passphrases on their own hardware for as long as they like; nothing in the file limits the number of tries.
+
+- **If a guess is right they get what the file holds.** An export holds your friends with their pair secrets, your chats, your friends' device lists, your profile and settings, but no private key and not your own device log or self secret ([protocol.md](protocol.md#your-data-in-a-file)); the pair secrets let them find your friends online, as [friends](#friends) can, though not read or write messages. A recovery file holds the recovery code, which makes them a [recovery-code holder](#recovery-code-holders).
+- **What stops them is the cost of each guess.** The passphrase is stretched with Argon2id at the memory, passes and lanes written in the file. Files made now ask for 64 MiB and 3 passes over it, which takes about a second on a phone and under half a second on a desktop. A guess can't skip that memory, so a machine tries only as many guesses at once as it has memory for: about a thousand at once for every 64 GiB. Reading a file never costs more than 128 MiB and 6 passes, whatever its header says.
+- **A short or common passphrase is still guessable.** Pigeon asks for at least 8 characters and doesn't check how guessable they are. Argon2id makes each guess dearer; it doesn't make a passphrase someone could guess in a few thousand tries safe. A long passphrase of several unrelated words is.
+- **Files from before are weaker.** An export or recovery file from before this change is stretched with PBKDF2-SHA256 at 600,000 rounds, which needs almost no memory, so a GPU tries far more guesses at once. It opens as before; saving it again makes a new file with Argon2id, but copies of the old one stay as weak as they were.
+- **The file and its passphrase are the whole defence.** Keeping them apart, as the dialogs say, is what stops a stolen copy from being opened at all.
+
 ## Out of scope
 
 - **Whoever serves Pigeon's code.** Pigeon is a web page. Whoever controls the site, its hosting or its build can serve a page that reads everything. The Content Security Policy limits what the page may load, not what it's served.
