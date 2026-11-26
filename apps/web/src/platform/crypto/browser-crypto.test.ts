@@ -1,5 +1,7 @@
 import {
+  canonicalSignature,
   encodePairSecret,
+  isCanonicalSignature,
   isPeerId,
   PAIR_SECRET_BYTES,
   pairPassword,
@@ -10,6 +12,7 @@ import {
   createBrowserCrypto,
   generateIdentity,
   isStoredIdentity,
+  NoEd25519Error,
   signerFor,
 } from './browser-crypto.ts'
 
@@ -34,7 +37,7 @@ describe('browser crypto', () => {
     expect(await crypto.verify('junk', signature, bytes('coo'))).toBe(false)
   })
 
-  it('falls back to P-256 where Ed25519 is missing', async () => {
+  it('makes no P-256 key where Ed25519 is missing', async () => {
     const subtle = crypto.subtle
     const noEd25519 = new Proxy(subtle, {
       get(target, key) {
@@ -47,10 +50,37 @@ describe('browser crypto', () => {
         return typeof value === 'function' ? value.bind(target) : value
       },
     })
-    const signer = signerFor(await generateIdentity(noEd25519))
+    await expect(generateIdentity(noEd25519)).rejects.toBeInstanceOf(NoEd25519Error)
+  })
+
+  it('keeps a P-256 identity from before working, signing low-S and refusing high-S', async () => {
+    const P256 = { name: 'ECDSA', namedCurve: 'P-256' } as const
+    const pair = await crypto.subtle.generateKey(P256, false, ['sign', 'verify'])
+    const identity = {
+      privateKey: pair.privateKey,
+      publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
+    }
+    expect(isStoredIdentity(identity)).toBe(true)
+    const signer = signerFor(identity)
     expect(parsePeerId(signer.id)).toMatchObject({ ok: true, value: { kind: 'p256' } })
-    const signature = await signer.sign(bytes('coo'))
-    expect(await createBrowserCrypto().verify(signer.id, signature, bytes('coo'))).toBe(true)
+    const verifier = createBrowserCrypto()
+    // WebCrypto gives either spelling, about half each: enough tries see both.
+    for (let tries = 0; tries < 16; tries += 1) {
+      const signature = await signer.sign(bytes('coo'))
+      expect(isCanonicalSignature(signer.id, signature)).toBe(true)
+      expect(await verifier.verify(signer.id, signature, bytes('coo'))).toBe(true)
+    }
+    let high: Uint8Array | undefined
+    for (let tries = 0; tries < 64 && high === undefined; tries += 1) {
+      const raw = new Uint8Array(
+        await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, pair.privateKey, bytes('coo')),
+      )
+      if (!isCanonicalSignature(signer.id, raw)) high = raw
+    }
+    if (high === undefined) throw new Error('no high-S signature in 64 tries')
+    expect(await verifier.verify(signer.id, high, bytes('coo'))).toBe(false)
+    const low = canonicalSignature(signer.id, high)
+    expect(await verifier.verify(signer.id, low, bytes('coo'))).toBe(true)
   })
 
   it('computes HMAC-SHA256 (RFC 4231, case 2)', async () => {

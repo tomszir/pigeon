@@ -41,6 +41,8 @@ import {
   type LighthouseSoftware,
   type LinkRequest,
   type LogEntry,
+  lowSDeviceLog,
+  lowSEntry,
   MAX_HANDLE_LENGTH,
   MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
@@ -61,6 +63,7 @@ import {
   type ProfileChange,
   pairRoom,
   pairRoomsAt,
+  parsePeerId,
   type Result,
   type RoomName,
   recoverDeviceLog,
@@ -254,6 +257,11 @@ const KEYS = {
   profileChangedAt: 'profileChangedAt',
   /** Set once the balloon reminding you to make a recovery key has been shown. */
   recoveryReminded: 'recoveryReminded',
+  /**
+   * Set once this device has put its open invite links' cards again, signed low-S: a card put
+   * before Pigeon took only low-S may be refused, and nothing else puts it again on its own.
+   */
+  cardsPutLowS: 'cardsPutLowS',
   /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
   lighthouses: 'lighthouses',
   /** When the Lighthouse list was last changed here, so the newest wins on your devices. */
@@ -1141,7 +1149,9 @@ export async function createMessenger(deps: MessengerDeps) {
       moved: true,
     })
     await devices.loadFriend(found.id)
-    await devices.takeFriend(found.id, found.deviceLog)
+    // A request is kept until you press Add, perhaps from before low-S signatures: read as a
+    // kept log is. One that just arrived was checked as it came, so this changes nothing there.
+    await devices.takeFriend(found.id, lowSDeviceLog(found.deviceLog))
     for (const key of found.keys)
       await heardKeys(found.id, { type: 'keys', device: key.device, sealing: key })
     if (found.lighthouses.length > 0)
@@ -1202,6 +1212,23 @@ export async function createMessenger(deps: MessengerDeps) {
       changed: () => tellOwnDevices(),
       stopped: () => closed,
     })
+  // Once on every device, whatever its own key: a card also carries your device log, which a
+  // P-256 first device may have signed high-S. Closed cards go again too, so an old open card
+  // can't win over a refused closed one. Kept unset, and so tried at the next start, until every
+  // open link holds a card again.
+  if (inviteLinks !== undefined && (await store.get(KEYS.cardsPutLowS)) !== true) {
+    const links = inviteLinks
+    void links
+      .refresh({ closedToo: true })
+      .then(async () => {
+        const at = clock.now()
+        const open = links.links().filter((link) => link.open && link.expires > at)
+        if (devices.status() !== 'active' || closed) return
+        if (open.some((link) => Object.keys(link.cards).length === 0)) return
+        await store.set(KEYS.cardsPutLowS, true)
+      })
+      .catch(() => undefined)
+  }
   /** A removed friend heard: in person, or by receipt for the farewell left in their mailbox. */
   async function farewellHeard(id: PeerId) {
     // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
@@ -1540,10 +1567,12 @@ export async function createMessenger(deps: MessengerDeps) {
         : []
     const ids = new Set(records.map((record) => record.id))
     // Friends' devices first, so entries from all of them count.
+    // An export is your own data, so what it keeps is read as kept data is: any signature
+    // spelled high-S before Pigeon took only low-S comes in low-S.
     for (const [id, log] of deviceLogs)
       if (ids.has(id) && isDeviceLog(log) && log.identity === id) {
         await devices.loadFriend(id)
-        await devices.takeFriend(id, log)
+        await devices.takeFriend(id, lowSDeviceLog(log))
       }
     const have = new Map(friendList().map((view) => [view.id, view]))
     const added = records.filter((record) => !have.has(record.id) && !isBlocked(record.id))
@@ -1563,7 +1592,12 @@ export async function createMessenger(deps: MessengerDeps) {
       }
       await store.set(
         KEYS.log(record.id),
-        await mergeEntries(crypto, current, incoming.entries, devices.authors(record.id)),
+        await mergeEntries(
+          crypto,
+          current,
+          incoming.entries.map(lowSEntry),
+          devices.authors(record.id),
+        ),
       )
     }
     const kept = await store.get(KEYS.friends)
@@ -1610,10 +1644,13 @@ export async function createMessenger(deps: MessengerDeps) {
   async function takeBundle(value: Json, expected: PeerId): Promise<boolean> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
     const fields = value as Record<string, unknown>
-    const log = fields['deviceLog']
+    const sent = fields['deviceLog']
     const identity = fields['self']
     // The identity whose fingerprint was checked, and nobody else's.
-    if (identity !== expected || !isDeviceLog(log) || log.identity !== identity) return false
+    if (identity !== expected || !isDeviceLog(sent) || sent.identity !== identity) return false
+    // The bundle is what your other device keeps, so its logs are read as kept logs are: any
+    // spelling from before low-S signatures made low-S.
+    const log = lowSDeviceLog(sent)
     if (!(await verifyDeviceLog(crypto, log))) return false
     const state = deviceState(log)
     if (!state.active.has(signer.id)) return false
@@ -1637,13 +1674,15 @@ export async function createMessenger(deps: MessengerDeps) {
     // Nothing of a Pigeon left behind is said as this one, and none of its mail is looked for.
     for (const key of ['mail-outbox', 'mail-fetched', 'mail-seen']) await store.delete(key)
     await store.set(KEYS.farewells, [])
-    for (const [id, friendLog] of logs)
+    for (const [id, value] of logs) {
+      const friendLog = isDeviceLog(value) ? lowSDeviceLog(value) : undefined
       if (
-        isDeviceLog(friendLog) &&
+        friendLog !== undefined &&
         friendLog.identity === id &&
         (await verifyDeviceLog(crypto, friendLog))
       )
         await store.set(DEVICE_KEYS.friendDevices(id), friendLog)
+    }
     await store.set(DEVICE_KEYS.deviceLog, log)
     await store.set(DEVICE_KEYS.selfSecret, secret)
     // Last: with `self` set, this browser is that identity from its next start.

@@ -5,6 +5,7 @@ import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
+import { canonicalSignature } from '../identity/signature.ts'
 
 /** Longest message, in UTF-16 units: a screenful, and well inside one 64 KB envelope. */
 export const MAX_TEXT_LENGTH = 4000
@@ -72,13 +73,28 @@ export function summarize(log: ChatLog): LogSummary {
 }
 
 /**
- * What `log` holds that a peer with `theirs` lacks, oldest first. An entry whose Lamport time
- * isn't a safe integer is left out: a peer refuses every entry sent alongside one.
+ * An entry with its signature spelled low-S, the one way it's taken. A P-256 entry kept from a
+ * Pigeon before low-S may be high-S; it's the same signature, so this is safe on any entry.
+ */
+export function lowSEntry(entry: LogEntry): LogEntry {
+  const signature = base32DecodeExact(entry.sig)
+  if (!signature.ok) return entry
+  const canonical = canonicalSignature(entry.author, signature.value)
+  return canonical === signature.value ? entry : { ...entry, sig: base32Encode(canonical) }
+}
+
+/**
+ * What `log` holds that a peer with `theirs` lacks, oldest first, spelled as they're taken, so
+ * old entries still reach a device that lacks them. An entry whose Lamport time isn't a safe
+ * integer is left out: a peer refuses every entry sent alongside one.
  */
 export function missingFrom(log: ChatLog, theirs: LogSummary): readonly LogEntry[] {
-  return log.entries.filter(
-    (entry) => entry.seq > (theirs[entry.author] ?? 0) && entry.lamport <= Number.MAX_SAFE_INTEGER,
-  )
+  return log.entries
+    .filter(
+      (entry) =>
+        entry.seq > (theirs[entry.author] ?? 0) && entry.lamport <= Number.MAX_SAFE_INTEGER,
+    )
+    .map(lowSEntry)
 }
 
 /**

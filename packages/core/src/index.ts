@@ -16,6 +16,7 @@ export {
   batchEntries,
   emptyLog,
   isLogEntry,
+  lowSEntry,
   MAX_TEXT_LENGTH,
   mergeEntries,
   missingFrom,
@@ -49,6 +50,7 @@ export {
   FIRST_DEVICE_NAME,
   isDeviceLog,
   isTailLog,
+  lowSDeviceLog,
   MAX_DEVICE_NAME_LENGTH,
   MAX_KEPT_DEVICES,
   mergeDeviceLogs,
@@ -78,6 +80,7 @@ export {
   parsePeerId,
   peerIdFromPublicKey,
 } from './identity/identity.ts'
+export { canonicalSignature, isCanonicalSignature } from './identity/signature.ts'
 export type { LighthouseAddress } from './lighthouse/address.ts'
 export {
   formatLighthouseAddress,
@@ -124,6 +127,7 @@ export {
   parseRequest,
   sealReply,
 } from './lighthouse/protocol.ts'
+export { lowSBody } from './mail/low-s-body.ts'
 export type {
   Letter,
   LogHead,

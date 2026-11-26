@@ -15,6 +15,7 @@ import {
   type Letter,
   type LighthouseAddress,
   type LogEntry,
+  lowSEntry,
   MAX_MAIL_MS,
   type PeerId,
 } from '@pigeon/core'
@@ -206,7 +207,8 @@ export function createLetters(deps: LettersDeps) {
         const id = base32Encode(deps.random(10))
         const where: string[] = []
         // Plain copies: the chat lives in a reactive store, which storage can't keep as it is.
-        const entries = batch.map((entry) => ({ ...entry }))
+        // Spelled as they're taken, so a message kept from before low-S signatures still counts.
+        const entries = batch.map((entry) => ({ ...lowSEntry(entry) }))
         const body = { log: chat.id, entries } as unknown as Json
         await deps.mailbox.send('letter', to, body, {
           id,

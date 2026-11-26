@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
+import type { Signer } from '../identity/crypto.ts'
+import { flipS, isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
 import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
@@ -7,6 +10,7 @@ import {
   deviceState,
   emptyDeviceLog,
   everDevices,
+  lowSDeviceLog,
   MAX_DEVICE_ENTRIES,
   mergeDeviceLogs,
   recoverDeviceLog,
@@ -474,5 +478,160 @@ describe('a replaced recovery key', () => {
       return
     }
     throw new Error('no lower signature found')
+  })
+})
+
+describe('a first device that signs with P-256', () => {
+  const strict = p256Crypto()
+  const d2 = fakeSigner('d2').id
+
+  const decode = (sig: string) => {
+    const bytes = base32DecodeExact(sig)
+    if (!bytes.ok) throw new Error('not base32')
+    return bytes.value
+  }
+  /** The other spelling of a signature: r || n - s. */
+  const flip = (sig: string) => base32Encode(flipS(decode(sig)))
+  const flipLast = (log: DeviceLog): DeviceLog => {
+    const last = log.entries.at(-1)
+    if (last === undefined) throw new Error('no entries')
+    return { ...log, entries: [...log.entries.slice(0, -1), { ...last, sig: flip(last.sig) }] }
+  }
+
+  async function step(signer: Signer, log: DeviceLog, kind: 'add' | 'remove', device = d2) {
+    const result = await appendDeviceEntry(
+      strict,
+      log,
+      signer,
+      { kind, device, ...(kind === 'add' ? { name: 'D2' } : {}) },
+      1,
+    )
+    if (!result.ok) throw new Error(result.error)
+    return result.log
+  }
+
+  it('keeps D2 removed by comparing spellings alone, where both still verify', async () => {
+    // A Crypto from before low-S took both spellings: the copies' comparison holds on its own.
+    const lenient = p256Crypto({ lenient: true })
+    const owner = await p256Signer()
+    const added = await step(owner, emptyDeviceLog(owner.id), 'add')
+    const removed = await step(owner, added, 'remove')
+    const flipped = flipLast(added)
+    expect(await verifyDeviceLog(lenient, flipped)).toBe(true)
+    let friend = await mergeDeviceLogs(lenient, emptyDeviceLog(owner.id), flipped)
+    expect(deviceState(friend).active.has(d2)).toBe(true)
+    friend = await mergeDeviceLogs(lenient, friend, removed)
+    expect(deviceState(friend).active.has(d2)).toBe(false)
+  })
+
+  it('keeps D2 removed when a flipped "add D2" arrives before the genuine "remove D2"', async () => {
+    for (const spelling of ['low', 'high'] as const) {
+      // The owner's "add D2" as an updated Pigeon signs it (low-S), and as one from before may
+      // have (high-S): either way someone holding it hands a friend the other spelling first.
+      const old = await p256Signer(spelling)
+      const owner = { id: old.id, sign: old.sign }
+      const added = await step(owner, emptyDeviceLog(owner.id), 'add')
+      const updated: Signer = {
+        id: owner.id,
+        sign: async (data) => {
+          const signature = await old.sign(data)
+          return isHighS(signature) ? flipS(signature) : signature
+        },
+      }
+      const removed = await step(updated, added, 'remove')
+      const flipped = flipLast(added)
+
+      let friend = emptyDeviceLog(owner.id)
+      friend = await mergeDeviceLogs(strict, friend, flipped)
+      // A high-S copy is refused outright; a low-S one is the same signature, so it's taken.
+      expect(friend.entries.length).toBe(spelling === 'low' ? 0 : 1)
+      friend = await mergeDeviceLogs(strict, friend, removed)
+      expect(deviceState(friend).active.has(d2)).toBe(false)
+      expect(deviceState(friend).removed.has(d2)).toBe(true)
+      expect(
+        await speakerIdentity(strict, d2, { identity: owner.id, devices: removed }, friend),
+      ).toBeUndefined()
+    }
+  })
+
+  it('takes a high-S signature only where the next entry’s signed prev fixes it', async () => {
+    const old = await p256Signer('high')
+    const log = await step(old, await step(old, emptyDeviceLog(old.id), 'add'), 'remove')
+    expect(log.entries.every((entry) => isHighS(decode(entry.sig)))).toBe(true)
+    // The last one is fixed by nothing, so it's refused as it is...
+    expect(await verifyDeviceLog(strict, log)).toBe(false)
+    // ...and taken once spelled low-S, as a stored log is read back. The first stays high-S:
+    // the second entry's prev names it.
+    const read = lowSDeviceLog(log)
+    expect(isHighS(decode(read.entries[0]?.sig ?? ''))).toBe(true)
+    expect(isHighS(decode(read.entries[1]?.sig ?? ''))).toBe(false)
+    expect(read.entries[1]?.prev).toBe(log.entries[0]?.sig)
+    expect(await verifyDeviceLog(strict, read)).toBe(true)
+    expect(lowSDeviceLog(read)).toBe(read)
+    // A friend who stored the old copy merges the owner's next entry onto it.
+    const next = await step(old, read, 'add', fakeSigner('d3').id)
+    // Its own last spelling is high-S, fixed by nothing: refused as it arrives.
+    expect(await mergeDeviceLogs(strict, log, next)).toBe(log)
+    const genuine = await mergeDeviceLogs(strict, log, lowSDeviceLog(next))
+    expect(genuine.entries.length).toBe(3)
+    expect(await verifyDeviceLog(strict, genuine)).toBe(true)
+  })
+
+  it('keeps a stored log readable once its last spellings are made low-S, recovery and all', async () => {
+    const old = await p256Signer('high')
+    const recoveryKey = fakeSigner('p256-owner-recovery')
+    const added = await step(old, emptyDeviceLog(old.id), 'add')
+    const committed = await setRecoveryKey(added, old, recoveryKey.id, 2)
+    if (committed === undefined) throw new Error('no key')
+    expect(isHighS(decode(committed.recovery?.sig ?? ''))).toBe(true)
+    expect(await verifyDeviceLog(strict, committed)).toBe(false)
+    const read = lowSDeviceLog(committed)
+    expect(await verifyDeviceLog(strict, read)).toBe(true)
+    // Merging into the stored copy as it was doesn't get stuck on its old spellings.
+    const updated: Signer = {
+      id: old.id,
+      sign: async (data) => flipS(await old.sign(data)),
+    }
+    const grown = await step(updated, read, 'remove')
+    const merged = await mergeDeviceLogs(strict, committed, grown)
+    expect(merged).toBe(grown)
+    expect(deviceState(merged).active.has(d2)).toBe(false)
+  })
+
+  it('spells low-S the entry left last when old entries are cut', async () => {
+    const old = await p256Signer('high')
+    const key = fakeSigner('p256-cut-recovery')
+    const writer = fakeSigner('p256-cut-writer')
+    let log = emptyDeviceLog(old.id)
+    for (let index = 0; index < 60; index += 1)
+      log = await step(
+        old,
+        log,
+        index % 2 === 0 ? 'add' : 'remove',
+        fakeSigner(`d${index >> 1}`).id,
+      )
+    const committed = await setRecoveryKey(log, old, key.id, 2)
+    if (committed === undefined) throw new Error('no key')
+    let recovered = await recoverDeviceLog(
+      old.id,
+      lowSDeviceLog(committed),
+      key,
+      { epoch: 1, writer: writer.id, keep: [{ device: writer.id, name: 'W' }], next: key.id },
+      3,
+    )
+    if (recovered === undefined) throw new Error('no recover')
+    for (let index = 0; index < 50; index += 1) {
+      const result = await appendDeviceEntry(
+        strict,
+        recovered,
+        writer,
+        { kind: 'add', device: fakeSigner(`e${index}`).id, name: 'E' },
+        4,
+      )
+      if (!result.ok) throw new Error(result.error)
+      recovered = result.log
+    }
+    expect(recovered.entries.length).toBe(MAX_DEVICE_ENTRIES - 50)
+    expect(await verifyDeviceLog(strict, recovered)).toBe(true)
   })
 })

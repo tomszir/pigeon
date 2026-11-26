@@ -18,6 +18,7 @@ import {
   isTailLog,
   type KeptDevice,
   type LogEntry,
+  lowSDeviceLog,
   mergeDeviceLogs,
   type PeerId,
   recoverDeviceLog,
@@ -66,13 +67,16 @@ export async function loadDevices(deps: DevicesDeps) {
   const { crypto, signer, store, clock } = deps
   const storedSelf = await store.get(DEVICE_KEYS.self)
   const self: PeerId = typeof storedSelf === 'string' ? storedSelf : signer.id
-  const storedLog = await store.get(DEVICE_KEYS.deviceLog)
+  const read = await store.get(DEVICE_KEYS.deviceLog)
+  // Kept by this device, so a signature spelled high-S before Pigeon took only low-S is read
+  // in its low-S spelling, as it's checked now.
+  const storedLog = isDeviceLog(read) ? lowSDeviceLog(read) : undefined
   // A device brought back by its recovery key holds a tail until a friend sends the whole log;
   // it's checked from the key the tail names, which this device signed with.
   const holds = (log: DeviceLog) =>
     isTailLog(log) ? verifyOwnTail(crypto, log) : verifyDeviceLog(crypto, log)
   const own0 =
-    isDeviceLog(storedLog) && storedLog.identity === self && (await holds(storedLog))
+    storedLog !== undefined && storedLog.identity === self && (await holds(storedLog))
       ? storedLog
       : emptyDeviceLog(self)
   const [own, setOwnSignal] = createSignal<DeviceLog>(own0)
@@ -204,8 +208,10 @@ export async function loadDevices(deps: DevicesDeps) {
     /** Loads a friend's stored device log. */
     async loadFriend(id: PeerId) {
       if (friendLogs.has(id)) return
-      const stored = await store.get(DEVICE_KEYS.friendDevices(id))
-      if (isDeviceLog(stored) && stored.identity === id && (await verifyDeviceLog(crypto, stored)))
+      const read = await store.get(DEVICE_KEYS.friendDevices(id))
+      // Kept here already: read in low-S spellings, as for your own log.
+      const stored = isDeviceLog(read) ? lowSDeviceLog(read) : undefined
+      if (stored !== undefined && stored.identity === id && (await verifyDeviceLog(crypto, stored)))
         friendLogs.set(id, stored)
       bump((n) => n + 1)
     },

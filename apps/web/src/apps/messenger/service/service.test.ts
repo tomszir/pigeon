@@ -1636,6 +1636,34 @@ describe('invite links through Lighthouses', () => {
     expect(await late.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
   })
 
+  it('puts its cards again once after an update, a closed link staying closed', async () => {
+    const { clock, lighthouse, rook } = await apart()
+    const open = await made(rook)
+    const closed = await made(rook)
+    await rook.messenger.cancelInviteLink(closed.secret)
+    const before = rook.messenger.inviteLinks().find((link) => link.secret === closed.secret)
+    expect(Object.keys(before?.cards ?? {}).length).toBeGreaterThan(0)
+    await rook.messenger.close()
+    // As if this Pigeon ran code from before the cards were put again.
+    await rook.store.delete('cardsPutLowS')
+    const again = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: rook.store,
+    })
+    await flush(400)
+    expect(await rook.store.get('cardsPutLowS')).toBe(true)
+    const links = again.messenger.inviteLinks()
+    // Fake crypto seals the same card the same way, so it keeps its id: what matters is that each
+    // link still holds a card, and says the same to whoever opens it.
+    expect(Object.keys(links.find((l) => l.secret === open.secret)?.cards ?? {})).not.toEqual([])
+    expect(Object.keys(links.find((l) => l.secret === closed.secret)?.cards ?? {})).not.toEqual([])
+    const late = await messenger(createMemoryNetwork(), 'kestrel', { clock, lighthouse })
+    await late.messenger.setProfile({ handle: 'Kestrel', status: 'online', message: '' })
+    expect(await late.messenger.openInviteLink(closed.url)).toEqual({ ok: false, error: 'closed' })
+    expect((await late.messenger.openInviteLink(open.url)).ok).toBe(true)
+  })
+
   it('answers a request that comes after the link was cancelled', async () => {
     const { clock, rook, mika } = await apart()
     const link = await made(rook)

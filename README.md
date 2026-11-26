@@ -62,7 +62,7 @@ A Lighthouse stores only sealed mail it can't open, under tags that change daily
 
 ## Browser support
 
-Pigeon is tested in Chromium on the desktop and on emulated phones. It needs WebRTC, IndexedDB and WebCrypto, which every current browser has. Ed25519 keys are used where the browser supports them, with P-256 as the fallback.
+Pigeon is tested in Chromium on the desktop and on emulated phones. It needs WebRTC, IndexedDB and WebCrypto, which every current browser has. Each device signs with an Ed25519 key, so a browser too old for Ed25519 in WebCrypto (before Chrome and Edge 137, Firefox 129 and Safari 17) can't make a new identity; P-256 identities made by earlier Pigeons keep working.
 
 ## Development
 
