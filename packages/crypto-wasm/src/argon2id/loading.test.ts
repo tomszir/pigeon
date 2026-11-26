@@ -17,4 +17,16 @@ it('loads nothing until the first derivation, and tries again after a failed loa
   await expect(derive()).rejects.toThrow('offline')
   expect(await derive()).toHaveLength(32)
   expect(calls).toBe(2)
+
+  // The glue keeps one instance per page, so a loader with another source is refused instead of
+  // being handed this one as if its own had loaded.
+  const params = { memoryKiB: 64, passes: 1, lanes: 1 }
+  const other = createArgon2id(async () => new Uint8Array())
+  await expect(other.derive(utf8Encode('pw'), new Uint8Array(16), params)).rejects.toThrow(
+    'different source',
+  )
+  await expect(
+    createArgon2id().derive(utf8Encode('pw'), new Uint8Array(16), params),
+  ).rejects.toThrow('different source')
+  expect(await derive()).toHaveLength(32)
 })

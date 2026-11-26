@@ -185,7 +185,15 @@ export function createPassphraseSeal(options: PassphraseSealOptions): Passphrase
     if (count === undefined || count > MAX_V1_ROUNDS) return undefined
     if (saltBytes === undefined || ivBytes === undefined || sealedBytes === undefined)
       return undefined
-    return decrypt(await pbkdf2Key(passphrase, saltBytes, count), ivBytes, sealedBytes)
+    // WebCrypto, which does all of version 1, may refuse a passphrase it can't use (an empty
+    // one, in some browsers): that is a passphrase that doesn't open the file, as it always was.
+    let key: CryptoKey
+    try {
+      key = await pbkdf2Key(passphrase, saltBytes, count)
+    } catch {
+      return undefined
+    }
+    return decrypt(key, ivBytes, sealedBytes)
   }
 
   async function open(passphrase: string, text: string): Promise<Uint8Array | undefined> {

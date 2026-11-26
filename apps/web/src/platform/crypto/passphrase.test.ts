@@ -85,6 +85,15 @@ describe('sealing with a passphrase', () => {
     expect(never.derive).not.toHaveBeenCalled()
   })
 
+  it('keeps a passphrase WebCrypto refuses for PBKDF2 on the wrong-passphrase path', async () => {
+    const refusing = {
+      importKey: () => Promise.reject(new DOMException('empty key', 'DataError')),
+    } as unknown as SubtleCrypto
+    const seal = createPassphraseSeal({ argon2id: { derive: vi.fn() }, subtle: refusing })
+    expect(await seal.open('', V1_AT_1000)).toBeUndefined()
+    expect(await sealer().open('', V1_AT_1000)).toBeUndefined()
+  })
+
   it('writes a different salt and iv each time', async () => {
     const [first, second] = [await sealer().seal('pw', data), await sealer().seal('pw', data)]
     const [a, b] = [first.split(':'), second.split(':')]
