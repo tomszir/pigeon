@@ -173,18 +173,22 @@ export {
   openEnvelope,
   sealEnvelope,
 } from './messages/envelope.ts'
-export type { Invite } from './pairing/invite.ts'
+export { MAX_WRONG_TRIES } from './pairing/handshake.ts'
+export type { CodeError, CodeKind, Invite, LiveCode } from './pairing/invite.ts'
 export {
+  CODE_LENGTH,
+  CODE_RANDOM_BYTES,
   decodeDeviceLink,
   decodeInvite,
   encodeDeviceLink,
   encodeInviteLink,
-  formatInviteCode,
-  INVITE_CODE_BYTES,
-  INVITE_CODE_LENGTH,
+  formatCode,
   INVITE_LIFETIME_MS,
-  inviteCode,
-  inviteRoom,
+  isLiveCode,
+  isOwnCode,
+  newCode,
+  roomFor,
+  roomsFor,
 } from './pairing/invite.ts'
 export type {
   HostLinkOptions,
@@ -193,7 +197,7 @@ export type {
   OpenLinkOptions,
   OpenLinkResult,
 } from './pairing/link.ts'
-export { hostLink, linkCheck, linkRoom, openLink } from './pairing/link.ts'
+export { hostLink, openLink } from './pairing/link.ts'
 export type {
   CardError,
   InviteAnswer,
@@ -243,6 +247,7 @@ export {
 } from './pairing/pair-rooms.ts'
 export type {
   Accepted,
+  CodeRequest,
   HostInviteOptions,
   NewFriend,
   Offer,
@@ -268,6 +273,7 @@ export {
   fakeSealCrypto,
   fakeSigner,
   flush,
+  relayRoom,
 } from './testing/testing.ts'
 export type {
   ChannelBinding,

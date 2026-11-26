@@ -2,7 +2,7 @@
 
 An invite is an 8-character code that lives 30 minutes, shared as typed text or as a short link that also carries the inviter's fingerprint, and the invitee agrees only after seeing who answered.
 
-- Status: accepted
+- Status: accepted; superseded in part by [0046](0046-codes-through-spake2.md): its code and link formats and handshake, and its claim that a code can only be guessed one room at a time
 - Date: 2026-11-24
 
 ## Context

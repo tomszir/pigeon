@@ -1,13 +1,14 @@
 // Add a Friend: make invite links that wait at your Lighthouses, share a live code, or open one
 // a friend sent. A code asks the inviter, online now, who they are; a link finds their card at
 // the Lighthouses and leaves a request for them to answer whenever they're next on. Nothing is
-// agreed until both of you say so.
+// agreed until both of you say so: whoever asks through your code waits for you to add them.
 import {
   decodeInvite,
   decodeInviteLink,
+  formatCode,
   formatFingerprint,
-  formatInviteCode,
   type Invite,
+  MAX_WRONG_TRIES,
   type OpenStep,
   type PeerId,
 } from '@pigeon/core'
@@ -24,15 +25,15 @@ import { InviteLinks, timeLeft, waitingCount } from '../invite-links/invite-link
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
 import type { OpenedLink, SentAsk } from '../service/invite-links.ts'
-import type { Messenger, FriendOffer as Offer } from '../service/service.ts'
+import type { CodeAsk, Messenger, FriendOffer as Offer } from '../service/service.ts'
 import styles from './add-friend.module.css'
 
-/** How long to wait for the inviter's Pigeon to answer, and then to confirm. */
+/** How long to wait for the inviter's Pigeon to answer, and then for the inviter to add you. */
 export const ANSWER_TIMEOUT_MS = 45_000
-export const CONFIRM_TIMEOUT_MS = 20_000
+export const CONFIRM_TIMEOUT_MS = 3 * 60_000
 
 /** What the address bar brought: a live invite's code, or a link through Lighthouses. */
-export type IncomingInvite = Invite | { readonly link: string }
+export type IncomingInvite = Invite | { readonly link: string } | { readonly old: true }
 
 /** Add a Friend's tabs: links you send, a quick code, and one someone sent you. */
 export type AddFriendTab = 'links' | 'code' | 'enter'
@@ -54,19 +55,23 @@ export interface AddFriendProps {
 type Failure =
   | 'no-answer'
   | 'impostor'
+  | 'wrong-code'
   | 'no-confirm'
+  | 'declined'
   | 'blocked'
   | 'link-not-found'
   | 'link-closed'
   | 'link-expired'
   | 'link-unsent'
   | 'link-no-lighthouse'
+  | 'old'
 
 type View =
   | { readonly kind: 'share' }
   | {
       readonly kind: 'looking'
-      readonly code: string
+      /** The typed code, as shown; a link has none to show. */
+      readonly code: string | undefined
       readonly step: 'joining' | OpenStep
       readonly startedAt: number
     }
@@ -83,10 +88,14 @@ const FAILURES: Record<Failure, string> = {
     "Nobody answered. An invite works once, for 30 minutes, and only while Pigeon is open on your friend's side. Ask them for a new one.",
   impostor:
     "Someone answered this link, but not the person who made it: their fingerprint doesn't match the one in the link. Pigeon didn't add them. Ask your friend for a new invite.",
+  'wrong-code':
+    "The Pigeon that answered says that code is wrong. Check it with your friend and type it again; after a few wrong tries the code stops working and they'll need a new one. If it keeps happening with the right code, someone else may be answering: ask for an invite link instead.",
+  declined: "Your friend's Pigeon said no. Nobody was added.",
+  old: "That invite was made by an older Pigeon, which can't pair with this one. Ask your friend to reload Pigeon, or close it and open it again, then send you the new code or link.",
   blocked:
     'This invite is from someone you blocked. To add them, unblock them first in Contacts, Blocked People.',
   'no-confirm':
-    "Your friend's Pigeon stopped answering before it added you. Ask them for a new invite and try again.",
+    "Your friend didn't add you in time, or their Pigeon stopped answering. Ask them for a new invite and try again.",
   'link-not-found':
     "Pigeon couldn't find this invite at the Lighthouses. Check you have the whole link, or ask your friend for a new one.",
   'link-closed':
@@ -127,7 +136,10 @@ export function AddFriend(props: AddFriendProps) {
     setTypedError('')
     const looking = {
       kind: 'looking',
-      code: formatInviteCode(invite.code),
+      code:
+        invite.via === 'code'
+          ? formatCode({ nameplate: invite.nameplate, password: invite.secret, secret: '' })
+          : undefined,
       startedAt: now(),
     } as const
     setView({ ...looking, step: 'joining' })
@@ -158,11 +170,9 @@ export function AddFriend(props: AddFriendProps) {
     setView({
       kind: 'failed',
       failure:
-        opened.error === 'impostor'
-          ? 'impostor'
-          : opened.error === 'blocked'
-            ? 'blocked'
-            : 'no-answer',
+        opened.error === 'impostor' || opened.error === 'wrong-code' || opened.error === 'blocked'
+          ? opened.error
+          : 'no-answer',
     })
   }
 
@@ -216,15 +226,18 @@ export function AddFriend(props: AddFriendProps) {
       })
   }
 
-  const openIncoming = (incoming: IncomingInvite) =>
-    'link' in incoming ? void openLink(incoming.link) : void open(incoming)
+  const openIncoming = (incoming: IncomingInvite) => {
+    if ('old' in incoming) setView({ kind: 'failed', failure: 'old' })
+    else if ('link' in incoming) void openLink(incoming.link)
+    else void open(incoming)
+  }
 
   const add = async (offer: Offer) => {
     setView({ kind: 'adding', offer, startedAt: now() })
     const accepted = await offer.confirm(wait(CONFIRM_TIMEOUT_MS))
     if (view().kind !== 'adding') return
-    if (!accepted) {
-      setView({ kind: 'failed', failure: 'no-confirm' })
+    if (accepted !== true) {
+      setView({ kind: 'failed', failure: accepted === 'declined' ? 'declined' : 'no-confirm' })
       return
     }
     // Friends now: the chat opens, and its first line says so.
@@ -258,7 +271,11 @@ export function AddFriend(props: AddFriendProps) {
     }
     const invite = decodeInvite(typed())
     if (!invite.ok) {
-      setTypedError('Type the 8-character code, or paste the whole link.')
+      setTypedError(
+        invite.error === 'old'
+          ? 'That looks like an 8-character code from an older Pigeon. Codes now have 10: check it, or ask your friend to reload Pigeon for a new one.'
+          : 'Type the 10-character code, or paste the whole link.',
+      )
       return
     }
     void open(invite.value)
@@ -351,7 +368,14 @@ export function AddFriend(props: AddFriendProps) {
                 label: waiting() > 0 ? `Invite links (${waiting()})` : 'Invite links',
                 content: links,
               },
-              { id: 'code', label: 'Quick code', content: codeBox },
+              {
+                id: 'code',
+                label:
+                  props.messenger.codeAsks().length > 0
+                    ? `Quick code (${props.messenger.codeAsks().length})`
+                    : 'Quick code',
+                content: codeBox,
+              },
               { id: 'enter', label: phone ? 'Have one?' : 'Have an invite?', content: enter },
             ]}
           />
@@ -374,9 +398,13 @@ export function AddFriend(props: AddFriendProps) {
                   { label: 'Reaching the relays', state: state(0) },
                   {
                     label: (
-                      <>
-                        Looking for whoever made <code>{shown().code}</code>
-                      </>
+                      <Show when={shown().code} fallback="Looking for whoever made the link">
+                        {(code) => (
+                          <>
+                            Looking for whoever made <code>{code()}</code>
+                          </>
+                        )}
+                      </Show>
                     ),
                     state: state(1),
                   },
@@ -413,7 +441,7 @@ export function AddFriend(props: AddFriendProps) {
                 }
                 buttons={[
                   {
-                    label: `&Add ${friend.handle}`,
+                    label: '&Ask to be friends',
                     isDefault: true,
                     onClick: () => void add(shown().offer),
                   },
@@ -436,6 +464,11 @@ export function AddFriend(props: AddFriendProps) {
                 >
                   <p>It matches the link, so this is the person who made it.</p>
                 </Show>
+                <p>
+                  They see your name and your fingerprint,{' '}
+                  <code data-selectable>{formatFingerprint(props.messenger.selfFingerprint)}</code>,
+                  and add you on their side.
+                </p>
               </MessageBox>
             )
           }}
@@ -463,8 +496,8 @@ export function AddFriend(props: AddFriendProps) {
                 onCancel={back}
                 steps={[
                   { label: `Found ${name}`, state: 'done' },
-                  { label: `You said yes to ${name}`, state: 'done' },
-                  { label: `Waiting for ${name}'s Pigeon to add you`, state: 'current' },
+                  { label: `You asked ${name}`, state: 'done' },
+                  { label: `Waiting for ${name} to add you`, state: 'current' },
                 ]}
               />
             )
@@ -598,7 +631,11 @@ function QuickCode(props: {
   const timer = setInterval(() => setTick((n) => n + 1), 15_000)
   onCleanup(() => clearInterval(timer))
   createEffect(() => {
-    if (props.messenger.profile().handle !== '' && props.messenger.invite() === undefined)
+    if (
+      props.messenger.profile().handle !== '' &&
+      props.messenger.invite() === undefined &&
+      !props.messenger.inviteStopped()
+    )
       void props.messenger.newInvite()
   })
   const changesIn = () => {
@@ -612,9 +649,30 @@ function QuickCode(props: {
         For someone with you or on the phone: read out the code, or let them scan it. It changes
         after each use and every 30 minutes. To send an invite, make a link instead.
       </p>
+      <CodeAsks messenger={props.messenger} />
+      <Show when={props.messenger.wrongTries() > 0}>
+        <p class={styles.warning} role="alert">
+          Someone typed a wrong code{' '}
+          {props.messenger.wrongTries() === 1 ? 'once' : `${props.messenger.wrongTries()} times`}.
+          If that wasn't your friend, someone may be guessing: after {MAX_WRONG_TRIES} Pigeon stops
+          the code.
+        </p>
+      </Show>
       <Show
         when={props.messenger.inviteCode()}
-        fallback={<p class={styles.muted}>Making a code...</p>}
+        fallback={
+          <Show
+            when={props.messenger.inviteStopped()}
+            fallback={<p class={styles.muted}>Making a code...</p>}
+          >
+            <p class={styles.warning} role="alert">
+              Someone typed a wrong code too many times, so Pigeon stopped it.
+            </p>
+            <div class={styles.actions}>
+              <Button label="&New code" isDefault onClick={props.onNew} />
+            </div>
+          </Show>
+        }
       >
         {(code) => (
           <div class={styles.share} data-invite-link={props.messenger.inviteLink()}>
@@ -643,6 +701,78 @@ function QuickCode(props: {
         Your fingerprint:{' '}
         <code data-selectable>{formatFingerprint(props.messenger.selfFingerprint)}</code>
       </p>
+    </div>
+  )
+}
+
+/** Who proved they hold your code, each waiting for you to add or decline them. */
+function CodeAsks(props: { messenger: Messenger }) {
+  return (
+    <Show when={props.messenger.codeAsks().length > 0}>
+      <section class={styles.requests} aria-label="Asking to be friends">
+        <For each={props.messenger.codeAsks()}>
+          {(ask) => <CodeAskRow ask={ask} messenger={props.messenger} />}
+        </For>
+      </section>
+    </Show>
+  )
+}
+
+function CodeAskRow(props: { ask: CodeAsk; messenger: Messenger }) {
+  const [busy, setBusy] = createSignal(false)
+  const sameName = () =>
+    props.messenger
+      .friends()
+      .some(
+        (friend) =>
+          (friend.name === props.ask.handle || friend.handle === props.ask.handle) &&
+          friend.id !== props.ask.id,
+      ) ||
+    props.messenger
+      .codeAsks()
+      .some((other) => other.handle === props.ask.handle && other.key !== props.ask.key)
+  return (
+    <div class={styles.request} data-code-ask>
+      <FriendAvatar
+        messenger={props.messenger}
+        id={props.ask.id}
+        name={props.ask.handle}
+        size={32}
+        decorative
+      />
+      <div class={styles.requestText}>
+        <span>
+          <strong>{props.ask.handle}</strong> asks to be friends
+        </span>
+        <span class={styles.muted}>
+          Fingerprint <code data-selectable>{formatFingerprint(props.ask.fingerprint)}</code>
+        </span>
+        <span class={styles.muted}>
+          Check it's the one on their screen: anyone who saw the code can ask, with any name.
+        </span>
+        <Show when={sameName()}>
+          <span class={styles.warning}>Someone else here has the same name.</span>
+        </Show>
+      </div>
+      <div class={styles.requestActions}>
+        <Button
+          label="&Add"
+          isDefault
+          disabled={busy()}
+          onClick={() => {
+            setBusy(true)
+            void props.messenger.approveAsk(props.ask.key).finally(() => setBusy(false))
+          }}
+        />
+        <Button
+          label="&Decline"
+          disabled={busy()}
+          onClick={() => {
+            setBusy(true)
+            void props.messenger.declineAsk(props.ask.key).finally(() => setBusy(false))
+          }}
+        />
+      </div>
     </div>
   )
 }

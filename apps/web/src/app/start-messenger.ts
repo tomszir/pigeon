@@ -22,6 +22,7 @@ import {
   type StoredSealingKey,
   sealerFor,
 } from '../platform/crypto/seal-crypto.ts'
+import { createWasmPake } from '../platform/crypto/wasm-pake.ts'
 import { openBrowserSocket } from '../platform/lighthouse/browser-socket.ts'
 import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
@@ -82,6 +83,7 @@ export async function startMessenger(
     transport: createBrowserTransport(undefined, onNoRelay),
     clock: browserClock,
     random: randomBytes,
+    pake: createWasmPake(),
     inviteBase: `${location.origin}${location.pathname}`,
     ...(deviceName === undefined ? {} : { deviceName }),
     events,

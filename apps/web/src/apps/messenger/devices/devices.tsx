@@ -1,8 +1,14 @@
 // Your devices: Link a Device on the one you have, Link to My Other Device on the new one, and
 // My Devices to see and remove them, or to make a copied profile a new device. Only the first
 // device links and removes. Linking is in person: the new device scans or types the code, both
-// show the same 6-digit check, and you confirm on the old one.
-import { decodeDeviceLink, formatInviteCode, type Invite } from '@pigeon/core'
+// show the new device's fingerprint, and you confirm on the old one.
+import {
+  decodeDeviceLink,
+  formatCode,
+  formatFingerprint,
+  type Invite,
+  MAX_WRONG_TRIES,
+} from '@pigeon/core'
 import { createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
@@ -72,10 +78,11 @@ export function LinkDevice(props: LinkDeviceProps) {
             <GroupBox legend="Is this your device?">
               <div class={styles.column}>
                 <p class={styles.text}>
-                  A device asked to be linked. Check that it shows the same number as this one:
+                  A device asked to be linked. Check that the device in your hand shows the same
+                  fingerprint:
                 </p>
                 <p class={styles.check} data-link-check>
-                  {request().check}
+                  {formatFingerprint(request().fingerprint)}
                 </p>
                 <TextField
                   label="&Name it:"
@@ -89,11 +96,25 @@ export function LinkDevice(props: LinkDeviceProps) {
                 </p>
                 <div class={styles.buttons}>
                   <Button label="&Link" isDefault onClick={() => void confirm()} />
+                  <Button
+                    label="&Not This Device"
+                    onClick={() => void props.messenger.refuseLink()}
+                  />
                   <Button label="Cancel" onClick={props.onClose} />
                 </div>
               </div>
             </GroupBox>
           )}
+        </Match>
+        <Match when={props.messenger.linking()?.stopped}>
+          <p class={styles.text}>
+            Someone typed a wrong code too many times, so Pigeon stopped it. If that wasn't you,
+            someone may be trying to guess it. Make a new code to link your device.
+          </p>
+          <div class={styles.buttons}>
+            <Button label="&New code" onClick={() => void props.messenger.startLink()} />
+            <Button label="Close" isDefault onClick={props.onClose} />
+          </div>
         </Match>
         <Match when={props.messenger.linking()}>
           {(linking) => (
@@ -106,11 +127,22 @@ export function LinkDevice(props: LinkDeviceProps) {
                     Link to My Other Device, and type the code. Keep this window open.
                   </p>
                   <p class={styles.code} data-selectable data-link-code>
-                    {formatInviteCode(linking().code)}
+                    {formatCode(linking().code)}
                   </p>
                   <p class={styles.muted}>
                     Works once, for 10 minutes. Only link devices you hold.
                   </p>
+                  <p class={styles.muted}>
+                    This Pigeon's fingerprint:{' '}
+                    <code data-selectable data-self-fingerprint>
+                      {formatFingerprint(props.messenger.selfFingerprint)}
+                    </code>
+                  </p>
+                  <Show when={linking().wrongTries > 0}>
+                    <p class={styles.warning} role="alert">
+                      {wrongTriesText(linking().wrongTries)}
+                    </p>
+                  </Show>
                 </div>
               </div>
             </GroupBox>
@@ -124,7 +156,7 @@ export function LinkDevice(props: LinkDeviceProps) {
 export interface JoinDeviceProps {
   messenger: Messenger
   /** A link from the address bar, if that's how it came. */
-  incoming?: Invite | undefined
+  incoming?: Invite | { readonly old: true } | undefined
   /** You already chose to link to `incoming` (before leaving the old Pigeon): don't ask again. */
   confirmed?: boolean
   sleep: (ms: number) => Promise<void>
@@ -143,7 +175,8 @@ type Join =
   /** Opened from a link: asks before linking, since anyone can send one. */
   | { readonly kind: 'arrived'; readonly target: Invite }
   | { readonly kind: 'looking' }
-  | { readonly kind: 'offer'; readonly offer: DeviceOffer }
+  /** Whose Pigeon answered; `asked` once this device has asked to be linked. */
+  | { readonly kind: 'offer'; readonly offer: DeviceOffer; readonly asked: boolean }
   | { readonly kind: 'done' }
   | { readonly kind: 'failed'; readonly text: string }
   | { readonly kind: 'taken'; readonly target: Invite; readonly text: string }
@@ -156,6 +189,14 @@ type Join =
       readonly forgetting: boolean
     }
 
+/** A link from an older Pigeon, which can't link to this one. */
+const OLD_LINK =
+  'That link was made by an older Pigeon, which can’t link to this one. Reload Pigeon on your other device, choose Link a Device again, and use the new code or link.'
+
+/** What the device showing a code says about confirmations that didn't hold. */
+export const wrongTriesText = (count: number): string =>
+  `Someone typed a wrong code ${count === 1 ? 'once' : `${count} times`}. If that wasn't you, someone may be trying to guess it: after ${MAX_WRONG_TRIES} Pigeon stops it.`
+
 /** How long leaving waits for friends who are online to hear goodbye. */
 export const LEAVE_TIMEOUT_MS = 10_000
 
@@ -163,6 +204,8 @@ const FAILURES: Readonly<Record<string, string>> = {
   stopped:
     'Nobody answered. Pigeon has to be open on your other device, with Link a Device showing.',
   impostor: "Whoever answered isn't the Pigeon in the link. Nothing was linked.",
+  'wrong-code':
+    "Your other device says that code is wrong. Check it and type it again: it's the one Link a Device shows now.",
   'has-friends':
     "This Pigeon already has friends of its own. Only a Pigeon with none can be linked, since it takes on the other one's.",
   'has-devices':
@@ -177,9 +220,11 @@ export function JoinDevice(props: JoinDeviceProps) {
   const phone = useLayout() === 'phone'
   const [typed, setTyped] = createSignal('')
   const [view, setView] = createSignal<Join>(
-    props.incoming === undefined || props.confirmed === true
-      ? { kind: 'enter' }
-      : { kind: 'arrived', target: props.incoming },
+    props.incoming !== undefined && 'old' in props.incoming
+      ? { kind: 'failed', text: OLD_LINK }
+      : props.incoming === undefined || props.confirmed === true
+        ? { kind: 'enter' }
+        : { kind: 'arrived', target: props.incoming },
   )
   let giveUp: () => void = () => undefined
 
@@ -189,7 +234,9 @@ export function JoinDevice(props: JoinDeviceProps) {
       giveUp = resolve
       void props.sleep(45_000).then(resolve)
     })
-    const joined = await props.messenger.joinIdentity(target, stopped)
+    const joined = await props.messenger
+      .joinIdentity(target, stopped)
+      .catch(() => ({ ok: false, error: 'stopped' }) as const)
     if (!joined.ok && (joined.error === 'has-friends' || joined.error === 'has-devices')) {
       setView({ kind: 'taken', target, text: FAILURES[joined.error] ?? '' })
       return
@@ -198,8 +245,14 @@ export function JoinDevice(props: JoinDeviceProps) {
       setView({ kind: 'failed', text: FAILURES[joined.error] ?? 'Nothing was linked.' })
       return
     }
-    setView({ kind: 'offer', offer: joined.offer })
-    const confirmed = await joined.offer.confirmed(
+    // From a link the fingerprint was checked; from a typed code you compare it first.
+    setView({ kind: 'offer', offer: joined.offer, asked: false })
+    if (joined.offer.checked) await ask(joined.offer)
+  }
+
+  const ask = async (offer: DeviceOffer) => {
+    setView({ kind: 'offer', offer, asked: true })
+    const confirmed = await offer.confirmed(
       new Promise<void>((resolve) => {
         giveUp = resolve
         void props.sleep(CONFIRM_LINK_TIMEOUT_MS).then(resolve)
@@ -215,7 +268,12 @@ export function JoinDevice(props: JoinDeviceProps) {
     setView({ kind: 'done' })
     void props.sleep(1500).then(props.onLinked)
   }
-  onCleanup(() => giveUp())
+  onCleanup(() => {
+    giveUp()
+    // Closed while it showed whose Pigeon answered: nothing was asked, so leave its room.
+    const shown = view()
+    if (shown.kind === 'offer' && !shown.asked) void shown.offer.cancel()
+  })
   // Don't Wait ends the wait for friends who haven't heard yet.
   let stopWaiting: () => void = () => undefined
   const leave = async (target: Invite) => {
@@ -242,12 +300,19 @@ export function JoinDevice(props: JoinDeviceProps) {
     }
     props.onLeave(props.messenger, target)
   }
-  if (props.incoming !== undefined && props.confirmed === true) void join(props.incoming)
+  if (props.incoming !== undefined && !('old' in props.incoming) && props.confirmed === true)
+    void join(props.incoming)
 
   const submit = () => {
     const target = decodeDeviceLink(typed())
     if (!target.ok) {
-      setView({ kind: 'enter', error: 'That isn’t a code or a link from Link a Device.' })
+      setView({
+        kind: 'enter',
+        error:
+          target.error === 'old'
+            ? 'That looks like an 8-character code from an older Pigeon. Reload Pigeon on your other device and type the new 10-character code.'
+            : 'That isn’t a code or a link from Link a Device.',
+      })
       return
     }
     void join(target.value)
@@ -310,13 +375,49 @@ export function JoinDevice(props: JoinDeviceProps) {
             <Button label="Cancel" onClick={() => giveUp()} />
           </div>
         </Match>
+        <Match
+          when={
+            view().kind === 'offer' &&
+            !(view() as { asked: boolean }).asked &&
+            (view() as { offer: DeviceOffer }).offer
+          }
+        >
+          {(offer) => (
+            <GroupBox legend={`Linking to ${offer().handle}`}>
+              <div class={styles.column}>
+                <p class={styles.text}>
+                  Check that this is your own Pigeon: Link a Device on your other device shows its
+                  fingerprint, and it should be this one.
+                </p>
+                <p class={styles.check} data-identity-check>
+                  {formatFingerprint(offer().identityFingerprint)}
+                </p>
+                <p class={styles.warning}>
+                  Anyone who saw the code could have answered. If it's different, cancel.
+                </p>
+                <div class={styles.buttons}>
+                  <Button label="&Continue" isDefault onClick={() => void ask(offer())} />
+                  <Button
+                    label="Cancel"
+                    onClick={() => {
+                      void offer().cancel()
+                      setView({ kind: 'enter' })
+                    }}
+                  />
+                </div>
+              </div>
+            </GroupBox>
+          )}
+        </Match>
         <Match when={view().kind === 'offer' && (view() as { offer: DeviceOffer }).offer}>
           {(offer) => (
             <GroupBox legend={`Linking to ${offer().handle}`}>
               <div class={styles.column}>
-                <p class={styles.text}>Check that your other device shows this number too:</p>
+                <p class={styles.text}>
+                  Check that your other device shows this fingerprint too: it's this device's.
+                </p>
                 <p class={styles.check} data-link-check>
-                  {offer().check}
+                  {formatFingerprint(offer().fingerprint)}
                 </p>
                 <p class={styles.text}>Then choose Link over there. This one waits.</p>
                 <div class={styles.buttons}>

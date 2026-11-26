@@ -9,8 +9,8 @@ export type ConnectionId = string
 
 export type RoomName =
   | `pair:${string}`
-  | `invite:${string}`
-  | `link:${string}`
+  | `invite/v2:${string}`
+  | `link/v2:${string}`
   | `self:${string}`
   | `page:${string}`
   | 'lobby'

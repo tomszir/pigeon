@@ -193,8 +193,10 @@ render(() => {
   const isInvite = (value: unknown): value is Invite =>
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as Invite).code === 'string' &&
-    ['string', 'undefined'].includes(typeof (value as Invite).fingerprint)
+    typeof (value as Invite).secret === 'string' &&
+    (((value as Invite).via === 'code' &&
+      typeof (value as { nameplate?: unknown }).nameplate === 'string') ||
+      ((value as Invite).via === 'link' && typeof (value as Invite).fingerprint === 'string'))
   let startingOver: Promise<void> | undefined
   const startOver = (target?: Invite) => {
     // Only the tab running Pigeon may forget it; one that let go would clear another's store.
@@ -209,10 +211,9 @@ render(() => {
     const join =
       target === undefined
         ? true
-        : {
-            code: target.code,
-            ...(target.fingerprint === undefined ? {} : { fingerprint: target.fingerprint }),
-          }
+        : target.via === 'code'
+          ? { via: target.via, nameplate: target.nameplate, secret: target.secret }
+          : { via: target.via, secret: target.secret, fingerprint: target.fingerprint }
     await opened.store.set(JOIN_ON_START, join)
     location.reload()
   }

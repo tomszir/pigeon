@@ -1,5 +1,6 @@
 // What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
 // shell draws it and the apps fill the windows.
+
 import {
   decodeRecoveryCode,
   encodeRecoveryCode,
@@ -59,6 +60,7 @@ import type { Launcher, ShellApi, ShellEnv, TraySpec } from '../shell/shell/type
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
+import type { OldCode } from './address-invite.ts'
 import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
 export interface Programs extends ShellProps {
@@ -74,7 +76,7 @@ export interface Programs extends ShellProps {
    * Link to My Other Device, perhaps from a link in the address bar. `confirmed` when you
    * already chose to link to it here, so it goes ahead without asking again.
    */
-  readonly openJoinDevice: (incoming?: Invite, confirmed?: boolean) => void
+  readonly openJoinDevice: (incoming?: Invite | OldCode, confirmed?: boolean) => void
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
 }
@@ -270,7 +272,7 @@ export function createPrograms(
       content: (window) => <LinkDevice messenger={messenger} onClose={window.close} />,
     })
   }
-  const openJoinDevice = (incoming?: Invite, confirmed = false) => {
+  const openJoinDevice = (incoming?: Invite | OldCode, confirmed = false) => {
     if (incoming !== undefined) api.close('join-device')
     api.open('join-device', {
       title: 'Link to My Other Device',
@@ -634,6 +636,16 @@ export function createPrograms(
   const messengerEvents: MessengerEvents = {
     // Someone answered your invite: their chat opens, starting with "... became friends".
     onPaired: (friend: FriendView) => openFriendConversation(friend.id),
+    // Someone asks through your code: they wait for Add, which is in Add a Friend.
+    onCodeAsk: (ask) => {
+      if (api.isActive('add-friend')) return
+      api.notify({
+        title: `${ask.handle} asks to be friends`,
+        icon: brandIcon('pigeon-16'),
+        body: 'They used your code. Check their fingerprint, then add them.',
+        onClick: () => openAddFriend(undefined, 'code'),
+      })
+    },
     // Coming online is on Today and in the buddy list: a balloon each time would be noise.
     onDeviceRemoved: () =>
       api.notify({

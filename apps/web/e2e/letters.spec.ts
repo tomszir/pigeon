@@ -34,7 +34,9 @@ test('a message written to a friend who is offline reaches them later', async ({
   const add = mika.getByRole('dialog', { name: 'Add a Friend' })
   await add.getByRole('textbox', { name: 'Your name:' }).fill('Mika')
   await add.getByRole('button', { name: 'OK' }).click()
-  await add.getByRole('button', { name: 'Add Rook' }).click()
+  await add.getByRole('button', { name: 'Ask to be friends' }).click()
+  // Rook sees Mika asking, with her fingerprint and bird, and adds her.
+  await addFriend.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(mika.getByRole('dialog', { name: 'Rook - Conversation' })).toContainText(
     'became friends',
   )

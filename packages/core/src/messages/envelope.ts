@@ -60,6 +60,12 @@ export interface HelloBinding {
   readonly local: string
   readonly remote: string
 }
+/** A SPAKE2 message or a MAC, base64: far longer than either is. */
+const MAX_PAKE_LENGTH = 256
+/** Sealed mail too big for one envelope goes in pieces of at most this many characters. */
+export const MAX_SEALED_PART_LENGTH = 40_000
+/** The most pieces a sealed answer comes in: enough for the largest blob a Lighthouse takes. */
+export const MAX_SEALED_PARTS = 4
 
 export type Status = 'online' | 'away' | 'busy'
 
@@ -111,29 +117,53 @@ export type Body =
   | { readonly type: 'log-sync'; readonly have: LogSummary }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
   /**
-   * The invitee answers an invite; `code` proves they were given it. From a
-   * device that isn't its identity's first, `identity` and its device log say who it speaks for.
+   * Opening a live code (pairing/handshake.ts): which secret this side holds, `code` or `link`,
+   * and its SPAKE2 message. The room says whether it's an invite or a device link.
    */
-  | ({ readonly type: 'pair-request'; readonly code: string; readonly handle: string } & Speaker)
-  /** The inviter says who it is, so the invitee can check the fingerprint before agreeing. */
-  | ({ readonly type: 'pair-offer'; readonly code: string; readonly handle: string } & Speaker)
-  /** The invitee agrees, having seen the inviter's name and fingerprint. */
-  | { readonly type: 'pair-confirm'; readonly code: string }
+  | { readonly type: 'pake-start'; readonly via: 'code' | 'link'; readonly pake: string }
+  /** The code's maker answers with its own SPAKE2 message. */
+  | { readonly type: 'pake-reply'; readonly pake: string }
+  /** The opener's key confirmation, which the maker checks before saying who it is. */
+  | { readonly type: 'pake-prove'; readonly mac: string }
+  /** The confirmation was wrong: a wrong code, or someone in the middle. */
+  | { readonly type: 'pake-wrong' }
   /**
-   * The inviter has added the invitee; both move to their pair room, named from `secret`.
-   * A Pigeon from before pair secrets sends none.
+   * The inviter's key confirmation, and who it is, so the invitee can check the fingerprint
+   * before agreeing. From a device that isn't its identity's first, `identity` and its device
+   * log say who it speaks for.
    */
-  | { readonly type: 'pair-accept'; readonly code: string; readonly secret?: string }
+  | ({ readonly type: 'pair-offer'; readonly mac: string; readonly handle: string } & Speaker)
+  /**
+   * The invitee agrees, and asks to be added: who it is, and the sealing key of the device
+   * that ran the handshake, which the pair secret is sealed to.
+   */
+  | ({
+      readonly type: 'pair-request'
+      readonly handle: string
+      readonly sealing: SealingKey
+    } & Speaker)
+  /** The inviter added the invitee: the pair secret, as a `mail:pair` letter sealed to it. */
+  | { readonly type: 'pair-accept'; readonly sealed: string }
+  /** The inviter said no. */
+  | { readonly type: 'pair-decline' }
   /** Moving friends paired before pair secrets: the lower id gives the secret, in the old room. */
   | { readonly type: 'pair-secret'; readonly secret: string }
   /** The other side has the secret too: both leave the old room. */
   | { readonly type: 'pair-secret-ok' }
-  /** A new device asks to join the identity whose device showed `code`. */
-  | { readonly type: 'link-request'; readonly code: string }
-  /** The existing device says whose it is, so both can show the same 6-digit check. */
-  | ({ readonly type: 'link-offer'; readonly code: string; readonly handle: string } & Speaker)
-  /** Confirmed on the existing device: the new one is on the log, and gets what it needs. */
-  | { readonly type: 'link-accept'; readonly code: string; readonly bundle: Json }
+  /** The existing device's key confirmation, and whose it is. */
+  | ({ readonly type: 'link-offer'; readonly mac: string; readonly handle: string } & Speaker)
+  /** The new device's sealing key, which what it's handed is sealed to. */
+  | { readonly type: 'link-request'; readonly sealing: SealingKey }
+  /**
+   * Confirmed on the existing device: the new one is on the log, and gets what it needs, as a
+   * `mail:link` letter sealed to it, in `parts` pieces sent in order.
+   */
+  | {
+      readonly type: 'link-accept'
+      readonly part: number
+      readonly parts: number
+      readonly sealed: string
+    }
 
 export type BodyType = Body['type']
 
@@ -160,7 +190,6 @@ const isString = (max: number) => (value: unknown) =>
 /** A name as it may arrive: cleaned by `openEnvelope` once the signature is checked. */
 const isHandleText = (value: unknown) =>
   isString(MAX_HANDLE_LENGTH)(value) && (value as string).trim() !== ''
-const isCode = isString(64)
 
 function isSummary(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -226,17 +255,29 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   unfriend: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
-  'pair-request': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
-  'pair-offer': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
-  'pair-confirm': (b) => isCode(b['code']),
-  'pair-accept': (b) =>
-    isCode(b['code']) && (b['secret'] === undefined || isPairSecret(b['secret'])),
+  'pake-start': (b) =>
+    (b['via'] === 'code' || b['via'] === 'link') && isString(MAX_PAKE_LENGTH)(b['pake']),
+  'pake-reply': (b) => isString(MAX_PAKE_LENGTH)(b['pake']),
+  'pake-prove': (b) => isString(MAX_PAKE_LENGTH)(b['mac']),
+  'pake-wrong': () => true,
+  'pair-offer': (b) =>
+    isString(MAX_PAKE_LENGTH)(b['mac']) && isHandleText(b['handle']) && isSpeaker(b),
+  'pair-request': (b) => isHandleText(b['handle']) && isSealingKey(b['sealing']) && isSpeaker(b),
+  'pair-accept': (b) => isString(MAX_SEALED_PART_LENGTH)(b['sealed']),
+  'pair-decline': () => true,
   'pair-secret': (b) => isPairSecret(b['secret']),
   'pair-secret-ok': () => true,
-  'link-request': (b) => isCode(b['code']),
-  'link-offer': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
+  'link-offer': (b) =>
+    isString(MAX_PAKE_LENGTH)(b['mac']) && isHandleText(b['handle']) && isSpeaker(b),
+  'link-request': (b) => isSealingKey(b['sealing']),
   'link-accept': (b) =>
-    isCode(b['code']) && typeof b['bundle'] === 'object' && b['bundle'] !== null,
+    Number.isSafeInteger(b['parts']) &&
+    (b['parts'] as number) >= 1 &&
+    (b['parts'] as number) <= MAX_SEALED_PARTS &&
+    Number.isSafeInteger(b['part']) &&
+    (b['part'] as number) >= 0 &&
+    (b['part'] as number) < (b['parts'] as number) &&
+    isString(MAX_SEALED_PART_LENGTH)(b['sealed']),
 }
 
 function isBody(value: unknown): value is Body {
