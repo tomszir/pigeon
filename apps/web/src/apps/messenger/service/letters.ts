@@ -263,6 +263,13 @@ export function createLetters(deps: LettersDeps) {
     version,
 
     /**
+     * Whether a letter is waiting its few seconds or being sealed and put right now. Pigeon can
+     * close then without losing it (the next start mails what no letter carries), but it would
+     * mail it again from the start.
+     */
+    busy: () => waiting.size > 0 || mailing.size > 0,
+
+    /**
      * A message was written: when the friend isn't connected, a letter goes in a moment; when
      * they are, it counts as theirs once they've stayed a moment, and goes by letter if not.
      */

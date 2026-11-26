@@ -13,13 +13,14 @@ import type { Store } from '../platform/storage/storage.ts'
 import { browserTabLock } from '../platform/tab-lock/tab-lock.ts'
 import { createShell } from '../shell/shell/shell.tsx'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
+import { MessageBox } from '../ui/message-box/message-box.tsx'
 import { takeDeviceLinkFromAddress, takeInviteFromAddress } from './address-invite.ts'
 import { createBrowserEnv, deviceName, loadFonts, needsHomeScreen } from './browser-env.ts'
 import { createPrograms } from './programs.tsx'
 import { IDENTITY, startMessenger } from './start-messenger.ts'
 import { watchUnsavedWork } from './unsaved-work.ts'
 import { watchForUpdates } from './update-check.ts'
-import { createPendingReload } from './update-reload.ts'
+import { createPendingReload, onNewerVersion } from './update-reload.ts'
 import { rememberVersion, updatedSinceLastVisit } from './whats-new.ts'
 
 const root = document.getElementById('root')
@@ -92,14 +93,49 @@ render(() => {
   }
 
   // A tab keeps the code it loaded, so a long-open one asks the site now and then whether a newer
-  // Pigeon is out and reloads into it, when nothing would be lost (a message being typed, a
-  // pairing, a link or a recovery under way) and the tab is hidden or has been left alone for a
-  // little. tellWhatsNew then says so after the reload. Not where the browser keeps nothing: a
-  // reload there forgets the visitor. It also runs in a tab waiting behind "open in another
+  // Pigeon is out and reloads into it, when nothing would be lost (text being typed, a pairing, a
+  // link or a recovery under way, a message still being saved or a letter going out) and the tab
+  // is hidden or has been left alone for a little. tellWhatsNew then says so after the reload.
+  // Where the browser keeps nothing, a reload forgets the visitor, so the tab says an update is
+  // out and leaves the reload to them. It also runs in a tab waiting behind "open in another
   // tab", which has nothing to lose.
   const UPDATED_FOR = 'pigeon.reloadedForVersion'
-  const watchForNewVersion = () => {
-    const work = watchUnsavedWork({ isOpen: api.isOpen })
+  const offerReload = (version: string) => {
+    const open = () =>
+      api.open('update-offer', {
+        title: 'Pigeon update',
+        icon: brandIcon('pigeon-16'),
+        bounds: { x: 322, y: 200, width: 380, height: 190 },
+        controls: { minimize: false },
+        content: (window) => (
+          <MessageBox
+            kind="warning"
+            buttons={[
+              { label: '&Reload', onClick: () => location.reload() },
+              { label: '&Not Now', isDefault: true, onClick: window.close },
+            ]}
+          >
+            <p>Pigeon {version} is out. This tab is still running an older one.</p>
+            <p>
+              This browser keeps nothing for Pigeon, so reloading forgets your name, your friends
+              and your chats here.
+            </p>
+          </MessageBox>
+        ),
+      })
+    api.notify({
+      title: 'Pigeon update',
+      icon: brandIcon('pigeon-16'),
+      body: `Pigeon ${version} is out. Reloading this tab forgets this Pigeon. See your options?`,
+      onClick: open,
+    })
+  }
+  const watchForNewVersion = (persistent: boolean) => {
+    const work = watchUnsavedWork({
+      isOpen: api.isOpen,
+      // Forgetting this Pigeon to link it elsewhere reloads by itself when it's done.
+      inFlight: () => messenger()?.inFlight() === true || startingOver !== undefined,
+    })
     const pending = createPendingReload({
       current: __PIGEON_VERSION__,
       isBusy: work.isBusy,
@@ -121,7 +157,7 @@ render(() => {
     watchForUpdates({
       current: __PIGEON_VERSION__,
       fetch: (input, init) => fetch(input, init),
-      onNewer: pending.want,
+      onNewer: onNewerVersion({ persistent, pending, offer: offerReload }),
     })
   }
 
@@ -287,7 +323,7 @@ render(() => {
   void createBrowserStore()
     .then(async (opened) => {
       storage = opened
-      if (opened.persistent) watchForNewVersion()
+      watchForNewVersion(opened.persistent)
       if (!(await lock.tryHold())) {
         setProblem(ELSEWHERE)
         offerHere('Pigeon is open in another tab')

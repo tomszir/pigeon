@@ -61,6 +61,7 @@ export function AddressBar(props: AddressBarProps) {
         labelHidden={props.compact}
         value={typed()}
         onInput={setTyped}
+        keepsDraft={false}
       />
       <Show when={props.compact !== true}>
         <ToolbarButton inline icon={tangoIcon('go-jump', 22)} label="Go" onClick={go} />

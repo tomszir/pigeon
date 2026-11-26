@@ -1064,6 +1064,16 @@ export async function createMessenger(deps: MessengerDeps) {
    * from the last visit is said while the Messenger starts.
    */
   let closed = false
+  /** Writes begun and not finished; see `inFlight`. */
+  const writes = new Set<Promise<unknown>>()
+  const keepUntilWritten = (write: Promise<unknown>) => {
+    const settled = write.then(
+      () => undefined,
+      (error: unknown) => console.error(error),
+    )
+    writes.add(settled)
+    void settled.then(() => writes.delete(settled))
+  }
   // Leaving this Pigeon waits for its farewells to be said.
   let farewellsSaid: (() => void)[] = []
   /** Told each time a farewell is said, while leaving shows how many have heard. */
@@ -1233,7 +1243,7 @@ export async function createMessenger(deps: MessengerDeps) {
             }),
           )
       })
-      void store.set(KEYS.log(id), event.log)
+      keepUntilWritten(store.set(KEYS.log(id), event.log))
       const view = friend(id)
       if (view !== undefined) for (const entry of arrived) events.onMessage?.(view, entry)
     },
@@ -3295,6 +3305,14 @@ export async function createMessenger(deps: MessengerDeps) {
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
     setRelayOnly,
+    /**
+     * Work in flight that a reload would cut short or repeat: a chat saved to storage a moment
+     * ago and not yet written, and a letter being sealed and put. What else is going on survives
+     * a reload as it does a closing tab (the outbox, mail already fetched, a removal still to be
+     * acted on and a pair secret being replaced are kept as they go and picked up on the next
+     * start), so it isn't counted.
+     */
+    inFlight: () => writes.size > 0 || (letters?.busy() ?? false),
     /** For a closing tab: friends see you go offline at once. */
     goodbye() {
       for (const session of sessions.values()) session.goodbye()
