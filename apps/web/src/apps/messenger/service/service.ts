@@ -1105,17 +1105,32 @@ export async function createMessenger(deps: MessengerDeps) {
         await session.sendSecret(secret)
       })()
     },
+    // The session hears these only in the old room. The secret counts only from the lower id,
+    // the side that gives it, and only while you haven't moved: once you have, or once the
+    // secret was sealed or is being replaced, a new one comes only by a signed replacement.
+    // A secret held but never moved to (made when you paired, which the friend's Pigeon then
+    // didn't keep) gives way to theirs, which is the one you both end up meeting under.
     secret: (id, event) => {
+      const view = state.friends[id]
       const session = sessions.get(id)
-      if (session === undefined) return
+      if (view === undefined || session === undefined || id > self) return
+      if (view.moved === true || view.sealed === true || view.replacing !== undefined) return
+      // Taken at once, so a second secret from another of their devices finds you moved, and
+      // kept before it's confirmed: a friend told it arrived moves, so a Pigeon closed in between
+      // must not wake up without it. A confirmation that never arrives is made up for in `met`:
+      // the friend waits in the secret's rooms too, and moves on meeting you there.
+      setState('friends', id, { secret: event.secret, moved: true })
       void (async () => {
+        await saveFriends()
         await session.confirmSecret()
-        await moveTo(id, event.secret)
+        await syncRooms(session)
       })()
     },
+    // Only the lower id gives the secret, so only it hears that it arrived.
     'secret-ok': (id) => {
-      const secret = state.friends[id]?.secret
-      if (secret !== undefined) void moveTo(id, secret)
+      const view = state.friends[id]
+      if (view?.secret !== undefined && view.moved !== true && self < id)
+        void moveTo(id, view.secret)
     },
     seen: (id, event) => void heardIn(id, event.room, event.device).catch(() => undefined),
     log: (id, event) => {

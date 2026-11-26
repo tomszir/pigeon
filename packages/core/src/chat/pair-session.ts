@@ -88,9 +88,9 @@ export type PairEvent =
   | { readonly type: 'met'; readonly room: RoomName }
   /** One of the friend's devices proved itself with a hello in `room`: sent on every one. */
   | { readonly type: 'seen'; readonly room: RoomName; readonly device: PeerId }
-  /** The friend gave the pair secret, moving you both out of the old room. */
+  /** The friend gave the pair secret in the old room, moving you both out of it. */
   | { readonly type: 'secret'; readonly secret: string }
-  /** The friend has the secret you gave. */
+  /** The friend has the secret you gave, they said in the old room. */
   | { readonly type: 'secret-ok' }
 
 export interface PairSessionOptions {
@@ -176,9 +176,9 @@ export interface PairSession {
   shareDevices(): void
   /** Lets go of connections from devices `accepts` no longer takes, as after a removal. */
   recheck(): void
-  /** Gives the friend the pair secret, in every room they're in. */
+  /** Gives the friend the pair secret, in the old room. */
   sendSecret(secret: string): Promise<void>
-  /** Tells the friend their secret arrived; resolves once it's been sent. */
+  /** Tells the friend, in the old room, their secret arrived; resolves once it's been sent. */
   confirmSecret(): Promise<void>
   /** The rooms the session is in now. */
   rooms(): readonly RoomName[]
@@ -260,14 +260,20 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     rooms.get(room)?.room.send(connection, bytes)
   }
   const seal = (body: Body) => sealEnvelope(signer, chat, options.now(), body)
-  /** `all`: the friend's devices; `everyone`: those and your own others, for chat entries. */
-  const sendTo = (to: Link | 'all' | 'everyone', body: Body) => {
+  /**
+   * `all`: the friend's devices; `everyone`: those and your own others, for chat entries; `old`:
+   * the friend's devices in the old room alone.
+   */
+  const sendTo = (to: Link | 'all' | 'everyone' | 'old', body: Body) => {
     // A send to one connection is for that connection, not for whoever holds its id when the
     // queue gets to it.
-    const token = to === 'all' || to === 'everyone' ? undefined : tokens.get(to)
+    const many = to === 'all' || to === 'everyone' || to === 'old'
+    const token = many ? undefined : tokens.get(to)
     queue = queue.then(async () => {
       const bytes = await seal(body)
-      if (to === 'all' || to === 'everyone') {
+      if (to === 'old') {
+        for (const id of friendConnections) if (id.startsWith(`${chat}\n`)) deliver(id, bytes)
+      } else if (to === 'all' || to === 'everyone') {
         for (const id of friendConnections) deliver(id, bytes)
         if (to === 'everyone') for (const id of selfConnections) deliver(id, bytes)
       } else if (token !== undefined && tokens.get(to) === token) deliver(to, bytes)
@@ -508,6 +514,12 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     'pair-secret-ok',
     'log-entries',
   ])
+  /**
+   * Said only in the old room, the one named from both ids that is also the chat's id: the pair
+   * secret moves friends from before pair secrets out of it, and counts nowhere else. Checked
+   * before anything is taken once, so a copy in another room can't use up the one that counts.
+   */
+  const OLD_ROOM: ReadonlySet<Body['type']> = new Set(['pair-secret', 'pair-secret-ok'])
   let inbound = Promise.resolve()
 
   let closed = false
@@ -530,6 +542,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
           if (!opened.ok || !rooms.has(room.name)) return
           const { body, at } = opened.value
           const device = opened.value.from
+          if (OLD_ROOM.has(body.type) && room.name !== chat) return
           if (body.type === 'device-log') {
             await options.onDeviceLog?.(body.log)
             recheck()
@@ -675,11 +688,11 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         for (const peer of entry.room.peers()) sendTo(link(name, peer), devices)
     },
     async sendSecret(secret) {
-      sendTo('all', { type: 'pair-secret', secret })
+      sendTo('old', { type: 'pair-secret', secret })
       await queue
     },
     async confirmSecret() {
-      sendTo('all', { type: 'pair-secret-ok' })
+      sendTo('old', { type: 'pair-secret-ok' })
       await queue
     },
     rooms: () => [...rooms.keys()],
