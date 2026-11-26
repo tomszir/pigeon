@@ -100,6 +100,9 @@ describe('sealing keys', () => {
     // A new key is taken, claim or not.
     const { hpke: __, ...replaced } = await bindSealingKey(mikaPhone.signer, stranger)
     expect(sealingKeyToKeep(binding, replaced)).toBe(replaced)
+    // Nor does a claim stick to another device's binding that happens to name the same key.
+    const elsewhere = { ...older, device: mikaLaptop.signer.id }
+    expect(sealingKeyToKeep(binding, elsewhere)).toBe(elsewhere)
   })
 })
 
@@ -147,17 +150,51 @@ describe('mail', () => {
     }
   })
 
-  it('refuses a letter sealed for one kind and signed as another', async () => {
-    // A sender whose wraps say `letter` while the letter inside says `farewell`.
+  it('refuses a letter committed as one kind and signed as another', async () => {
+    // A sender whose commitment says `letter` while the letter inside says `farewell`.
     const lying = {
       ...seal,
-      hpkeSeal: (peer: Uint8Array, _info: Uint8Array, aad: Uint8Array, data: Uint8Array) =>
-        seal.hpkeSeal(peer, utf8Encode('pigeon/mail/v2/letter'), aad, data),
+      hkdf: (ikm: Uint8Array, info: string, length: number) =>
+        seal.hkdf(ikm, info.replace(/\/farewell$/, '/letter'), length),
     }
     const sealed = await sealMail(lying, rook, letter, await keysOf())
     if (!sealed.ok) throw new Error(sealed.error)
     const both = { ...expected, kinds: ['farewell', 'letter'] as const }
     expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, both)).toEqual({
+      ok: false,
+      error: 'malformed',
+    })
+  })
+
+  it('opens each HPKE wrap once, however many kinds the mailbox holds', async () => {
+    const sealed = await sealMail(seal, rook, letter, await keysOf())
+    if (!sealed.ok) throw new Error(sealed.error)
+    let opens = 0
+    const counting = {
+      ...stranger,
+      hpkeOpen: (...args: Parameters<typeof stranger.hpkeOpen>) => {
+        opens += 1
+        return stranger.hpkeOpen(...args)
+      },
+    }
+    const kinds = ['self', 'receipt', 'letter', 'rekey'] as const
+    expect(
+      await openMail(fakeCrypto, seal, counting, sealed.value.blob, { ...expected, kinds }),
+    ).toEqual({ ok: false, error: 'not-for-this-device' })
+    expect(opens).toBe(2)
+  })
+
+  it('refuses a commitment to no kind at all', async () => {
+    const odd = {
+      ...seal,
+      hkdf: (ikm: Uint8Array, _info: string, length: number) =>
+        seal.hkdf(ikm, 'pigeon/mail/v2/commit/nothing', length),
+    }
+    const sealed = await sealMail(odd, rook, letter, await keysOf())
+    if (!sealed.ok) throw new Error(sealed.error)
+    expect(
+      await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, expected),
+    ).toEqual({
       ok: false,
       error: 'malformed',
     })
@@ -204,18 +241,12 @@ describe('mail', () => {
     if (!sealed.ok) throw new Error(sealed.error)
     for (const other of [
       { ...expected, to: rook.id },
+      { ...expected, kinds: ['self' as const, 'letter' as const] },
       { ...expected, dates: ['2026-11-20'] },
     ])
       expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, other)).toEqual(
         { ok: false, error: 'unexpected' },
       )
-    // Its wraps are sealed for its kind, so a mailbox that holds other kinds can't open them.
-    expect(
-      await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, {
-        ...expected,
-        kinds: ['self', 'letter'],
-      }),
-    ).toEqual({ ok: false, error: 'not-for-this-device' })
   })
 
   it('gives the Lighthouse sorted hashes of the drops, as it hashes the drop it is sent', async () => {

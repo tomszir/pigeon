@@ -108,8 +108,14 @@ const SEALING_KEY_HPKE_CONTEXT = 'pigeon/sealing-key/hpke/v1'
 const LETTER_CONTEXT = 'pigeon/letter/v1'
 const WRAP_INFO = 'pigeon/mail/wrap'
 const COMMIT_INFO = 'pigeon/mail/commit'
-/** HPKE's info for a wrap: the kind is in it, so a wrap opens only as the kind it was made for. */
-const hpkeInfo = (kind: MailKind) => utf8Encode(`pigeon/mail/v2/${kind}`)
+/** HPKE's info for every `v: 2` wrap, so each wrap is opened once, whatever kind it holds. */
+const HPKE_INFO = utf8Encode('pigeon/mail/v2')
+/**
+ * A `v: 2` blob's commitment, which names the kind: each wrap binds it in as HPKE's aad, so a
+ * wrap opens only beside a commitment to the kind it was made for, and checking the kind costs
+ * an HKDF per kind rather than an HPKE open.
+ */
+const commitInfo = (kind: MailKind) => `pigeon/mail/v2/commit/${kind}`
 
 /** The UTC date a time falls on, as tags and pair rooms name days. */
 export const utcDate = (at: number): string => new Date(at).toISOString().slice(0, 10)
@@ -176,13 +182,14 @@ export async function verifySealingKey(crypto: Crypto, binding: SealingKey): Pro
 }
 
 /**
- * Which of two checked bindings for one device to keep: the one just heard, unless it's the key
- * already kept without the HPKE claim the kept one makes, as a Pigeon from before HPKE passes on
+ * Which of two checked bindings for one device to keep: the one just heard, unless it's the same
+ * device's key already kept, without the HPKE claim the kept one makes, as a Pigeon from before HPKE passes on
  * an older copy. The device said, signed, that it opens HPKE with that very key, so an older copy
  * doesn't undo it. A new key is always taken.
  */
 export function sealingKeyToKeep(kept: SealingKey | undefined, heard: SealingKey): SealingKey {
   if (kept === undefined || kept.hpke === undefined || heard.hpke !== undefined) return heard
+  if (kept.device !== heard.device) return heard
   const [a, b] = [base64Decode(kept.key), base64Decode(heard.key)]
   return a.ok && b.ok && bytesEqual(a.value, b.value) ? kept : heard
 }
@@ -254,8 +261,6 @@ export async function sealMail(
   const inner = canonicalBytes({ ...(letterPart(signed) as Record<string, Json>), sig })
   const contentKey = seal.random(32)
   const content = await seal.seal(contentKey, inner)
-  // Every device checks this, so a sender can't hand different devices different letters.
-  const commit = await seal.hkdf(contentKey, COMMIT_INFO, 32)
   const drops: { device: PeerId; value: string }[] = []
   const skipped: PeerId[] = []
   const wraps: Json[] = []
@@ -266,13 +271,15 @@ export async function sealMail(
     else skipped.push(device.device)
   }
   const hpke = devices.every((device) => device.hpke !== undefined)
+  // Every device checks this, so a sender can't hand different devices different letters.
+  const commit = await seal.hkdf(contentKey, hpke ? commitInfo(signed.kind) : COMMIT_INFO, 32)
   for (const { device, peer } of usable) {
     const drop = seal.random(32)
     const plain = concatBytes(contentKey, drop)
     try {
       if (hpke) {
         // The commitment is bound in, so a wrap opens only beside the letter it was made for.
-        const wrapped = await seal.hpkeSeal(peer, hpkeInfo(signed.kind), commit, plain)
+        const wrapped = await seal.hpkeSeal(peer, HPKE_INFO, commit, plain)
         wraps.push({ e: base64Encode(wrapped.enc), w: base64Encode(wrapped.sealed) })
       } else {
         const fresh = await seal.ephemeralShare(peer)
@@ -386,11 +393,24 @@ function readLetter(value: unknown): (Letter & { readonly sig: string }) | undef
   }
 }
 
+/** The kind among `kinds` whose `v: 2` commitment under `contentKey` is `commitment`. */
+async function committedKind(
+  seal: SealCrypto,
+  contentKey: Uint8Array,
+  commitment: Uint8Array,
+  kinds: readonly string[],
+): Promise<MailKind | undefined> {
+  for (const kind of new Set(kinds) as Set<MailKind>)
+    if (bytesEqual(await seal.hkdf(contentKey, commitInfo(kind), 32), commitment)) return kind
+  return undefined
+}
+
 /**
  * Opens a blob with this device's sealing key: tries each wrap, checks the content key against
  * the blob's commitment, opens the letter, checks the signature of the device it names, and that
- * it's for `expected.to`, of an expected kind and dated as expected. A `v: 2` wrap is tried
- * under each expected kind's HPKE info, and the letter in it must be of the kind it opened as.
+ * it's for `expected.to`, of an expected kind and dated as expected. A `v: 2` blob's commitment
+ * names its kind, and the letter in it must be of that kind. Each wrap costs one ECDH (and, for
+ * `v: 2`, HPKE's key schedule) whatever the kinds expected.
  * Whether that device may write for `letter.sender` (it's on the sender's newest log), and
  * whether (sender, id) was seen before, are the caller's to check.
  */
@@ -418,32 +438,33 @@ export async function openMail(
   const sealedContent = base64Decode(content)
   const commitment = base64Decode(commit)
   if (!sealedContent.ok || !commitment.ok) return err('malformed')
-  const kinds = [...new Set(expected.kinds)]
   for (const wrap of wraps.slice(0, MAX_DROPS)) {
     const fields = wrap as Record<string, unknown>
     const e = typeof fields?.['e'] === 'string' ? base64Decode(fields['e']) : undefined
     const w = typeof fields?.['w'] === 'string' ? base64Decode(fields['w']) : undefined
     if (e === undefined || w === undefined || !e.ok || !w.ok || !isPoint(e.value)) continue
-    let opened: { plain: Uint8Array; kind?: MailKind } | undefined
+    let plain: Uint8Array | undefined
     if (version === 1) {
       const shared = await sealer.share(e.value)
       if (shared === undefined) continue
       const key = await wrapKey(seal, shared, e.value, sealer.publicKey)
-      const plain = await seal.open(key, w.value)
-      if (plain !== undefined) opened = { plain }
+      plain = await seal.open(key, w.value)
+    } else plain = await sealer.hpkeOpen(e.value, HPKE_INFO, commitment.value, w.value)
+    if (plain === undefined || plain.length !== 64) continue
+    const contentKey = plain.subarray(0, 32)
+    // The commitment: one content key for every device, so each opens the same letter; for
+    // `v: 2`, of one kind, found among the expected kinds first, then among all.
+    let kind: MailKind | undefined
+    if (version === 1) {
+      const committed = await seal.hkdf(contentKey, COMMIT_INFO, 32)
+      if (!bytesEqual(committed, commitment.value)) return err('malformed')
     } else {
-      for (const kind of kinds) {
-        const plain = await sealer.hpkeOpen(e.value, hpkeInfo(kind), commitment.value, w.value)
-        if (plain === undefined) continue
-        opened = { plain, kind }
-        break
+      kind = await committedKind(seal, contentKey, commitment.value, expected.kinds)
+      if (kind === undefined) {
+        const other = await committedKind(seal, contentKey, commitment.value, [...KINDS])
+        return err(other === undefined ? 'malformed' : 'unexpected')
       }
     }
-    if (opened === undefined || opened.plain.length !== 64) continue
-    const contentKey = opened.plain.subarray(0, 32)
-    // The commitment: one content key for every device, so each opens the same letter.
-    const committed = await seal.hkdf(contentKey, COMMIT_INFO, 32)
-    if (!bytesEqual(committed, commitment.value)) return err('malformed')
     const inner = await seal.open(contentKey, sealedContent.value)
     if (inner === undefined) return err('malformed')
     const letter = readLetter(parse(inner))
@@ -457,15 +478,15 @@ export async function openMail(
       canonicalBytes(letterPart(fieldsOnly)),
     )
     if (!valid) return err('bad-signature')
-    // Sealed as one kind, signed as another: not something an honest sender makes.
-    if (opened.kind !== undefined && opened.kind !== fieldsOnly.kind) return err('malformed')
+    // Committed as one kind, signed as another: not something an honest sender makes.
+    if (kind !== undefined && kind !== fieldsOnly.kind) return err('malformed')
     if (
       fieldsOnly.to !== expected.to ||
       !expected.kinds.includes(fieldsOnly.kind) ||
       !expected.dates.includes(fieldsOnly.date)
     )
       return err('unexpected')
-    return ok({ letter: fieldsOnly, drop: base32Encode(opened.plain.subarray(32)) })
+    return ok({ letter: fieldsOnly, drop: base32Encode(plain.subarray(32)) })
   }
   return err('not-for-this-device')
 }
