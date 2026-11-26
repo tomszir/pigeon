@@ -1,6 +1,7 @@
 // A sanitized page in a sandboxed frame. The sandbox allows same-origin, so Explorer
 // can write and read the frame's document, and never scripts, so the page can't run any. Explorer
-// catches link clicks in the frame and navigates itself; the frame never navigates.
+// catches link clicks in the frame, an image map's areas included, and navigates itself; the
+// frame never navigates.
 //
 // The page is written into the frame's blank document, not given as srcdoc: an srcdoc document is
 // always in standards mode, and a written one with no doctype is in quirks mode, as pages of the
@@ -44,10 +45,21 @@ export interface PageFrameProps {
   ref?: ((controls: FrameControls) => void) | undefined
 }
 
-const linkIn = (target: EventTarget | null): HTMLAnchorElement | undefined => {
+/** The link an event happened in: an `<a href>`, or an image map's `<area href>`. */
+const linkIn = (target: EventTarget | null): Element | undefined => {
   const element = target as Element | null
-  const link = element?.closest?.('a[href]')
-  return link === null || link === undefined ? undefined : (link as HTMLAnchorElement)
+  return element?.closest?.('a[href], area[href]') ?? undefined
+}
+
+/** The name an in-page "#name" link points to, unescaped where its escapes are sound. */
+const fragmentName = (href: string): string => {
+  const name = href.slice(1)
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    // A broken escape ("#%E0") names nothing it could decode to, so it's looked up as written.
+    return name
+  }
 }
 
 export function PageFrame(props: PageFrameProps) {
@@ -59,7 +71,7 @@ export function PageFrame(props: PageFrameProps) {
       props.onNavigate(href)
       return
     }
-    const name = decodeURIComponent(href.slice(1))
+    const name = fragmentName(href)
     const target = doc.getElementById(name) ?? doc.getElementsByName(name)[0]
     target?.scrollIntoView()
   }
