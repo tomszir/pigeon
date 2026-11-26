@@ -1,5 +1,7 @@
 import {
   base32Decode,
+  base32Encode,
+  bindSealingKey,
   createLighthouseClient,
   createMemoryNetwork,
   decodeDeviceLink,
@@ -14,6 +16,7 @@ import {
   flush,
   formatCode,
   formatLighthouseAddress,
+  inviteCardTag,
   type LighthouseAddress,
   type LighthouseClient,
   MAX_WRONG_TRIES,
@@ -25,6 +28,7 @@ import {
   pairRoomOn,
   type Room,
   roomsFor,
+  sealInviteCard,
   selfRoomsAt,
   startPairSession,
 } from '@pigeon/core'
@@ -34,6 +38,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 // A device that rewrites who made its proposals, and when: set only while one runs.
 const forged: { by?: string } = {}
+// A Pigeon that reads `mail:rekey` but can make nothing of what it's sent, as one from before
+// new rounds: it takes the letter and gives a receipt. Set only while one fetches.
+const unread: { on?: boolean } = {}
 vi.mock('@pigeon/core', async (importOriginal) => {
   const core = (await importOriginal()) as typeof import('@pigeon/core')
   return {
@@ -43,6 +50,7 @@ vi.mock('@pigeon/core', async (importOriginal) => {
         forged.by === undefined ? rekey : { ...rekey, by: forged.by as never, at: 0 },
         news,
       ),
+    readRekey: (body: unknown) => (unread.on === true ? undefined : core.readRekey(body)),
   }
 })
 
@@ -83,6 +91,8 @@ function messenger(
     seed?: number
     lighthouses?: readonly LighthouseAddress[]
     lighthouse?: TestLighthouse
+    /** More Lighthouses after `lighthouse`, each reached through its own client. */
+    more?: readonly TestLighthouse[]
   } = {},
 ) {
   const transport = network.transport()
@@ -111,10 +121,16 @@ function messenger(
       ...(options.lighthouses === undefined ? {} : { lighthouses: options.lighthouses }),
       ...(options.lighthouse === undefined
         ? {}
-        : {
-            lighthouses: [options.lighthouse.address],
-            lighthouseClient: options.lighthouse.client,
-          }),
+        : (() => {
+            const all = [options.lighthouse, ...(options.more ?? [])]
+            return {
+              lighthouses: all.map((one) => one.address),
+              lighthouseClient: (address: LighthouseAddress) =>
+                (all.find((one) => one.address.id === address.id) ?? all[0])?.client(
+                  address,
+                ) as LighthouseClient,
+            }
+          })()),
       ...(options.events === undefined ? {} : { events: options.events }),
     }),
   }))
@@ -128,8 +144,9 @@ interface TestLighthouse {
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
-function testLighthouse(clock: Clock): TestLighthouse {
-  const signer = fakeSigner('test-lighthouse')
+function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse {
+  const signer = fakeSigner(name)
+  const url = name === 'test-lighthouse' ? 'wss://lighthouse.test/' : `wss://${name}.test/`
   const lighthouse = createLighthouse({
     signer,
     crypto: fakeCrypto,
@@ -146,10 +163,10 @@ function testLighthouse(clock: Clock): TestLighthouse {
       isDown = value
       if (value) for (const close of [...open]) close()
     },
-    address: { id: signer.id, name: 'Test Lighthouse', url: 'wss://lighthouse.test/' },
+    address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
-        address: { id: signer.id, name: 'Test Lighthouse', url: 'wss://lighthouse.test/' },
+        address: { id: signer.id, name: 'Test Lighthouse', url },
         crypto: fakeCrypto,
         random: (length) => new Uint8Array(length).fill(++n % 250),
         sleep: () => new Promise(() => undefined),
@@ -3139,3 +3156,714 @@ const base32DecodeOk = (text: string): Uint8Array => {
   if (!bytes.ok) throw new Error('not base32')
   return bytes.value
 }
+
+describe('replacing secrets after a removal', () => {
+  type Side = Awaited<ReturnType<typeof messenger>>
+  /** Each side looks for mail in turn, `rounds` times, a minute apart. */
+  async function checkAll(sides: readonly Side[], rounds = 3) {
+    for (let round = 0; round < rounds; round++)
+      for (const side of sides) {
+        await side.messenger.checkMail()
+        await flush(400)
+      }
+  }
+  /**
+   * How many `mail:rekey` letters to `to`, under `secret`'s tags today, the device called `name`
+   * can open, and how many there are.
+   */
+  async function rekeysFor(lighthouse: TestLighthouse, secret: string, to: string, name: string) {
+    const client = lighthouse.client(lighthouse.address)
+    const tag = await mailTag(fakeCrypto, base32DecodeOk(secret), to, '2026-11-24')
+    const listed = await client.request({ type: 'list', tags: [tag], cursor: 0 })
+    if (!listed.ok || listed.value.type !== 'listed') throw new Error('no list')
+    let opened = 0
+    const secrets: string[] = []
+    for (const item of listed.value.items) {
+      const got = await client.request({ type: 'get', id: item.id })
+      if (!got.ok || got.value.type !== 'blob') continue
+      const open = await openMail(
+        fakeCrypto,
+        fakeSealCrypto(),
+        fakeSealCrypto().sealer(name),
+        got.value.blob,
+        { to, kinds: ['rekey'], dates: ['2026-11-24'] },
+      )
+      if (!open.ok) continue
+      opened += 1
+      const body = open.value.letter.body as { secret?: unknown; prior?: { secret?: unknown } }
+      for (const secret of [body.secret, body.prior?.secret])
+        if (typeof secret === 'string') secrets.push(secret)
+    }
+    return { opened, listed: listed.value.items.length, secrets }
+  }
+
+  /** Rook's laptop, phone and tablet, and Mika, paired since codes went through SPAKE2. */
+  async function rookAndMika() {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
+    await flush(400)
+    await checkAll([laptop, phone, tablet, mika], 2)
+    const pair = only(mika.messenger.friends()).secret ?? ''
+    const own = (await laptop.store.get('selfSecret')) as string
+    return { network, clock, lighthouse, laptop, mika, phone, tablet, pair, own }
+  }
+
+  it('replaces the pair and self secrets, and the removed device is given neither', async () => {
+    const { network, lighthouse, laptop, mika, phone, tablet, pair, own } = await rookAndMika()
+    expect(only(laptop.messenger.friends()).replacing).toBeUndefined()
+    // The phone is lost, and the laptop, which writes Rook's list, takes it off.
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    await flush(400)
+    // What the old secrets' tags lead to now is sealed to the devices still on the lists: the
+    // phone can find it, but opens none of it.
+    for (const [secret, to, name] of [
+      [pair, mika.messenger.self, 'mika'],
+      [own, laptop.messenger.self, 'rook-tablet'],
+    ] as const) {
+      expect((await rekeysFor(lighthouse, secret, to, name)).opened).toBeGreaterThan(0)
+      expect((await rekeysFor(lighthouse, secret, to, 'rook-phone')).opened).toBe(0)
+    }
+    await checkAll([laptop, tablet, mika])
+
+    const onLaptop = only(laptop.messenger.friends())
+    const onMika = only(mika.messenger.friends())
+    expect(onLaptop.secret).not.toBe(pair)
+    expect(onMika.secret).toBe(onLaptop.secret)
+    expect(only(tablet.messenger.friends()).secret).toBe(onLaptop.secret)
+    expect(onLaptop.replacing?.old).toBe(pair)
+    expect(onLaptop.replacing?.settled).toBe(true)
+    expect(onMika.replacing?.settled).toBe(true)
+    const newOwn = (await laptop.store.get('selfSecret')) as string
+    expect(newOwn).not.toBe(own)
+    expect(await tablet.store.get('selfSecret')).toBe(newOwn)
+    // Sealed, after a removal: nothing from before to ask about.
+    expect(laptop.messenger.checkDevices() || tablet.messenger.checkDevices()).toBe(false)
+
+    // The phone stopped, holding only the old secrets.
+    expect(phone.messenger.deviceStatus()).toBe('removed')
+    expect(only(phone.messenger.friends()).secret).toBe(pair)
+    expect(await phone.store.get('selfSecret')).toBe(own)
+    // Everyone has left the old rooms, and the new ones can't be found from the old secrets.
+    expect(network.occupants(await today(pair))).toBe(0)
+    expect(network.occupants(await today(onLaptop.secret ?? ''))).toBe(3)
+    // Only the removed phone, which stopped talking, is left in the old self room.
+    const [oldSelfRoom] = await selfRoomsAt(fakeCrypto, own, NOON)
+    const [newSelfRoom] = await selfRoomsAt(fakeCrypto, newOwn, NOON)
+    expect(network.occupants(oldSelfRoom?.name ?? 'self:')).toBe(1)
+    expect(network.occupants(newSelfRoom?.name ?? 'self:')).toBe(2)
+    // And they chat in the new rooms.
+    await mika.messenger.send(onMika.id, 'after the phone')
+    await flush()
+    expect(only(laptop.messenger.friends()).log.entries.at(-1)?.text).toBe('after the phone')
+    expect(only(tablet.messenger.friends()).log.entries.at(-1)?.text).toBe('after the phone')
+  })
+
+  it('begins a new round after one that replaced a secret from before', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop0 = await messenger(network, 'rook', { clock, lighthouse })
+    const mika0 = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop0, mika0)
+    const { device: phone0 } = await linkDevice(network, laptop0, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const old = only(mika0.messenger.friends()).secret ?? ''
+    for (const side of [laptop0, mika0, phone0]) await side.messenger.close()
+    for (const side of [laptop0, mika0, phone0]) await fromBefore(side.store)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse, store: laptop0.store })
+    const mika = await messenger(network, 'mika', { clock, lighthouse, store: mika0.store })
+    const phone = await messenger(network, 'rook-phone', { clock, lighthouse, store: phone0.store })
+    await flush(400)
+    await checkAll([laptop, mika, phone])
+    // Everyone moved off the secret from before, and let it go.
+    // A plain string: the friend as listed is live, and would show the newer secret later.
+    const first = only(laptop.messenger.friends()).secret ?? ''
+    expect(first).not.toBe(old)
+    expect(only(mika.messenger.friends()).replacing?.settled).toBe(true)
+    expect(only(phone.messenger.friends()).secret).toBe(first)
+
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await checkAll([laptop, mika])
+    const onLaptop = only(laptop.messenger.friends())
+    const onMika = only(mika.messenger.friends())
+    expect(onLaptop.secret).not.toBe(first)
+    expect(onMika.secret).toBe(onLaptop.secret)
+    // A round of its own, for the secret they were on, with the one before kept.
+    expect(onMika.replacing?.old).toBe(first)
+    expect(onMika.prior?.old).toBe(old)
+    expect(onMika.replacing?.settled).toBe(true)
+    expect(only(phone.messenger.friends()).secret).toBe(first)
+    expect(network.occupants(await today(first))).toBe(0)
+    expect(network.occupants(await today(onLaptop.secret ?? ''))).toBe(2)
+    // It sticks across a reload.
+    await mika.messenger.close()
+    const again = await messenger(network, 'mika', { clock, lighthouse, store: mika0.store })
+    await flush(400)
+    expect(only(again.messenger.friends())).toMatchObject({
+      secret: onLaptop.secret,
+      prior: { old },
+    })
+  })
+
+  it('never ends on a secret proposed before the other side heard of a removal', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    // Mika's clock is two minutes behind Rook's.
+    const mikaClock = fakeClock(NOON - 2 * 60_000)
+    const lighthouse = testLighthouse(clock)
+    const laptop0 = await messenger(network, 'rook', { clock, lighthouse })
+    const mika0 = await messenger(network, 'mika', { clock: mikaClock, lighthouse })
+    await pairWith(laptop0, mika0)
+    const { device: rookPhone } = await linkDevice(
+      network,
+      laptop0,
+      'rook-phone',
+      clock,
+      lighthouse,
+    )
+    const linked = await linkDevice(network, mika0, 'mika-phone', mikaClock, lighthouse)
+    await flush(400)
+    await checkAll([laptop0, mika0, rookPhone, linked.device], 2)
+    const pair = only(mika0.messenger.friends()).secret ?? ''
+    for (const side of [laptop0, mika0, rookPhone, linked.device]) await away(side)
+
+    // Each removes their phone while the two laptops can't reach each other or the Lighthouse.
+    lighthouse.down(true)
+    const rook1 = await messenger(createMemoryNetwork(), 'rook', {
+      clock,
+      lighthouse,
+      store: laptop0.store,
+    })
+    await flush(400)
+    await rook1.messenger.removeDevice(fakeSigner('rook-phone').id)
+    await flush(400)
+    await rook1.messenger.checkMail()
+    await flush(400)
+    const rooks = only(rook1.messenger.friends()).secret ?? ''
+    await away(rook1)
+    await clock.tick(60_000)
+    await mikaClock.tick(60_000)
+    const mika1 = await messenger(createMemoryNetwork(), 'mika', {
+      clock: mikaClock,
+      lighthouse,
+      store: mika0.store,
+    })
+    await flush(400)
+    await mika1.messenger.removeDevice(fakeSigner('mika-phone').id)
+    await flush(400)
+    await mika1.messenger.checkMail()
+    await flush(400)
+    const mikas = only(mika1.messenger.friends()).secret ?? ''
+    await away(mika1)
+    expect(new Set([pair, rooks, mikas]).size).toBe(3)
+
+    // Back together.
+    lighthouse.down(false)
+    const shared = createMemoryNetwork()
+    const rook = await messenger(shared, 'rook', { clock, lighthouse, store: laptop0.store })
+    const mika = await messenger(shared, 'mika', {
+      clock: mikaClock,
+      lighthouse,
+      store: mika0.store,
+    })
+    await flush(400)
+    await checkAll([rook, mika], 4)
+    const onRook = only(rook.messenger.friends())
+    const end = onRook.secret ?? ''
+    expect(only(mika.messenger.friends()).secret).toBe(end)
+    expect(onRook.renew).toBeUndefined()
+    // Neither removed phone can open any letter that names the secret both ended on, though
+    // each was sealed the other side's first round, made before that side heard.
+    const seen = new Set<string>()
+    for (const secret of [pair, rooks, mikas, end])
+      for (const to of [rook.messenger.self, mika.messenger.self])
+        for (const phone of ['rook-phone', 'mika-phone'])
+          for (const found of (await rekeysFor(lighthouse, secret, to, phone)).secrets)
+            seen.add(found)
+    expect(seen.has(mikas) || seen.has(rooks)).toBe(true)
+    expect(seen.has(end)).toBe(false)
+    expect(network.occupants(await today(end))).toBe(0)
+    expect(shared.occupants(await today(end))).toBe(2)
+  })
+
+  it('closes the invite links a removed device knows, and its own card loses', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const made = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    await flush(400)
+    await checkAll([laptop, phone], 1)
+    // The phone heard of the link, and kept the list from before its removal.
+    expect(phone.messenger.inviteLinksElsewhere().map((link) => link.secret)).toEqual([
+      made.link.secret,
+    ])
+    const stale = await phone.store.get('deviceLog')
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(800)
+    expect(only(laptop.messenger.inviteLinks()).open).toBe(false)
+
+    // The removed phone puts an open card of its own on the list from before.
+    const phoneSigner = fakeSigner('rook-phone')
+    const sealing = await bindSealingKey(phoneSigner, fakeSealCrypto().sealer('rook-phone'))
+    const sealed = await sealInviteCard(
+      fakeCrypto,
+      fakeSealCrypto(),
+      phoneSigner,
+      made.link.secret,
+      {
+        identity: laptop.messenger.self,
+        deviceLog: stale as never,
+        keys: [sealing],
+        name: 'Rook',
+        lighthouses: [lighthouse.address],
+        expires: made.link.expires,
+        open: true,
+      },
+    )
+    if (!sealed.ok) throw new Error('no card')
+    const put = await lighthouse.client(lighthouse.address).request({
+      type: 'put',
+      tag: await inviteCardTag(fakeCrypto, made.link.secret),
+      blob: sealed.value,
+      expires: made.link.expires,
+      drops: [base32Encode(new Uint8Array(32).fill(7))],
+    })
+    expect(put.ok && put.value.type).toBe('stored')
+    // Someone opening the link now finds it closed.
+    const stranger = await messenger(network, 'stranger', { clock, lighthouse })
+    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
+    const opened = await stranger.messenger.openInviteLink(made.link.url)
+    expect(opened).toEqual({ ok: false, error: 'closed' })
+  })
+
+  it('closes the links once the Lighthouse is back, after a close it didn’t take', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
+    await flush(400)
+    const mine = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    const theirs = await tablet.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!mine.ok || !theirs.ok) throw new Error('no link')
+    await flush(400)
+    await checkAll([laptop, tablet, phone], 1)
+    expect(laptop.messenger.inviteLinksElsewhere().map((link) => link.secret)).toEqual([
+      theirs.link.secret,
+    ])
+    // The tablet is away; the Lighthouse is down when the laptop removes the phone.
+    await away(tablet)
+    lighthouse.down(true)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(800)
+    expect(only(laptop.messenger.inviteLinks())).toMatchObject({ open: false, closing: true })
+    // Back up, after a restart: the next mail check closes both.
+    lighthouse.down(false)
+    await laptop.messenger.close()
+    await flush()
+    const again = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
+    await flush(400)
+    await again.messenger.checkMail()
+    await flush(800)
+    expect(only(again.messenger.inviteLinks()).closing).toBeUndefined()
+    expect(await laptop.store.get('closeLinksAfterRemoval')).toBeUndefined()
+    const stranger = await messenger(network, 'stranger', { clock, lighthouse })
+    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
+    for (const link of [mine.link, theirs.link])
+      expect(await stranger.messenger.openInviteLink(link.url)).toEqual({
+        ok: false,
+        error: 'closed',
+      })
+  })
+
+  it('keeps closing a link until every Lighthouse that held its card holds a closed one', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const first = testLighthouse(clock)
+    const second = testLighthouse(clock, 'second-lighthouse')
+    const both = { clock, lighthouse: first, more: [second] }
+    const laptop = await messenger(network, 'rook', both)
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const phone0 = await messenger(network, 'rook-phone', both)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, first, phone0)
+    await flush(400)
+    const made = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    expect(Object.keys(made.link.cards)).toHaveLength(2)
+    await flush(400)
+    // The second Lighthouse is down when the phone is removed.
+    second.down(true)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(800)
+    const closing = only(laptop.messenger.inviteLinks())
+    expect(closing).toMatchObject({ open: false, closing: true })
+    // The second Lighthouse's card is still known, to replace once it's back.
+    expect(closing.cards[second.address.id]).toBe(made.link.cards[second.address.id])
+    expect(await laptop.store.get('closeLinksAfterRemoval')).toEqual([made.link.secret])
+    second.down(false)
+    await laptop.messenger.checkMail()
+    await flush(800)
+    expect(only(laptop.messenger.inviteLinks()).closing).toBeUndefined()
+    // Someone who reads only the second Lighthouse finds it closed.
+    const stranger = await messenger(network, 'stranger', { clock, lighthouse: second })
+    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
+    expect(await stranger.messenger.openInviteLink(made.link.url)).toEqual({
+      ok: false,
+      error: 'closed',
+    })
+  })
+
+  it('puts one closed card for another device’s link, however often it tries again', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const first = testLighthouse(clock)
+    const second = testLighthouse(clock, 'second-lighthouse')
+    const both = { clock, lighthouse: first, more: [second] }
+    const laptop = await messenger(network, 'rook', both)
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const tablet0 = await messenger(network, 'rook-tablet', both)
+    const linked = await linkDevice(network, laptop, 'rook-tablet', clock, first, tablet0)
+    const phone0 = await messenger(network, 'rook-phone', both)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, first, phone0)
+    await flush(400)
+    const made = await linked.device.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    await flush(400)
+    await checkAll([linked.device, laptop, phone], 1)
+    expect(laptop.messenger.inviteLinksElsewhere()).toHaveLength(1)
+    // The tablet is away, and the second Lighthouse down, when the phone is removed.
+    await away(linked.device)
+    second.down(true)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(800)
+    const tag = await inviteCardTag(fakeCrypto, made.link.secret)
+    const cardsAt = async (where: TestLighthouse) => {
+      const listed = await where
+        .client(where.address)
+        .request({ type: 'list', tags: [tag], cursor: 0 })
+      return listed.ok && listed.value.type === 'listed' ? listed.value.items.length : -1
+    }
+    const before = await cardsAt(first)
+    for (let i = 0; i < 10; i++) {
+      await clock.tick(30_000)
+      await laptop.messenger.checkMail()
+      await flush(200)
+    }
+    // Still to close at the second, but nothing more put at the first.
+    expect(await cardsAt(first)).toBe(before)
+    expect(await laptop.store.get('closeLinksAfterRemoval')).toEqual([made.link.secret])
+    second.down(false)
+    await laptop.messenger.checkMail()
+    await flush(400)
+    expect(await laptop.store.get('closeLinksAfterRemoval')).toBeUndefined()
+    expect(await cardsAt(first)).toBe(before)
+    expect(await cardsAt(second)).toBeGreaterThan(0)
+  })
+
+  it('still finishes a fetch that brings two removals, with a request waiting', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
+    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    const { device: watch } = await linkDevice(network, laptop, 'rook-watch', clock, lighthouse)
+    await flush(400)
+    await checkAll([laptop, tablet, phone, watch], 1)
+    const made = await tablet.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    const stranger = await messenger(network, 'stranger', { clock, lighthouse })
+    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
+    const opened = await stranger.messenger.openInviteLink(made.link.url)
+    if (!opened.ok) throw new Error(opened.error)
+    expect(await stranger.messenger.askThroughLink(opened)).toBe('sent')
+    await tablet.messenger.checkMail()
+    await flush(400)
+    expect(only(only(tablet.messenger.inviteLinks()).requests).state).toBe('waiting')
+    // The tablet is away while the laptop removes two devices, one after the other.
+    await away(tablet)
+    for (const gone of [phone, watch]) {
+      await laptop.messenger.removeDevice(gone.messenger.device)
+      await flush(400)
+      await laptop.messenger.checkMail()
+      await flush(400)
+    }
+    // The tablet comes back and learns both in one fetch: the fetch still ends.
+    const back = await messenger(createMemoryNetwork(), 'rook-tablet', {
+      clock,
+      lighthouse,
+      store: tablet.store,
+    })
+    const timeout = new Promise<'stuck'>((resolve) => setTimeout(() => resolve('stuck'), 3000))
+    const done = back.messenger.checkMail().then(() => 'done' as const)
+    for (let i = 0; i < 20; i++) await flush(200)
+    expect(await Promise.race([done, timeout])).toBe('done')
+    await flush(800)
+    expect(only(back.messenger.inviteLinks())).toMatchObject({ open: false })
+    expect(only(only(back.messenger.inviteLinks()).requests).state).toBe('closed')
+  })
+
+  it('acts on a removal kept in the log before the tab closed', async () => {
+    const { lighthouse, clock, network, laptop, mika, phone, pair } = await rookAndMika()
+    const made = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
+    if (!made.ok) throw new Error(made.error)
+    await flush(400)
+    await laptop.messenger.close()
+    await flush()
+    // The removal was kept, and nothing after it: as if the tab closed right then.
+    const removing = await loadDevices({
+      crypto: fakeCrypto,
+      signer: fakeSigner('rook'),
+      store: laptop.store,
+      clock,
+    })
+    expect(await removing.change('remove', phone.messenger.device)).toBe(true)
+    const back = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
+    await flush(400)
+    await checkAll([back, mika])
+    expect(only(back.messenger.friends()).secret).not.toBe(pair)
+    expect(only(mika.messenger.friends()).secret).toBe(only(back.messenger.friends()).secret)
+    expect(only(back.messenger.inviteLinks()).open).toBe(false)
+  })
+
+  it('replaces them after a recovery leaves the other devices off', async () => {
+    const { network, lighthouse, laptop, mika, phone, tablet, pair, own } = await rookAndMika()
+    const key = fakeSigner('rook-recovery-1')
+    expect(await laptop.messenger.commitRecoveryKey(key.id)).toBe(true)
+    await flush(400)
+    await checkAll([laptop, phone, tablet, mika], 1)
+    // The laptop is stolen. On the phone, the recovery key makes it the writer, alone.
+    await away(tablet)
+    expect(await phone.messenger.recoverHere(key, false, fakeSigner('rook-recovery-2').id)).toBe(
+      true,
+    )
+    await flush(400)
+    await phone.messenger.checkMail()
+    await flush(400)
+    expect((await rekeysFor(lighthouse, pair, mika.messenger.self, 'mika')).opened).toBeGreaterThan(
+      0,
+    )
+    for (const name of ['rook', 'rook-tablet'])
+      expect((await rekeysFor(lighthouse, pair, mika.messenger.self, name)).opened).toBe(0)
+    await checkAll([phone, mika])
+    const onPhone = only(phone.messenger.friends())
+    expect(onPhone.secret).not.toBe(pair)
+    expect(only(mika.messenger.friends()).secret).toBe(onPhone.secret)
+    // Every other device is gone: a new self secret kept on the phone alone.
+    expect(await phone.store.get('selfSecret')).not.toBe(own)
+    expect(laptop.messenger.deviceStatus()).toBe('removed')
+    expect(only(laptop.messenger.friends()).secret).toBe(pair)
+    expect(network.occupants(await today(onPhone.secret ?? ''))).toBe(2)
+  })
+
+  it('keeps chatting with a friend whose Pigeon looks for no mail, and moves once it does', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika0 = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika0)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const pair = only(mika0.messenger.friends()).secret ?? ''
+    await mika0.messenger.close()
+    // Mika's Pigeon doesn't look for mail of this kind: here, it looks for none at all.
+    const mika = await messenger(network, 'mika', { clock, store: mika0.store })
+    await flush(400)
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await checkAll([laptop])
+    const onLaptop = only(laptop.messenger.friends())
+    expect(onLaptop.secret).not.toBe(pair)
+    expect(onLaptop.replacing?.heardAt).toBeUndefined()
+    // The laptop waits in both rooms, so Mika, still in the old one, hears it as before.
+    expect(network.occupants(await today(pair))).toBe(2)
+    expect(only(mika.messenger.friends()).secret).toBe(pair)
+    await laptop.messenger.send(onLaptop.id, 'still here')
+    await flush()
+    expect(only(mika.messenger.friends()).log.entries.at(-1)?.text).toBe('still here')
+
+    // Mika's Pigeon updates: it finds the new round waiting under the old secret and moves.
+    await mika.messenger.close()
+    await flush()
+    const updated = await messenger(network, 'mika', { clock, lighthouse, store: mika0.store })
+    await flush(400)
+    await checkAll([updated, laptop])
+    expect(only(updated.messenger.friends()).secret).toBe(onLaptop.secret)
+    expect(network.occupants(await today(pair))).toBe(0)
+    expect(network.occupants(await today(onLaptop.secret ?? ''))).toBe(2)
+  })
+
+  it('sends the round again to a friend whose Pigeon took it unread, once it’s met there', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const pair = only(mika.messenger.friends()).secret ?? ''
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    await flush(400)
+    // Mika's Pigeon takes the letter, makes nothing of it, and gives its receipt.
+    unread.on = true
+    await mika.messenger.checkMail()
+    await flush(400)
+    delete unread.on
+    await laptop.messenger.checkMail()
+    await flush(400)
+    expect(only(mika.messenger.friends()).secret).toBe(pair)
+    await mika.messenger.checkMail()
+    await flush(400)
+    expect(only(mika.messenger.friends()).secret).toBe(pair)
+
+    // It updates, and meets the laptop in the old room: the laptop sends the round again.
+    await mika.messenger.close()
+    await flush()
+    const updated = await messenger(network, 'mika', { clock, lighthouse, store: mika.store })
+    await flush(800)
+    await checkAll([updated, laptop])
+    const secret = only(laptop.messenger.friends()).secret
+    expect(secret).not.toBe(pair)
+    expect(only(updated.messenger.friends()).secret).toBe(secret)
+    expect(network.occupants(await today(pair))).toBe(0)
+  })
+
+  it('sends the round again only once, however often it starts and meets them', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika)
+    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
+    await flush(400)
+    const mikaId = mika.messenger.self
+    await laptop.messenger.removeDevice(phone.messenger.device)
+    await flush(400)
+    await laptop.messenger.checkMail()
+    await flush(400)
+    // Mika's Pigeon takes every letter it's sent and makes nothing of it.
+    const rekeysWaiting = async () =>
+      (
+        ((await laptop.store.get('mail-outbox')) ?? []) as {
+          kind: string
+          to: { identity: string }
+        }[]
+      ).filter((letter) => letter.kind === 'rekey' && letter.to.identity === mikaId).length
+    const takeUnread = async (rook: Side) => {
+      unread.on = true
+      await mika.messenger.checkMail()
+      await flush(400)
+      delete unread.on
+      await rook.messenger.checkMail()
+      await flush(400)
+    }
+    await takeUnread(laptop)
+    expect(await rekeysWaiting()).toBe(0)
+    // The laptop starts while the Lighthouse is down: it meets Mika, but nothing is put, so
+    // nothing is marked as sent.
+    lighthouse.down(true)
+    await laptop.messenger.close()
+    await flush()
+    let rook = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
+    await flush(800)
+    expect(only(rook.messenger.friends()).replacing?.resent).toBeUndefined()
+    lighthouse.down(false)
+    // Each time the laptop starts it meets Mika in the old room. Only the first sends again.
+    const sent: number[] = []
+    for (let start = 0; start < 3; start++) {
+      await rook.messenger.close()
+      await flush()
+      rook = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
+      await flush(800)
+      sent.push(await rekeysWaiting())
+      await takeUnread(rook)
+    }
+    expect(only(rook.messenger.friends()).replacing?.resent).toEqual([mika.messenger.device])
+    expect(sent[0]).toBeGreaterThan(0)
+    expect(sent.slice(1)).toEqual([0, 0])
+
+    // Another of Mika's devices on the same Pigeon turns up in the old room: it's sent one too.
+    unread.on = true
+    const { device: tablet } = await linkDevice(network, mika, 'mika-tablet', clock, lighthouse)
+    await flush(800)
+    delete unread.on
+    await rook.messenger.checkMail()
+    await flush(400)
+    await rook.messenger.close()
+    await flush()
+    rook = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
+    await flush(800)
+    expect(only(rook.messenger.friends()).replacing?.resent).toEqual([
+      mika.messenger.device,
+      tablet.messenger.device,
+    ])
+  })
+
+  it('replaces the pair secret of a friend added from a file', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const laptop = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(laptop, mika)
+    await flush(400)
+    const pair = only(mika.messenger.friends()).secret ?? ''
+    const data = JSON.parse(JSON.stringify(laptop.messenger.exportData())) as unknown
+    // A new browser for the same Rook, with nobody on it yet, takes in the file.
+    const store = createMemoryStore()
+    for (const key of ['self', 'deviceLog', 'selfSecret', 'selfSecretState'])
+      await store.set(key, await laptop.store.get(key))
+    await laptop.messenger.close()
+    laptop.transport.disconnect()
+    const here = await messenger(network, 'rook', { clock, lighthouse, store })
+    expect(await here.messenger.importData(data)).toBe('imported')
+    await here.messenger.close()
+    expect((await store.get('friends')) as unknown[]).toMatchObject([{ secret: pair, renew: true }])
+    const again = await messenger(network, 'rook', { clock, lighthouse, store })
+    await flush(400)
+    await checkAll([again, mika])
+    const secret = only(again.messenger.friends()).secret
+    expect(secret).not.toBe(pair)
+    expect(only(mika.messenger.friends()).secret).toBe(secret)
+    expect(only(again.messenger.friends()).renew).toBeUndefined()
+  })
+
+  it('keeps the rounds a friend from a file was replacing in', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook } = await pair(network)
+    const data = JSON.parse(JSON.stringify(rook.messenger.exportData())) as Record<string, unknown>
+    const [mika] = data['friends'] as Record<string, unknown>[]
+    const secret = mika?.['secret'] as string
+    const round = { old: secret, at: NOON, by: mika?.['id'], sig: 'c2ln' }
+    const rounds = { replacing: round, prior: { ...round, at: NOON - 1 }, begun: secret }
+    const fresh = await messenger(createMemoryNetwork(), 'rook')
+    expect(await fresh.messenger.importData({ ...data, friends: [{ ...mika, ...rounds }] })).toBe(
+      'imported',
+    )
+    expect((await fresh.store.get('friends')) as unknown[]).toMatchObject([
+      { ...rounds, renew: true },
+    ])
+  })
+})

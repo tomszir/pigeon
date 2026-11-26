@@ -1,9 +1,10 @@
-// Replacing a pair or self secret from before codes went through SPAKE2. Such a secret may be
-// known to someone who watched the pairing or linking it came from, so it's replaced with a new
-// one that only ever travels sealed to the devices that hold the old one, as a `mail:rekey`
-// letter. Either side may propose; when several proposals for the same old secret meet, the
-// earliest wins everywhere, by (at, by, secret), so every device settles on the same one
-// whatever order they arrive in (docs/protocol.md, "Replacing an old secret").
+// Replacing a pair or self secret: one from before codes went through SPAKE2, which may be known
+// to someone who watched the pairing or linking it came from, or one held when a device that had
+// it was removed. It's replaced with a new one that only ever travels sealed to the devices that
+// should hold it, as a `mail:rekey` letter. Either side may propose; when several proposals for
+// the same old secret meet, the earliest wins everywhere, by (at, by, secret), so every device
+// settles on the same one whatever order they arrive in (docs/protocol.md, "Replacing a
+// secret").
 
 import { type DeviceLog, isDeviceLog } from '../devices/device-log.ts'
 import { base32Decode, base32DecodeExact, base32Encode, utf8Encode } from '../encoding/bytes.ts'
@@ -86,42 +87,71 @@ export interface RekeyNews {
    * looked at, so a proposal from a device someone has since removed is seen not to count.
    */
   readonly logs?: readonly DeviceLog[]
+  /**
+   * When the proposal begins a new round, the winning proposal of the round it began from,
+   * whose `secret` the proposal's `replaces` names, as its own maker signed it. A device still
+   * in that round, or in a rival one begun from it, checks it to follow.
+   */
+  readonly prior?: Rekey | undefined
 }
 
-/** A letter body as sent: the proposal, and what rides with it. */
-export const rekeyBody = (rekey: Rekey, news: RekeyNews = {}): Json => ({
-  v: REKEY_VERSION,
+const proposalFields = (rekey: Rekey) => ({
   replaces: rekey.replaces,
   secret: rekey.secret,
   at: rekey.at,
   by: rekey.by,
   sig: rekey.sig,
+})
+
+/** A proposal as it's read, from its fields: undefined unless each has its one spelling. */
+function readProposal(fields: Record<string, unknown>): Rekey | undefined {
+  const { replaces, secret, at, by, sig } = fields
+  if (!isId(replaces) || !isPairSecret(secret)) return undefined
+  if (typeof at !== 'number' || !Number.isSafeInteger(at) || at < 0) return undefined
+  if (typeof by !== 'string' || !isPeerId(by)) return undefined
+  if (typeof sig !== 'string' || !base32DecodeExact(sig).ok) return undefined
+  return { replaces, secret, at, by, sig }
+}
+
+/** A letter body as sent: the proposal, and what rides with it. */
+export const rekeyBody = (rekey: Rekey, news: RekeyNews = {}): Json => ({
+  v: REKEY_VERSION,
+  ...proposalFields(rekey),
   ...(news.friend === undefined ? {} : { friend: news.friend }),
   ...(news.logs === undefined ? {} : { logs: news.logs as unknown as Json }),
+  ...(news.prior === undefined ? {} : { prior: proposalFields(news.prior) }),
 })
 
 /** Reads a `mail:rekey` body; undefined unless every part has its one accepted spelling. */
 export function readRekey(body: unknown): ({ rekey: Rekey } & RekeyNews) | undefined {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined
   const fields = body as Record<string, unknown>
-  const { v, replaces, secret, at, by, sig, friend, logs } = fields
-  const known = new Set(['v', 'replaces', 'secret', 'at', 'by', 'sig', 'friend', 'logs'])
+  const { v, friend, logs, prior } = fields
+  const known = new Set(['v', 'replaces', 'secret', 'at', 'by', 'sig', 'friend', 'logs', 'prior'])
   if (Object.keys(fields).some((key) => !known.has(key))) return undefined
-  if (v !== REKEY_VERSION || !isId(replaces) || !isPairSecret(secret)) return undefined
-  if (typeof at !== 'number' || !Number.isSafeInteger(at) || at < 0) return undefined
-  if (typeof by !== 'string' || !isPeerId(by)) return undefined
-  if (typeof sig !== 'string' || !base32DecodeExact(sig).ok) return undefined
+  if (v !== REKEY_VERSION) return undefined
+  const rekey = readProposal(fields)
+  if (rekey === undefined) return undefined
   if (friend !== undefined && (typeof friend !== 'string' || !isPeerId(friend))) return undefined
   if (
     logs !== undefined &&
     (!Array.isArray(logs) || logs.length > MAX_REKEY_LOGS || !logs.every(isDeviceLog))
   )
     return undefined
-  const rekey: Rekey = { replaces, secret, at, by, sig }
+  let before: Rekey | undefined
+  if (prior !== undefined) {
+    if (typeof prior !== 'object' || prior === null || Array.isArray(prior)) return undefined
+    const priorFields = prior as Record<string, unknown>
+    const proposal = new Set(['replaces', 'secret', 'at', 'by', 'sig'])
+    if (Object.keys(priorFields).some((key) => !proposal.has(key))) return undefined
+    before = readProposal(priorFields)
+    if (before === undefined) return undefined
+  }
   return {
     rekey,
     ...(friend === undefined ? {} : { friend }),
     ...(logs === undefined ? {} : { logs: logs as DeviceLog[] }),
+    ...(before === undefined ? {} : { prior: before }),
   }
 }
 

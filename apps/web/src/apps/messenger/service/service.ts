@@ -107,6 +107,7 @@ import {
 import { createLetters, type Letters } from './letters.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import {
+  begin,
   consider,
   fetchSecrets,
   heardFrom,
@@ -114,6 +115,7 @@ import {
   isReplacing,
   mailSecret,
   needsReplacing,
+  priorWinner,
   propose,
   proposerGone,
   type Replacing,
@@ -170,8 +172,14 @@ export interface FriendRecord {
    * secret it hands over. One without it is from before, and is replaced.
    */
   readonly sealed?: boolean | undefined
-  /** Moving off a secret from before: `secret` is already the new one. */
+  /** Moving off an old secret: `secret` is already the new one. */
   readonly replacing?: Replacing | undefined
+  /** The round before `replacing`, when a removal began a new one from its winner. */
+  readonly prior?: Replacing | undefined
+  /** A device that held the secret was removed here: it's replaced at the next mail check. */
+  readonly renew?: boolean | undefined
+  /** The secret proposed here after that removal, until a round begins from it. */
+  readonly begun?: string | undefined
 }
 
 /** A friend you removed who hasn't been told yet, and where to find them. */
@@ -332,6 +340,17 @@ const KEYS = {
   lighthousesChangedAt: 'lighthousesChangedAt',
   /** The self secret was replaced: My Devices asks you to check your list, until you have. */
   checkDevices: 'checkDevices',
+  /**
+   * The invite links a device taken off your list may know, still to be closed: kept until a
+   * closed card for each is up, so a close that failed, or a tab that closed first, tries again.
+   */
+  closeLinks: 'closeLinksAfterRemoval',
+  /**
+   * The devices taken off your list that what a removal calls for (links closed, secrets
+   * marked to renew) was last worked out for. A removal not in it, whenever this device first
+   * sees it, is acted on, even after a tab closed between keeping the log and acting.
+   */
+  removalsSeen: 'removalsSeen',
   /** What a friend's devices (or your own, under your own id) said about their mail. */
   mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,
@@ -342,22 +361,30 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 /** A friend's pair secret as rekeys.ts sees it; none for a friend not yet given one. */
 function secretState(record: FriendRecord): SecretState | undefined {
-  const { secret, sealed, replacing } = record
-  return secret === undefined ? undefined : { secret, sealed, replacing }
+  const { secret, sealed, replacing, prior, renew, begun } = record
+  return secret === undefined ? undefined : { secret, sealed, replacing, prior, renew, begun }
 }
 
+/** A plain copy of a round: what's read from the Solid store is a proxy, which storage can't clone. */
+const plainRound = (round: Replacing): Replacing => ({
+  ...round,
+  ...(round.heard === undefined ? {} : { heard: [...round.heard] }),
+  ...(round.resent === undefined ? {} : { resent: [...round.resent] }),
+})
+
 /** What's stored of a secret's replacement: only what's set. */
-const secretFlags = ({ sealed, replacing }: Pick<FriendRecord, 'sealed' | 'replacing'>) => ({
+const secretFlags = ({
+  sealed,
+  replacing,
+  prior,
+  renew,
+  begun,
+}: Pick<FriendRecord, 'sealed' | 'replacing' | 'prior' | 'renew' | 'begun'>) => ({
   ...(sealed === true ? { sealed } : {}),
-  // A plain copy: what's read from the Solid store is a proxy, which storage can't clone.
-  ...(replacing === undefined
-    ? {}
-    : {
-        replacing: {
-          ...replacing,
-          ...(replacing.heard === undefined ? {} : { heard: [...replacing.heard] }),
-        },
-      }),
+  ...(replacing === undefined ? {} : { replacing: plainRound(replacing) }),
+  ...(replacing === undefined || prior === undefined ? {} : { prior: plainRound(prior) }),
+  ...(renew === true ? { renew } : {}),
+  ...(begun === undefined ? {} : { begun }),
 })
 
 export const inviteLink = (base: string, code: LiveCode, fingerprint: string): string =>
@@ -474,6 +501,14 @@ export type OpenedInvite =
 export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, clock } = deps
   const events = deps.events ?? {}
+  // What acting on a removal keeps, declared before anything waits: a device log can arrive, and
+  // be acted on, while the rest of this is still being set up.
+  /** The removals already acted on here; read from storage further down. */
+  let removalsSeen: Set<PeerId> | undefined
+  /** Acting on removals, one run at a time. */
+  let acting: Promise<unknown> = Promise.resolve()
+  /** Changes to the links still to close, one at a time. */
+  let closingLinks: Promise<unknown> = Promise.resolve()
   const devices = await loadDevices({ crypto, signer, store, clock })
   /** The identity you are: your first device's key, on every device. */
   const self = devices.self
@@ -889,6 +924,8 @@ export async function createMessenger(deps: MessengerDeps) {
       // Old secrets with no replacement under way yet, now that any proposal waiting for this
       // device has been taken.
       await replaceOldSecrets()
+      // Invite links still to close after a removal, where a Lighthouse didn't take the card.
+      void closeLinksAfterRemoval().catch(() => undefined)
       // What waits to be mailed to friends who are away: written before a close, or held back.
       for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
       // A farewell every device of theirs has a receipt for was heard: nothing more to say.
@@ -936,6 +973,9 @@ export async function createMessenger(deps: MessengerDeps) {
           moved,
           sealed,
           replacing,
+          prior,
+          renew,
+          begun,
         }): FriendRecord => ({
           id,
           handle,
@@ -945,7 +985,7 @@ export async function createMessenger(deps: MessengerDeps) {
           ...(removedYouAt === undefined ? {} : { removedYouAt }),
           ...(secret === undefined ? {} : { secret }),
           ...(moved === true ? { moved } : {}),
-          ...secretFlags({ sealed, replacing }),
+          ...secretFlags({ sealed, replacing, prior, renew, begun }),
         }),
       ),
     )
@@ -1227,6 +1267,9 @@ export async function createMessenger(deps: MessengerDeps) {
       moved: true,
       sealed: next.sealed,
       replacing: next.replacing,
+      prior: next.replacing === undefined ? undefined : next.prior,
+      renew: next.renew === true ? true : undefined,
+      begun: next.begun,
     })
     await saveFriends()
     const session = sessions.get(id)
@@ -1234,63 +1277,87 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /**
-   * Sends the winning proposal for a friend's secret to the friend's devices, under the old
-   * secret's tags and under `before`'s, the replacement this one beat, where a device that
-   * settled on it looks; and to your own other devices; or only to `side`.
+   * The tags a winner goes under: the old secret's, the round before's, where a device still in
+   * that round looks, and `more` (the replacement this one beat, where a device that settled on
+   * it looks, or the secret of a device that's behind).
    */
-  async function tellFriendWinner(id: PeerId, side?: 'friend' | 'own', before?: string) {
+  function winnerTags(kept: SecretState, more: readonly (string | undefined)[]): string[] {
+    const all = [kept.replacing?.old, kept.prior?.old, ...more]
+    return [...new Set(all.filter((secret): secret is string => secret !== undefined))]
+  }
+
+  /**
+   * Sends the winning proposal for a friend's secret, with the round before's winner when a
+   * removal began it, to the friend's devices under `winnerTags`, and to your own other devices;
+   * or only to `side`.
+   */
+  async function tellFriendWinner(
+    id: PeerId,
+    side?: 'friend' | 'own',
+    more: readonly (string | undefined)[] = [],
+  ) {
     const view = friend(id)
     const kept = view === undefined ? undefined : secretState(view)
     const rekey = kept === undefined ? undefined : await winner(crypto, kept)
     if (kept?.replacing === undefined || rekey === undefined) return
+    const prior = await priorWinner(crypto, kept)
     const logs = [devices.own(), devices.friendLog(id)]
     if (side !== 'own')
-      for (const under of before === undefined
-        ? [kept.replacing.old]
-        : [kept.replacing.old, before])
-        mailRekey(await recipient(id, under), rekeyBody(rekey, { logs }))
-    if (side !== 'friend') mailRekey(await selfRecipient(), rekeyBody(rekey, { friend: id, logs }))
+      for (const under of winnerTags(kept, more))
+        mailRekey(await recipient(id, under), rekeyBody(rekey, { logs, prior }))
+    if (side !== 'friend')
+      mailRekey(await selfRecipient(), rekeyBody(rekey, { friend: id, logs, prior }))
   }
 
   /**
-   * Sends the winning proposal for the self secret to your other devices, under the old one and
-   * under `before`, the replacement it beat.
+   * Sends the winning proposal for the self secret, with the round before's winner when a
+   * removal began it, to your other devices under `winnerTags`.
    */
-  async function tellSelfWinner(before?: string) {
+  async function tellSelfWinner(more: readonly (string | undefined)[] = []) {
     const kept = devices.selfSecretState()
     const rekey = kept === undefined ? undefined : await winner(crypto, kept)
     if (kept?.replacing === undefined || rekey === undefined) return
-    for (const under of before === undefined ? [kept.replacing.old] : [kept.replacing.old, before])
-      mailRekey(await selfRecipient(undefined, under), rekeyBody(rekey, { logs: [devices.own()] }))
+    const prior = await priorWinner(crypto, kept)
+    for (const under of winnerTags(kept, more))
+      mailRekey(
+        await selfRecipient(undefined, under),
+        rekeyBody(rekey, { logs: [devices.own()], prior }),
+      )
   }
 
-  /** A proposal for a friend's secret, from them or, as a copy, from your own other device. */
-  function takeFriendRekey(id: PeerId, rekey: Rekey, sender: Sender) {
+  /**
+   * A proposal for a friend's secret, from them or, as a copy, from your own other device, with
+   * `prior`, the winner of the round it began from, when it came with one.
+   */
+  function takeFriendRekey(id: PeerId, rekey: Rekey, sender: Sender, prior?: Rekey) {
     return oneRekey(async () => {
       const view = friend(id)
       const kept = view === undefined ? undefined : secretState(view)
       if (kept === undefined || view?.removedYouAt !== undefined) return
-      const step = await consider(crypto, kept, rekey, sender, clock.now(), countsFor(id))
+      const step = await consider(crypto, kept, rekey, sender, clock.now(), countsFor(id), prior)
       if (step.next !== undefined) await keepFriendSecret(id, step.next)
-      if (step.changed) await tellFriendWinner(id, undefined, heldBefore(kept))
-      else if (step.answer) await tellFriendWinner(id, sender.other ? 'friend' : 'own')
+      if (step.changed) await tellFriendWinner(id, undefined, [heldBefore(kept), kept.secret])
+      else if (step.answer)
+        await tellFriendWinner(id, sender.other ? 'friend' : 'own', step.under ?? [])
     })
   }
 
   /** A proposal for the self secret, from another of your devices. */
-  function takeSelfRekey(rekey: Rekey, device: PeerId) {
+  function takeSelfRekey(rekey: Rekey, device: PeerId, prior?: Rekey) {
     return oneRekey(async () => {
       const kept = devices.selfSecretState()
       if (kept === undefined || devices.status() !== 'active') return
       const sender = { other: true, device }
-      const step = await consider(crypto, kept, rekey, sender, clock.now(), countsForSelf)
+      const step = await consider(crypto, kept, rekey, sender, clock.now(), countsForSelf, prior)
       if (step.next !== undefined) {
         await devices.setSelfSecretState(step.next)
-        if (step.changed) await askToCheckDevices()
+        // A self secret from before may have been seen while a device was linked; one replaced
+        // after a removal was sealed, and the list already says who's yours.
+        if (step.changed && kept.sealed !== true) await askToCheckDevices()
         if (selfSession !== undefined) await syncRooms(selfSession)
       }
-      if (step.changed) await tellSelfWinner(heldBefore(kept))
-      else if (step.answer) await tellSelfWinner()
+      if (step.changed) await tellSelfWinner([heldBefore(kept), kept.secret])
+      else if (step.answer) await tellSelfWinner(step.under ?? [])
     })
   }
 
@@ -1305,14 +1372,24 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed) return false
     if (letter.sender === self) {
       if (!devices.isOwnOther(letter.from)) return false
-      if (read.friend === undefined) await takeSelfRekey(read.rekey, letter.from)
+      if (read.friend === undefined) await takeSelfRekey(read.rekey, letter.from, read.prior)
       else if (friend(read.friend) !== undefined)
-        await takeFriendRekey(read.friend, read.rekey, { other: false, device: letter.from })
+        await takeFriendRekey(
+          read.friend,
+          read.rekey,
+          { other: false, device: letter.from },
+          read.prior,
+        )
       return true
     }
     if (read.friend !== undefined || friend(letter.sender) === undefined) return true
     if (devices.classify(letter.sender, letter.from) !== 'friend') return false
-    await takeFriendRekey(letter.sender, read.rekey, { other: true, device: letter.from })
+    await takeFriendRekey(
+      letter.sender,
+      read.rekey,
+      { other: true, device: letter.from },
+      read.prior,
+    )
     return true
   }
 
@@ -1327,24 +1404,105 @@ export async function createMessenger(deps: MessengerDeps) {
     return new Set(await Promise.all(days.map((at) => pairRoomOn(crypto, secret, utcDay(at)))))
   }
 
-  /** A friend's `device` said hello in `room`: if it's the new secret's, that device holds it. */
+  /** Sends of a winner again under way, by `${whose} ${device} ${winner's signature}`. */
+  const resending = new Set<string>()
+  const resendKey = (whose: PeerId, kept: SecretState, device: PeerId) =>
+    `${whose} ${device} ${kept.replacing?.sig ?? ''}`
+
+  /** Whether `device`, met in the old rooms, is still to be sent `whose` winner again. */
+  const needsResending = (whose: PeerId, kept: SecretState, device: PeerId) =>
+    kept.replacing !== undefined &&
+    kept.replacing.heardAt === undefined &&
+    kept.replacing.resent?.includes(device) !== true &&
+    !resending.has(resendKey(whose, kept, device))
+
+  /** A friend's pair secret as rekeys.ts sees it, as it is now. */
+  const secretStateOf = (id: PeerId) => {
+    const view = friend(id)
+    return view === undefined ? undefined : secretState(view)
+  }
+
+  /**
+   * Sends the winner, with the round before's, to `device` alone, `whose` friend's or one of your
+   * own, under the tags it may be on, in the background: nothing waits on a send while a letter is
+   * taken. The device is marked as sent to only once a Lighthouse took it, so a send that failed
+   * is tried again the next time it's met.
+   */
+  function resendWinner(whose: PeerId, kept: SecretState, device: PeerId) {
+    const key = resendKey(whose, kept, device)
+    if (mailbox === undefined || resending.has(key)) return
+    resending.add(key)
+    const box = mailbox
+    void (async () => {
+      const rekey = await winner(crypto, kept)
+      if (rekey === undefined) return
+      const prior = await priorWinner(crypto, kept)
+      let stored = false
+      for (const under of winnerTags(kept, [])) {
+        const to =
+          whose === self
+            ? await selfRecipient([device], under)
+            : await recipient(whose, under).then((all) =>
+                all === undefined
+                  ? undefined
+                  : { ...all, keys: all.keys.filter((one) => one.device === device) },
+              )
+        if (to === undefined || to.keys.length === 0) continue
+        const logs = whose === self ? [devices.own()] : [devices.own(), devices.friendLog(whose)]
+        if (await box.send('rekey', to, rekeyBody(rekey, { logs, prior }))) stored = true
+      }
+      if (!stored) return
+      await oneRekey(async () => {
+        const now = whose === self ? devices.selfSecretState() : secretStateOf(whose)
+        const round = now?.replacing
+        if (now === undefined || round === undefined || round.sig !== kept.replacing?.sig) return
+        const resent = [...(round.resent ?? []), device]
+        const next = { ...now, replacing: { ...round, resent } }
+        if (whose === self) await devices.setSelfSecretState(next)
+        else await keepFriendSecret(whose, next)
+      })
+    })()
+      .catch(() => undefined)
+      .finally(() => resending.delete(key))
+  }
+
+  /**
+   * A friend's `device` said hello in `room`: if it's the new secret's, that device holds it; if
+   * it's the old one's, while nobody on their side has been seen with the new, the winner may
+   * never have reached it, and is sent again, once. A Pigeon that took `mail:rekey` before it
+   * knew new rounds reads one, takes nothing and gives a receipt, so the letter is never put
+   * again; once it updates, meeting it in the old rooms is the sign to send it again.
+   */
   function heardIn(id: PeerId, room: RoomName, device: PeerId) {
     return oneRekey(async () => {
       const view = friend(id)
       const kept = view === undefined ? undefined : secretState(view)
       if (kept?.replacing === undefined || devices.classify(id, device) !== 'friend') return
-      if (!(await roomsAround(kept.secret, 'pair')).has(room)) return
+      if (!(await roomsAround(kept.secret, 'pair')).has(room)) {
+        if (!needsResending(id, kept, device)) return
+        if (!(await roomsAround(kept.replacing.old, 'pair')).has(room)) return
+        resendWinner(id, kept, device)
+        return
+      }
       const next = heardFrom(kept, device, clock.now())
       if (next !== undefined) await keepFriendSecret(id, next)
     })
   }
 
-  /** Another of your devices said hello in `room`: if it's the new self secret's, it holds it. */
+  /**
+   * Another of your devices said hello in `room`: if it's the new self secret's, it holds it; if
+   * it's the old one's, while none has been seen with the new, the winner is sent again, once.
+   */
   function heardSelfIn(room: RoomName, device: PeerId) {
     return oneRekey(async () => {
       const kept = devices.selfSecretState()
       if (kept?.replacing === undefined || !devices.isOwnOther(device)) return
-      if (!(await roomsAround(kept.secret, 'self')).has(room)) return
+      if (!(await roomsAround(kept.secret, 'self')).has(room)) {
+        if (!needsResending(self, kept, device)) return
+        if (!(await roomsAround(kept.replacing.old, 'self')).has(room)) return
+        resendWinner(self, kept, device)
+        return
+      }
       const next = heardFrom(kept, device, clock.now())
       if (next === undefined) return
       await devices.setSelfSecretState(next)
@@ -1371,8 +1529,9 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /**
    * Proposes a new secret for each kept from before with no replacement under way, or whose
-   * winner came from a device since removed, when there's someone to seal it to; otherwise it's
-   * tried again at the next check.
+   * winner came from a device since removed, and begins a new round for each marked after a
+   * removal here, when there's someone to seal it to; otherwise it's tried again at the next
+   * check.
    */
   function replaceOldSecrets() {
     return oneRekey(async () => {
@@ -1380,6 +1539,15 @@ export async function createMessenger(deps: MessengerDeps) {
       for (const view of friendList()) {
         const kept = secretState(view)
         if (kept === undefined || view.moved !== true || view.removedYouAt !== undefined) continue
+        if (kept.renew === true) {
+          // Sealed to their devices still on their list, under the tags of the secret they're
+          // on, which the removed device may know but can't open what's sealed there.
+          if ((await recipient(view.id, mailSecret(kept))) === undefined) continue
+          const { next } = await begin(crypto, signer, kept, newSecret(), clock.now())
+          await keepFriendSecret(view.id, next)
+          await tellFriendWinner(view.id, undefined, [kept.secret])
+          continue
+        }
         const gone = proposerGone(kept, countsFor(view.id))
         if (!needsReplacing(kept) && !gone) continue
         // Sealed to their devices and left under the old secret's tags, which is all a Pigeon
@@ -1388,7 +1556,7 @@ export async function createMessenger(deps: MessengerDeps) {
         if ((await recipient(view.id, old)) === undefined) continue
         const { next } = await propose(crypto, signer, kept, newSecret(), clock.now())
         await keepFriendSecret(view.id, next)
-        await tellFriendWinner(view.id, undefined, heldBefore(kept))
+        await tellFriendWinner(view.id, undefined, [heldBefore(kept)])
       }
       await replaceSelfSecret()
     })
@@ -1397,6 +1565,20 @@ export async function createMessenger(deps: MessengerDeps) {
   async function replaceSelfSecret() {
     const kept = devices.selfSecretState()
     if (kept === undefined) return
+    if (kept.renew === true) {
+      // No other device of yours left: a new one kept here is enough.
+      if (theirDevices(self).length === 0) {
+        await devices.setSelfSecretState({ secret: newSecret(), sealed: true })
+        if (selfSession !== undefined) await syncRooms(selfSession)
+        return
+      }
+      if ((await selfRecipient(undefined, mailSecret(kept))) === undefined) return
+      const { next } = await begin(crypto, signer, kept, newSecret(), clock.now())
+      await devices.setSelfSecretState(next)
+      if (selfSession !== undefined) await syncRooms(selfSession)
+      await tellSelfWinner([kept.secret])
+      return
+    }
     const gone = proposerGone(kept, countsForSelf)
     if (!needsReplacing(kept) && !gone) return
     // Never handed to another device: nobody else can know it.
@@ -1417,7 +1599,24 @@ export async function createMessenger(deps: MessengerDeps) {
     await devices.setSelfSecretState(next)
     await askToCheckDevices()
     if (selfSession !== undefined) await syncRooms(selfSession)
-    await tellSelfWinner(heldBefore(kept))
+    await tellSelfWinner([heldBefore(kept)])
+  }
+
+  /**
+   * A device that held the self secret and every pair secret was taken off your list here: each
+   * is replaced at the next mail check, which starts now, by a new one sealed to the devices
+   * still on the lists, so the removed device can't follow anyone to the new rooms or tags.
+   */
+  async function renewSecrets() {
+    await oneRekey(async () => {
+      for (const view of friendList())
+        if (view.secret !== undefined && state.friends[view.id] !== undefined)
+          setState('friends', view.id, 'renew', true)
+      await saveFriends()
+      const kept = devices.selfSecretState()
+      if (kept !== undefined) await devices.setSelfSecretState({ ...kept, renew: true })
+    })
+    void checkMail().catch(() => undefined)
   }
 
   /**
@@ -1538,6 +1737,9 @@ export async function createMessenger(deps: MessengerDeps) {
               moved: record.moved === true,
               sealed: record.sealed,
               replacing: record.replacing,
+              prior: record.prior,
+              renew: record.renew,
+              begun: record.begun,
             }),
       })
       return existing
@@ -2025,10 +2227,88 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   let lastStatus = devices.status()
+  /** Devices ever on your list and not on it now: removed, or left off by a recovery. */
+  const removedNow = () => {
+    const active = new Set(devices.devices().map((device) => device.id))
+    return [...everDevices(devices.own())].filter((device) => !active.has(device))
+  }
+  const storedRemovals = await store.get(KEYS.removalsSeen)
+  // On a first start with this, every removal so far counts as acted on.
+  const firstSeen = new Set<PeerId>(
+    Array.isArray(storedRemovals) && storedRemovals.every((id) => typeof id === 'string')
+      ? (storedRemovals as PeerId[])
+      : removedNow(),
+  )
+  if (!Array.isArray(storedRemovals)) await store.set(KEYS.removalsSeen, [...firstSeen])
+  removalsSeen = firstSeen
+
+  /** One change to the links still to close at a time, so none is lost between a read and a write. */
+  function oneClose<T>(run: () => Promise<T>): Promise<T> {
+    const next = closingLinks.then(run, run)
+    closingLinks = next.catch(() => undefined)
+    return next
+  }
+  const linksToClose = async (): Promise<readonly string[]> => {
+    const stored = await store.get(KEYS.closeLinks)
+    return Array.isArray(stored) ? stored.filter((one) => typeof one === 'string') : []
+  }
+
+  /**
+   * Closes the invite links a device taken off your list may know, keeping those a Lighthouse
+   * didn't take the closed card for, to try again at the next mail check or start.
+   */
+  function closeLinksAfterRemoval() {
+    return oneClose(async () => {
+      if (inviteLinks === undefined || devices.status() !== 'active') return
+      const list = await linksToClose()
+      if (list.length === 0) return
+      const left = await inviteLinks.closeLinks(list)
+      if (left.length === 0) await store.delete(KEYS.closeLinks)
+      else await store.set(KEYS.closeLinks, [...left])
+    })
+  }
+
+  /**
+   * Acts on any device taken off your list since the last time: every invite link open now is to
+   * be closed, and on the device that writes your list, every secret is marked to renew. The
+   * marks are kept before the removal is noted as acted on, so a tab that closes between keeping
+   * the log and this does it when it next starts.
+   */
+  function actOnRemovals(): Promise<void> {
+    // Nothing new: nothing to wait for.
+    const seen = removalsSeen
+    if (seen !== undefined && removedNow().every((device) => seen.has(device)))
+      return Promise.resolve()
+    // One at a time: a second run, from a log merged while the first waits, sees what it noted.
+    const next = acting.then(actOnRemovalsNow, actOnRemovalsNow)
+    acting = next.catch(() => undefined)
+    return next
+  }
+
+  async function actOnRemovalsNow() {
+    // Not yet read from storage: acted on once it is, at the end of starting.
+    const seen = removalsSeen
+    if (devices.status() !== 'active' || seen === undefined) return
+    const removed = removedNow()
+    if (removed.every((device) => seen.has(device))) return
+    // Noted as acted on, here and in storage, only once the marks are kept: one that fails is
+    // tried again at the next change or start.
+    await oneClose(async () => {
+      const open = inviteLinks?.openNow() ?? []
+      const list = [...new Set([...(await linksToClose()), ...open])]
+      if (list.length > 0) await store.set(KEYS.closeLinks, list)
+    })
+    if (devices.isFirst()) await renewSecrets()
+    await store.set(KEYS.removalsSeen, removed)
+    removalsSeen = new Set(removed)
+    void closeLinksAfterRemoval().catch(() => undefined)
+  }
+
   /** Tells everyone about a change to your device log, and acts on what it means here. */
   async function ownChanged() {
     // Each open link's card says your list as it is now.
     void inviteLinks?.refresh().catch(() => undefined)
+    await actOnRemovals()
     for (const session of [...sessions.values(), ...farewellSessions.values()]) {
       session.recheck()
       session.shareDevices()
@@ -2057,6 +2337,9 @@ export async function createMessenger(deps: MessengerDeps) {
   await connect()
   if (unsharedLighthouses) tellOwnDevices()
   void inviteLinks?.resume().catch(() => undefined)
+  // A removal kept in the log before a tab closed, but not acted on; and links still to close.
+  await actOnRemovals()
+  void closeLinksAfterRemoval().catch(() => undefined)
 
   async function disconnect() {
     // A hosting still being joined sees this and stops itself.
@@ -2161,11 +2444,15 @@ export async function createMessenger(deps: MessengerDeps) {
     return linking()
   }
 
-  /** The self secret's replacement under way, for a bundle: a plain copy. */
-  const selfReplacing = () => devices.selfSecretState()?.replacing
+  /** The self secret's replacement under way and the round before, for a bundle: plain copies. */
   const selfReplacingField = () => {
-    const replacing = selfReplacing()
-    return replacing === undefined ? {} : { selfReplacing: { ...replacing } }
+    const kept = devices.selfSecretState()
+    const replacing = kept?.replacing
+    if (replacing === undefined) return {}
+    return {
+      selfReplacing: plainRound(replacing),
+      ...(kept?.prior === undefined ? {} : { selfPrior: plainRound(kept.prior) }),
+    }
   }
 
   /** What a new device needs to be you: who you are, your devices, friends and settings. */
@@ -2181,7 +2468,20 @@ export async function createMessenger(deps: MessengerDeps) {
       ...selfReplacingField(),
       profile: profile(),
       friends: friendList().map(
-        ({ id, handle, addedAt, petname, mutedUntil, secret, moved, sealed, replacing }) => ({
+        ({
+          id,
+          handle,
+          addedAt,
+          petname,
+          mutedUntil,
+          secret,
+          moved,
+          sealed,
+          replacing,
+          prior,
+          renew,
+          begun,
+        }) => ({
           id,
           handle,
           addedAt,
@@ -2189,7 +2489,7 @@ export async function createMessenger(deps: MessengerDeps) {
           ...(mutedUntil === undefined ? {} : { mutedUntil }),
           ...(secret === undefined ? {} : { secret }),
           ...(moved === true ? { moved } : {}),
-          ...secretFlags({ sealed, replacing }),
+          ...secretFlags({ sealed, replacing, prior, renew, begun }),
         }),
       ),
       blocked: blocked(),
@@ -2209,6 +2509,7 @@ export async function createMessenger(deps: MessengerDeps) {
       deviceLog: _log,
       selfSecret: _secret,
       selfReplacing: _replacing,
+      selfPrior: _prior,
       selfSealed: _sealed,
       ...data
     } = bundle() as Record<string, unknown>
@@ -2257,7 +2558,11 @@ export async function createMessenger(deps: MessengerDeps) {
         await devices.takeFriend(id, lowSDeviceLog(log))
       }
     const have = new Map(friendList().map((view) => [view.id, view]))
-    const added = records.filter((record) => !have.has(record.id) && !isBlocked(record.id))
+    // A pair secret from a file may be known to whoever else had the file, or to a device it
+    // came from that has since been removed, as after a recovery: each is replaced.
+    const added = records
+      .filter((record) => !have.has(record.id) && !isBlocked(record.id))
+      .map((record) => (record.secret === undefined ? record : { ...record, renew: true }))
     for (const record of records) {
       if (isBlocked(record.id)) continue
       const room = await pairRoom(crypto, self, record.id)
@@ -2399,11 +2704,13 @@ export async function createMessenger(deps: MessengerDeps) {
     // device's own, which that device replaces if it's from before. A replacement under way
     // there carries on here.
     const replacing = fields['selfReplacing']
+    const prior = fields['selfPrior']
     // A bundle from a Pigeon that didn't say is taken as sealed, as before.
     await store.set(DEVICE_KEYS.selfSecretState, {
       secret,
       ...(fields['selfSealed'] === false && !isReplacing(replacing) ? {} : { sealed: true }),
       ...(isReplacing(replacing) ? { replacing } : {}),
+      ...(isReplacing(replacing) && isReplacing(prior) ? { prior } : {}),
     })
     await store.set(DEVICE_KEYS.selfSecret, secret)
     // Last: with `self` set, this browser is that identity from its next start.

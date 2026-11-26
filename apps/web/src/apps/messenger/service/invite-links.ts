@@ -78,7 +78,28 @@ const KEYS = {
   links: 'invite-links',
   others: 'invite-links-elsewhere',
   asks: 'invite-asks',
+  /**
+   * Closed cards this device put for your other devices' links, by link: the drop that takes
+   * them down and each Lighthouse's id for the one it holds, so a close tried again puts only
+   * where none is up yet.
+   */
+  closedElsewhere: 'invite-links-closed-elsewhere',
 } as const
+
+/** Closed cards this device put for another device's link. */
+interface ClosedElsewhere {
+  readonly drop: string
+  readonly cards: Readonly<Record<string, string>>
+  readonly expires: number
+}
+
+const isClosedElsewhere = (value: unknown): value is ClosedElsewhere =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as ClosedElsewhere).drop === 'string' &&
+  typeof (value as ClosedElsewhere).cards === 'object' &&
+  (value as ClosedElsewhere).cards !== null &&
+  typeof (value as ClosedElsewhere).expires === 'number'
 
 /** Where one of an asker's devices waits for the answer. */
 export interface Reply {
@@ -119,6 +140,12 @@ export interface OwnLink {
   readonly requests: readonly LinkRequest[]
   /** "Closed" answers sent so far, to requests after it closed. */
   readonly closedAnswers: number
+  /**
+   * Closed here, but not yet with a closed card up at every Lighthouse that held one of its
+   * cards: put again until it is. Kept before the first try, so a tab that closes meanwhile
+   * tries again when it opens.
+   */
+  readonly closing?: boolean | undefined
 }
 
 /** A link another of your devices made, as it last said. */
@@ -238,6 +265,7 @@ const isOwnLink = (value: unknown): value is OwnLink => {
     typeof l.open === 'boolean' &&
     typeof l.url === 'string' &&
     typeof l.closedAnswers === 'number' &&
+    (l.closing === undefined || typeof l.closing === 'boolean') &&
     Array.isArray(l.requests) &&
     l.requests.every(isRequest)
   )
@@ -344,8 +372,10 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
      * could win there.
      */
     keepClosed = false,
+    /** Where to put it, when not at every one of your Lighthouses. */
+    targets?: readonly LighthouseAddress[],
   ): Promise<Record<string, string>> {
-    const where = cardLighthouses()
+    const where = targets ?? cardLighthouses()
     const cards: Record<string, string> = {}
     const hash = await dropHashOf(drop)
     const expires = Math.min(link.expires, now() + MAX_MAIL_MS - CARD_EXPIRES_SLACK)
@@ -357,7 +387,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             deviceLog: deps.deviceLog(),
             keys: await deps.ownKeys(),
             name: deps.name(),
-            lighthouses: where,
+            lighthouses: cardLighthouses(),
             expires: link.expires,
             open,
           })
@@ -373,7 +403,9 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       })
       if (put.ok && put.value.type === 'stored') cards[lighthouse.id] = put.value.id
     }
-    // The old cards come down once the new ones are up, wherever they were.
+    // The old cards come down once the new ones are up, wherever they were. Where no new card
+    // went up, an old one stays known until a Lighthouse says it's gone, so it can be taken
+    // down, or replaced, next time: forgotten while still up, it would go on being read.
     for (const [id, blob] of Object.entries(before)) {
       if (cards[id] === blob) continue
       if (keepClosed && cards[id] === undefined) {
@@ -383,8 +415,15 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       const lighthouse = [...where, ...deps.official, ...deps.lighthouses()].find(
         (address) => address.id === id,
       )
-      if (lighthouse !== undefined)
-        await deps.client(lighthouse).request({ type: 'drop', id: blob, key: drop })
+      const dropped =
+        lighthouse === undefined
+          ? undefined
+          : await deps.client(lighthouse).request({ type: 'drop', id: blob, key: drop })
+      const gone =
+        dropped?.ok === true &&
+        (dropped.value.type === 'dropped' ||
+          (dropped.value.type === 'error' && dropped.value.error === 'unknown'))
+      if (!gone && cards[id] === undefined) cards[id] = blob
     }
     return cards
   }
@@ -437,14 +476,32 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       await answer(request, inviteAnswerBody({ answer: 'closed' }), false)
   }
 
-  /** Puts a closed card for a link, under the lock: it says so to whoever opens it next. */
+  /**
+   * Puts a closed card for a link, under the lock: it says so to whoever opens it next. Each
+   * card it had stays known until a closed card has taken its place at that Lighthouse, and the
+   * link stays `closing` until every one has; `closing` is kept before anything is put. Undefined
+   * when the link is gone or was already closed everywhere.
+   */
   const closeLink = (secret: string) =>
     serial(async () => {
       const link = linkOf(secret)
-      if (link === undefined || !link.open) return undefined
-      await updateLink(secret, (other) => ({ ...other, open: false }))
-      const cards = await putCard(link, false, link.drop, link.cards)
-      await updateLink(secret, (other) => ({ ...other, cards }))
+      if (link === undefined || !(link.open || link.closing === true)) return undefined
+      await updateLink(secret, (other) => ({ ...other, open: false, closing: true }))
+      const cards = await putCard(link, false, link.drop, link.cards, true)
+      // Closed only once every Lighthouse it's put at, and every one that held a card of it,
+      // holds the closed card just put: one still holding an old card could show it open.
+      const places = new Set([
+        ...cardLighthouses().map((address) => address.id),
+        ...Object.keys(cards),
+      ])
+      const closing =
+        places.size === 0 ||
+        [...places].some((id) => cards[id] === undefined || cards[id] === link.cards[id])
+      await updateLink(secret, (other) => ({
+        ...other,
+        cards,
+        closing: closing ? true : undefined,
+      }))
       return linkOf(secret)
     })
 
@@ -912,6 +969,78 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
           if (!deps.stopped()) await store.set(KEYS.others, others)
         }
       }),
+
+    /**
+     * The links a device taken off your list now may know: every one still open, this device's
+     * own and those your other devices said, and this device's own still closing.
+     */
+    openNow(): readonly string[] {
+      const at = now()
+      return [
+        ...links().filter((link) => (link.open || link.closing === true) && link.expires > at),
+        ...others.filter((link) => link.open && link.expires > at),
+      ].map((link) => link.secret)
+    },
+
+    /**
+     * Closes the links `secrets` names, after a device that may know them was taken off your
+     * list: this device's own as Cancel closes them, telling whoever is still waiting, and the
+     * others with a closed card of this device's own, signed on the newer list, which wins over
+     * any card on the list from before. Says which are still to close, because a Lighthouse
+     * didn't take the closed card: they're tried again.
+     */
+    async closeLinks(secrets: readonly string[]): Promise<readonly string[]> {
+      if (!deps.active()) return secrets
+      const at = now()
+      const left: string[] = []
+      for (const secret of secrets) {
+        const own = linkOf(secret)
+        if (own !== undefined) {
+          if (own.expires <= at || !(own.open || own.closing === true)) continue
+          const wasOpen = own.open
+          const closed = await closeLink(secret).catch(() => undefined)
+          if (closed === undefined || closed.closing === true) left.push(secret)
+          if (closed !== undefined && wasOpen) {
+            deps.changed()
+            // Not waited on: this can run while a fetch holds the mailbox, which a send waits
+            // for, and a removal learned in that fetch waits for this.
+            void answerWaiting(closed).catch(() => undefined)
+          }
+          continue
+        }
+        const other = others.find((link) => link.secret === secret)
+        if (other === undefined || other.expires <= at) continue
+        // Closed by a card of this device's own at each of its Lighthouses: the owner's own
+        // cards stay, but lose to it. Put only where none of this device's is up yet, so trying
+        // again puts nothing twice.
+        const done = await serial(async () => {
+          const stored = await store.get(KEYS.closedElsewhere)
+          const all: Record<string, ClosedElsewhere> = {}
+          if (typeof stored === 'object' && stored !== null)
+            for (const [key, value] of Object.entries(stored))
+              if (isClosedElsewhere(value) && value.expires > at) all[key] = value
+          const before = all[secret] ?? {
+            drop: base32Encode(deps.random(32)),
+            cards: {},
+            expires: other.expires,
+          }
+          const where = cardLighthouses()
+          const missing = where.filter((address) => before.cards[address.id] === undefined)
+          const put =
+            missing.length === 0 ? {} : await putCard(other, false, before.drop, {}, false, missing)
+          const cards = { ...before.cards, ...put }
+          all[secret] = { ...before, cards }
+          if (!deps.stopped()) await store.set(KEYS.closedElsewhere, all)
+          if (where.length === 0 || where.some((address) => cards[address.id] === undefined))
+            return false
+          others = others.map((link) => (link.secret === secret ? { ...link, open: false } : link))
+          if (!deps.stopped()) await store.set(KEYS.others, others)
+          return true
+        })
+        if (!done) left.push(secret)
+      }
+      return left
+    },
 
     /** Your links, for your other devices: what they are, never what takes their cards down. */
     shared(): readonly OtherLink[] {

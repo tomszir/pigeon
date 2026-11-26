@@ -101,9 +101,9 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
   count only in the old pair room itself.
 ```
 
-## Replacing an old secret
+## Replacing a secret
 
-A pair secret from before codes went through SPAKE2 is replaced over sealed mail ([Replacing an old secret](protocol.md#replacing-an-old-secret)). Here both Toms and Mika propose at once; the self secret goes the same way between your own devices.
+A pair secret from before codes went through SPAKE2 is replaced over sealed mail ([Replacing a secret](protocol.md#replacing-a-secret)). Here both Toms and Mika propose at once; the self secret goes the same way between your own devices.
 
 ```text
   Toms                     Lighthouse, under               Mika
@@ -144,6 +144,40 @@ A pair secret from before codes went through SPAKE2 is replaced over sealed mail
   Toms waits too, so they keep chatting; once it updates it finds
   the proposal waiting, or makes its own, which loses and is
   answered with S1
+```
+
+After that, when Toms's laptop, which writes his list, removes his phone, every secret the phone held is replaced again, in a new round for the secret held now:
+
+```text
+  Toms's laptop            Lighthouse, under               Mika
+  -------------            S1's tags                       ----
+  removes the phone; marks the self secret and every pair secret
+  to renew, and checks mail
+  begins a round for S1: proposes S2 at 15:00
+  joins S2's rooms, keeps S1's
+        |--- mail:rekey { S1, S2, 15:00, T, prior: S1's own } --->|
+        |    sealed to Mika's devices on her list, and a copy to
+        |    Toms's tablet: never to the phone
+        |                                        |
+        |                                        names the secret Mika
+        |                                        holds: a new round,
+        |                                        taken; X..S1 becomes
+        |                                        the round before
+        |<--- mail:rekey { S1, S2, 15:00, T } ---|
+  Mika holds S2: heard                           leaves S1's rooms
+        |=============== S2's rooms =============|
+
+  S2 doesn't compete with S1 in the round that replaced X, which
+  S1 won: a proposal there would lose to it
+
+  a device still in that round, holding S1 or another proposal,
+  follows by `prior`, S1's proposal, signed by its maker; one
+  that proposes there is answered with S2 and `prior`
+
+  had Mika removed a device at the same time and proposed S3 for
+  S1, earlier, before she heard of Toms's removal: Toms takes S3,
+  which isn't the S2 he began, so he begins again from S3 with S4;
+  Mika takes S4 as it is, since it began from S3, her own
 ```
 
 ## Saying hello

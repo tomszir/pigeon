@@ -72,7 +72,9 @@ export const splitFriendRecords = (value: unknown) => splitRecords(value, isFrie
 
 /**
  * A pair secret, if any, whether you've moved to its rooms, whether it's from before secrets
- * were sealed, and an old one being replaced (`replacing` on a friend, `old` on a farewell).
+ * were sealed, an old one being replaced (`replacing`, and `prior`, the round before, on a
+ * friend; `old` on a farewell), whether it's to be replaced after a removal, and what was
+ * proposed here after one.
  */
 const isPlace = (record: Record<string, unknown>) =>
   (record['secret'] === undefined || isPairSecret(record['secret'])) &&
@@ -80,6 +82,10 @@ const isPlace = (record: Record<string, unknown>) =>
   (record['sealed'] === undefined || typeof record['sealed'] === 'boolean') &&
   (record['replacing'] === undefined ||
     (isReplacing(record['replacing']) && record['secret'] !== undefined)) &&
+  (record['prior'] === undefined ||
+    (isReplacing(record['prior']) && record['replacing'] !== undefined)) &&
+  (record['renew'] === undefined || typeof record['renew'] === 'boolean') &&
+  (record['begun'] === undefined || isPairSecret(record['begun'])) &&
   (record['old'] === undefined || isPairSecret(record['old']))
 
 /** A farewell: a record, or the bare id stored before pair secrets. */
@@ -168,6 +174,9 @@ const importedFriend = (record: FriendRecord): FriendRecord | undefined => {
     ...(record.moved === undefined ? {} : { moved: record.moved }),
     ...(record.sealed === undefined ? {} : { sealed: record.sealed }),
     ...(record.replacing === undefined ? {} : { replacing: record.replacing }),
+    ...(record.prior === undefined ? {} : { prior: record.prior }),
+    ...(record.renew === undefined ? {} : { renew: record.renew }),
+    ...(record.begun === undefined ? {} : { begun: record.begun }),
   }
 }
 

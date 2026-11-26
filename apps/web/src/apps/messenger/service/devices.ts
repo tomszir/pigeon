@@ -39,7 +39,10 @@ export const DEVICE_KEYS = {
   deviceLog: 'deviceLog',
   /** Where your devices meet, shared with each device when it's linked. */
   selfSecret: 'selfSecret',
-  /** Whether the self secret was made or reached here sealed, and any replacement under way. */
+  /**
+   * Whether the self secret was made or reached here sealed, any replacement under way and the
+   * round before it, and whether it's to be replaced after a removal.
+   */
   selfSecretState: 'selfSecretState',
   friendDevices: (id: PeerId) => `devices:${id}`,
 } as const
@@ -98,6 +101,12 @@ export async function loadDevices(deps: DevicesDeps) {
   let selfSecret = typeof storedSecret === 'string' ? storedSecret : undefined
   let selfSealed = stateFields['sealed'] === true
   let selfReplacing = isReplacing(stateFields['replacing']) ? stateFields['replacing'] : undefined
+  let selfPrior =
+    selfReplacing !== undefined && isReplacing(stateFields['prior'])
+      ? stateFields['prior']
+      : undefined
+  let selfRenew = stateFields['renew'] === true
+  let selfBegun = isPairSecret(stateFields['begun']) ? stateFields['begun'] : undefined
 
   const friendLogs = new Map<PeerId, DeviceLog>()
   const [friendLogsVersion, bump] = createSignal(0)
@@ -185,7 +194,14 @@ export async function loadDevices(deps: DevicesDeps) {
     selfSecretState: (): SecretState | undefined =>
       selfSecret === undefined
         ? undefined
-        : { secret: selfSecret, sealed: selfSealed, replacing: selfReplacing },
+        : {
+            secret: selfSecret,
+            sealed: selfSealed,
+            replacing: selfReplacing,
+            prior: selfPrior,
+            renew: selfRenew,
+            begun: selfBegun,
+          },
     /** A new self secret, made here: nobody else has seen it. */
     async setSelfSecret(secret: string) {
       await this.setSelfSecretState({ secret, sealed: true })
@@ -194,10 +210,16 @@ export async function loadDevices(deps: DevicesDeps) {
       selfSecret = next.secret
       selfSealed = next.sealed === true
       selfReplacing = next.replacing
+      selfPrior = next.replacing === undefined ? undefined : next.prior
+      selfRenew = next.renew === true
+      selfBegun = next.begun
       await store.set(DEVICE_KEYS.selfSecretState, {
         secret: next.secret,
         ...(selfSealed ? { sealed: true } : {}),
         ...(selfReplacing === undefined ? {} : { replacing: selfReplacing }),
+        ...(selfPrior === undefined ? {} : { prior: selfPrior }),
+        ...(selfRenew ? { renew: true } : {}),
+        ...(selfBegun === undefined ? {} : { begun: selfBegun }),
       })
       await store.set(DEVICE_KEYS.selfSecret, next.secret)
     },

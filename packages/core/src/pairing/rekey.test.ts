@@ -47,6 +47,27 @@ describe('a secret replaced by sealed mail', () => {
     expect(readRekey([])).toBeUndefined()
   })
 
+  it('carries the proposal a new round began from, read the same strict way', async () => {
+    const first = await signRekey(fakeSigner('rook'), {
+      replaces: await replacesId(fakeCrypto, secret('a')),
+      secret: secret('b'),
+      at: 1,
+    })
+    const next = await signRekey(fakeSigner('mika'), {
+      replaces: await replacesId(fakeCrypto, secret('b')),
+      secret: secret('c'),
+      at: 2,
+    })
+    expect(readRekey(rekeyBody(next, { prior: first }))).toEqual({ rekey: next, prior: first })
+    const body = rekeyBody(next, { prior: first }) as Record<string, unknown>
+    const prior = body['prior'] as Record<string, unknown>
+    expect(readRekey({ ...body, prior: { ...prior, extra: 1 } })).toBeUndefined()
+    expect(readRekey({ ...body, prior: { ...prior, at: -1 } })).toBeUndefined()
+    expect(readRekey({ ...body, prior: { ...prior, secret: secret('B') } })).toBeUndefined()
+    expect(readRekey({ ...body, prior: [] })).toBeUndefined()
+    expect(readRekey({ ...body, prior: null })).toBeUndefined()
+  })
+
   it('orders proposals the same way everywhere: earliest, then device, then secret', async () => {
     const replaces = await replacesId(fakeCrypto, secret('a'))
     const one: Rekey = { replaces, secret: secret('b'), at: 1, by: rook, sig: '' }
