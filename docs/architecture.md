@@ -118,6 +118,9 @@ apps/
                 service/mail-schedule.ts is when mail is looked for (createMailSchedule): one look at
                 a time, a gap after the last, the timers and the tab or network coming back; what a
                 look does stays in service.ts and is passed in;
+                service/friends.ts is the friends as records (createFriends): saving them, what each is
+                called, muting, the blocked people and the farewells still owed; the Solid store they
+                are read from, and their sessions, rooms and secrets, stay in service.ts;
                 service/stored.ts holds what the service keeps in storage: its keys, the
                 shape of each record and the checks on what is read back, importing nothing from
                 service.ts so the two never form a cycle;
