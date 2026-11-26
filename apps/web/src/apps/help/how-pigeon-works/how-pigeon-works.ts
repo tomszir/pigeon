@@ -10,8 +10,6 @@ import { RECOVERY_KEY } from './recovery-key.ts'
 import { SAVING_YOUR_DATA } from './saving-your-data.ts'
 import { YOUR_DEVICES } from './your-devices.ts'
 
-export { CHAPTERS, chapterAddress, HOW_HOME } from './frame.ts'
-
 /** Each chapter's body, by its slug in CHAPTERS. */
 const BODIES: Readonly<Record<string, string>> = {
   '': ONE_PICTURE,

@@ -152,7 +152,7 @@ apps/
 | `apps/<name>/` | itself, `ui/`, `packages/*`, platform interfaces; never another app |
 | `app/`         | everything                                                          |
 
-Biome's `noRestrictedImports` overrides in `biome.json` enforce every row. An app importing a sibling (`../other-app/...`) is caught by pattern, so apps keep their files flat. A platform interface is passed in from `app/`, never imported as an implementation, so tests can stand a fake in.
+Biome's `noRestrictedImports` overrides in `biome.json` enforce every row. An app importing a sibling (`../other-app/...`) is caught by pattern, so apps keep their files flat. A platform interface is passed in from `app/`, never imported as an implementation, so tests can stand a fake in. In `apps/` and `shell/` every file under `platform/` is refused except the interface files, which `biome.json` names one by one (`clock/clock.ts`, `files/files.ts`, `storage/storage.ts`, `wake/wake.ts`), so a new implementation is refused without anyone having to name it, and a new interface file is added to that list. `scripts/import-rules.test.ts` lints sample imports against the real config.
 
 ## Shell and windows
 
@@ -168,7 +168,8 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - **No import cycles.** Biome's `suspicious/noImportCycles` is an error, so a file never reaches itself through its imports; a shared type goes in a small file both sides import (`identity/peer-id.ts`, which `crypto.ts` and `identity.ts` share). The rule runs with `ignoreTypes`, so a cycle made only of `import type` is not reported; `messenger/service/stored.ts` and `service.ts` import each other's types that way.
 - **Files stay short.** Biome's `style/noExcessiveLinesPerFile` is an error above 600 lines for a source file and 1,000 for a test file (`*.test.ts`, `*.test.tsx`, `*.spec.ts`), blank lines counted. A file that was already longer has its own limit in `biome.json`, its size rounded up to the next 100, so it can't grow; splitting it means lowering that number, or deleting the override once the file is under the limit. There is no limit on a function's length, because a factory closure or a Solid component is long by design; the file limit is what stops one collecting everything.
 - Content and numbers live in tables, not branches.
-- Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`.
+- Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`: Biome's `performance/noBarrelFile` and `noReExportAll` are errors, and off only for `packages/*/src/index.ts`.
+- **Test fakes stay in tests.** The `@pigeon/core/testing` and `@pigeon/lighthouse/testing` entry points (the fakes and the contract tests every implementation runs) are imported only from `*.test.ts` and `*.test.tsx` files. `biome-plugins/no-test-fakes.grit` reports an import or re-export of either from any other file; `biome.json` loads it for every file but the test files.
 - Folders by feature, never one flat directory: in a package, `src/<feature>/`; in the web app, the layer folders above and one folder per component.
 - In the web app every component is a folder named after it: `window/window.tsx`, `window/window.module.css`, `window/window.test.tsx`, plus any helper only it uses. Styles are CSS Modules with camelCase classes, typed by `scripts/css-module-types.mjs`; join them with `ui/classes/classes.ts`. Reach an element from outside its component by a `data-` attribute, not a class.
 - Tests sit beside the file they test (`name.test.ts`) and go at the lowest level that fails for the reason they guard. Playwright e2e lives in `apps/web/e2e/`.

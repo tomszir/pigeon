@@ -49,6 +49,10 @@
       },
       "complexity": {
         "useLiteralKeys": "off"
+      },
+      "performance": {
+        "noBarrelFile": "error",
+        "noReExportAll": "error"
       }
     }
   },
@@ -60,6 +64,17 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["packages/*/src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off",
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
       "linter": {
@@ -156,6 +171,10 @@
       }
     },
     {
+      "includes": ["**", "!**/*.test.ts", "!**/*.test.tsx"],
+      "plugins": ["./biome-plugins/no-test-fakes.grit"]
+    },
+    {
       "includes": ["packages/**"],
       "linter": {
         "rules": {
@@ -243,8 +262,14 @@
                     "message": "shell/ may import ui/, packages/ and platform interfaces; app/ hands it everything else."
                   },
                   {
-                    "group": ["**/platform/browser-*", "**/platform/**/browser-*"],
-                    "message": "shell/ takes platform interfaces, never browser implementations."
+                    "group": [
+                      "**/platform/**",
+                      "!**/platform/clock/clock.ts",
+                      "!**/platform/files/files.ts",
+                      "!**/platform/storage/storage.ts",
+                      "!**/platform/wake/wake.ts"
+                    ],
+                    "message": "shell/ takes platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json."
                   }
                 ]
               }
@@ -271,8 +296,14 @@
                     "message": "An app never imports another app; share through ui/ or packages/. App files live one folder deep: apps/<app>/<component>/."
                   },
                   {
-                    "group": ["**/platform/browser-*", "**/platform/**/browser-*"],
-                    "message": "apps/ take platform interfaces, never browser implementations."
+                    "group": [
+                      "**/platform/**",
+                      "!**/platform/clock/clock.ts",
+                      "!**/platform/files/files.ts",
+                      "!**/platform/storage/storage.ts",
+                      "!**/platform/wake/wake.ts"
+                    ],
+                    "message": "apps/ take platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json."
                   }
                 ]
               }

@@ -1,0 +1,14 @@
+language js(jsx)
+
+// The `testing` entry points of @pigeon/core and @pigeon/lighthouse hold the fakes and the contract
+// tests that every implementation runs. Only test files import them; biome.json applies this
+// plugin to every other file.
+or {
+  `import $clause from $source`,
+  `import $source`,
+  `export { $names } from $source`,
+  `export * from $source`
+} as $import where {
+  $source <: r"['\"]@pigeon/(?:core|lighthouse)/testing['\"]",
+  register_diagnostic(span=$import, message="@pigeon/core/testing and @pigeon/lighthouse/testing are for test files only: they hold fakes and the tests every implementation runs.", severity="error")
+}
