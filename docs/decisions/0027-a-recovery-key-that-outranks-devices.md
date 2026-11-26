@@ -2,7 +2,7 @@
 
 A recovery key, kept on paper or in a file behind a passphrase, can make any device the one that manages your list, even when every device is gone, and nothing a device does can stop it.
 
-- Status: accepted; its key kinds (Ed25519 only) and how it sits in the device log are settled by 0030, and its rule for two recovers of one epoch is superseded by 0031
+- Status: accepted; its key kinds (Ed25519 only) and how it sits in the device log are settled by 0030, and its rule for two recovers of one epoch is superseded by 0031; [0052](0052-file-passphrases-through-argon2id.md) stretches the file's passphrase with Argon2id instead of PBKDF2
 - Date: 2026-11-25
 
 ## Context

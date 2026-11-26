@@ -17,7 +17,11 @@ import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import type { Messenger, RecoverResult } from '../service/service.ts'
-import { MIN_PASSPHRASE_LENGTH, type PassphraseSeal } from '../your-data/your-data.tsx'
+import {
+  MIN_PASSPHRASE_LENGTH,
+  type PassphraseSeal,
+  STRETCH_FAILED,
+} from '../your-data/your-data.tsx'
 import styles from './recovery.module.css'
 
 /** What the windows need from the platform: making, reading and using recovery keys. */
@@ -71,12 +75,17 @@ function KeepKey(props: {
   const phone = useLayout() === 'phone'
   const [passphrase, setPassphrase] = createSignal('')
   const [saved, setSaved] = createSignal(false)
+  const [failed, setFailed] = createSignal('')
   const saveFile = async () => {
     if (passphrase().length < MIN_PASSPHRASE_LENGTH) return
-    const sealed = await props.kit.seal.seal(
-      passphrase(),
-      new TextEncoder().encode(props.newKey.code),
-    )
+    setFailed('')
+    let sealed: string
+    try {
+      sealed = await props.kit.seal.seal(passphrase(), new TextEncoder().encode(props.newKey.code))
+    } catch {
+      setFailed(STRETCH_FAILED)
+      return
+    }
     props.kit.files.saveText(RECOVERY_FILE_NAME, recoveryFileText(props.handle, sealed))
     setSaved(true)
   }
@@ -98,7 +107,7 @@ function KeepKey(props: {
         onInput={setPassphrase}
       />
       <div class={styles.buttons}>
-        <span class={styles.muted}>{saved() ? 'Saved.' : ''}</span>
+        <span class={styles.muted}>{saved() ? 'Saved.' : failed()}</span>
         <Button
           label="&Save as File..."
           disabled={passphrase().length < MIN_PASSPHRASE_LENGTH}
@@ -256,7 +265,13 @@ export function UseRecoveryKey(props: UseRecoveryKeyProps) {
   }
 
   const check = async () => {
-    const text = await read()
+    let text: string | undefined
+    try {
+      text = await read()
+    } catch {
+      setView({ kind: 'enter', error: STRETCH_FAILED })
+      return
+    }
     if (text === undefined) {
       setView({ kind: 'enter', error: 'The passphrase doesn’t open that file.' })
       return

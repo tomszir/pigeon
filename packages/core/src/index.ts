@@ -1,3 +1,5 @@
+export type { Argon2id, Argon2idParams } from './argon2id/argon2id.ts'
+export { ARGON2ID_KEY_BYTES } from './argon2id/argon2id.ts'
 export type { AvatarPixels, AvatarTraits } from './avatar/avatar.ts'
 export {
   AVATAR_SIZE,

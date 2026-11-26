@@ -1,38 +1,21 @@
 // core's Pake over the Rust crate's SPAKE2 session (crate/src/pake.rs), built to WebAssembly.
 //
-// Nothing loads until the first start: then the glue wasm-bindgen wrote is imported and the
-// module instantiated, once per page, and kept for later exchanges. A failed load is forgotten,
-// so the next start tries again. After every call that handled a secret the wrapper wipes the
-// module's stack, and a session is freed (which wipes its heap) as soon as it finishes or is
-// abandoned.
+// The module loads on the first start (see ../module.ts). After every call that handled a
+// secret the wrapper wipes the module's stack, and a session is freed (which wipes its heap) as
+// soon as it finishes or is abandoned.
 import type { Pake, PakeStart } from '@pigeon/core'
-import type { InitInput } from '../../pkg/pigeon_crypto.js'
-
-type Glue = typeof import('../../pkg/pigeon_crypto.js')
+import { type Glue, isBytes, type ModuleSource, moduleLoader } from '../module.ts'
 
 /** Bytes in either side's message: a side byte and a compressed Ed25519 point. */
 const MESSAGE_BYTES = 33
 
-const isBytes = (value: unknown): value is Uint8Array => value instanceof Uint8Array
-
 /**
  * `source` gives the module's bytes, or where to fetch them; left out, the glue fetches the
- * `.wasm` file beside it, which is what a bundler emits it as. The module is instantiated once
- * per page, so a `source` given after it has loaded isn't used.
+ * `.wasm` file beside it, which is what a bundler emits it as, and the page's one instance is
+ * shared. A `source` given after the module has loaded isn't used.
  */
-export function createSpake2Pake(source?: () => InitInput | Promise<InitInput>): Pake {
-  let loading: Promise<Glue> | undefined
-  const load = () => {
-    loading ??= (async () => {
-      const glue = await import('../../pkg/pigeon_crypto.js')
-      await glue.default(source === undefined ? undefined : { module_or_path: source() })
-      return glue
-    })().catch((error: unknown) => {
-      loading = undefined
-      throw error
-    })
-    return loading
-  }
+export function createSpake2Pake(source?: ModuleSource): Pake {
+  const load = moduleLoader(source)
 
   return {
     async start(role, password, idA, idB) {
