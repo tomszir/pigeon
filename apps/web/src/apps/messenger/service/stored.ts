@@ -1,25 +1,154 @@
-// Shape checks for what the Messenger reads back from storage. A value that doesn't match is
-// treated as missing rather than trusted.
+// What the Messenger keeps in storage: the keys it uses, the shape of each record, and the checks
+// on what is read back. A value that doesn't match is treated as missing rather than trusted.
+// Nothing here imports from the Messenger itself, so the records can be read from anywhere
+// without an import cycle.
 import {
   type ChatLog,
   isHandle,
+  isLighthouseAddress,
   isLiveCode,
   isPairSecret,
   isPeerId,
+  isSealingKey,
+  type LighthouseAddress,
+  type LiveCode,
   type LogEntry,
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   type PeerId,
+  type SealingKey,
+  type Status,
 } from '@pigeon/core'
-import { isReplacing } from './rekeys.ts'
-import type {
-  BlockedRecord,
-  FarewellRecord,
-  FriendRecord,
-  HostedInvite,
-  MessengerSettings,
-  Profile,
-} from './service.ts'
+import { isReplacing, type Replacing } from './rekeys.ts'
+
+export interface Profile {
+  readonly handle: string
+  readonly status: Status
+  readonly message: string
+}
+
+export interface FriendRecord {
+  readonly id: PeerId
+  /** The name they chose, as last seen in their signed hello. */
+  readonly handle: string
+  readonly addedAt: number
+  /** What you call them, shown instead of their handle. */
+  readonly petname?: string | undefined
+  /** No balloons and no shaking from them until then (`Infinity` stored as -1: until unmuted). */
+  readonly mutedUntil?: number | undefined
+  /** They removed you: the chat stays, read-only, until you remove them too. */
+  readonly removedYouAt?: number | undefined
+  /** The pair secret your rooms are named from; none for friends not yet moved. */
+  readonly secret?: string | undefined
+  /** Both of you hold the secret, so the old room named from your ids is no longer used. */
+  readonly moved?: boolean | undefined
+  /**
+   * The secret was made here, or reached this device sealed to it, by a Pigeon that seals every
+   * secret it hands over. One without it is from before, and is replaced.
+   */
+  readonly sealed?: boolean | undefined
+  /** Moving off an old secret: `secret` is already the new one. */
+  readonly replacing?: Replacing | undefined
+  /** The round before `replacing`, when a removal began a new one from its winner. */
+  readonly prior?: Replacing | undefined
+  /** A device that held the secret was removed here: it's replaced at the next mail check. */
+  readonly renew?: boolean | undefined
+  /** The secret proposed here after that removal, until a round begins from it. */
+  readonly begun?: string | undefined
+}
+
+/** A friend you removed who hasn't been told yet, and where to find them. */
+export interface FarewellRecord {
+  readonly id: PeerId
+  readonly secret?: string | undefined
+  readonly moved?: boolean | undefined
+  /** The secret being replaced, while they may not have heard of the new one: met in too. */
+  readonly old?: string | undefined
+  /** Left in their mailbox too: their receipt says it was heard, as meeting them would. */
+  readonly mailed?: boolean | undefined
+}
+
+export interface MessengerSettings {
+  /** Connect to friends through the TURN relay only, so they never learn your IP address. */
+  readonly relayOnly: boolean
+}
+
+/** Someone you've blocked: their invite requests and answers are refused. */
+export interface BlockedRecord {
+  readonly id: PeerId
+  readonly handle: string
+  readonly at: number
+}
+
+/**
+ * What a friend's devices said about their mail: each device's sealing key, and the Lighthouses
+ * that friend's Pigeon wants mail left at. Kept for every friend, and for your own devices.
+ */
+export interface MailBook {
+  readonly keys: Readonly<Record<PeerId, SealingKey>>
+  readonly lighthouses: readonly LighthouseAddress[]
+}
+
+export const isMailBook = (value: unknown): value is MailBook =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as MailBook).keys === 'object' &&
+  (value as MailBook).keys !== null &&
+  Object.values((value as MailBook).keys).every(isSealingKey) &&
+  Array.isArray((value as MailBook).lighthouses) &&
+  (value as MailBook).lighthouses.every(isLighthouseAddress)
+
+/** The invite this tab is hosting. */
+export interface HostedInvite {
+  readonly code: LiveCode
+  readonly expiresAt: number
+  /** Wrong tries it has had, kept so a reload doesn't give a guesser five more. */
+  readonly wrongTries?: number
+}
+
+export const KEYS = {
+  profile: 'profile',
+  friends: 'friends',
+  /** Saved friend records that failed their check, exactly as they were stored. Never written over. */
+  unreadableFriends: 'friends-unreadable',
+  /** Same for blocked records and farewells. */
+  unreadableBlocked: 'blocked-unreadable',
+  unreadableFarewells: 'farewells-unreadable',
+  invite: 'invite',
+  blocked: 'blocked',
+  /** Friends you removed who haven't been told yet. */
+  farewells: 'farewells',
+  settings: 'messengerSettings',
+  /** When your name or personal message last changed, so the newest wins on your devices. */
+  profileChangedAt: 'profileChangedAt',
+  /** Set once the balloon reminding you to make a recovery key has been shown. */
+  recoveryReminded: 'recoveryReminded',
+  /**
+   * Set once this device has put its open invite links' cards again, signed low-S: a card put
+   * before Pigeon took only low-S may be refused, and nothing else puts it again on its own.
+   */
+  cardsPutLowS: 'cardsPutLowS',
+  /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
+  lighthouses: 'lighthouses',
+  /** When the Lighthouse list was last changed here, so the newest wins on your devices. */
+  lighthousesChangedAt: 'lighthousesChangedAt',
+  /** The self secret was replaced: My Devices asks you to check your list, until you have. */
+  checkDevices: 'checkDevices',
+  /**
+   * The invite links a device taken off your list may know, still to be closed: kept until a
+   * closed card for each is up, so a close that failed, or a tab that closed first, tries again.
+   */
+  closeLinks: 'closeLinksAfterRemoval',
+  /**
+   * The devices taken off your list that what a removal calls for (links closed, secrets
+   * marked to renew) was last worked out for. A removal not in it, whenever this device first
+   * sees it, is acted on, even after a tab closed between keeping the log and acting.
+   */
+  removalsSeen: 'removalsSeen',
+  /** What a friend's devices (or your own, under your own id) said about their mail. */
+  mailBook: (id: PeerId) => `mail-book:${id}`,
+  log: (id: PeerId) => `log:${id}`,
+} as const
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
