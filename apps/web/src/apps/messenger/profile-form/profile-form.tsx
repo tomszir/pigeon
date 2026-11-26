@@ -1,5 +1,10 @@
 // The name friends see and an optional personal message. Used for first-run setup and later edits.
-import { MAX_HANDLE_LENGTH, MAX_PERSONAL_MESSAGE_LENGTH } from '@pigeon/core'
+import {
+  hasUnsafeHandleCharacters,
+  isHandle,
+  MAX_HANDLE_LENGTH,
+  MAX_PERSONAL_MESSAGE_LENGTH,
+} from '@pigeon/core'
 import { createSignal, Show } from 'solid-js'
 import { Button } from '../../../ui/button/button.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
@@ -17,7 +22,7 @@ export interface ProfileFormProps {
 export function ProfileForm(props: ProfileFormProps) {
   const [handle, setHandle] = createSignal(props.handle)
   const [message, setMessage] = createSignal(props.message)
-  const valid = () => handle().trim() !== '' && handle().trim().length <= MAX_HANDLE_LENGTH
+  const valid = () => isHandle(handle().trim())
   const save = () => {
     if (valid()) props.onSave(handle().trim(), message().slice(0, MAX_PERSONAL_MESSAGE_LENGTH))
   }
@@ -41,6 +46,11 @@ export function ProfileForm(props: ProfileFormProps) {
       <TextField label="&Personal message:" stacked value={message()} onInput={setMessage} />
       <Show when={handle().length > MAX_HANDLE_LENGTH}>
         <p class={styles.error}>Names are at most {MAX_HANDLE_LENGTH} characters.</p>
+      </Show>
+      <Show when={hasUnsafeHandleCharacters(handle().trim())}>
+        <p class={styles.error}>
+          Names can't hold line breaks, control characters or marks that turn text around.
+        </p>
       </Show>
       <div class={styles.buttons}>
         <Button label="&OK" type="submit" isDefault disabled={!valid()} class={styles.button} />

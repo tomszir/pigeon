@@ -155,6 +155,9 @@ export type {
   Status,
 } from './messages/envelope.ts'
 export {
+  cleanHandle,
+  hasUnsafeHandleCharacters,
+  isHandle,
   MAX_HANDLE_LENGTH,
   MAX_LIGHTHOUSES,
   MAX_MESSAGE_BYTES,

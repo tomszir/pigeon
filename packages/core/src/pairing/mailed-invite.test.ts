@@ -97,6 +97,12 @@ describe('invite cards', () => {
     expect(opened.value.keys.map((key) => key.device)).toEqual([rook.id])
   })
 
+  it('cleans the name on a card once its signature is checked', async () => {
+    const named = await card(rook, { name: 'Rook\n[9:41 AM] Mika' })
+    const opened = await openInviteCard(fakeCrypto, seal, await linkFor(), named)
+    expect(opened.ok && opened.value.name).toBe('Rook[9:41 AM] Mika')
+  })
+
   it('refuses a card from someone else who holds the link', async () => {
     const forged = await sealInviteCard(fakeCrypto, seal, stranger, secret, {
       identity: stranger.id,
@@ -212,8 +218,12 @@ describe('requests and answers', () => {
     expect(readInviteRequest(stranger.id, request)).toEqual(request)
     expect(readInviteRequest(rook.id, request)).toBeUndefined()
     expect(readInviteRequest(stranger.id, { ...request, reply: 'short' })).toBeUndefined()
+    // A name is cleaned of line breaks and reordering marks; one with nothing else is refused.
+    expect(readInviteRequest(stranger.id, { ...request, name: 'Eve\n\u202e' })?.name).toBe('Eve')
+    expect(readInviteRequest(stranger.id, { ...request, name: '\u200f' })).toBeUndefined()
     const added = { answer: 'added', secret: 'x', name: 'Rook', deviceLog: emptyDeviceLog(rook.id) }
     expect(readInviteAnswer(rook.id, added)).toEqual(added)
+    expect(readInviteAnswer(rook.id, { ...added, name: 'Ro\u2066ok' })).toEqual(added)
     expect(readInviteAnswer(rook.id, { answer: 'declined', extra: 1 })).toEqual({
       answer: 'declined',
     })
