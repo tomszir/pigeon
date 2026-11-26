@@ -1,6 +1,7 @@
 // Property tests for the device log's merge rules. Each run writes a random history the way the
 // owner's devices would: adds, removes and renames, a recovery key, recoveries, and signatures
-// spelled high-S or low-S as Pigeons from before and after low-S spell them. From it come the
+// spelled high-S or low-S as Pigeons from before and after low-S spell them, over the bytes
+// every Pigeon checks or the ones that say what an entry is. From it come the
 // copies others hold or can make: older copies, tails, a signature's other spelling or capitals,
 // a stolen writer adding to an epoch it was recovered out of, a recovery key used twice, and
 // recovers forged with keys already used. They're merged in random orders, and every result is
@@ -14,7 +15,7 @@ import type { Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import { canonicalSignature } from '../identity/signature.ts'
 import { flipS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeSigner } from '../testing/testing.ts'
+import { fakeSigner, typedSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntry,
@@ -36,8 +37,11 @@ import {
 
 const crypto = p256Crypto()
 
-/** How a device signed: an updated Pigeon low-S, one from before either way. */
-type Spelling = 'updated' | 'old-low' | 'old-high'
+/**
+ * How a device signed: low-S over the bytes that say what an entry is; an updated Pigeon, low-S
+ * over the bytes every Pigeon checks; one from before low-S over those bytes too, either way.
+ */
+type Spelling = 'typed' | 'updated' | 'old-low' | 'old-high'
 
 type Op =
   | {
@@ -94,11 +98,18 @@ const pick = <T>(list: readonly T[], index: number): T => {
 }
 
 const signerFor = (cast: Cast, id: PeerId, spelling: Spelling): Signer => {
-  if (id === cast.owner.id) return spelling === 'old-high' ? cast.ownerHigh : cast.owner
-  const signer = cast.devices.find((device) => device.id === id)
+  const signer =
+    id === cast.owner.id
+      ? spelling === 'old-high'
+        ? cast.ownerHigh
+        : cast.owner
+      : cast.devices.find((device) => device.id === id)
   if (signer === undefined) throw new Error('no such device')
-  return signer
+  return spelling === 'typed' ? typedSigner(signer) : signer
 }
+
+/** Whether a Pigeon signing this way reads its stored log low-S, as Pigeons since low-S do. */
+const sinceLowS = (spelling: Spelling) => spelling === 'typed' || spelling === 'updated'
 
 // What a log says, whatever spelling it says it in: every signature decoded, either case, and
 // made low-S. Only the first device's key is P-256, so it's the one a twin spelling can come from.
@@ -217,7 +228,7 @@ async function append(
   at: number,
 ): Promise<DeviceLog | undefined> {
   const writer = deviceState(raw).writer
-  const log = spelling === 'updated' ? lowSDeviceLog(raw) : raw
+  const log = sinceLowS(spelling) ? lowSDeviceLog(raw) : raw
   const result = await appendDeviceEntry(crypto, log, signerFor(cast, writer, spelling), change, at)
   return result.ok ? result.log : undefined
 }
@@ -226,7 +237,7 @@ async function step(cast: Cast, raw: DeviceLog, op: Op, at: number) {
   const state = deviceState(raw)
   switch (op.kind) {
     case 'commit': {
-      const log = op.spelling === 'updated' ? lowSDeviceLog(raw) : raw
+      const log = sinceLowS(op.spelling) ? lowSDeviceLog(raw) : raw
       const signer = op.spelling === 'old-high' ? cast.ownerHigh : cast.owner
       return setRecoveryKey(log, signer, pick(cast.keys, 1).id, at)
     }
@@ -397,7 +408,7 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
   return { stored, sent, final, honest, forged, kept }
 }
 
-const spelling = fc.constantFrom<Spelling>('updated', 'old-low', 'old-high')
+const spelling = fc.constantFrom<Spelling>('typed', 'updated', 'old-low', 'old-high')
 // Removals are what most rules guard, and each needs an add before it, so they come up often.
 const change = fc.record({
   kind: fc.constantFrom<'add' | 'remove' | 'name'>('add', 'remove', 'add', 'remove', 'name'),

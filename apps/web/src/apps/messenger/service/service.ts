@@ -20,6 +20,7 @@ import {
   encodeInstance,
   encodeInviteLink,
   encodePairSecret,
+  entryKey,
   err,
   everDevices,
   fingerprint,
@@ -82,6 +83,7 @@ import {
   type SealingKey,
   type Signer,
   type Status,
+  sealingKeyToKeep,
   selfRoomsAt,
   startPairSession,
   type Transport,
@@ -573,7 +575,9 @@ export async function createMessenger(deps: MessengerDeps) {
   ): Promise<boolean> {
     const book = await mailBook(id)
     const keys =
-      event.sealing === undefined ? book.keys : { ...book.keys, [event.device]: event.sealing }
+      event.sealing === undefined
+        ? book.keys
+        : { ...book.keys, [event.device]: sealingKeyToKeep(book.keys[event.device], event.sealing) }
     const next: MailBook = { keys, lighthouses: event.lighthouses ?? book.lighthouses }
     if (JSON.stringify(next) === JSON.stringify(book)) return false
     mailBooks.set(id, next)
@@ -1095,10 +1099,10 @@ export async function createMessenger(deps: MessengerDeps) {
     seen: (id, event) => void heardIn(id, event.room, event.device).catch(() => undefined),
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
-      const seen = new Set(before.map((entry) => entry.sig))
+      const seen = new Set(before.map(entryKey))
       // Theirs, from whichever of their devices: anything not by one of yours.
       const arrived = event.log.entries.filter(
-        (entry) => !devices.isMine(entry.author) && !seen.has(entry.sig),
+        (entry) => !devices.isMine(entry.author) && !seen.has(entryKey(entry)),
       )
       batch(() => {
         setState('friends', id, 'log', event.log)

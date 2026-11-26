@@ -1,10 +1,25 @@
-// Core's SealCrypto and a device's Sealer on WebCrypto: ECDH on P-256, HKDF-SHA256
-// and AES-256-GCM. A device's sealing key is made once, non-extractable like its signing key, so
-// not even the page can read its private half; only its public half leaves the browser.
+// Core's SealCrypto and a device's Sealer on WebCrypto: HPKE from @hpke/core, which
+// runs on WebCrypto itself, and ECDH on P-256, HKDF-SHA256 and AES-256-GCM for the older form. A
+// device's sealing key is made once, non-extractable like its signing key, so not even the page
+// can read its private half; only its public half leaves the browser. HPKE opens with that same
+// key: the library is handed the key pair, so it works out the shared secret with WebCrypto and
+// never asks for the private half.
+import { Aes256Gcm, CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } from '@hpke/core'
 import type { SealCrypto, Sealer } from '@pigeon/core'
 
 const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const
 const copy = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(bytes)
+
+/** RFC 9180 base mode: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-256-GCM. */
+const hpke = new CipherSuite({
+  kem: new DhkemP256HkdfSha256(),
+  kdf: new HkdfSha256(),
+  aead: new Aes256Gcm(),
+})
+
+/** A raw P-256 public key as WebCrypto's: refused unless it's a point on the curve. */
+const publicKeyOf = (subtle: SubtleCrypto, raw: Uint8Array) =>
+  subtle.importKey('raw', copy(raw), ECDH, true, [])
 
 export interface StoredSealingKey {
   readonly privateKey: CryptoKey
@@ -36,9 +51,20 @@ async function deriveShared(subtle: SubtleCrypto, privateKey: CryptoKey, peer: U
 }
 
 export function sealerFor(stored: StoredSealingKey, subtle = crypto.subtle): Sealer {
+  let publicKey: Promise<CryptoKey> | undefined
   return {
     publicKey: stored.publicKey,
     share: (peer) => deriveShared(subtle, stored.privateKey, peer).catch(() => undefined),
+    async hpkeOpen(enc, info, aad, sealed) {
+      try {
+        publicKey ??= publicKeyOf(subtle, stored.publicKey)
+        const recipientKey = { privateKey: stored.privateKey, publicKey: await publicKey }
+        const params = { recipientKey, enc: copy(enc).buffer, info: copy(info).buffer }
+        return new Uint8Array(await hpke.open(params, copy(sealed).buffer, copy(aad).buffer))
+      } catch {
+        return undefined
+      }
+    },
   }
 }
 
@@ -88,5 +114,11 @@ export function createWebSealCrypto(subtle = crypto.subtle): SealCrypto {
       }
     },
     random,
+    async hpkeSeal(peer, info, aad, data) {
+      const recipientPublicKey = await publicKeyOf(subtle, peer)
+      const params = { recipientPublicKey, info: copy(info).buffer }
+      const { enc, ct } = await hpke.seal(params, copy(data).buffer, copy(aad).buffer)
+      return { enc: new Uint8Array(enc), sealed: new Uint8Array(ct) }
+    },
   }
 }

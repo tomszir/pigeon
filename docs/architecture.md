@@ -28,8 +28,8 @@ packages/
                   abandoned.
       mail/       mail sealed to devices: mail tags from the pair or self secret and
                   the UTC date, sealing keys bound to their devices, sealMail and
-                  openMail, and SealCrypto and Sealer, the ECDH, HKDF and AES-GCM the
-                  platform implements.
+                  openMail, and SealCrypto and Sealer, the HPKE, ECDH, HKDF and AES-GCM
+                  the platform implements (HPKE with @hpke/core).
       lighthouse/ what a Pigeon and a Lighthouse say: plain requests,
                   replies signed by the Lighthouse over the request number, blob ids
                   from their content, pigeon://lighthouse addresses, and client.ts, a
