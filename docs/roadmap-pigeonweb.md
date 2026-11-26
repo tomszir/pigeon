@@ -2,7 +2,7 @@
 
 Ideas for turning Pigeonweb into a small retro internet that feels alive, worked out far enough to show each can be built on Pigeon's design, with options for what that design doesn't cover yet. None of it is scheduled.
 
-This is a companion to [roadmap.md](roadmap.md), linked from its "Later, not yet scheduled" list. When a piece here is scheduled, it moves into roadmap.md as a milestone or part of one, and the choices marked **To decide** become decision records first. Where a choice has a leaning, it's a starting point for that decision, not the decision.
+This is a companion to [roadmap.md](roadmap.md), linked from its "Later, not yet scheduled" list. When a piece here is scheduled, it moves into roadmap.md as a release or part of one, and the choices marked **To decide** become decision records first. Where a choice has a leaning, it's a starting point for that decision, not the decision.
 
 ## The goal
 
@@ -14,10 +14,10 @@ A test for the whole thing: someone with no friends on Pigeon yet opens Explorer
 
 Every kind of site below is made of the same five parts. Most of them exist or are planned already.
 
-1. **Pages.** A page is a PigeonHTML snapshot: content-addressed chunks (named by their hash, so anyone can serve them and anyone can check them) and a small manifest signed by the owner with a version number. The newest validly signed version wins. Pages stay static, with no scripts, as [pigeonhtml.md](pigeonhtml.md) requires (M5, M3, [0004](decisions/0004-pages-limited-to-2000s-html-css.md)).
+1. **Pages.** A page is a PigeonHTML snapshot: content-addressed chunks (named by their hash, so anyone can serve them and anyone can check them) and a small manifest signed by the owner with a version number. The newest validly signed version wins. Pages stay static, with no scripts, as [pigeonhtml.md](pigeonhtml.md) requires (the roadmap's Pigeonweb and Files, [0004](decisions/0004-pages-limited-to-2000s-html-css.md)).
 2. **Widgets.** Interactive bits are server-side-include comments that Explorer draws (`<!--#include widget="guestbook" -->`). A widget's content is shown inside the page's frame as sanitized, static PigeonHTML. Anything you type into one opens a Pigeon dialog outside the page, so a page can't fake, prefill or read a post (see gap 11).
 3. **Public logs.** Guestbooks, threads, comments and votes are signed append-only logs, the same mechanism chats use ([0003](decisions/0003-signed-append-only-logs-not-yjs.md)). Each log has an id like `log:<owner id>/<name>`. Each entry is signed by its author together with the log's id. Next to every public log sits a **moderation log**, written only by the owner and the moderators the owner names. It hides entries and bans keys. Readers and hosts apply it; hidden entries show as "removed by a moderator".
-4. **Hosts.** Copies of pages and logs live in four places: the owner's tab, friends' tabs that mirror them, Lighthouses that host public content (gap 1), and, for friends only, the tabs of visitors who have the page open. The status bar always says which one served what: "Hosted by Mika", "Mirrored by 3 friends", "Carried by Lighthouse Harbor".
+4. **Hosts.** Copies of pages and logs live in four places: the owner's tab, friends' tabs that mirror them, Lighthouses that host public content (pages for their owner and their friends come with Pigeonweb; more is gap 1), and, for friends only, the tabs of visitors who have the page open. The status bar always says which one served what: "Hosted by Mika", "Mirrored by 3 friends", "Carried by Lighthouse Harbor".
 5. **Live channels.** Things that happen now (a shoutbox, a chat room, "3 reading this page") go through a Lighthouse that pushes new entries to whoever is watching, never through public WebRTC rooms (gap 3).
 
 The rest of this document is kinds of sites made from those parts, then ways to make it feel alive with few people, then the gaps and the options for each, then an order to build in.
@@ -32,7 +32,7 @@ The GeoCities page: a background tile, a marquee, an "Under construction" GIF, a
 
 - **Built from** pages and widgets: `counter`, `guestbook`, `webring`, `last-updated` (from the manifest's signed date, so it can't lie about being fresh).
 - **Hit counters** can't be counted honestly without a centre, so each host counts what it served and the counter says so. Options: each hosting Lighthouse counts manifest fetches per day and signs its count, and the widget adds the counts it can get (leaning, and "counted by 2 Lighthouses" in its tooltip); or visitors sign a visit entry (spammy and leaks who visited); or count only guestbook signatures. Counters were never accurate in 2003 either.
-- **Needs**: page hosting (M5), and a public store for anyone beyond friends (gap 1).
+- **Needs**: page hosting (Pigeonweb), and a public store for anyone beyond friends (gap 1).
 
 ### Guestbooks
 
@@ -61,7 +61,7 @@ The phpBB and UBB boards of the time: forums, threads ordered by the latest repl
 - **Size**: threads show 25 posts a page; a thread log holds at most 2000 posts, then continues as "Part 2". Moderators sign checkpoints so new readers fetch a checkpoint and the posts after it, not the whole history (gap 7).
 - **Who may post** is the board's policy, set by its owner: approval by a moderator (the default, and authentic), vouching, invitation only, or open with posting tokens (gap 4).
 - **Text only**, with no image uploads, so a board never hosts pictures someone shouldn't. Pseudonymous, never anonymous: you post as a public persona (gap 10).
-- **Friends first**: a private board for a group of friends is a group space (M8) with threads, and needs none of the public machinery.
+- **Friends first**: a private board for a group of friends is a group space (from Groups) with threads, and needs none of the public machinery.
 
 ### Online journals
 
@@ -93,7 +93,7 @@ LiveJournal's shape: entries with a mood and "now listening", comments, and post
 - **Cliques** are webrings without the navigation: a signed member list and a button for your page.
 - **Galleries** of pixel and ASCII art, a page per few pictures.
 - **A trading post** for in-world things (adopted pigeons, buttons, badges), no money.
-- **High scores** come from Pigeon Games' signed move logs (M9), so a score can be checked by replaying it.
+- **High scores** come from Pigeon Games' signed move logs, so a score can be checked by replaying it.
 - **Text adventures**: single-player ones run in your own tab, like quizzes, from a game file on the page. A multiplayer MUD needs something always on to run it, a Lighthouse that offers it or Coo in the host's tab, and waits.
 - **Zines and newsletters** are journals with issues; "subscribe" adds them to your Friends page, which shows a "New issue" badge.
 
@@ -115,9 +115,9 @@ The biggest risk is an empty Pigeonweb. These help even with a handful of users,
 
 Public sites need always-on hosts, and with many people, many Lighthouses. These ideas come from the same brainstorm and underlie gaps 1 to 3.
 
-- **Lighthouses talking to each other.** Mail can already be mirrored safely: it's sealed, content-addressed and can't be tied to anyone, and a drop value proves itself to any Lighthouse that holds its hash, so tombstones can be gossiped without trust (M6, [0037](decisions/0037-the-lighthouse-and-its-mailbox.md)). Mirrors must carry a blob's original expiry, and traffic between Lighthouses needs its own limits. Public content mirrors the same way, and is simpler, since anyone can check a signature.
+- **Lighthouses talking to each other.** Mail can already be mirrored safely: it's sealed, content-addressed and can't be tied to anyone, and a drop value proves itself to any Lighthouse that holds its hash, so tombstones can be gossiped without trust (Lighthouses for everyone, [0037](decisions/0037-the-lighthouse-and-its-mailbox.md)). Mirrors must carry a blob's original expiry, and traffic between Lighthouses needs its own limits. Public content mirrors the same way, and is simpler, since anyone can check a signature.
 - **Supernodes, the way 2003 did it.** Browsers can't take incoming connections, so the mesh is between Lighthouses only, and a client talks to the one or few it chose. Kazaa and early Skype worked this way.
-- **Public Lighthouses added for you.** Nothing can prove what code a server runs, so checking a Lighthouse means checking what it does and making fakes costly: test blobs put and fetched later from elsewhere build a record of whether it keeps what it's given; vouches signed by operators you trust (your friends', the official ones), time in the directory and a domain it can prove make a thousand fake Lighthouses expensive. Defaults trust in that order: friends' Lighthouses, then vouched ones, then the rest. Strangers' Lighthouses hold public content and pointers, never all of your mail. **To decide** with M6's decision on Lighthouses run by others.
+- **Public Lighthouses added for you.** Nothing can prove what code a server runs, so checking a Lighthouse means checking what it does and making fakes costly: test blobs put and fetched later from elsewhere build a record of whether it keeps what it's given; vouches signed by operators you trust (your friends', the official ones), time in the directory and a domain it can prove make a thousand fake Lighthouses expensive. Defaults trust in that order: friends' Lighthouses, then vouched ones, then the rest. Strangers' Lighthouses hold public content and pointers, never all of your mail. **To decide** with the decision on Lighthouses run by others that Lighthouses for everyone needs.
 - **Sharding where it helps.** Mail already has its shard: the recipient's own Lighthouse list, as email has MX records. Spreading mail by tag across strangers' Lighthouses would show your address and tags to more operators for little gain. Public things are where sharding pays: owner ids, page hashes and search words spread evenly, so `H(key)` to the nearest _k_ Lighthouses (Kademlia-style) is a natural index once there are too many Lighthouses to gossip everything (gap 2).
 
 ## Gaps and options
@@ -127,6 +127,8 @@ What Pigeon's design doesn't cover yet, with options and a leaning for each. Eac
 ### 1. Public storage on Lighthouses
 
 The mailbox holds sealed blobs under tags for at most 30 days, deleted by drops. Public sites need things that last: chunks, the newest manifest per owner, and logs that grow.
+
+Part of this is scheduled: Files gives Lighthouses a store of sealed file chunks, within quotas, and Pigeonweb has a Lighthouse serve public page chunks and signed site manifests for its owner and their friends on that store, with decisions on chunk names, site manifests and what an operator can refuse. What's left here is opening that store to anyone, and logs.
 
 - **A. Reuse the mailbox** with public tags (`H(log id)`), owners and mirrors putting again before expiry. Nothing new on the Lighthouse, but nothing outlives its 30 days without someone online to put it again.
 - **B. A public store beside the mailbox**: `chunk put/get` (content-addressed), `head put/get` (an owner-signed manifest; the highest version is kept), and `log append/since` (signed entries, checked by the Lighthouse, which can read them since they're public). Kept for as long as the operator's policy says.
@@ -188,7 +190,7 @@ Mail expires after 30 days, so it can't hold a journal.
 
 - **A. Seal each entry** to every friend's devices, as mail is. Simple, but costs a wrap per device per entry, and a new friend can't read old entries.
 - **B. A friends key** sent to friends in mail and used to encrypt entries kept in the public store; a new key after a removal.
-- **Leaning B**, and designed with group keys (M8), which have the same shape: a key for a member list, replaced when someone leaves. If groups take up MLS, friends-only content could be a group of your friends.
+- **Leaning B**, and designed with group keys (from Groups), which have the same shape: a key for a member list, replaced when someone leaves. If groups take up MLS, friends-only content could be a group of your friends.
 
 ### 9. Counting visitors
 
@@ -215,7 +217,7 @@ A widget is drawn by Explorer, but it sits in a page someone else wrote.
 Each step is useful by itself, and the later ones need the decisions above.
 
 1. **On this computer**, with nothing new on the network: the quiz and single-player text adventure widgets, the in-world sites that ship with Pigeon, and widgets drawn as static HTML with their dialogs (gap 11).
-2. **Among friends**, after pages are hosted (M5) and groups (M8): guestbooks, webrings and cliques among friends, journals with friends-only entries and the Friends page (gap 8), private boards as group spaces, "Mika updated her homepage".
-3. **Public hosting**, after Lighthouses mesh (M6): the public store (gap 1), signed pointers (gap 2), What's New, the directory, counters (gap 9), personas (gap 10).
+2. **Among friends**, after pages are hosted, with Lighthouses mirroring them for their owner and friends (Pigeonweb), and Groups: guestbooks, webrings and cliques among friends, journals with friends-only entries and the Friends page (gap 8), private boards as group spaces, "Mika updated her homepage".
+3. **Public hosting**, after Lighthouses mesh (Lighthouses for everyone): the public store (gap 1), signed pointers (gap 2), What's New, the directory, counters (gap 9), personas (gap 10).
 4. **Public and interactive**, after moderation (gap 5) and spam (gap 4) are decided: public boards (gaps 6 and 7), polls, shoutboxes and chat rooms over live channels (gap 3), awards and top sites.
 5. **At scale**: search across Lighthouses, an index split across Lighthouses, posting tokens, wikis.
