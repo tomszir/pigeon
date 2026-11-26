@@ -115,6 +115,9 @@ apps/
                 service/identity-moves.ts is leaving a Pigeon, recovering an identity onto an
                 empty one and linking one to another device's identity (createIdentityMoves,
                 given by service.ts what it needs, such as closing the Messenger);
+                service/mail-schedule.ts is when mail is looked for (createMailSchedule): one look at
+                a time, a gap after the last, the timers and the tab or network coming back; what a
+                look does stays in service.ts and is passed in;
                 service/stored.ts holds what the service keeps in storage: its keys, the
                 shape of each record and the checks on what is read back, importing nothing from
                 service.ts so the two never form a cycle;
