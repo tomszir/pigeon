@@ -19,10 +19,16 @@ export function lowSBody(body: Json): Json {
   if (isDeviceLog(body)) return lowSDeviceLog(body) as unknown as Json
   if (isLogEntry(body)) return lowSEntry(body) as unknown as Json
   if (isSealingKey(body)) {
-    const signature = base32DecodeExact(body.sig)
-    if (!signature.ok) return body
-    const canonical = canonicalSignature(body.device, signature.value)
-    return canonical === signature.value ? body : { ...body, sig: base32Encode(canonical) }
+    const lowS = (sig: string) => {
+      const signature = base32DecodeExact(sig)
+      if (!signature.ok) return sig
+      const canonical = canonicalSignature(body.device, signature.value)
+      return canonical === signature.value ? sig : base32Encode(canonical)
+    }
+    const sig = lowS(body.sig)
+    const hpke = body.hpke === undefined ? undefined : lowS(body.hpke)
+    if (sig === body.sig && hpke === body.hpke) return body
+    return { ...body, sig, ...(hpke === undefined ? {} : { hpke }) }
   }
   return Object.fromEntries(Object.entries(body).map(([key, value]) => [key, lowSBody(value)]))
 }

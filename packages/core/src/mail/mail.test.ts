@@ -16,6 +16,7 @@ import {
   type MailExpected,
   mailTag,
   openMail,
+  sealingKeyToKeep,
   sealMail,
   utcDate,
   verifySealingKey,
@@ -76,9 +77,104 @@ describe('sealing keys', () => {
     const other = base64Encode(stranger.publicKey)
     expect(await verifySealingKey(fakeCrypto, { ...binding, key: other })).toBe(false)
   })
+
+  it('say the device opens HPKE with a second signature, which must hold when it is there', async () => {
+    const binding = await bindSealingKey(mikaPhone.signer, mikaPhone.sealer)
+    expect(binding.hpke).toBeDefined()
+    // A Pigeon from before HPKE sends the key alone, which still holds.
+    const { hpke: _, ...old } = binding
+    expect(await verifySealingKey(fakeCrypto, old)).toBe(true)
+    // The first signature can't stand in for the second, nor another device's for this one's.
+    expect(await verifySealingKey(fakeCrypto, { ...binding, hpke: binding.sig })).toBe(false)
+    const other = await bindSealingKey(mikaLaptop.signer, mikaLaptop.sealer)
+    expect(await verifySealingKey(fakeCrypto, { ...binding, hpke: other.hpke ?? '' })).toBe(false)
+    expect(await verifySealingKey(fakeCrypto, { ...binding, hpke: 'not base32!' })).toBe(false)
+  })
+
+  it('keep their HPKE claim when an older copy of the same key comes', async () => {
+    const binding = await bindSealingKey(mikaPhone.signer, mikaPhone.sealer)
+    const { hpke: _, ...older } = binding
+    expect(sealingKeyToKeep(binding, older)).toBe(binding)
+    expect(sealingKeyToKeep(older, binding)).toBe(binding)
+    expect(sealingKeyToKeep(undefined, older)).toBe(older)
+    // A new key is taken, claim or not.
+    const { hpke: __, ...replaced } = await bindSealingKey(mikaPhone.signer, stranger)
+    expect(sealingKeyToKeep(binding, replaced)).toBe(replaced)
+  })
 })
 
 describe('mail', () => {
+  it('is sealed with HPKE when every device says it opens it, and the older form otherwise', async () => {
+    const [laptop, phone] = await keysOf()
+    if (laptop === undefined || phone === undefined) throw new Error('no keys')
+    const { hpke: _, ...oldPhone } = phone
+    const hpke = await sealMail(seal, rook, letter, [laptop, phone])
+    const older = await sealMail(seal, rook, letter, [laptop, oldPhone])
+    if (!hpke.ok || !older.ok) throw new Error('not sealed')
+    expect(json(hpke.value.blob)['v']).toBe(2)
+    // The form every Pigeon opens, as it always was.
+    const outer = json(older.value.blob)
+    expect(outer['v']).toBe(1)
+    expect(Object.keys(outer).sort()).toEqual(['commit', 'content', 'v', 'wraps'])
+    for (const sealed of [hpke.value, older.value])
+      for (const [i, device] of [mikaLaptop, mikaPhone].entries())
+        expect(await openMail(fakeCrypto, seal, device.sealer, sealed.blob, expected)).toEqual({
+          ok: true,
+          value: { letter: { ...letter, from: rook.id }, drop: sealed.drops[i]?.value },
+        })
+  })
+
+  it('opens neither form as the other', async () => {
+    const [laptop, phone] = await keysOf()
+    if (laptop === undefined || phone === undefined) throw new Error('no keys')
+    const { hpke: _, ...oldPhone } = phone
+    for (const devices of [
+      [laptop, phone],
+      [laptop, oldPhone],
+    ]) {
+      const sealed = await sealMail(seal, rook, letter, devices)
+      if (!sealed.ok) throw new Error(sealed.error)
+      const outer = json(sealed.value.blob)
+      const relabelled = blobOf({ ...outer, v: outer['v'] === 1 ? 2 : 1 })
+      expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, relabelled, expected)).toEqual({
+        ok: false,
+        error: 'not-for-this-device',
+      })
+      expect(
+        (await openMail(fakeCrypto, seal, mikaLaptop.sealer, blobOf({ ...outer, v: 3 }), expected))
+          .ok,
+      ).toBe(false)
+    }
+  })
+
+  it('refuses a letter sealed for one kind and signed as another', async () => {
+    // A sender whose wraps say `letter` while the letter inside says `farewell`.
+    const lying = {
+      ...seal,
+      hpkeSeal: (peer: Uint8Array, _info: Uint8Array, aad: Uint8Array, data: Uint8Array) =>
+        seal.hpkeSeal(peer, utf8Encode('pigeon/mail/v2/letter'), aad, data),
+    }
+    const sealed = await sealMail(lying, rook, letter, await keysOf())
+    if (!sealed.ok) throw new Error(sealed.error)
+    const both = { ...expected, kinds: ['farewell', 'letter'] as const }
+    expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, both)).toEqual({
+      ok: false,
+      error: 'malformed',
+    })
+  })
+
+  it('binds each HPKE wrap to its blob’s commitment', async () => {
+    const one = await sealMail(seal, rook, letter, await keysOf())
+    const two = await sealMail(seal, rook, { ...letter, id: 'def67890' }, await keysOf())
+    if (!one.ok || !two.ok) throw new Error('not sealed')
+    // One letter's wraps beside another's commitment and content open nothing.
+    const moved = { ...json(two.value.blob), wraps: json(one.value.blob)['wraps'] }
+    expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, blobOf(moved), expected)).toEqual({
+      ok: false,
+      error: 'not-for-this-device',
+    })
+  })
+
   it('opens on each recipient device, signed by the device that wrote it', async () => {
     const sealed = await sealMail(seal, rook, letter, await keysOf())
     if (!sealed.ok) throw new Error(sealed.error)
@@ -108,12 +204,18 @@ describe('mail', () => {
     if (!sealed.ok) throw new Error(sealed.error)
     for (const other of [
       { ...expected, to: rook.id },
-      { ...expected, kinds: ['self' as const] },
       { ...expected, dates: ['2026-11-20'] },
     ])
       expect(await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, other)).toEqual(
         { ok: false, error: 'unexpected' },
       )
+    // Its wraps are sealed for its kind, so a mailbox that holds other kinds can't open them.
+    expect(
+      await openMail(fakeCrypto, seal, mikaLaptop.sealer, sealed.value.blob, {
+        ...expected,
+        kinds: ['self', 'letter'],
+      }),
+    ).toEqual({ ok: false, error: 'not-for-this-device' })
   })
 
   it('gives the Lighthouse sorted hashes of the drops, as it hashes the drop it is sent', async () => {

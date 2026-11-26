@@ -1,14 +1,17 @@
 // Mail sealed to devices. A letter is a signed envelope of its own, sealed once
 // with a random content key; the content key and each device's drop value are wrapped for each
-// recipient device with ECDH from a fresh key. Tags come from the pair or self secret, and only
-// say where to look: knowing one shows that mail is waiting, never what it says. A wrap names no
-// device, so a blob says nothing about whom it's for; a device tries each until one opens.
+// recipient device with HPKE (RFC 9180), or, for a device that hasn't said it opens HPKE, with
+// the older wrap: ECDH from a fresh key, then HKDF. Tags come from the pair or self secret, and
+// only say where to look: knowing one shows that mail is waiting, never what it says. A wrap
+// names no device, so a blob says nothing about whom it's for; a device tries each until one
+// opens.
 import {
   base32Decode,
   base32DecodeExact,
   base32Encode,
   base64Decode,
   base64Encode,
+  bytesEqual,
   concatBytes,
   utf8Decode,
   utf8Encode,
@@ -53,6 +56,12 @@ export interface SealingKey {
   /** The raw P-256 public key, base64. */
   readonly key: string
   readonly sig: string
+  /**
+   * The device's second signature, over the same key, saying it opens mail sealed with HPKE.
+   * Pigeons from before HPKE send no such field, and ignore it, so a key without it is sealed to
+   * in the older form.
+   */
+  readonly hpke?: string
 }
 
 /** Where the sender's device log stood: mail counts only from a device still on it. */
@@ -95,9 +104,12 @@ export interface OpenedMail {
 }
 
 const SEALING_KEY_CONTEXT = 'pigeon/sealing-key/v1'
+const SEALING_KEY_HPKE_CONTEXT = 'pigeon/sealing-key/hpke/v1'
 const LETTER_CONTEXT = 'pigeon/letter/v1'
 const WRAP_INFO = 'pigeon/mail/wrap'
 const COMMIT_INFO = 'pigeon/mail/commit'
+/** HPKE's info for a wrap: the kind is in it, so a wrap opens only as the kind it was made for. */
+const hpkeInfo = (kind: MailKind) => utf8Encode(`pigeon/mail/v2/${kind}`)
 
 /** The UTC date a time falls on, as tags and pair rooms name days. */
 export const utcDate = (at: number): string => new Date(at).toISOString().slice(0, 10)
@@ -114,32 +126,65 @@ export async function mailTag(
   )
 }
 
-/** Binds this device's sealing key to it with its own signature. */
+/**
+ * Binds this device's sealing key to it with its own signature, and says, with a second one,
+ * that it opens HPKE mail. The first is the one Pigeons from before HPKE check, unchanged.
+ */
 export async function bindSealingKey(signer: Signer, sealer: Sealer): Promise<SealingKey> {
   const key = base64Encode(sealer.publicKey)
-  const sig = await signer.sign(canonicalBytes({ v: SEALING_KEY_CONTEXT, device: signer.id, key }))
-  return { device: signer.id, key, sig: base32Encode(sig) }
+  const fields = { device: signer.id, key }
+  const [sig, hpke] = await Promise.all([
+    signer.sign(canonicalBytes({ v: SEALING_KEY_CONTEXT, ...fields })),
+    signer.sign(canonicalBytes({ v: SEALING_KEY_HPKE_CONTEXT, ...fields })),
+  ])
+  return { ...fields, sig: base32Encode(sig), hpke: base32Encode(hpke) }
 }
 
 export function isSealingKey(value: unknown): value is SealingKey {
   if (typeof value !== 'object' || value === null) return false
-  const { device, key, sig } = value as Record<string, unknown>
+  const { device, key, sig, hpke } = value as Record<string, unknown>
   if (typeof device !== 'string' || !isPeerId(device) || typeof sig !== 'string') return false
+  if (hpke !== undefined && typeof hpke !== 'string') return false
   if (typeof key !== 'string') return false
   const bytes = base64Decode(key)
   return bytes.ok && bytes.value.length === 65 && bytes.value[0] === 4
 }
 
-/** True when `binding` is its device's own signature over its key. */
+/**
+ * True when `binding` is its device's own signature over its key, and, if it says the device
+ * opens HPKE, that its second signature holds too: a claim that doesn't is refused with the key,
+ * never quietly dropped.
+ */
 export async function verifySealingKey(crypto: Crypto, binding: SealingKey): Promise<boolean> {
   if (!isSealingKey(binding)) return false
+  const fields = { device: binding.device, key: binding.key }
   const signature = base32DecodeExact(binding.sig)
   if (!signature.ok) return false
-  return crypto.verify(
+  const bound = await crypto.verify(
     binding.device,
     signature.value,
-    canonicalBytes({ v: SEALING_KEY_CONTEXT, device: binding.device, key: binding.key }),
+    canonicalBytes({ v: SEALING_KEY_CONTEXT, ...fields }),
   )
+  if (!bound || binding.hpke === undefined) return bound
+  const claim = base32DecodeExact(binding.hpke)
+  if (!claim.ok) return false
+  return crypto.verify(
+    binding.device,
+    claim.value,
+    canonicalBytes({ v: SEALING_KEY_HPKE_CONTEXT, ...fields }),
+  )
+}
+
+/**
+ * Which of two checked bindings for one device to keep: the one just heard, unless it's the key
+ * already kept without the HPKE claim the kept one makes, as a Pigeon from before HPKE passes on
+ * an older copy. The device said, signed, that it opens HPKE with that very key, so an older copy
+ * doesn't undo it. A new key is always taken.
+ */
+export function sealingKeyToKeep(kept: SealingKey | undefined, heard: SealingKey): SealingKey {
+  if (kept === undefined || kept.hpke === undefined || heard.hpke !== undefined) return heard
+  const [a, b] = [base64Decode(kept.key), base64Decode(heard.key)]
+  return a.ok && b.ok && bytesEqual(a.value, b.value) ? kept : heard
 }
 
 const letterPart = (letter: Letter): Json => ({
@@ -192,6 +237,10 @@ function shuffle<T>(seal: SealCrypto, items: readonly T[]): T[] {
  * caller passes only keys it has checked (verifySealingKey) for devices active on the
  * recipient's log. A key that isn't a usable point is skipped, never the rest: those devices
  * are in `skipped`, and the mail is sealed to the others.
+ *
+ * The blob is `v: 2`, each wrap sealed with HPKE, when every device's key says it opens HPKE;
+ * otherwise it's the older `v: 1` for all of them, which every Pigeon opens. One blob holds one
+ * form, so it says nothing about which of its devices are newer.
  */
 export async function sealMail(
   seal: SealCrypto,
@@ -210,29 +259,38 @@ export async function sealMail(
   const drops: { device: PeerId; value: string }[] = []
   const skipped: PeerId[] = []
   const wraps: Json[] = []
+  const usable: { device: PeerId; peer: Uint8Array }[] = []
   for (const device of devices) {
     const peer = base64Decode(device.key)
-    if (!peer.ok || !isPoint(peer.value)) {
-      skipped.push(device.device)
-      continue
-    }
-    let fresh: { publicKey: Uint8Array; shared: Uint8Array }
-    try {
-      fresh = await seal.ephemeralShare(peer.value)
-    } catch {
-      skipped.push(device.device)
-      continue
-    }
+    if (peer.ok && isPoint(peer.value)) usable.push({ device: device.device, peer: peer.value })
+    else skipped.push(device.device)
+  }
+  const hpke = devices.every((device) => device.hpke !== undefined)
+  for (const { device, peer } of usable) {
     const drop = seal.random(32)
-    const key = await wrapKey(seal, fresh.shared, fresh.publicKey, peer.value)
-    const wrapped = await seal.seal(key, concatBytes(contentKey, drop))
-    wraps.push({ e: base64Encode(fresh.publicKey), w: base64Encode(wrapped) })
-    drops.push({ device: device.device, value: base32Encode(drop) })
+    const plain = concatBytes(contentKey, drop)
+    try {
+      if (hpke) {
+        // The commitment is bound in, so a wrap opens only beside the letter it was made for.
+        const wrapped = await seal.hpkeSeal(peer, hpkeInfo(signed.kind), commit, plain)
+        wraps.push({ e: base64Encode(wrapped.enc), w: base64Encode(wrapped.sealed) })
+      } else {
+        const fresh = await seal.ephemeralShare(peer)
+        const key = await wrapKey(seal, fresh.shared, fresh.publicKey, peer)
+        const wrapped = await seal.seal(key, plain)
+        wraps.push({ e: base64Encode(fresh.publicKey), w: base64Encode(wrapped) })
+      }
+    } catch {
+      // Not a point on the curve, which only trying shows.
+      skipped.push(device)
+      continue
+    }
+    drops.push({ device, value: base32Encode(drop) })
   }
   if (wraps.length === 0) return err('no-devices')
   // Shuffled, so a wrap's place says nothing about which device it's for.
   const blob = canonicalBytes({
-    v: 1,
+    v: hpke ? 2 : 1,
     wraps: shuffle(seal, wraps),
     commit: base64Encode(commit),
     content: base64Encode(content),
@@ -331,9 +389,10 @@ function readLetter(value: unknown): (Letter & { readonly sig: string }) | undef
 /**
  * Opens a blob with this device's sealing key: tries each wrap, checks the content key against
  * the blob's commitment, opens the letter, checks the signature of the device it names, and that
- * it's for `expected.to`, of an expected kind and dated as expected. Whether that device may
- * write for `letter.sender` (it's on the sender's newest log), and whether (sender, id) was seen
- * before, are the caller's to check.
+ * it's for `expected.to`, of an expected kind and dated as expected. A `v: 2` wrap is tried
+ * under each expected kind's HPKE info, and the letter in it must be of the kind it opened as.
+ * Whether that device may write for `letter.sender` (it's on the sender's newest log), and
+ * whether (sender, id) was seen before, are the caller's to check.
  */
 export async function openMail(
   crypto: Crypto,
@@ -345,11 +404,12 @@ export async function openMail(
   const bytes = base64Decode(blob)
   if (!bytes.ok) return err('malformed')
   const outer = parse(bytes.value) as Record<string, unknown> | undefined
+  const version = outer?.['v']
   const wraps = outer?.['wraps']
   const content = outer?.['content']
   const commit = outer?.['commit']
   if (
-    outer?.['v'] !== 1 ||
+    (version !== 1 && version !== 2) ||
     !Array.isArray(wraps) ||
     typeof content !== 'string' ||
     typeof commit !== 'string'
@@ -358,20 +418,32 @@ export async function openMail(
   const sealedContent = base64Decode(content)
   const commitment = base64Decode(commit)
   if (!sealedContent.ok || !commitment.ok) return err('malformed')
+  const kinds = [...new Set(expected.kinds)]
   for (const wrap of wraps.slice(0, MAX_DROPS)) {
     const fields = wrap as Record<string, unknown>
     const e = typeof fields?.['e'] === 'string' ? base64Decode(fields['e']) : undefined
     const w = typeof fields?.['w'] === 'string' ? base64Decode(fields['w']) : undefined
     if (e === undefined || w === undefined || !e.ok || !w.ok || !isPoint(e.value)) continue
-    const shared = await sealer.share(e.value)
-    if (shared === undefined) continue
-    const key = await wrapKey(seal, shared, e.value, sealer.publicKey)
-    const opened = await seal.open(key, w.value)
-    if (opened === undefined || opened.length !== 64) continue
-    const contentKey = opened.subarray(0, 32)
+    let opened: { plain: Uint8Array; kind?: MailKind } | undefined
+    if (version === 1) {
+      const shared = await sealer.share(e.value)
+      if (shared === undefined) continue
+      const key = await wrapKey(seal, shared, e.value, sealer.publicKey)
+      const plain = await seal.open(key, w.value)
+      if (plain !== undefined) opened = { plain }
+    } else {
+      for (const kind of kinds) {
+        const plain = await sealer.hpkeOpen(e.value, hpkeInfo(kind), commitment.value, w.value)
+        if (plain === undefined) continue
+        opened = { plain, kind }
+        break
+      }
+    }
+    if (opened === undefined || opened.plain.length !== 64) continue
+    const contentKey = opened.plain.subarray(0, 32)
     // The commitment: one content key for every device, so each opens the same letter.
     const committed = await seal.hkdf(contentKey, COMMIT_INFO, 32)
-    if (base64Encode(committed) !== base64Encode(commitment.value)) return err('malformed')
+    if (!bytesEqual(committed, commitment.value)) return err('malformed')
     const inner = await seal.open(contentKey, sealedContent.value)
     if (inner === undefined) return err('malformed')
     const letter = readLetter(parse(inner))
@@ -385,13 +457,15 @@ export async function openMail(
       canonicalBytes(letterPart(fieldsOnly)),
     )
     if (!valid) return err('bad-signature')
+    // Sealed as one kind, signed as another: not something an honest sender makes.
+    if (opened.kind !== undefined && opened.kind !== fieldsOnly.kind) return err('malformed')
     if (
       fieldsOnly.to !== expected.to ||
       !expected.kinds.includes(fieldsOnly.kind) ||
       !expected.dates.includes(fieldsOnly.date)
     )
       return err('unexpected')
-    return ok({ letter: fieldsOnly, drop: base32Encode(opened.subarray(32)) })
+    return ok({ letter: fieldsOnly, drop: base32Encode(opened.plain.subarray(32)) })
   }
   return err('not-for-this-device')
 }

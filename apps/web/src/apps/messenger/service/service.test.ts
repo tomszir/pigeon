@@ -976,7 +976,7 @@ describe('your devices through the self mailbox', () => {
     await laptop.store.delete('lighthousesChangedAt')
     await clock.tick(1000)
     await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse, store: laptop.store })
-    await flush(400)
+    await flush(800)
     const back = await messenger(createMemoryNetwork(), 'rook-phone', {
       clock,
       lighthouse,

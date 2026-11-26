@@ -12,6 +12,7 @@
     "deploy": "pnpm build && wrangler deploy"
   },
   "dependencies": {
+    "@hpke/core": "1.10.1",
     "@pigeon/core": "workspace:*",
     "@pigeon/crypto-wasm": "workspace:*",
     "@pigeon/pigeonhtml": "workspace:*",
