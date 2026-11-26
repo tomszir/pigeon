@@ -400,7 +400,8 @@ export function JoinDevice(props: JoinDeviceProps) {
                   <Button
                     label="Cancel"
                     onClick={() => {
-                      void offer().cancel()
+                      const current = offer()
+                      void current.cancel()
                       setView({ kind: 'enter' })
                     }}
                   />

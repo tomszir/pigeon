@@ -437,9 +437,9 @@ export function Network(props: NetworkProps) {
         when={!phone}
         fallback={
           <div class={styles.stack}>
-            <Show when={props.messenger} fallback={waiting()}>
+            <Show when={props.messenger} fallback={waiting()} keyed>
               {(messenger) => (
-                <Lighthouses messenger={messenger()} checks={checks} official={props.official} />
+                <Lighthouses messenger={messenger} checks={checks} official={props.official} />
               )}
             </Show>
             <RelaySetting {...props} short />
@@ -454,13 +454,9 @@ export function Network(props: NetworkProps) {
               id: 'lighthouses',
               label: 'Lighthouses',
               content: () => (
-                <Show when={props.messenger} fallback={waiting()}>
+                <Show when={props.messenger} fallback={waiting()} keyed>
                   {(messenger) => (
-                    <Lighthouses
-                      messenger={messenger()}
-                      checks={checks}
-                      official={props.official}
-                    />
+                    <Lighthouses messenger={messenger} checks={checks} official={props.official} />
                   )}
                 </Show>
               ),
@@ -471,8 +467,8 @@ export function Network(props: NetworkProps) {
               content: () => (
                 <div class={styles.stack}>
                   <RelaySetting {...props} />
-                  <Show when={props.messenger}>
-                    {(messenger) => <RightNow messenger={messenger()} checks={checks} />}
+                  <Show when={props.messenger} keyed>
+                    {(messenger) => <RightNow messenger={messenger} checks={checks} />}
                   </Show>
                 </div>
               ),

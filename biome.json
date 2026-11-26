@@ -28,6 +28,7 @@
       "semicolons": "asNeeded"
     }
   },
+  "plugins": ["./biome-plugins/solid-stale-accessor.grit"],
   "linter": {
     "rules": {
       "preset": "recommended",

@@ -1,0 +1,26 @@
+language js(jsx)
+
+// Solid hands a non-keyed <Show>/<Match> callback an accessor that throws "stale value" once the
+// branch has closed. A handler or async continuation inside the callback that reads it after
+// closing the branch (or after an await) therefore fails, and the action silently doesn't happen.
+// So a function body in the callback may read the accessor only as its first statement, into a
+// const (a comment may come first); everything after uses the const.
+or {
+  `($a) => { $s }`,
+  `async ($a) => { $s }`,
+  `function $n($a) { $s }`,
+  `async function $n($a) { $s }`,
+  `function ($a) { $s }`,
+  `async function ($a) { $s }`
+} as $fn where {
+  $fn <: within or {
+    `<Show $props>$kids</Show>`,
+    `<Match $props>$kids</Match>`
+  } where { $kids <: contains `($acc) => $body`, $body <: contains $fn },
+  $s <: contains `$acc()`,
+  ! $fn <: `($acc) => $x`,
+  ! $fn <: and { r"(?:async\s+)?(?:function\s*\w*\s*)?(?:\([^)]*\)|\w+)\s*(?:=>)?\s*\{\s*(?://[^\n]*\n\s*)*const\s+(?:\w+|\{[^}]*\})\s*=\s*(\w+)\(\)[\s\S]*"($first) where {
+    $first <: $acc
+  } },
+  register_diagnostic(span=$fn, message="This function reads a <Show>/<Match> accessor after it may have closed. Read it first, into a const, before changing any state or awaiting, and use the const after.", severity="error")
+}

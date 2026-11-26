@@ -243,10 +243,11 @@ export function createPrograms(
         <Show
           when={host.messenger()}
           fallback={<p>{host.problem() ?? 'Pigeon is still starting...'}</p>}
+          keyed
         >
           {(messenger) => (
             <AddFriend
-              messenger={messenger()}
+              messenger={messenger}
               incoming={incoming}
               tab={tab}
               copyText={host.copyText}
@@ -285,10 +286,11 @@ export function createPrograms(
         <Show
           when={host.messenger()}
           fallback={<p>{host.problem() ?? 'Pigeon is still starting...'}</p>}
+          keyed
         >
           {(messenger) => (
             <JoinDevice
-              messenger={messenger()}
+              messenger={messenger}
               incoming={incoming}
               confirmed={confirmed}
               sleep={host.sleep}
@@ -943,11 +945,11 @@ export function createPrograms(
       return n === 0 ? 'Pigeon: nothing new' : `Pigeon: ${n} new`
     },
     flyout: (close) => (
-      <Show when={host.messenger()}>
+      <Show when={host.messenger()} keyed>
         {(messenger) => (
           <NotificationFlyout
             notifications={notifications}
-            messenger={messenger()}
+            messenger={messenger}
             now={clock().getTime()}
             onOpenConversation={openFriendConversation}
             onOpenRequests={() => openAddFriend(undefined, 'links')}
