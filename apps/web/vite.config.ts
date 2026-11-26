@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
+import { PIGEON_PAGES, pigeonPages } from './pigeon-pages.ts'
 import { devPort } from './ports.ts'
 import { siteHeaders } from './site-headers.ts'
 import { readVersion, versionFile } from './version-file.ts'
@@ -15,15 +16,10 @@ const commit = (process.env['WORKERS_CI_COMMIT_SHA'] ?? '').slice(0, 7)
  */
 const turnFrom = process.env['PIGEON_TURN_FROM'] ?? 'https://pigeon.tomszir.com'
 
-/**
- * Pages written as typed string JSX (`*.pigeon.tsx`, and their tests) are not Solid components:
- * their `@jsxImportSource @pigeon/pigeonhtml` makes elements call the PigeonHTML runtime, which
- * builds text. Solid's plugin would compile them to DOM code instead.
- */
-const PIGEON_PAGES = /\.pigeon\.(test\.)?tsx$/
-
 export default defineConfig({
-  plugins: [solid({ exclude: PIGEON_PAGES }), versionFile()],
+  // Pages written as typed string JSX (`*.pigeon.tsx`) are not Solid components: their JSX builds
+  // text, which Solid's plugin would compile to DOM code instead (pigeon-pages.ts).
+  plugins: [pigeonPages(), solid({ exclude: PIGEON_PAGES }), versionFile()],
   // Vite follows tsconfig's `jsx: preserve` (Solid's), which would leave a PigeonHTML page's JSX
   // in place. Whatever Solid doesn't compile is lowered here instead, to the automatic runtime of
   // the page's own `@jsxImportSource`.
@@ -53,6 +49,7 @@ export default defineConfig({
       'src/**/*.test.{ts,tsx}',
       'worker/**/*.test.ts',
       'site-headers.test.ts',
+      'pigeon-pages.test.ts',
       'version-file.test.ts',
     ],
     setupFiles: ['src/test-setup.ts'],

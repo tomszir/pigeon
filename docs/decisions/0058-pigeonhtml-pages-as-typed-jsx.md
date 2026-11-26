@@ -1,6 +1,6 @@
 # 0058: PigeonHTML pages written as typed JSX
 
-The pages that come with Pigeon are written as JSX that a small runtime in `@pigeon/pigeonhtml` turns into text, with element and attribute types derived from the sanitizer's own allowlists.
+Help's pages are written as JSX that a small runtime in `@pigeon/pigeonhtml` turns into text, with element and attribute types derived from the sanitizer's own allowlists. The start page stays a plain `.html` file, which the one test over every bundled page still checks.
 
 - Status: accepted
 - Date: 2026-11-26
@@ -20,10 +20,10 @@ What any answer has to live with:
 
 - **Typed JSX.** `@pigeon/pigeonhtml/jsx-runtime` (and `jsx-dev-runtime`) is a JSX runtime that writes text. Its types come from `allowlists.ts`, whose tables are now literal (`as const`) and from which the sanitizer's Maps and Sets are built, so the two can't disagree: `<section>`, `<td onclick>` and `<img name>` don't compile, and `noshade` takes a boolean.
 - **Escaping is the runtime's, not the author's.** Every string or number child and every attribute value is escaped. A JSX expression makes an opaque `Html` value, which is what a child may be besides text; a string never counts as markup. `raw()` is the one explicit way to put markup in unescaped, used where a converter that escapes what it reads (the Markdown behind the protocol spec) has already made it.
-- **Pages are `*.pigeon.tsx`** and start with `/** @jsxImportSource @pigeon/pigeonhtml */`. The web app's Solid plugin excludes the name, and Vite is told to lower any JSX Solid left to the automatic runtime, since it would otherwise follow `jsx: preserve` from the tsconfig Solid needs and leave raw JSX in the file. Both are checked in dev and in the build.
+- **Pages are `*.pigeon.tsx`** and start with `/** @jsxImportSource @pigeon/pigeonhtml */`. A Vite plugin refuses a `.tsx` file whose name and pragma disagree, since either way round it would be compiled by the wrong one. The web app's Solid plugin excludes the name, and Vite is told to lower any JSX Solid left to the automatic runtime, since it would otherwise follow `jsx: preserve` from the tsconfig Solid needs and leave raw JSX in the file. Both are checked in dev and in the build.
 - **`<Pre text={...}>` keeps whitespace.** JSX collapses the whitespace of text written between tags, and Biome reflows it, so a diagram goes in as a string in a prop, which neither touches.
 - **One test over every bundled page.** The types can't see a `data-` attribute (TypeScript exempts hyphenated names from its excess-attribute check) or anything spread in, so a single test runs `validate`, `sanitize`, the budget and the link check over every page Explorer serves, the start page included.
-- **The sanitizer is still the gate.** The runtime writes text and enforces nothing about the allowlists at run time. It refuses only what would break its own output: a `<style>` holding a `<`, an attribute name that isn't a name, children in a void element, a value that isn't text.
+- **The sanitizer is still the gate.** The runtime writes text and enforces nothing about the allowlists at run time. It refuses only what would break its own output: an element or attribute name that isn't a name, children in a void element, a value that isn't text, a `<style>` holding a `<` or anything but a string, and a child or component result that isn't `Html`. The types stop a component that may return `null` before then.
 
 ## Consequences
 

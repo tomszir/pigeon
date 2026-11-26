@@ -78,6 +78,13 @@ describe('jsx', () => {
     expect(() => jsx('style', { children: 'a {}</style><script>' })).toThrow('"<"')
   })
 
+  it('writes nothing for an empty style, and refuses a style child that is not CSS', () => {
+    expect(text(jsx('style', {}))).toBe('<style></style>')
+    expect(text(jsx('style', { children: false }))).toBe('<style></style>')
+    for (const child of [true, 0, {}, ['p {}'], jsx('b', {})])
+      expect(() => jsx('style', { children: child }), String(child)).toThrow('holds a string')
+  })
+
   it('serves the development runtime the same functions', () => {
     expect(text(dev.jsxDEV('b', { children: 'x' }, undefined, false))).toBe('<b>x</b>')
     expect(dev.jsx).toBe(jsx)

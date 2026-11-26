@@ -68,11 +68,15 @@ const attributes = (props: Readonly<Record<string, unknown>>): string => {
   return out
 }
 
-/** A `<style>` holds raw text, so its CSS is written as it is, and can't close the element. */
+/**
+ * A `<style>` holds raw text, so its CSS is written as it is, and can't close the element. What
+ * isn't a string is refused, not turned into text: `false` would become "false".
+ */
 const styleText = (child: unknown): string => {
-  const text = Array.isArray(child) ? child.join('') : String(child ?? '')
-  if (text.includes('<')) throw new TypeError('A <style> may not hold a "<"; write it as \\3c')
-  return text
+  if (child === undefined || child === null || child === false) return ''
+  if (typeof child !== 'string') throw new TypeError('A <style> holds a string of CSS')
+  if (child.includes('<')) throw new TypeError('A <style> may not hold a "<"; write it as \\3c')
+  return child
 }
 
 type Props = Readonly<Record<string, unknown>>

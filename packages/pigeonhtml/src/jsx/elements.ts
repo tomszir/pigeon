@@ -74,6 +74,11 @@ type DocumentElements = {
 /** What TypeScript reads for `jsxImportSource: "@pigeon/pigeonhtml"`. */
 export declare namespace JSX {
   type Element = Html
+  /**
+   * What a tag may be: an element of the allowlists, or a component that returns Html. A
+   * component that may return `null` is refused here, because the runtime would refuse it.
+   */
+  type ElementType = keyof IntrinsicElements | ((props: never) => Element)
   interface ElementChildrenAttribute {
     children: unknown
   }

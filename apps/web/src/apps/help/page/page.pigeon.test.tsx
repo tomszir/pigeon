@@ -1,5 +1,5 @@
 /** @jsxImportSource @pigeon/pigeonhtml */
-import { render } from '@pigeon/pigeonhtml/jsx-runtime'
+import { type Html, render } from '@pigeon/pigeonhtml/jsx-runtime'
 import { describe, expect, it } from 'vitest'
 import { helpDocument, Pre } from './page.pigeon.tsx'
 
@@ -34,6 +34,9 @@ describe('helpDocument', () => {
 
 // What PigeonHTML doesn't have doesn't compile. `tsc` is what checks these: a line below that
 // did compile would make its `@ts-expect-error` an error of its own. The function is never called.
+const MaybeNothing = (): Html | null => null
+const Fine = () => <b>x</b>
+
 describe('the types of a page', () => {
   it('refuse an element, an attribute or a value PigeonHTML lacks', () => {
     const refused = () => [
@@ -49,6 +52,9 @@ describe('the types of a page', () => {
       <hr noshade="yes" />,
       // @ts-expect-error a <script> isn't an element a page has
       <script>x</script>,
+      // @ts-expect-error a component that may return null isn't accepted: the runtime would refuse it
+      <MaybeNothing />,
+      <Fine />,
       // @ts-expect-error a plain string is text, not Html
       helpDocument({ title: 't', style: '', bodyAttributes: { onload: 'x' }, body: '' }),
     ]

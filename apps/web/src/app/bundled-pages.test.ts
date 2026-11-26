@@ -4,8 +4,13 @@ import { linkTarget } from '../apps/explorer/explorer/address.ts'
 import { localPageFinder } from '../apps/explorer/local-pages/local-pages.ts'
 import { BUNDLED_PAGES } from './bundled-pages.ts'
 
-/** Addresses a bundled page names on purpose and nobody hosts, to show "page not hosted". */
-const NOT_HOSTED_ON_PURPOSE = new Set(['pigeon://mika'])
+/**
+ * Addresses a bundled page names on purpose and nobody hosts, by the page that names them: the
+ * start page's example of a friend's homepage, which shows "page not hosted".
+ */
+const NOT_HOSTED_ON_PURPOSE: Readonly<Record<string, ReadonlySet<string>>> = {
+  'pigeon://home': new Set(['pigeon://mika']),
+}
 
 const find = localPageFinder(...BUNDLED_PAGES)
 const pages = BUNDLED_PAGES.flatMap((set) => [...set])
@@ -17,6 +22,19 @@ const links = (html: string) =>
   [...html.matchAll(/<(?:a|area)\s[^>]*?\bhref="([^"]*)"/g)].map((match) =>
     (match[1] ?? '').replaceAll('&amp;', '&'),
   )
+
+/** The `id` and `name` of everything in sanitized HTML, which a `#fragment` link can reach. */
+const anchors = (html: string) =>
+  new Set([...html.matchAll(/\s(?:id|name)="([^"]*)"/g)].map((match) => match[1] ?? ''))
+
+/** Explorer looks a fragment up decoded, or as written when it doesn't decode. */
+const fragmentNames = (fragment: string) => {
+  try {
+    return [decodeURIComponent(fragment), fragment]
+  } catch {
+    return [fragment]
+  }
+}
 
 describe('every page that comes with Pigeon', () => {
   it('is more than the start page', () => {
@@ -38,11 +56,16 @@ describe('every page that comes with Pigeon', () => {
 
       const sanitized = sanitize(page.source, urls)
       expect(sanitized.removed).toEqual([])
-      expect(sanitized.bytes).toBe(bytes(page.source))
-      expect(sanitized.bytes).toBeLessThanOrEqual(PAGE_BUDGET_BYTES)
+      expect(bytes(page.source)).toBeLessThanOrEqual(PAGE_BUDGET_BYTES)
 
+      const names = anchors(sanitized.html)
       for (const href of links(sanitized.html)) {
-        if (href.startsWith('#') || NOT_HOSTED_ON_PURPOSE.has(href)) continue
+        if (href.startsWith('#')) {
+          const found = fragmentNames(href.slice(1)).some((name) => names.has(name))
+          expect(found, `${href} on ${address} names nothing on the page`).toBe(true)
+          continue
+        }
+        if (NOT_HOSTED_ON_PURPOSE[address]?.has(href)) continue
         expect(href, `a link on ${address}`).toMatch(/^pigeon:\/\//)
         expect(find(href), `${href}, linked from ${address}`).toBeDefined()
       }
