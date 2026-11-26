@@ -185,6 +185,96 @@ for (const [name, source] of [
     refusedBy: 'plugin',
   })
 }
+// The fakes @pigeon/core itself still exports from its index, taken by name.
+const CORE_FAKES = [
+  'fakePake',
+  'fakeCrypto',
+  'fakeSealCrypto',
+  'fakeSigner',
+  'createMemoryNetwork',
+  'MemoryNetwork',
+  'flush',
+  'relayRoom',
+]
+for (const name of CORE_FAKES) {
+  samples.push({
+    name: `a non-test file refuses ${name} from @pigeon/core`,
+    path: `${WEB}/apps/messenger/sample/core-${name}.ts`,
+    source: `import { ${name} } from '@pigeon/core'\nconsole.log(${name})\n`,
+    refusedBy: 'plugin',
+  })
+}
+for (const [name, path, source] of [
+  [
+    'among other names',
+    `${WEB}/app/core-among.ts`,
+    "import { isPeerId, fakeSigner, type PeerId } from '@pigeon/core'\nconsole.log(isPeerId, fakeSigner)\nexport type P = PeerId\n",
+  ],
+  [
+    'a type import',
+    `${WEB}/shell/core-type.ts`,
+    "import type { MemoryNetwork } from '@pigeon/core'\nexport type N = MemoryNetwork\n",
+  ],
+  [
+    'an inline type',
+    `${WEB}/ui/button/core-inline-type.ts`,
+    "import { type MemoryNetwork } from '@pigeon/core'\nexport type N = MemoryNetwork\n",
+  ],
+  [
+    'a rename',
+    `${WEB}/platform/clock/core-rename.ts`,
+    "import { fakeCrypto as crypto } from '@pigeon/core'\nconsole.log(crypto)\n",
+  ],
+  [
+    'a default and named',
+    'apps/lighthouse/src/core-default.ts',
+    "import d, { fakeSigner } from '@pigeon/core'\nconsole.log(d, fakeSigner)\n",
+  ],
+  [
+    'several lines',
+    'packages/lighthouse/src/store/core-lines.ts',
+    "import {\n  isPeerId,\n  flush,\n} from '@pigeon/core'\nconsole.log(isPeerId, flush)\n",
+  ],
+  [
+    'a re-export',
+    'packages/core/src/chat/core-reexport.ts',
+    "export { fakePake } from '@pigeon/core'\n",
+  ],
+  [
+    'a type re-export',
+    'packages/core/src/chat/core-type-reexport.ts',
+    "export type { MemoryNetwork } from '@pigeon/core'\n",
+  ],
+] as const) {
+  samples.push({
+    name: `a non-test file refuses ${name} of a fake from @pigeon/core`,
+    path,
+    source,
+    refusedBy: 'plugin',
+  })
+}
+for (const path of [
+  'packages/lighthouse/src/lighthouse/uses-core-fakes.test.ts',
+  `${WEB}/apps/messenger/sample/uses-core-fakes.test.tsx`,
+  'apps/web/e2e/core-fakes.spec.ts',
+]) {
+  samples.push({
+    name: `${path} may take the fakes from @pigeon/core`,
+    path,
+    source: "import { fakeCrypto, flush } from '@pigeon/core'\nconsole.log(fakeCrypto, flush)\n",
+  })
+}
+allowed(
+  'a non-test file may take other names from @pigeon/core',
+  `${WEB}/apps/messenger/sample/core-others.ts`,
+  '@pigeon/core',
+)
+samples.push({
+  name: 'a name that only contains a fake name is allowed',
+  path: `${WEB}/apps/messenger/sample/core-lookalike.ts`,
+  source:
+    "import { flushAll, fakeSignerOf } from '@pigeon/core'\nconsole.log(flushAll, fakeSignerOf)\n",
+})
 for (const path of [
   'packages/core/src/chat/uses-fakes.test.ts',
   `${WEB}/apps/messenger/sample/uses-fakes.test.tsx`,
