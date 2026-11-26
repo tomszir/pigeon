@@ -47,7 +47,7 @@ import type { ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
 import type { OldCode } from './address-invite.ts'
-import type { MessengerHost } from './programs.tsx'
+import type { MessengerHost } from './messenger-host.ts'
 
 /** The openers the Messenger's windows hand to the rest of the desktop. */
 export interface MessengerWindows {
