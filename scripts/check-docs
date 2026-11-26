@@ -190,6 +190,18 @@ if git grep --untracked -nIE "$cite" -- . ':!docs/decisions/' ':!docs/roadmap.md
 	} >>"$problems"
 fi
 
+# Rule 5. No divider comments in code: a comment line that is, or starts with, a run of =, -, *,
+# # or ~ fences off a section rather than saying anything about the code beside it.
+divider='^[[:space:]]*(//|/\*|\*|#)[[:space:]]*(={4,}|-{4,}|\*{4,}|#{4,}|~{4,})'
+if git grep --untracked -nIE "$divider" -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.rs' '*.css' \
+	':!**/node_modules/**' ':!packages/crypto-wasm/pkg/**' >"$tmp/dividers"; then
+	{
+		echo "Divider comments in code:"
+		sed 's/^/  /' "$tmp/dividers"
+		echo "  A comment says what the code beside it does, or why; a file that needs sections is several files (CONTRIBUTING.md)."
+	} >>"$problems"
+fi
+
 [ -s "$problems" ] || exit 0
 
 echo "check-docs: docs/ is out of step with this change." >&2
