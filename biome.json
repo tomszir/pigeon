@@ -118,7 +118,7 @@
       }
     },
     {
-      "includes": ["apps/web/src/app/programs.tsx", "packages/core/src/chat/pair-session.test.ts"],
+      "includes": ["packages/core/src/chat/pair-session.test.ts"],
       "linter": {
         "rules": {
           "style": {
