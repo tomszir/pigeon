@@ -1,4 +1,4 @@
-import { createUniqueId, Show } from 'solid-js'
+import { createSignal, createUniqueId, Show } from 'solid-js'
 import { AccessLabel, accessKeyOf } from '../access-key/access-key.tsx'
 import { classes } from '../classes/classes.ts'
 import field from '../field/field.module.css'
@@ -22,14 +22,28 @@ export interface TextFieldProps {
   password?: boolean | undefined
   /** Enter in a multi-line field, without Shift. */
   onSubmit?: (() => void) | undefined
+  /**
+   * Whether text typed here and not yet sent is work to keep (see `data-unsent` below). On by
+   * default; off for a field the app rewrites itself, such as Explorer's address bar.
+   */
+  keepsDraft?: boolean | undefined
   class?: string | undefined
 }
 
 export function TextField(props: TextFieldProps) {
   const id = createUniqueId()
   const multiline = () => (props.rows ?? 1) > 1
-  const input = (event: { currentTarget: { value: string } }) =>
+  // Set by the person typing, never by the app filling a field in, so a dialog opened with a
+  // name already in it isn't unsent until it's changed.
+  const [typed, setTyped] = createSignal(false)
+  // `data-unsent` is what the page reads (app/unsaved-work.ts) to hold back an update's reload
+  // while something typed here would be lost; it goes when the form empties the field.
+  const unsent = () =>
+    props.keepsDraft !== false && typed() && props.value !== '' ? '' : undefined
+  const input = (event: { currentTarget: { value: string } }) => {
+    setTyped(true)
     props.onInput?.(event.currentTarget.value)
+  }
 
   return (
     <div
@@ -57,6 +71,7 @@ export function TextField(props: TextFieldProps) {
             placeholder={props.placeholder}
             disabled={props.disabled}
             readOnly={props.readOnly}
+            data-unsent={unsent()}
             onInput={input}
           />
         }
@@ -69,6 +84,7 @@ export function TextField(props: TextFieldProps) {
           placeholder={props.placeholder}
           disabled={props.disabled}
           readOnly={props.readOnly}
+          data-unsent={unsent()}
           onInput={input}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && props.onSubmit !== undefined) {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPendingReload, RETRY_EVERY_MS } from './update-reload.ts'
+import { IDLE_AFTER_MS, watchUnsavedWork } from './unsaved-work.ts'
+import { createPendingReload, onNewerVersion, RETRY_EVERY_MS } from './update-reload.ts'
 
 const setup = (state: { busy?: boolean; quiet?: boolean; attempted?: string } = {}) => {
   const flags = { busy: state.busy ?? false, quiet: state.quiet ?? true }
@@ -114,5 +115,54 @@ describe('createPendingReload', () => {
     await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS)
     expect(reload).toHaveBeenCalledOnce()
     expect(remembered.value).toBe('0.8.4')
+  })
+})
+
+describe('onNewerVersion', () => {
+  it('has a tab that keeps its storage reload when it is safe', () => {
+    const want = vi.fn()
+    const offer = vi.fn()
+    onNewerVersion({ persistent: true, pending: { want }, offer })('0.8.3')
+    expect(want).toHaveBeenCalledWith('0.8.3')
+    expect(offer).not.toHaveBeenCalled()
+  })
+
+  it('has a tab that keeps nothing offer the reload instead of doing it', () => {
+    const want = vi.fn()
+    const offer = vi.fn()
+    onNewerVersion({ persistent: false, pending: { want }, offer })('0.8.3')
+    expect(offer).toHaveBeenCalledWith('0.8.3')
+    expect(want).not.toHaveBeenCalled()
+  })
+})
+
+describe('an update held back by an open window', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('reloads once the window is closed and the tab has been left alone', async () => {
+    const open = new Set(['add-friend'])
+    const work = watchUnsavedWork({ isOpen: (id) => open.has(id) })
+    const reload = vi.fn()
+    const pending = createPendingReload({
+      current: '0.8.2',
+      isBusy: work.isBusy,
+      isQuiet: work.isQuiet,
+      reload,
+      attempted: { get: () => undefined, set: () => undefined },
+    })
+    pending.want('0.8.3')
+    await vi.advanceTimersByTimeAsync(IDLE_AFTER_MS * 2)
+    expect(reload).not.toHaveBeenCalled()
+    open.delete('add-friend')
+    // Closing it counts as a touch, so the tab is quiet again 30 seconds later.
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(IDLE_AFTER_MS + RETRY_EVERY_MS)
+    expect(reload).toHaveBeenCalledOnce()
+    work.stop()
   })
 })

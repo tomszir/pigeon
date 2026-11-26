@@ -9,11 +9,13 @@ const type = (field: HTMLInputElement | HTMLTextAreaElement, text: string) => {
 describe('watchUnsavedWork', () => {
   const open = new Set<string>()
   let work: ReturnType<typeof watchUnsavedWork>
+  let inFlight = false
   beforeEach(() => {
     vi.useFakeTimers()
     open.clear()
+    inFlight = false
     document.body.innerHTML = ''
-    work = watchUnsavedWork({ isOpen: (id) => open.has(id) })
+    work = watchUnsavedWork({ isOpen: (id) => open.has(id), inFlight: () => inFlight })
   })
   afterEach(() => {
     work.stop()
@@ -60,6 +62,16 @@ describe('watchUnsavedWork', () => {
     expect(work.isBusy()).toBe(false)
   })
 
+  it('is busy for an unfocused one-line field its own form marked as unsent', () => {
+    const line = document.body.appendChild(document.createElement('input'))
+    line.type = 'text'
+    line.setAttribute('data-unsent', '')
+    expect(work.isBusy()).toBe(true)
+    // The form emptied it, or the dialog closed.
+    line.removeAttribute('data-unsent')
+    expect(work.isBusy()).toBe(false)
+  })
+
   it('does not count text the app put in a field itself', () => {
     const line = document.body.appendChild(document.createElement('input'))
     line.value = 'pigeon://explorer/start'
@@ -67,6 +79,13 @@ describe('watchUnsavedWork', () => {
     expect(work.isBusy()).toBe(false)
     const box = document.body.appendChild(document.createElement('textarea'))
     box.value = 'a filled-in box'
+    expect(work.isBusy()).toBe(false)
+  })
+
+  it('is busy while the Messenger has work in flight', () => {
+    inFlight = true
+    expect(work.isBusy()).toBe(true)
+    inFlight = false
     expect(work.isBusy()).toBe(false)
   })
 

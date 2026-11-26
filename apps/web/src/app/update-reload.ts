@@ -74,3 +74,16 @@ export function createPendingReload(options: PendingReloadOptions): PendingReloa
     stop,
   }
 }
+
+/**
+ * What a tab does when a newer version is out. Where the browser keeps what Pigeon stores, it
+ * reloads by itself once that's safe. Where it keeps nothing, a reload would forget the person,
+ * so the tab only says an update is out, once per version, and leaves the reload to them.
+ */
+export function onNewerVersion(options: {
+  readonly persistent: boolean
+  readonly pending: Pick<PendingReload, 'want'>
+  readonly offer: (version: string) => void
+}): (version: string) => void {
+  return options.persistent ? options.pending.want : options.offer
+}

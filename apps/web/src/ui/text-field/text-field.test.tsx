@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@solidjs/testing-library'
+import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
 import { TextField } from './text-field.tsx'
 
@@ -21,5 +22,31 @@ describe('TextField', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.keyDown(area, { key: 'Enter' })
     expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks text typed in it as unsent until it is emptied, but not text it was given', () => {
+    const [value, setValue] = createSignal('Rook')
+    render(() => <TextField label="Name" value={value()} onInput={setValue} />)
+    const input = screen.getByLabelText('Name')
+    expect(input.hasAttribute('data-unsent')).toBe(false)
+    fireEvent.input(input, { target: { value: 'Rookie' } })
+    expect(input.hasAttribute('data-unsent')).toBe(true)
+    setValue('')
+    expect(input.hasAttribute('data-unsent')).toBe(false)
+  })
+
+  it('marks a multi-line field the same way, and leaves out a field that opts out', () => {
+    render(() => (
+      <>
+        <TextField label="Message" rows={3} value="hi" />
+        <TextField label="Address" value="pigeon://x" keepsDraft={false} />
+      </>
+    ))
+    const area = screen.getByLabelText('Message')
+    fireEvent.input(area, { target: { value: 'hi there' } })
+    expect(area.hasAttribute('data-unsent')).toBe(true)
+    const address = screen.getByLabelText('Address')
+    fireEvent.input(address, { target: { value: 'pigeon://y' } })
+    expect(address.hasAttribute('data-unsent')).toBe(false)
   })
 })

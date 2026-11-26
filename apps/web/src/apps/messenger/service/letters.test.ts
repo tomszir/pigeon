@@ -87,3 +87,41 @@ describe('a letter taken in', () => {
     }
   })
 })
+
+describe('a letter in flight', () => {
+  it('is work in flight from the moment a message is written until it has been put', async () => {
+    const { entry } = await appendMessage(emptyLog('pair:x'), me, 'hello', 1)
+    let wake: () => void = () => undefined
+    const sent: unknown[] = []
+    let chat = emptyLog('pair:x')
+    chat = { ...chat, entries: [entry] }
+    const letters = createLetters({
+      store: createMemoryStore(),
+      device: me.id,
+      random: (length) => new Uint8Array(length),
+      now: () => 0,
+      // Held until the test says the few seconds are up.
+      sleep: () => new Promise<void>((resolve) => (wake = resolve)),
+      stopped: () => false,
+      chat: () => chat,
+      connected: () => false,
+      recipient: async () => ({ identity: friend.id }) as never,
+      ownDevices: async () => undefined,
+      takeEntries: async () => true,
+      mailbox: {
+        send: async (_kind: unknown, _to: unknown, body: unknown) => {
+          sent.push(body)
+          return true
+        },
+      } as never,
+    })
+    expect(letters.busy()).toBe(false)
+    letters.wrote(friend.id)
+    expect(letters.busy()).toBe(true)
+    wake()
+    await flush()
+    await flush()
+    expect(sent).toHaveLength(1)
+    expect(letters.busy()).toBe(false)
+  })
+})

@@ -1,6 +1,7 @@
 // What a reload would lose, and when nobody is looking. A reload keeps what Pigeon has stored
-// (friends, chats, letters waiting to go), but not a message being typed, nor a pairing, a link
-// or a recovery in the middle of its steps, so an update waits while any of those is going on.
+// (friends, chats, letters waiting to go), but not text being typed, nor a pairing, a link or a
+// recovery in the middle of its steps, nor a write or a letter still going out, so an update
+// waits while any of those is going on.
 import type { WindowId } from '@pigeon/core'
 
 /** Windows that hold a step-by-step exchange or a secret being entered, which a reload would drop. */
@@ -33,12 +34,15 @@ const isTextField = (target: EventTarget | null): target is TextField =>
 
 /**
  * Watches the page for work a reload would lose. Text counts as unsent when a person typed it in
- * a field (so Explorer's address bar, which the app fills in itself, doesn't) and it's still
- * there: always in a multi-line box (a chat or letter being written), and in a one-line field
- * while it has focus.
+ * a field and it's still there. The app's own forms say so themselves (`data-unsent`, set by
+ * `ui/text-field`), which covers a one-line field in a dialog that isn't focused. For any other
+ * field the page guesses: a multi-line box always counts, a one-line field while it has focus,
+ * and a field the app fills in itself (Explorer's address bar) never does.
  */
 export function watchUnsavedWork(options: {
   readonly isOpen: (id: WindowId) => boolean
+  /** Work the Messenger has in flight (see `inFlight` there). */
+  readonly inFlight?: () => boolean
   readonly document?: Document
 }): UnsavedWork {
   const doc = options.document ?? document
@@ -56,6 +60,7 @@ export function watchUnsavedWork(options: {
   for (const name of activity) doc.addEventListener(name, onActivity, true)
 
   const hasUnsentText = () => {
+    if (doc.querySelector('[data-unsent]') !== null) return true
     for (const field of doc.querySelectorAll<TextField>('textarea, input')) {
       if (!typedIn.has(field) || field.value === '') continue
       if (field instanceof HTMLTextAreaElement || field === doc.activeElement) return true
@@ -64,7 +69,8 @@ export function watchUnsavedWork(options: {
   }
 
   return {
-    isBusy: () => FLOW_WINDOWS.some(options.isOpen) || hasUnsentText(),
+    isBusy: () =>
+      FLOW_WINDOWS.some(options.isOpen) || hasUnsentText() || options.inFlight?.() === true,
     isQuiet: () => doc.visibilityState === 'hidden' || Date.now() - lastActivity >= IDLE_AFTER_MS,
     stop: () => {
       doc.removeEventListener('input', onInput, true)
