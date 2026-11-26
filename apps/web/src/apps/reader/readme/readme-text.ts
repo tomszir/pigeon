@@ -46,6 +46,13 @@ KNOWN LIMITS
   On an iPhone, add Pigeon to the Home
   Screen, or Safari forgets it in 7 days.
 
+NOT AUDITED
+  Pigeon's own protocol hasn't been
+  independently audited. Don't use it
+  where your safety depends on it.
+  Found a problem? Report it privately:
+  github.com/tomszir/pigeon/security/policy
+
 Made by tomszir
   pigeon.tomszir.com
   github.com/tomszir/pigeon

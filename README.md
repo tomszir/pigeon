@@ -19,6 +19,9 @@
 > Pigeon is in early development. Chatting with friends, on all your devices, works today, even when they're offline. Files, groups and pages hosted by friends come later.
 > Try it at **[pigeon.tomszir.com](https://pigeon.tomszir.com)**.
 
+> [!WARNING]
+> Pigeon's own protocol hasn't been independently audited. Don't use it where your safety depends on it. To report a problem, see [SECURITY.md](SECURITY.md).
+
 ## What it does
 
 It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenger from that world: your browser talks straight to your friends' browsers, with no account, no server keeping your chats and no one reading over your shoulder.
