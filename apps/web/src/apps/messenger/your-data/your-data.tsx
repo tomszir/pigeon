@@ -9,7 +9,7 @@ import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
-import type { ImportResult, Messenger } from '../service/service.ts'
+import type { ImportResult, Messenger } from '../service/messenger.ts'
 import styles from './your-data.module.css'
 
 /** A passphrase shorter than this is refused. */

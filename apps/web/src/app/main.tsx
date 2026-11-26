@@ -5,7 +5,7 @@ import type { IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx
 import { createBrowserBack } from '../platform/back/browser-back.ts'
 import { BackContext } from '../ui/back/back.ts'
 import '../ui/tokens.css'
-import type { Messenger } from '../apps/messenger/service/service.ts'
+import type { Messenger } from '../apps/messenger/service/messenger.ts'
 import { copyText } from '../platform/clipboard/browser-clipboard.ts'
 import { browserClock } from '../platform/clock/browser-clock.ts'
 import { createBrowserStore } from '../platform/storage/browser-storage.ts'

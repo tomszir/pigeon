@@ -16,7 +16,7 @@ import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
-import type { Messenger, RecoverResult } from '../service/service.ts'
+import type { Messenger, RecoverResult } from '../service/messenger.ts'
 import {
   MIN_PASSPHRASE_LENGTH,
   type PassphraseSeal,

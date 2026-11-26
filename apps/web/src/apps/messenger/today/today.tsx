@@ -7,7 +7,7 @@ import wallpaper from '../../../wallpapers/hills-800x600.jpg'
 import type { AddFriendTab } from '../add-friend/add-friend.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import { badgeText, NotificationList, type Notifications } from '../notifications/notifications.tsx'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import styles from './today.module.css'
 
 /** A program on the home screen, with how many things wait in it. */

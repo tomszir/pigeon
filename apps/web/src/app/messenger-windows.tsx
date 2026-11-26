@@ -32,7 +32,7 @@ import {
   type RecoveryKit,
   UseRecoveryKey,
 } from '../apps/messenger/recovery/recovery.tsx'
-import type { Messenger } from '../apps/messenger/service/service.ts'
+import type { Messenger } from '../apps/messenger/service/messenger.ts'
 import {
   ExportData,
   ImportData,

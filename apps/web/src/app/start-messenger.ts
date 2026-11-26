@@ -1,11 +1,8 @@
 // Builds the Messenger from the browser's platform: the stored identity (made on first visit),
 // the Store main.tsx opened, WebCrypto and Trystero.
 import { createLighthouseClient } from '@pigeon/core'
-import {
-  createMessenger,
-  type Messenger,
-  type MessengerEvents,
-} from '../apps/messenger/service/service.ts'
+import type { Messenger, MessengerEvents } from '../apps/messenger/service/messenger.ts'
+import { createMessenger } from '../apps/messenger/service/service.ts'
 import { browserClock } from '../platform/clock/browser-clock.ts'
 import {
   createBrowserCrypto,

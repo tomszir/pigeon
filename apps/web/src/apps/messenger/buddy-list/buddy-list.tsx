@@ -19,7 +19,7 @@ import { waitingCount } from '../invite-links/invite-links.tsx'
 import { clockTime } from '../live-conversation/live-conversation.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import type { SentAsk } from '../service/invite-links.ts'
-import type { FriendView, Messenger } from '../service/service.ts'
+import type { FriendView, Messenger } from '../service/messenger.ts'
 import styles from './buddy-list.module.css'
 
 export interface BuddyListProps {

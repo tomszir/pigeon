@@ -2,7 +2,7 @@ import { emptyLog } from '@pigeon/core'
 import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
-import type { FriendView, Messenger } from '../service/service.ts'
+import type { FriendView, Messenger } from '../service/messenger.ts'
 import { BuddyList, friendGroups } from './buddy-list.tsx'
 
 const friend = (over: Partial<FriendView>): FriendView => ({

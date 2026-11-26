@@ -2,7 +2,7 @@ import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
 import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import type { MessageRoute } from '../service/letters.ts'
-import type { FriendView } from '../service/service.ts'
+import type { FriendView } from '../service/messenger.ts'
 import {
   clockTime,
   conversationFileName,

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import { MyDevices } from './my-devices.tsx'
 
 describe('MyDevices', () => {

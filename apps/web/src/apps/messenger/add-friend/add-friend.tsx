@@ -25,7 +25,7 @@ import { InviteLinks, timeLeft, waitingCount } from '../invite-links/invite-link
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
 import type { OpenedLink, SentAsk } from '../service/invite-links.ts'
-import type { CodeAsk, Messenger, FriendOffer as Offer } from '../service/service.ts'
+import type { CodeAsk, Messenger, FriendOffer as Offer } from '../service/messenger.ts'
 import styles from './add-friend.module.css'
 
 /** How long to wait for the inviter's Pigeon to answer, and then for the inviter to add you. */

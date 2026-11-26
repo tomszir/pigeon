@@ -9,7 +9,7 @@ import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { Connecting, type StepState } from '../connecting/connecting.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
-import type { DeviceOffer, Messenger } from '../service/service.ts'
+import type { DeviceOffer, Messenger } from '../service/messenger.ts'
 import styles from './join-device.module.css'
 import { FAILURES, isKind, type Join } from './join-flow.ts'
 

@@ -4,7 +4,7 @@
 
 import type { PeerId } from '@pigeon/core'
 import { type Accessor, createEffect, on } from 'solid-js'
-import type { FriendView, Messenger } from '../apps/messenger/service/service.ts'
+import type { FriendView, Messenger } from '../apps/messenger/service/messenger.ts'
 import type { ShellApi } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'

@@ -3,7 +3,7 @@
 import type { PeerId } from '@pigeon/core'
 import { createResource } from 'solid-js'
 import { Avatar } from '../../../ui/avatar/avatar.tsx'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 
 export function FriendAvatar(props: {
   messenger: Pick<Messenger, 'avatarOf'>
