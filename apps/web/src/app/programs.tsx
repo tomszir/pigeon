@@ -2,7 +2,7 @@
 // tables of programs are in launchers.ts, the shell draws it and the apps fill the windows.
 
 import type { Invite } from '@pigeon/core'
-import { type Accessor, createEffect, createSignal, onCleanup, Show } from 'solid-js'
+import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
 import { About } from '../apps/about/about/about.tsx'
 import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
@@ -14,7 +14,7 @@ import {
   createNotifications,
   NotificationFlyout,
 } from '../apps/messenger/notifications/notifications.tsx'
-import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/messenger.ts'
+import type { FriendView, MessengerEvents } from '../apps/messenger/service/messenger.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
 import { Network } from '../apps/network/network/network.tsx'
 import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'
@@ -29,6 +29,7 @@ import type { OldCode } from './address-invite.ts'
 import { BUNDLED_PAGES } from './bundled-pages.ts'
 import { createLaunchers } from './launchers.ts'
 import { createMessageBalloons, remindAboutRecoveryKey } from './message-balloons.ts'
+import type { MessengerHost } from './messenger-host.ts'
 import { createMessengerWindows } from './messenger-windows.tsx'
 import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
@@ -48,22 +49,6 @@ export interface Programs extends ShellProps {
   readonly openJoinDevice: (incoming?: Invite | OldCode, confirmed?: boolean) => void
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
-}
-
-/** What the Messenger needs from the composition root. */
-export interface MessengerHost {
-  readonly messenger: Accessor<Messenger | undefined>
-  /** Why Pigeon can't run here, when it can't. */
-  readonly problem: Accessor<string | undefined>
-  readonly copyText: (text: string) => Promise<boolean>
-  readonly sleep: (ms: number) => Promise<void>
-  /** Starts Pigeon again, as a newly linked device must to become its identity. */
-  readonly restart: () => void
-  /**
-   * Forgets everything here and starts again at Link to My Other Device, linking to
-   * `target` straight away when it's given, as leaving a Pigeon does.
-   */
-  readonly startOver: (target?: Invite) => Promise<void>
 }
 
 export function createPrograms(
