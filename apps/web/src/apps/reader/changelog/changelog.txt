@@ -4,6 +4,23 @@
      `---'       version, newest first
 ==============================================
 
+0.8.2, 26 November 2026
+----------------------------------------------
+  * Follow image map links like ordinary
+    links.
+  * Replace pair and self secrets from before
+    sealed pairing.
+  * Keep friends loading and check imported
+    data.
+  * Compare log signatures as bytes and accept
+    typed entries.
+  * Seal mail with HPKE (RFC 9180) to devices
+    that open it.
+  * Make sealed files costlier to guess with
+    Argon2id.
+  * Keep farewells and blocks loading past an
+    unreadable one.
+
 0.8.1, 26 November 2026
 ----------------------------------------------
   * Adding a friend is safer. Typed codes now
