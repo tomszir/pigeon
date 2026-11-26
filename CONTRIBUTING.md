@@ -19,6 +19,7 @@ Before opening a PR, run `mise run check` and `mise run build`. [docs/README.md]
   - Types: `feat` `fix` `perf` `refactor` `docs` `test` `build` `ci` `chore` `revert`.
   - The summary is imperative, lowercase, at most 72 characters, with no trailing period.
   - Write `feat`, `fix` and `perf` summaries for users: what they'll notice, not how it was done. Scope them by area when one fits: `shell`, `ui`, `monitor`, `messenger`, `letters`, `files`, `explorer`, `builder`, `core`, `pigeonhtml`, `lighthouse`.
+  - `feat` is only for a new capability people would notice and want to hear about. A change that fixes a bug or adds a missing protection is a `fix`, even when it adds or changes UI, and so is polish to something that exists. When in doubt, it's a `fix`.
   - Mark breaking changes with `type!:` or a `BREAKING CHANGE:` footer, including anything that makes a visitor redo something, such as a change to the identity or log format that old data can't follow.
 - **Lean messages:** add a body only when the reason isn't obvious from the summary.
 - **Docs trailer:** a commit that changes nothing documented carries `Docs: none` ([AGENTS.md](AGENTS.md)).
@@ -48,4 +49,4 @@ Pigeon is public, so write every doc and comment for someone who has never met t
 
 ## Releases
 
-[release-please](https://github.com/googleapis/release-please) reads the Conventional Commits on `main` and keeps a release PR open, `chore: release <version>`. Below 1.0, a `feat` raises the minor version and a `fix` the patch. The workflow drafts the release's section of Changelog.txt (`apps/web/src/apps/reader/changelog/changelog.txt`) on that PR from the `feat`, `fix` and `perf` summaries; the maintainer rewrites it in plain words for the people using Pigeon before merging. Merging that PR tags `v<version>`, writes the GitHub release from the commit summaries, and deploys the site. Merging it is the maintainer's call.
+[release-please](https://github.com/googleapis/release-please) reads the Conventional Commits on `main` and keeps a release PR open, `chore: release <version>`. Below 1.0, a `feat` or a breaking change raises the minor version and a `fix` the patch, which is why `feat` is kept for bigger features. The workflow drafts the release's section of Changelog.txt (`apps/web/src/apps/reader/changelog/changelog.txt`) on that PR from the `feat`, `fix` and `perf` summaries; the maintainer rewrites it in plain words for the people using Pigeon before merging. Merging that PR tags `v<version>`, writes the GitHub release from the commit summaries, and deploys the site. Merging it is the maintainer's call.
