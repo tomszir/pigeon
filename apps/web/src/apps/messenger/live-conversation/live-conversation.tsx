@@ -55,30 +55,45 @@ const listOf = (names: readonly string[]) =>
     ? (names[0] ?? '')
     : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 
-/** What a chat says under a message about its way, from the Messenger's word for it. */
+/** What a chat says under a message that came by letter, from the Messenger's word for it. */
 export function routeText(
   route: MessageRoute | undefined,
-  friend: string,
 ): Extract<TranscriptEntry, { kind: 'message' }>['route'] {
-  if (route === undefined) return undefined
-  switch (route.kind) {
+  if (route?.kind !== 'arrived') return undefined
+  return { kind: 'letter', text: `Came by letter while you were away, through ${route.through}` }
+}
+
+type Way = NonNullable<Extract<TranscriptEntry, { kind: 'message' }>['way']>
+
+/**
+ * How a message of yours is getting there, as the icon after it and its words. Which of them is
+ * spelled out in words under the message is left to the caller.
+ */
+export function wayText(
+  route: MessageRoute | undefined,
+  friend: string,
+): Pick<Way, 'state' | 'text'> | undefined {
+  switch (route?.kind) {
     case 'sealing':
-      return { kind: 'waiting', text: 'Sealing...' }
+      return { state: 'sealing', text: 'Sealing...' }
     case 'left':
-      return { kind: 'waiting', text: `Left at ${listOf(route.where)} for when ${friend}'s back` }
-    case 'waiting':
-      return { kind: 'waiting', text: `Waits until ${friend} is online` }
-    case 'retrying':
-      return { kind: 'waiting', text: 'Not left at a Lighthouse yet: Pigeon tries again' }
-    case 'has':
-      return { kind: 'done', text: `✓ ${friend} has it` }
-    case 'arrived':
       return {
-        kind: 'letter',
-        text: `Came by letter while you were away, through ${route.through}`,
+        state: 'left',
+        text: `Left at ${listOf(route.where)} for when ${friend}'s back`,
       }
+    case 'waiting':
+      return { state: 'waiting', text: `Waits until ${friend} is online` }
+    case 'retrying':
+      return { state: 'retrying', text: 'Not left at a Lighthouse yet: Pigeon tries again' }
+    case 'has':
+      return { state: 'has', text: `${friend} has it` }
+    default:
+      return undefined
   }
 }
+
+/** A way that needs a look: nothing has the message yet, and nothing is on its way to them. */
+const needsAttention = (state: Way['state']) => state === 'waiting' || state === 'retrying'
 
 /** `mine` says which entries are yours: written on any of your devices. `routeOf` says each one's way. */
 export function transcriptFor(
@@ -97,6 +112,8 @@ export function transcriptFor(
       text: `${selfName} and ${view.name} became friends on ${dayName(view.addedAt)} at ${clockTime(view.addedAt)}.`,
     })
   const notes = [...view.notes]
+  // The newest message of yours spells its way out in words, the others only show the icon.
+  const newestOwn = view.log.entries.findLastIndex((entry) => isMine(entry.author))
   const flush = (upTo: number) => {
     while (notes[0] !== undefined && notes[0].after <= upTo) {
       const note = notes.shift()
@@ -112,7 +129,12 @@ export function transcriptFor(
   view.log.entries.forEach((entry, index) => {
     flush(index)
     const own = isMine(entry.author)
-    const route = routeText(routeOf(entry), view.name)
+    const route = routeText(routeOf(entry))
+    const found = wayText(routeOf(entry), view.name)
+    const way: Way | undefined =
+      found === undefined
+        ? undefined
+        : { ...found, spelled: index === newestOwn || needsAttention(found.state) }
     entries.push({
       kind: 'message',
       id: entry.sig,
@@ -120,6 +142,7 @@ export function transcriptFor(
       own,
       text: entry.text,
       ...(route === undefined ? {} : { route }),
+      ...(way === undefined ? {} : { way }),
     })
   })
   flush(Number.POSITIVE_INFINITY)

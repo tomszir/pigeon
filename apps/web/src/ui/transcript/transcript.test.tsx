@@ -1,4 +1,4 @@
-import { render, screen } from '@solidjs/testing-library'
+import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { describe, expect, it } from 'vitest'
 import { groupTranscript, Transcript, type TranscriptEntry } from './transcript.tsx'
 
@@ -26,5 +26,41 @@ describe('Transcript', () => {
       'Mika says:',
       'Rook says:',
     ])
+  })
+
+  describe('the way of a message of yours', () => {
+    const own = (id: string, state: 'has' | 'waiting', spelled: boolean): TranscriptEntry => ({
+      kind: 'message',
+      id,
+      from: 'Rook',
+      own: true,
+      text: `message ${id}`,
+      way: { state, text: `words ${id}`, spelled },
+    })
+
+    it('says an icon-only way to screen readers once, and shows it on click', async () => {
+      render(() => <Transcript label="Conversation" entries={[own('a', 'has', false)]} />)
+      // The button is named by its words, which nothing else on the page repeats until it opens.
+      const way = screen.getByRole('button', { name: 'words a' })
+      expect(screen.getAllByText('words a')).toHaveLength(1)
+      await fireEvent.click(way)
+      expect(screen.getAllByText('words a')).toHaveLength(2)
+      await fireEvent.keyDown(way, { key: 'Escape' })
+      expect(screen.getAllByText('words a')).toHaveLength(1)
+    })
+
+    it('closes the pinned words on a press elsewhere', async () => {
+      render(() => <Transcript label="Conversation" entries={[own('a', 'has', false)]} />)
+      await fireEvent.click(screen.getByRole('button', { name: 'words a' }))
+      expect(screen.getAllByText('words a')).toHaveLength(2)
+      await fireEvent.pointerDown(document.body)
+      expect(screen.getAllByText('words a')).toHaveLength(1)
+    })
+
+    it('spells a way out in words under the message, with a decorative icon', () => {
+      render(() => <Transcript label="Conversation" entries={[own('a', 'waiting', true)]} />)
+      expect(screen.getAllByText('words a')).toHaveLength(1)
+      expect(screen.queryByRole('button')).toBeNull()
+    })
   })
 })

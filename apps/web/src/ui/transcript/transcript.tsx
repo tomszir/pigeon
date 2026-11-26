@@ -2,6 +2,7 @@
 import { createEffect, For, type JSX, Match, on, Show, Switch } from 'solid-js'
 import { classes } from '../classes/classes.ts'
 import { ScrollArea } from '../scroll-area/scroll-area.tsx'
+import { MessageWay } from './message-way.tsx'
 import styles from './transcript.module.css'
 
 export type TranscriptEntry =
@@ -13,11 +14,13 @@ export type TranscriptEntry =
       readonly text: string
       /** The sender's chosen font colour. */
       readonly color?: string
+      /** A small line about how it came: "Came by letter, through Loft". */
+      readonly route?: { readonly kind: 'letter'; readonly text: string }
       /**
-       * A small line under it about its way: "Left at Loft for when Jo's back" (`waiting`),
-       * "Jo has it" (`done`), "Came by letter, through Loft" (`letter`).
+       * How a message of yours is getting there: an icon after it, with its words on hover and
+       * click, and under it when it needs attention or is the newest.
        */
-      readonly route?: { readonly kind: 'waiting' | 'done' | 'letter'; readonly text: string }
+      readonly way?: MessageWay
     }
   | {
       /** `typing` is the live "is writing a message..." line, drawn last. */
@@ -78,8 +81,8 @@ export function Transcript(props: { label: string; entries: readonly TranscriptE
                     <p class={styles.says}>{run().from} says:</p>
                     <For each={run().entries}>
                       {(message) => (
-                        <>
-                          <Show when={message.route?.kind === 'letter' ? message.route : undefined}>
+                        <div class={styles.row}>
+                          <Show when={message.route}>
                             {(route) => (
                               <p class={classes(styles.route, styles.routeLetter)}>
                                 {route().text}
@@ -91,20 +94,21 @@ export function Transcript(props: { label: string; entries: readonly TranscriptE
                             style={message.color === undefined ? {} : { color: message.color }}
                           >
                             {message.text}
+                            <Show when={message.way}>{(way) => <MessageWay way={way()} />}</Show>
                           </p>
-                          <Show when={message.route?.kind !== 'letter' ? message.route : undefined}>
-                            {(route) => (
+                          <Show when={message.way?.spelled ? message.way : undefined}>
+                            {(way) => (
                               <p
                                 class={classes(
                                   styles.route,
-                                  route().kind === 'done' ? styles.routeDone : styles.routeWaiting,
+                                  way().state === 'has' ? styles.routeDone : styles.routeWaiting,
                                 )}
                               >
-                                {route().text}
+                                {way().text}
                               </p>
                             )}
                           </Show>
-                        </>
+                        </div>
                       )}
                     </For>
                   </div>
