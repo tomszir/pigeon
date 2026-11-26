@@ -1,4 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Every export names its type, so a declaration file can be made from one file at a time, with
+    // no emit here: `declaration` is on only because isolatedDeclarations needs it.
+    "declaration": true,
+    "isolatedDeclarations": true
+  },
   "include": ["src"]
 }

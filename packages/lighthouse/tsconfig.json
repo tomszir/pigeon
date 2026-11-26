@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Every export names its type, so a declaration file can be made from one file at a time, with
+    // no emit here: `declaration` is on only because isolatedDeclarations needs it.
+    "declaration": true,
+    "isolatedDeclarations": true,
     // Node runs this package's TypeScript as is, stripping only the types, so syntax that
     // has to be compiled (parameter properties, enums, namespaces) would stop it starting.
     "erasableSyntaxOnly": true

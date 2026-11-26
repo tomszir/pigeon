@@ -19,11 +19,11 @@ import { err, ok, type Result } from '../result/result.ts'
 /** Goes up when a change means older Pigeons can't follow. */
 export const LIGHTHOUSE_PROTOCOL = 1
 /** The most a blob may hold, before base64. */
-export const MAX_BLOB_BYTES = 64 * 1024
+export const MAX_BLOB_BYTES: number = 64 * 1024
 /** One frame each way: a blob in base64 and room to spare. */
-export const MAX_FRAME_BYTES = 96 * 1024
+export const MAX_FRAME_BYTES: number = 96 * 1024
 /** How long mail may be kept. */
-export const MAX_MAIL_MS = 30 * 24 * 60 * 60 * 1000
+export const MAX_MAIL_MS: number = 30 * 24 * 60 * 60 * 1000
 /** Tags, drop values and their hashes are 32 bytes, 52 base32 letters. */
 export const MAIL_KEY_BYTES = 32
 /** One drop per recipient device; mail to 12 people with several devices each fits. */

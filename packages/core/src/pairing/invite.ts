@@ -14,13 +14,13 @@ import type { RoomName } from '../transport/transport.ts'
 export const NAMEPLATE_LENGTH = 4
 /** The password: 6 base32 characters, 30 bits, each guess one live try the inviter sees. */
 export const PASSWORD_LENGTH = 6
-export const CODE_LENGTH = NAMEPLATE_LENGTH + PASSWORD_LENGTH
+export const CODE_LENGTH: number = NAMEPLATE_LENGTH + PASSWORD_LENGTH
 /** A link's secret: 16 bytes, 26 base32 characters. */
 export const LINK_SECRET_BYTES = 16
 const LINK_SECRET_LENGTH = 26
 /** Random bytes a new code takes: enough for the nameplate, the password and the link secret. */
-export const CODE_RANDOM_BYTES = 7 + LINK_SECRET_BYTES
-export const INVITE_LIFETIME_MS = 30 * 60 * 1000
+export const CODE_RANDOM_BYTES: number = 7 + LINK_SECRET_BYTES
+export const INVITE_LIFETIME_MS: number = 30 * 60 * 1000
 /** Fingerprints are 8 bytes (16 hex); in a link they're 13 base32 characters. */
 const FINGERPRINT_LENGTH = 13
 /**

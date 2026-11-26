@@ -192,7 +192,7 @@ const isEpoch = (value: unknown): value is Epoch =>
   value['entries'].every(isEntry)
 
 const epochsOf = (log: DeviceLog): readonly Epoch[] => log.epochs ?? []
-const isTail = (log: DeviceLog) => log.from !== undefined
+const isTail = (log: DeviceLog): boolean => log.from !== undefined
 /** The epoch number of `log.epochs[0]`. */
 const firstEpoch = (log: DeviceLog) => log.from ?? 1
 const totalEntries = (log: DeviceLog) =>
@@ -803,7 +803,7 @@ export function everDevices(log: DeviceLog): ReadonlySet<PeerId> {
 }
 
 /** Whether a log is a tail, known from its first recover on only. */
-export const isTailLog = isTail
+export const isTailLog: (log: DeviceLog) => boolean = isTail
 
 /**
  * The identity a device speaks for, or undefined when its claim doesn't hold. `known` is the log
