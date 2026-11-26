@@ -1,0 +1,59 @@
+/* Link to My Other Device: the code to type, the checks to compare, and leaving. */
+
+.devices {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text {
+  margin: 0;
+  line-height: 14px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.error,
+.warning {
+  margin: 0;
+  color: var(--pg-text-error);
+}
+
+/* The 6-digit check is compared by eye across two screens. */
+.check {
+  margin: 4px 0;
+  font: 700 20px / 24px var(--pg-font-mono);
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Phone: one column, the picture centred, buttons full width. */
+.phone {
+  gap: 12px;
+  padding: 12px;
+}
+
+.phone .buttons > * {
+  flex-grow: 1;
+}

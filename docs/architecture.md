@@ -103,8 +103,9 @@ apps/
                 service/devices.ts keeps your device log and friends', and says who
                 a device is. service/mailbox.ts is mail through Lighthouses: an outbox
                 put again until each device's receipt comes, and fetching from a
-                cursor, taking each letter once. messenger/devices/ draws Link a Device, Link to My
-                Other Device and My Devices. network/ is Network, the Lighthouses and the relay setting. reader/ is
+                cursor, taking each letter once. messenger/link-device/, join-device/ and
+                my-devices/ draw Link a Device, Link to My Other Device (join-flow.ts holds the
+                steps it can show and what it says when linking fails) and My Devices. network/ is Network, the Lighthouses and the relay setting. reader/ is
                 Pigeon Reader with the texts it opens: readme/ and changelog/
                 (Changelog.txt, the release notes). explorer/ is
                 Pigeon Explorer: explorer/ (the window, history.ts
