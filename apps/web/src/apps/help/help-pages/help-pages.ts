@@ -1,18 +1,13 @@
 // Every page of in-world Help, by its pigeon://help address. Explorer serves
 // these from this computer and runs each through PigeonHTML's sanitize like anyone's page.
 
-import {
-  CHAPTERS,
-  chapterAddress,
-  HOW_HOME,
-  HOW_PAGES,
-} from '../how-pigeon-works/how-pigeon-works.ts'
+import { CHAPTERS, chapterAddress, HOW_HOME } from '../how-pigeon-works/frame.ts'
+import { HOW_PAGES } from '../how-pigeon-works/how-pigeon-works.ts'
 import { escapeHtml } from '../markdown/markdown.ts'
 import { HELP_HOME, type HelpPage, helpDocument } from '../page/page.ts'
 import { PROTOCOL_HOME, PROTOCOL_SPEC, type Spec } from '../protocol-spec/protocol-spec.ts'
 
-export type { HelpPage } from '../page/page.ts'
-export { HELP_HOME } from '../page/page.ts'
+export { HELP_HOME, type HelpPage }
 
 const STYLE = `
 body { margin: 0; background-color: #ffffff; color: #000000; }

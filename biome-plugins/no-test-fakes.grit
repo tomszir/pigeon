@@ -1,0 +1,15 @@
+language js(jsx)
+
+// Test fakes and contract tests are for test files. This reports any way of importing or
+// re-exporting one from a file that isn't a test: `@pigeon/core/testing`,
+// `@pigeon/lighthouse/testing`, a relative path through a `testing/` folder, or a
+// `store-contract` file, in a static import, an `export ... from`, or a dynamic `import()`.
+// biome.json loads this plugin for every file but the tests, the `testing/` folders themselves and
+// each package's index.ts.
+or {
+  JsModuleSource() as $source,
+  JsStringLiteralExpression() as $source where { $source <: within `import($_)` }
+} where {
+  $source <: r"['\"](?:@pigeon/(?:core|lighthouse)/testing|\.{1,2}/(?:[^'\"]*/)?testing(?:/[^'\"]*)?|[^'\"]*store-contract[^'\"]*)['\"]",
+  register_diagnostic(span=$source, message="Test fakes and contract tests are for test files only: @pigeon/core/testing, @pigeon/lighthouse/testing, anything in a testing/ folder and store-contract. (The fakes that @pigeon/core also exports from its index are not covered.)", severity="error")
+}
