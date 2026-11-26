@@ -422,8 +422,11 @@ export function BuddyList(props: BuddyListProps) {
                 message={messenger().profile().message}
                 first={!named()}
                 onSave={(handle, message) => {
+                  // Read before the form closes: closing it unmounts this branch, and its
+                  // `messenger` accessor throws once it has.
+                  const current = messenger()
                   setEditing(false)
-                  void messenger().setProfile({ ...messenger().profile(), handle, message })
+                  void current.setProfile({ ...current.profile(), handle, message })
                 }}
                 onCancel={() => setEditing(false)}
               />
