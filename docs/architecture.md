@@ -127,7 +127,13 @@ apps/
                 every page shares.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
-                (app/programs.tsx). start-messenger.ts makes or loads the identity and this device's sealing key
+                (app/programs.tsx, which keeps the assembly and imports the files that
+                hold its parts: messenger-windows.tsx opens the Messenger's windows and
+                a friend's menu, message-balloons.ts batches message balloons and offers
+                the recovery key, given its clock and timer, and launchers.ts holds the
+                tables of the desktop's, the menu's and the Pocket's programs; each is
+                handed the openers it needs and nothing else imports them).
+                start-messenger.ts makes or loads the identity and this device's sealing key
                 and builds the Messenger; address-invite.ts reads an invite link
                 from the address bar once and removes it; official-lighthouses.ts lists the Lighthouses a new Pigeon
                 leaves its mail at; whats-new.ts decides
