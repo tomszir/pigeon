@@ -130,6 +130,7 @@ import {
   isHostedInvite,
   isMessengerSettings,
   isProfile,
+  splitFriendRecords,
 } from './stored.ts'
 
 /** How long a "typing" lasts without a refresh, and how often the sender refreshes it. */
@@ -232,6 +233,11 @@ export interface MessengerEvents {
   readonly onBuzz?: (friend: FriendView) => void
   readonly onOnline?: (friend: FriendView) => void
   readonly onUnfriended?: (friend: FriendView) => void
+  /**
+   * Saved friends that couldn't be read were kept aside as they were stored, and everyone else
+   * loaded. `count` is every record kept aside so far, this run's and earlier runs'.
+   */
+  readonly onFriendsSetAside?: (count: number) => void
 }
 
 export interface MessengerDeps {
@@ -290,6 +296,8 @@ export type Messenger = Awaited<ReturnType<typeof createMessenger>>
 const KEYS = {
   profile: 'profile',
   friends: 'friends',
+  /** Saved friend records that failed their check, exactly as they were stored. Never written over. */
+  unreadableFriends: 'friends-unreadable',
   invite: 'invite',
   blocked: 'blocked',
   /** Friends you removed who haven't been told yet. */
@@ -1669,8 +1677,19 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   // Load what's stored, then connect.
-  const records = await store.get(KEYS.friends)
-  for (const record of isFriendRecords(records) ? records : []) {
+  const { readable, unreadable } = splitFriendRecords(await store.get(KEYS.friends))
+  if (unreadable.length > 0) {
+    // Set aside before anything saves the friends that did load, which would drop these from
+    // `friends`. A record already set aside by an earlier run isn't kept twice.
+    const earlier = await store.get(KEYS.unreadableFriends)
+    const aside = Array.isArray(earlier) ? earlier : []
+    const seen = new Set(aside.map((record) => JSON.stringify(record)))
+    const added = unreadable.filter((record) => !seen.has(JSON.stringify(record)))
+    if (added.length > 0) await store.set(KEYS.unreadableFriends, [...aside, ...added] as Json)
+  }
+  const setAside = await store.get(KEYS.unreadableFriends)
+  if (Array.isArray(setAside) && setAside.length > 0) events.onFriendsSetAside?.(setAside.length)
+  for (const record of readable) {
     const room = await pairRoom(crypto, self, record.id)
     const log = await store.get(KEYS.log(record.id))
     await addFriend(record, isChatLog(log) && log.id === room ? log : emptyLog(room))
@@ -2225,8 +2244,10 @@ export async function createMessenger(deps: MessengerDeps) {
         ),
       )
     }
-    const kept = await store.get(KEYS.friends)
-    await store.set(KEYS.friends, [...(isFriendRecords(kept) ? kept : []), ...added])
+    // Records that couldn't be read were set aside when this started; only the readable ones are
+    // kept here.
+    const kept = splitFriendRecords(await store.get(KEYS.friends)).readable
+    await store.set(KEYS.friends, [...kept, ...added])
     const blockedHere = new Set(blocked().map((record) => record.id))
     await store.set(KEYS.blocked, [
       ...blocked(),

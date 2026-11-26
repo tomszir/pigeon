@@ -1555,6 +1555,66 @@ describe('export and import', () => {
   })
 })
 
+describe('unreadable saved friends', () => {
+  it('sets one bad record aside, loads the rest and never saves over it', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook } = await pair(network)
+    await rook.messenger.close()
+    const [mika] = (await rook.store.get('friends')) as Record<string, unknown>[]
+    const eve = { ...mika, id: fakeSigner('eve').id, handle: 'Eve' }
+    const bad = { ...mika, id: fakeSigner('zed').id, handle: 'Zed', addedAt: 'long ago' }
+    await rook.store.set('friends', [mika, bad, eve] as never)
+
+    const told: number[] = []
+    const again = await messenger(createMemoryNetwork(), 'rook', {
+      store: rook.store,
+      events: { onFriendsSetAside: (count) => told.push(count) },
+    })
+    expect(again.messenger.friends().map((view) => view.handle)).toEqual(['Mika', 'Eve'])
+    expect(told).toEqual([1])
+    expect(await rook.store.get('friends-unreadable')).toEqual([bad])
+
+    // A save, here a rename, writes only the readable friends and leaves the set-aside one be.
+    await again.messenger.rename(again.messenger.friends()[0]?.id ?? fakeSigner('x').id, 'Mik')
+    expect(
+      ((await rook.store.get('friends')) as { handle: string }[]).map((r) => r.handle),
+    ).toEqual(['Mika', 'Eve'])
+    expect(await rook.store.get('friends-unreadable')).toEqual([bad])
+
+    // And again after another start: told again, nothing kept twice.
+    await again.messenger.close()
+    const third = await messenger(createMemoryNetwork(), 'rook', {
+      store: rook.store,
+      events: { onFriendsSetAside: (count) => told.push(count) },
+    })
+    expect(third.messenger.friends()).toHaveLength(2)
+    expect(told).toEqual([1, 1])
+    expect(await rook.store.get('friends-unreadable')).toEqual([bad])
+  })
+
+  it('keeps a stored value that is no list at all, and starts with no friends', async () => {
+    const store = createMemoryStore()
+    await store.set('friends', { not: 'a list' })
+    const rook = await messenger(createMemoryNetwork(), 'rook', { store })
+    expect(rook.messenger.friends()).toEqual([])
+    expect(await store.get('friends-unreadable')).toEqual([{ not: 'a list' }])
+  })
+
+  it('keeps a set-aside record through an import', async () => {
+    const network = createMemoryNetwork()
+    const { a: rook } = await pair(network)
+    const data = JSON.parse(JSON.stringify(rook.messenger.exportData())) as unknown
+    await rook.messenger.close()
+    const [mika] = (await rook.store.get('friends')) as Record<string, unknown>[]
+    const bad = { ...mika, id: fakeSigner('zed').id, handle: 7 }
+    await rook.store.set('friends', [bad, mika] as never)
+    const again = await messenger(createMemoryNetwork(), 'rook', { store: rook.store })
+    expect(await again.messenger.importData(data)).toBe('imported')
+    expect(await rook.store.get('friends-unreadable')).toEqual([bad])
+    expect(((await rook.store.get('friends')) as unknown[]).length).toBe(1)
+  })
+})
+
 describe('the recovery key', () => {
   type Side = Awaited<ReturnType<typeof messenger>>
   async function pairAgain(host: Side, guest: Side) {

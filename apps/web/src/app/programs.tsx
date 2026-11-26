@@ -653,6 +653,13 @@ export function createPrograms(
         icon: tangoIcon('dialog-warning', 16),
         body: 'Another of your devices took this one off your Pigeon. It keeps its chats, but talks to nobody now.',
       }),
+    onFriendsSetAside: (count) =>
+      api.notify({
+        title:
+          count === 1 ? 'A friend could not be loaded' : `${count} friends could not be loaded`,
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'Their saved records could not be read. They are kept as they were stored and not changed, and everyone else loaded.',
+      }),
     onTwin: () =>
       api.notify({
         title: 'This Pigeon is also open somewhere else',

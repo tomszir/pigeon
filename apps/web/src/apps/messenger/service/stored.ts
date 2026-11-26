@@ -30,22 +30,39 @@ export function isProfile(value: unknown): value is Profile {
   )
 }
 
-export function isFriendRecords(value: unknown): value is readonly FriendRecord[] {
+export function isFriendRecord(record: unknown): record is FriendRecord {
   return (
-    Array.isArray(value) &&
-    value.every(
-      (record) =>
-        isObject(record) &&
-        typeof record['id'] === 'string' &&
-        isPeerId(record['id']) &&
-        typeof record['handle'] === 'string' &&
-        typeof record['addedAt'] === 'number' &&
-        (record['petname'] === undefined || typeof record['petname'] === 'string') &&
-        (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
-        (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number') &&
-        isPlace(record),
-    )
+    isObject(record) &&
+    typeof record['id'] === 'string' &&
+    isPeerId(record['id']) &&
+    typeof record['handle'] === 'string' &&
+    typeof record['addedAt'] === 'number' &&
+    (record['petname'] === undefined || typeof record['petname'] === 'string') &&
+    (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
+    (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number') &&
+    isPlace(record)
   )
+}
+
+export function isFriendRecords(value: unknown): value is readonly FriendRecord[] {
+  return Array.isArray(value) && value.every(isFriendRecord)
+}
+
+/**
+ * Saved friends read one by one, so a record that fails its check costs only that friend. The
+ * ones that fail come back untouched, exactly as stored, for the caller to keep. A stored value
+ * that isn't a list at all counts as one unreadable record.
+ */
+export function splitFriendRecords(value: unknown): {
+  readonly readable: readonly FriendRecord[]
+  readonly unreadable: readonly unknown[]
+} {
+  if (value === undefined) return { readable: [], unreadable: [] }
+  if (!Array.isArray(value)) return { readable: [], unreadable: [value] }
+  return {
+    readable: value.filter(isFriendRecord),
+    unreadable: value.filter((record) => !isFriendRecord(record)),
+  }
 }
 
 /**
