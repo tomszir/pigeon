@@ -40,16 +40,21 @@ const SECRET_LENGTH = 26
 export const LINK_FINGERPRINT_BYTES = 16
 
 /** How long an invite link can last, chosen when it's made. */
-export const INVITE_LINK_LIFETIMES = [HOUR, DAY, 7 * DAY, 30 * DAY] as const
-export const DEFAULT_INVITE_LINK_LIFETIME = 7 * DAY
+export const INVITE_LINK_LIFETIMES: readonly [number, number, number, number] = [
+  HOUR,
+  DAY,
+  7 * DAY,
+  30 * DAY,
+]
+export const DEFAULT_INVITE_LINK_LIFETIME: number = 7 * DAY
 /** How many people an invite link can bring in, chosen when it's made. */
 export const INVITE_LINK_USES = [1, 5, 10, 25] as const
 export const DEFAULT_INVITE_LINK_USES = 1
 /** Nothing lasts longer than a Lighthouse keeps mail. */
-export const MAX_INVITE_LINK_LIFETIME = MAX_MAIL_MS
+export const MAX_INVITE_LINK_LIFETIME: number = MAX_MAIL_MS
 
 /** The largest request an inviter fetches; bigger blobs under the tag are skipped unread. */
-export const MAX_INVITE_REQUEST_BYTES = 16 * 1024
+export const MAX_INVITE_REQUEST_BYTES: number = 16 * 1024
 /** The most requests an inviter fetches for one invite in a day. */
 export const MAX_INVITE_REQUESTS_PER_DAY = 200
 

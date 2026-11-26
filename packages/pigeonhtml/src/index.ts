@@ -9,7 +9,7 @@ export type { PageUrls, Problem, Removed, Sanitized } from './types.ts'
 
 export const PIGEONHTML_VERSION = '1.0'
 
-export const PAGE_BUDGET_BYTES = 100 * 1024
+export const PAGE_BUDGET_BYTES: number = 100 * 1024
 
 /** UTF-8 length, counted by code point. */
 const utf8Bytes = (text: string) => {

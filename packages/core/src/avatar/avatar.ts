@@ -636,7 +636,11 @@ export function drawAvatar(traits: AvatarTraits): AvatarPixels {
  * every pixel stays square and sharp; at any other size it's drawn smoothly instead, each rect a
  * hair larger than its cell so no seams show between them.
  */
-export function avatarSvg(pixels: AvatarPixels, size = AVATAR_SIZE, title?: string): string {
+export function avatarSvg(
+  pixels: AvatarPixels,
+  size: number = AVATAR_SIZE,
+  title?: string,
+): string {
   const crisp = size % AVATAR_SIZE === 0
   const bleed = crisp ? 0 : 0.04
   const rects: string[] = []

@@ -27,7 +27,7 @@ export function describeMailStore(
   name: string,
   make: () => Promise<MailStore> | MailStore,
   reopen?: (store: MailStore) => Promise<MailStore> | MailStore,
-) {
+): void {
   describe(`${name} (MailStore)`, () => {
     it('keeps its total right through puts, replacements, drops and expiry', async () => {
       const store = await make()

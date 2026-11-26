@@ -71,7 +71,7 @@ export async function p256Signer(
  * spelling as every platform's Crypto does (or taking it, with `lenient`, as they did before);
  * anything else goes to `fakeCrypto`.
  */
-export function p256Crypto({ lenient = false } = {}): Crypto {
+export function p256Crypto({ lenient = false }: { lenient?: boolean | undefined } = {}): Crypto {
   return {
     ...fakeCrypto,
     async verify(signer, signature, data) {

@@ -13,7 +13,7 @@ import { isPairSecret } from '../pairing/pair-rooms.ts'
 import { err, ok, type Result } from '../result/result.ts'
 import { isFingerprint } from '../transport/transport.ts'
 
-export const MAX_MESSAGE_BYTES = 64 * 1024
+export const MAX_MESSAGE_BYTES: number = 64 * 1024
 export const MAX_HANDLE_LENGTH = 32
 export const MAX_PERSONAL_MESSAGE_LENGTH = 120
 

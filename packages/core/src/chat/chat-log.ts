@@ -36,7 +36,7 @@ export interface ChatLog {
  * made up, and the clock doesn't follow it. Followed times stay under this many times the
  * number of entries, so pushing the clock out of reach takes billions of entries.
  */
-export const MAX_LAMPORT_LEAD = 2 ** 20
+export const MAX_LAMPORT_LEAD: number = 2 ** 20
 
 /** Per author, the highest seq held with nothing missing below it. */
 export type LogSummary = Readonly<Record<PeerId, number>>

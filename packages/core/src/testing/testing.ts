@@ -179,6 +179,16 @@ interface Member {
 
 let networks = 0
 
+/** What `createMemoryNetwork` hands back. */
+export interface MemoryNetwork {
+  /** A transport on this network; `certificate` is the one every connection of it presents. */
+  transport(certificate?: string): Transport & { disconnect(): void }
+  /** Every join, as the relays would see it. */
+  readonly joins: { readonly name: RoomName; readonly options: JoinOptions }[]
+  /** How many peers are in rooms called `name`, whatever their password: what a relay sees. */
+  occupants(name: RoomName): number
+}
+
 /**
  * Rooms shared by every transport made from one network. Delivery is asynchronous and in
  * order, like a data channel; `disconnect` cuts a transport off as if its network dropped. A
@@ -187,7 +197,7 @@ let networks = 0
  * a certificate of its own, as a browser's does, unless the transport was made with one
  * `certificate` for all of them, as an attacker relaying between connections would.
  */
-export function createMemoryNetwork() {
+export function createMemoryNetwork(): MemoryNetwork {
   /** Keyed by name and password. */
   const rooms = new Map<string, Map<ConnectionId, Member>>()
   /** Every join, as the relays would see it. */
