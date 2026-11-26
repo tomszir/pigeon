@@ -152,6 +152,11 @@ export interface Mailbox {
   /** Puts again what's waited long enough for its receipts, and forgets what expired. */
   resend(): Promise<void>
   /**
+   * Puts at once the letters to `to` that no Lighthouse has taken yet, rather than at the next
+   * mail check. Says whether every one of them was taken now (also true when none waited).
+   */
+  retry(to: PeerId): Promise<boolean>
+  /**
    * Fetches this device's mail from `lighthouses` for `sources`, handing each new letter to
    * `take`, which says whether it counted. One that counted is taken once, dropped, and
    * answered with a receipt, again each time it's put again, in case the receipt was lost. One
@@ -363,6 +368,34 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           next.push({ ...letter, body, putAt: stored ? at : letter.putAt })
         }
         if (!deps.stopped()) await saveOutbox(next)
+      }),
+
+    retry: (to) =>
+      serial(async () => {
+        const at = now()
+        let allTaken = true
+        const next: Outgoing[] = []
+        for (const letter of await outbox()) {
+          // Only a letter put nowhere yet: one a Lighthouse holds waits for its receipts instead.
+          if (
+            deps.stopped() ||
+            letter.to.identity !== to ||
+            letter.putAt !== 0 ||
+            letter.sentAt + MAX_MAIL_MS <= at
+          ) {
+            next.push(letter)
+            continue
+          }
+          const devices = letter.to.keys.filter((key) => letter.waiting.includes(key.device))
+          const body = lowSBody(letter.body)
+          const where = await put(letter.kind, letter.id, body, letter.to, devices)
+          const stored = where.length > 0
+          if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
+          else allTaken = false
+          next.push({ ...letter, body, putAt: stored ? at : 0 })
+        }
+        if (!deps.stopped()) await saveOutbox(next)
+        return allTaken
       }),
 
     fetch: (lighthouses, sources, take, look) =>

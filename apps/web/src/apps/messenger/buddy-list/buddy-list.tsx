@@ -16,6 +16,7 @@ import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
 import type { AddFriendTab } from '../add-friend/add-friend.tsx'
 import { waitingCount } from '../invite-links/invite-links.tsx'
+import { clockTime } from '../live-conversation/live-conversation.tsx'
 import { ProfileForm } from '../profile-form/profile-form.tsx'
 import type { SentAsk } from '../service/invite-links.ts'
 import type { FriendView, Messenger } from '../service/service.ts'
@@ -228,6 +229,18 @@ export function BuddyList(props: BuddyListProps) {
       entry.kind === 'separator' ? entry : { ...entry, label: entry.label.replace('&', '') },
     )
   }
+  const mailLook = () => live()?.mailLook()
+  /** Check Now: the scheduler keeps its gap and its one-at-a-time, and the bar says what's up. */
+  const checkNow = () => void live()?.checkNow()
+  const mailText = () => {
+    const look = mailLook()
+    if (look === undefined) return ''
+    if (look.state === 'checking') return 'Looking for mail...'
+    if (look.state === 'waiting') return 'Looking for mail in a moment...'
+    return look.at === undefined
+      ? 'Not looked for mail yet'
+      : `Looked for mail at ${clockTime(look.at)}`
+  }
   const statusEntry = (status: Status, label: string) => ({
     label,
     checked: live()?.profile().status === status,
@@ -333,6 +346,12 @@ export function BuddyList(props: BuddyListProps) {
               statusEntry('online', 'Appear &Online'),
               statusEntry('away', 'Appear &Away'),
               statusEntry('busy', 'Appear &Busy'),
+              { kind: 'separator' },
+              {
+                label: 'Check for &Mail Now',
+                disabled: live() === undefined || mailLook()?.state !== 'idle',
+                onSelect: checkNow,
+              },
               { kind: 'separator' },
               ...selectedActions(),
             ],
@@ -480,9 +499,9 @@ export function BuddyList(props: BuddyListProps) {
           </div>
         </Show>
       </div>
-      {/* On the Pocket the left soft key is Add Friend already. */}
-      <Show when={!phone()}>
-        <div class={styles.tasks}>
+      <div class={styles.tasks}>
+        {/* On the Pocket the left soft key is Add Friend already. */}
+        <Show when={!phone()}>
           <button
             type="button"
             class={styles.task}
@@ -492,8 +511,22 @@ export function BuddyList(props: BuddyListProps) {
             <img src={tango('contact-new', 22)} alt="" width="22" height="22" />
             Add a Friend
           </button>
-        </div>
-      </Show>
+        </Show>
+        <Show when={live()}>
+          <button
+            type="button"
+            class={styles.task}
+            disabled={mailLook()?.state !== 'idle'}
+            onClick={checkNow}
+          >
+            <img src={tango('view-refresh', 22)} alt="" width="22" height="22" />
+            Check Now
+          </button>
+          <span class={styles.mailLooked} role="status">
+            {mailText()}
+          </span>
+        </Show>
+      </div>
       <StatusBar
         fields={[
           {

@@ -66,6 +66,20 @@
   color: var(--pg-text-muted);
 }
 
+.routeAction {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.routeAction:hover {
+  color: var(--pg-link-hover);
+}
+
 .routeDone {
   color: var(--pg-text-ok);
 }

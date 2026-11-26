@@ -88,8 +88,11 @@ export type MessageRoute =
   | { readonly kind: 'arrived'; readonly through: string }
   /** Written while they're away, with nowhere to leave it: it goes when they're back. */
   | { readonly kind: 'waiting' }
-  /** Sealed, but no Lighthouse took it yet: it's tried again at each mail check. */
-  | { readonly kind: 'retrying' }
+  /**
+   * Sealed, but no Lighthouse took it yet: it's tried again at each mail check, and when you ask.
+   * `trying` while a try you asked for is under way; `failed` after one that no Lighthouse took.
+   */
+  | { readonly kind: 'retrying'; readonly attempt?: 'trying' | 'failed' }
 
 export interface LettersDeps {
   readonly store: Store
@@ -126,6 +129,9 @@ export function createLetters(deps: LettersDeps) {
   // Bumped on every change, so the chat says each message's way as it changes.
   const [version, bump] = createSignal(0)
   const waiting = new Set<PeerId>()
+  /** Friends whose unsent letters a Try Again is putting right now, and where one just failed. */
+  const trying = new Set<PeerId>()
+  const failed = new Set<PeerId>()
   /** Friends a letter is being sealed and put for right now. */
   const mailing = new Set<PeerId>()
 
@@ -407,8 +413,41 @@ export function createLetters(deps: LettersDeps) {
       if (letter !== undefined && good(letter))
         return letter.where.length > 0
           ? { kind: 'left', where: letter.where }
-          : { kind: 'retrying' }
+          : {
+              kind: 'retrying',
+              ...(trying.has(friend)
+                ? { attempt: 'trying' as const }
+                : failed.has(friend)
+                  ? { attempt: 'failed' as const }
+                  : {}),
+            }
       return deps.connected(friend) ? undefined : { kind: 'waiting' }
+    },
+
+    /**
+     * Puts at once the letters to `friend` that no Lighthouse took yet, instead of at the next
+     * mail check. Each message says what happened: left where it was taken, or that no
+     * Lighthouse took it. True when nothing is left unsent.
+     */
+    async tryAgain(friend: PeerId): Promise<boolean> {
+      if (deps.stopped() || forgotten.has(friend) || trying.has(friend)) return false
+      trying.add(friend)
+      failed.delete(friend)
+      bump((n) => n + 1)
+      let taken = false
+      try {
+        taken = await deps.mailbox.retry(friend)
+        // Where each letter was taken is written by updates queued meanwhile: let them land, so
+        // the message goes from "trying" straight to where it was left.
+        await serial(async () => undefined)
+      } catch {
+        taken = false
+      } finally {
+        trying.delete(friend)
+        if (!taken) failed.add(friend)
+        bump((n) => n + 1)
+      }
+      return taken
     },
 
     /** A friend, new or paired again: their letters are kept from now on. */
@@ -434,6 +473,8 @@ export function createLetters(deps: LettersDeps) {
     async forget(friend: PeerId) {
       forgotten.add(friend)
       known.delete(friend)
+      trying.delete(friend)
+      failed.delete(friend)
       copied.delete(friend)
       await store.delete(key(friend))
     },

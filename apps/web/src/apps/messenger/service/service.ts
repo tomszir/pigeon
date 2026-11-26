@@ -891,6 +891,10 @@ export async function createMessenger(deps: MessengerDeps) {
   /** Looks for mail at this Pigeon's Lighthouses, puts again what waits, and acts on what came. */
   let checking: Promise<void> | undefined
   let lastLookAt = Number.NEGATIVE_INFINITY
+  // What the Messenger says about its looking: when the last one finished, and whether one is
+  // under way or asked for and waiting its turn.
+  const [lookedAt, setLookedAt] = createSignal<number | undefined>(undefined)
+  const [lookState, setLookState] = createSignal<'idle' | 'waiting' | 'checking'>('idle')
   function checkMail(): Promise<void> {
     if (mailbox === undefined || closed) return Promise.resolve()
     if (checking === undefined) lastLookAt = clock.now()
@@ -956,7 +960,10 @@ export async function createMessenger(deps: MessengerDeps) {
           await farewellHeard(id)
     })().finally(() => {
       checking = undefined
+      setLookedAt(clock.now())
+      setLookState(looking ? 'waiting' : 'idle')
     })
+    setLookState('checking')
     return checking
   }
 
@@ -967,11 +974,14 @@ export async function createMessenger(deps: MessengerDeps) {
    * has fetched may already be past what the person came back for; this one waits and goes after.
    */
   let looking = false
+  /** How long a look asked for now would wait: what's left of the gap since the last one. */
+  const gapLeft = () => Math.max(0, lastLookAt + MAIL_MIN_GAP_MS - clock.now())
   function lookSoon(after: number) {
     if (mailbox === undefined || closed || looking) return
     looking = true
+    if (checking === undefined) setLookState('waiting')
     void (async () => {
-      const wait = Math.max(after, lastLookAt + MAIL_MIN_GAP_MS - clock.now())
+      const wait = Math.max(after, gapLeft())
       if (wait > 0) await clock.sleep(wait)
       await checking?.catch(() => undefined)
       looking = false
@@ -3125,6 +3135,27 @@ export async function createMessenger(deps: MessengerDeps) {
     mailBook,
     /** Looks for mail now, rather than at the next few-minute check. */
     checkMail,
+    /**
+     * What Check Now shows: when Pigeon last finished looking for mail (undefined before the
+     * first look) and whether a look is under way or waiting for its turn.
+     */
+    mailLook: () => ({ at: lookedAt(), state: lookState() }),
+    /**
+     * Check Now: looks for mail as soon as the scheduler allows, through the same path as a tab
+     * shown or a message sent, so two looks never run at once and one never starts within
+     * MAIL_MIN_GAP_MS of the last. Says how long it waits for that gap (0 when it starts at
+     * once); a look already under way is followed by this one.
+     */
+    checkNow(): number {
+      const wait = gapLeft()
+      lookSoon(0)
+      return wait
+    },
+    /**
+     * Try Again: puts at once what you wrote to `id` that no Lighthouse took yet, and says each
+     * message's way as it is. True when nothing is left unsent.
+     */
+    tryAgain: (id: PeerId) => letters?.tryAgain(id) ?? Promise.resolve(false),
     /**
      * Whether a Lighthouse answers, and what it says it runs: its own claim, which nothing in
      * Pigeon relies on.

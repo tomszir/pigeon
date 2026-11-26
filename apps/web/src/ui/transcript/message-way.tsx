@@ -12,6 +12,8 @@ export interface MessageWay {
   readonly text: string
   /** Said under the message in words, as the newest one of yours and one needing attention are. */
   readonly spelled: boolean
+  /** Something to do about it, drawn as a link after the words under the message: "Try Again". */
+  readonly action?: { readonly label: string; readonly run: () => void }
 }
 
 /** How long a mouse rests on the icon before its words show. */
