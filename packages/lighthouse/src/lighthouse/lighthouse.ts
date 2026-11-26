@@ -30,6 +30,8 @@ import {
 } from '../limits/limits.ts'
 import type { MailStore } from '../store/store.ts'
 
+const HOUR = 60 * 60 * 1000
+
 /** Requests one connection may have waiting; more are refused, not queued. */
 export const MAX_PENDING = 16
 
@@ -96,12 +98,23 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     return bytes.ok ? base32Encode(await crypto.sha256(bytes.value)) : undefined
   }
 
+  /**
+   * When mail put at `at` and asked to expire at `expires` is kept until: the next whole hour, so
+   * what's stored doesn't say to the millisecond when it was put. Mail asked to live as long as
+   * mail may is kept to the hour before instead, so it never outlives that.
+   */
+  function roundedExpiry(expires: number, at: number): number {
+    const up = Math.ceil(expires / HOUR) * HOUR
+    return up > at + MAX_MAIL_MS ? up - HOUR : up
+  }
+
   async function put(
     request: Extract<LighthouseRequest, { type: 'put' }>,
     range: string,
     at: number,
   ): Promise<LighthouseReply> {
     if (request.expires <= at || request.expires > at + MAX_MAIL_MS) return error('malformed')
+    const expires = roundedExpiry(request.expires, at)
     const bytes = base64Decode(request.blob)
     if (!bytes.ok) return error('malformed')
     const size = bytes.value.length
@@ -130,7 +143,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
         blob: request.blob,
         size,
         cost,
-        expires: request.expires,
+        expires,
         drops: request.drops,
       },
       at,
@@ -142,7 +155,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
       if (now === undefined) return error('unknown')
       return { type: 'stored', id, expires: now.expires }
     }
-    return { type: 'stored', id, expires: request.expires }
+    return { type: 'stored', id, expires }
   }
 
   async function answer(
