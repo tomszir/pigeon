@@ -20,6 +20,7 @@ import {
   encodeInstance,
   encodeInviteLink,
   encodePairSecret,
+  entryKey,
   err,
   everDevices,
   fingerprint,
@@ -1095,10 +1096,10 @@ export async function createMessenger(deps: MessengerDeps) {
     seen: (id, event) => void heardIn(id, event.room, event.device).catch(() => undefined),
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
-      const seen = new Set(before.map((entry) => entry.sig))
+      const seen = new Set(before.map(entryKey))
       // Theirs, from whichever of their devices: anything not by one of yours.
       const arrived = event.log.entries.filter(
-        (entry) => !devices.isMine(entry.author) && !seen.has(entry.sig),
+        (entry) => !devices.isMine(entry.author) && !seen.has(entryKey(entry)),
       )
       batch(() => {
         setState('friends', id, 'log', event.log)

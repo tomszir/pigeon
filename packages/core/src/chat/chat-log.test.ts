@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
-import { canonicalBytes } from '../encoding/canonical.ts'
+import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import { isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner, typedSigner } from '../testing/testing.ts'
 import {
   appendMessage,
   batchEntries,
   type ChatLog,
   emptyLog,
+  entryKey,
   isLogEntry,
   type LogEntry,
   MAX_LAMPORT_LEAD,
   mergeEntries,
   missingFrom,
+  sameEntry,
   summarize,
 } from './chat-log.ts'
 
@@ -182,6 +184,58 @@ describe('mergeEntries', () => {
   })
 })
 
+describe('an entry’s signed bytes', () => {
+  it('are signed as every Pigeon checks them, and taken saying they’re a chat entry too', async () => {
+    const signedBy = async (signer: typeof rook, bytes: (u: object) => Uint8Array) => {
+      const { entry } = await appendMessage(emptyLog('pair:x'), signer, 'hi', 5)
+      const { sig, ...unsigned } = entry
+      const signature = base32DecodeExact(sig)
+      const holds =
+        signature.ok && (await fakeCrypto.verify(rook.id, signature.value, bytes(unsigned)))
+      const taken = await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)
+      return holds && taken.entries.length === 1
+    }
+    // Signed with no `v`, so a Pigeon that checks only those bytes takes it.
+    expect(
+      await signedBy(rook, (u) =>
+        canonicalBytes({ log: 'pair:x', ...(u as Record<string, Json>) }),
+      ),
+    ).toBe(true)
+    // A Pigeon that signs the bytes saying what it is, and of which chat, is taken too.
+    expect(
+      await signedBy(typedSigner(rook), (u) =>
+        canonicalBytes({
+          v: 'pigeon/chat-entry/v1',
+          log: 'pair:x',
+          ...(u as Record<string, Json>),
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('are taken in either shape, and in no other', async () => {
+    const unsigned = { author: mika.id, seq: 1, lamport: 1, at: 0, text: 'hi' }
+    const over = async (value: Record<string, string | number>) => ({
+      ...unsigned,
+      sig: base32Encode(await mika.sign(canonicalBytes(value))),
+    })
+    const take = async (entry: LogEntry) =>
+      (await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)).entries.length
+    // With no `v`, and saying it's a chat entry.
+    expect(await take(await over({ log: 'pair:x', ...unsigned }))).toBe(1)
+    expect(await take(await over({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned }))).toBe(
+      1,
+    )
+    for (const value of [
+      { v: 'pigeon/device-entry/v1', log: 'pair:x', ...unsigned },
+      { v: 'pigeon/chat-entry/v2', log: 'pair:x', ...unsigned },
+      { type: 'chat-entry', log: 'pair:x', ...unsigned },
+      { v: 'pigeon/chat-entry/v1', ...unsigned },
+    ])
+      expect(await take(await over(value))).toBe(0)
+  })
+})
+
 it('batches entries under a byte budget, never splitting one', async () => {
   const log = await write(emptyLog('pair:x'), [rook, 'x'.repeat(300)], [rook, 'y'], [rook, 'z'])
   const batches = batchEntries(log.entries, 400)
@@ -205,7 +259,11 @@ describe('a P-256 author', () => {
     expect(sent[0]?.sig).not.toBe(entry?.sig)
     const taken = await mergeEntries(strict, emptyLog('pair:x'), sent, authors)
     expect(taken.entries.map((e) => e.text)).toEqual(['from before'])
-    // One who holds it already in the old spelling keeps one copy.
+    // One who holds it already in the old spelling keeps one copy, and knows it by one key.
     expect((await mergeEntries(strict, kept, sent, authors)).entries.length).toBe(1)
+    expect(entryKey(sent[0] as LogEntry)).toBe(entryKey(entry as LogEntry))
+    // Both spellings are the same entry; other words under that signature are not.
+    expect(sameEntry(sent[0] as LogEntry, entry as LogEntry)).toBe(true)
+    expect(sameEntry({ ...(entry as LogEntry), text: 'other' }, entry as LogEntry)).toBe(false)
   })
 })

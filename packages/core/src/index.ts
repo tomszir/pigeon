@@ -15,11 +15,13 @@ export {
   appendMessage,
   batchEntries,
   emptyLog,
+  entryKey,
   isLogEntry,
   lowSEntry,
   MAX_TEXT_LENGTH,
   mergeEntries,
   missingFrom,
+  sameEntry,
   summarize,
 } from './chat/chat-log.ts'
 export type {

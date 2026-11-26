@@ -1,7 +1,7 @@
 // A chat as signed append-only logs, one per author. Peers trade summaries of
 // the highest contiguous sequence they hold per author and send each other what's missing; the
 // view is the union sorted by Lamport time.
-import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode, bytesEqual } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
@@ -43,15 +43,52 @@ export type LogSummary = Readonly<Record<PeerId, number>>
 
 export const emptyLog = (id: string): ChatLog => ({ id, entries: [] })
 
-const signedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
-  canonicalBytes({
-    log,
-    author: entry.author,
-    seq: entry.seq,
-    lamport: entry.lamport,
-    at: entry.at,
-    text: entry.text,
-  })
+/** What an entry's signature is for, in its signed bytes, so nothing else signed can pass as one. */
+const ENTRY_CONTEXT = 'pigeon/chat-entry/v1'
+
+const entryFields = (log: string, entry: Omit<LogEntry, 'sig'>) => ({
+  log,
+  author: entry.author,
+  seq: entry.seq,
+  lamport: entry.lamport,
+  at: entry.at,
+  text: entry.text,
+})
+
+/** The bytes that say an entry is one: what it's for, the log it belongs to, and the entry. */
+const typedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
+  canonicalBytes({ v: ENTRY_CONTEXT, ...entryFields(log, entry) })
+
+/**
+ * The bytes entries are signed over, as every Pigeon checks them: the entry and its log, with no
+ * `v`. An entry is taken over these or over `typedBytes`. Nothing else Pigeon signs has this
+ * shape, since every other kind carries a `v` or a `type` and canonical JSON gives two different
+ * values different bytes, so no other signature verifies over it.
+ */
+const untypedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
+  canonicalBytes(entryFields(log, entry))
+
+/**
+ * What an entry is known by in its chat: its author and number. A chat holds one entry for each,
+ * the first it saw, so this names it however its signature is spelled.
+ */
+export const entryKey = (entry: Pick<LogEntry, 'author' | 'seq'>): string =>
+  `${entry.author}/${entry.seq}`
+
+/**
+ * Whether two copies are the same entry: the same signed content, and the same signature, its
+ * bytes read in their low-S spelling, never compared as text. False when either doesn't decode.
+ */
+export function sameEntry(a: LogEntry, b: LogEntry): boolean {
+  if (!bytesEqual(untypedBytes('', a), untypedBytes('', b))) return false
+  const left = base32DecodeExact(a.sig)
+  const right = base32DecodeExact(b.sig)
+  if (!left.ok || !right.ok) return false
+  return bytesEqual(
+    canonicalSignature(a.author, left.value),
+    canonicalSignature(b.author, right.value),
+  )
+}
 
 const compare = (a: LogEntry, b: LogEntry): number =>
   a.lamport - b.lamport || (a.author < b.author ? -1 : a.author > b.author ? 1 : a.seq - b.seq)
@@ -124,7 +161,8 @@ export async function appendMessage(
   const seq = (summarize(log)[signer.id] ?? 0) + 1
   const lamport = Math.min(clockOf(log) + 1, Number.MAX_SAFE_INTEGER)
   const unsigned = { author: signer.id, seq, lamport, at, text }
-  const sig = base32Encode(await signer.sign(signedBytes(log.id, unsigned)))
+  // Signed over the bytes every Pigeon checks, so one that doesn't know `typedBytes` takes it.
+  const sig = base32Encode(await signer.sign(untypedBytes(log.id, unsigned)))
   const entry: LogEntry = { ...unsigned, sig }
   return { log: { ...log, entries: [...log.entries, entry].sort(compare) }, entry }
 }
@@ -148,10 +186,14 @@ export function isLogEntry(value: unknown): value is LogEntry {
   )
 }
 
+/** Whether `entry` is its author's, in `log`: signed over `typedBytes` or `untypedBytes`. */
 export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry): Promise<boolean> {
   const sig = base32DecodeExact(entry.sig)
   if (!sig.ok) return false
-  return crypto.verify(entry.author, sig.value, signedBytes(log, entry))
+  return (
+    (await crypto.verify(entry.author, sig.value, untypedBytes(log, entry))) ||
+    crypto.verify(entry.author, sig.value, typedBytes(log, entry))
+  )
 }
 
 /**
@@ -166,10 +208,10 @@ export async function mergeEntries(
 ): Promise<ChatLog> {
   const takes =
     typeof authors === 'function' ? authors : (entry: LogEntry) => authors.has(entry.author)
-  const held = new Set(log.entries.map((entry) => `${entry.author}/${entry.seq}`))
+  const held = new Set(log.entries.map(entryKey))
   const added: LogEntry[] = []
   for (const entry of incoming) {
-    const key = `${entry.author}/${entry.seq}`
+    const key = entryKey(entry)
     if (held.has(key) || !takes(entry) || entry.lamport > Number.MAX_SAFE_INTEGER) continue
     if (!(await verifyEntry(crypto, log.id, entry))) continue
     held.add(key)

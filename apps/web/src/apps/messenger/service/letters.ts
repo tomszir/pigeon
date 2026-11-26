@@ -10,6 +10,7 @@ import {
   base32Encode,
   batchEntries,
   type ChatLog,
+  entryKey,
   isLogEntry,
   type Json,
   type Letter,
@@ -18,6 +19,7 @@ import {
   lowSEntry,
   MAX_MAIL_MS,
   type PeerId,
+  sameEntry,
 } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import type { Store } from '../../../platform/storage/storage.ts'
@@ -57,7 +59,10 @@ interface FriendLetters {
   /** The highest put in a letter. */
   readonly mailed: number
   readonly sent: readonly SentLetter[]
-  /** Entries that came by letter: their signature, and the Lighthouse that brought them. */
+  /**
+   * Entries that came by letter, by `entryKey` (or by signature, as letters kept them before),
+   * and the Lighthouse that brought them.
+   */
   readonly arrived: Readonly<Record<string, string>>
 }
 
@@ -347,17 +352,27 @@ export function createLetters(deps: LettersDeps) {
       const body = letter.body as { log?: unknown; entries?: unknown }
       if (body?.log !== chat.id || !Array.isArray(body.entries)) return true
       const entries = body.entries.filter(isLogEntry).slice(0, MAX_LETTER_ENTRIES)
-      const had = new Set(chat.entries.map((entry) => entry.sig))
+      const had = new Set(chat.entries.map(entryKey))
       if (!(await deps.takeEntries(friend, entries))) return false
-      const now = new Set(deps.chat(friend)?.entries.map((entry) => entry.sig) ?? [])
-      const arrived = entries.filter((entry) => !had.has(entry.sig) && now.has(entry.sig))
+      // The entries the chat holds now that it didn't before and that are this letter's own:
+      // the same entry, signature and all, not just the same author and number. The letter's entries are
+      // unchecked until taken, and a live sync may bring the genuine one meanwhile.
+      const carried = new Map<string, LogEntry[]>()
+      for (const entry of entries)
+        carried.set(entryKey(entry), [...(carried.get(entryKey(entry)) ?? []), entry])
+      const arrived = (deps.chat(friend)?.entries ?? [])
+        .filter((held) => {
+          const key = entryKey(held)
+          return !had.has(key) && (carried.get(key) ?? []).some((entry) => sameEntry(held, entry))
+        })
+        .map(entryKey)
       // Not waited on: this runs inside a mailbox fetch.
       if (arrived.length > 0 && !own)
         void update(friend, (letters) => ({
           ...letters,
           arrived: {
             ...letters.arrived,
-            ...Object.fromEntries(arrived.map((entry) => [entry.sig, through.name])),
+            ...Object.fromEntries(arrived.map((key) => [key, through.name])),
           },
         }))
       return true
@@ -370,7 +385,8 @@ export function createLetters(deps: LettersDeps) {
     route(friend: PeerId, entry: LogEntry): MessageRoute | undefined {
       version()
       const letters = known.get(friend) ?? EMPTY
-      const through = letters.arrived[entry.sig]
+      // Kept by author and number; a record from before that is kept by the entry's signature.
+      const through = letters.arrived[entryKey(entry)] ?? letters.arrived[entry.sig]
       if (through !== undefined) return { kind: 'arrived', through }
       if (entry.author !== deps.device) return undefined
       // The latest letter that carried it: an expired one's entries go again in a newer one.
