@@ -100,6 +100,51 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
   buzz, unfriend, pair-secret and pair-secret-ok only once.
 ```
 
+## Replacing an old secret
+
+A pair secret from before codes went through SPAKE2 is replaced over sealed mail ([Replacing an old secret](protocol.md#replacing-an-old-secret)). Here both Toms and Mika propose at once; the self secret goes the same way between your own devices.
+
+```text
+  Toms                     Lighthouse, under               Mika
+  ----                     the OLD secret's tags           ----
+  secret X from before                           secret X from before
+  proposes S1 at 12:00                           proposes S2 at 12:00
+  joins S1's rooms, keeps X's                    joins S2's rooms, keeps X's
+        |--- mail:rekey { X, S1, 12:00, T } ---->|  sealed to Mika's devices
+        |<--- mail:rekey { X, S2, 12:00, M } ----|  sealed to Toms's devices
+        |    (and a copy of each to the sender's own other devices,
+        |     under the self secret's tags)
+        |                                        |
+  earliest wins everywhere: by at, then by device, then secret.
+  Say (12:00, T) comes first:
+        |                                        |
+  S2 loses: answers with S1                      S1 wins: takes it,
+        |--- mail:rekey { X, S1, 12:00, T } ---->|  answers with it
+        |<--- mail:rekey { X, S1, 12:00, T } ----|  leaves S2's rooms
+  Mika holds S1: heard                           Toms holds S1: heard
+        |                                        |
+        |=============== S1's rooms =============|
+  each leaves X's rooms once it hears a device of the other's holds
+  S1 (that letter, or a bound hello in S1's room), mails under S1
+  from then, and still looks under X's tags until every device on
+  the other's list has been heard; each letter carries both sides'
+  device logs, each proposal is signed by the device that made
+  it, and a proposal from a removed device never wins
+
+  after that, which proposal won is kept: an earlier one that was
+  held up, from one of Toms's own devices, still moves everyone,
+  sent under X's tags and under S1's, where those that let X go look
+
+  someone who knows X can sit in X's rooms and see what waits
+  under X's tags, but every rekey is sealed to device keys, and
+  S1's rooms and tags can't be worked out from X
+
+  a friend whose Pigeon hasn't updated stays in X's rooms, where
+  Toms waits too, so they keep chatting; once it updates it finds
+  the proposal waiting, or makes its own, which loses and is
+  answered with S1
+```
+
 ## Saying hello
 
 Every new connection in a pair or self room, between Toms's device and one of Mika's ([Rooms](protocol.md#rooms)). Each side does both halves at once; one is drawn. `T` and `M` are the certificate fingerprints of the data channel, as `binding` gives them.
