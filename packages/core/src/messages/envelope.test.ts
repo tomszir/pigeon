@@ -5,6 +5,8 @@ import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import { cleanHandle, isHandle, MAX_MESSAGE_BYTES, openEnvelope, sealEnvelope } from './envelope.ts'
 
 const rook = fakeSigner('rook')
+const nonce = `${'a'.repeat(25)}q`
+const binding = { nonce, local: '0'.repeat(64), remote: 'f'.repeat(64) }
 
 describe('envelopes', () => {
   it('round-trips each body type', async () => {
@@ -12,6 +14,8 @@ describe('envelopes', () => {
       { type: 'hello', handle: 'Rook' },
       { type: 'hello', handle: 'Rook', avatar: 2 },
       { type: 'hello', handle: 'Rook', devices: true, instance: 'abcdefgh234567' },
+      { type: 'hello', handle: 'Rook', binding },
+      { type: 'nonce', nonce },
       { type: 'presence', status: 'away', message: 'brb' },
       { type: 'typing', active: true },
       { type: 'buzz' },
@@ -28,6 +32,27 @@ describe('envelopes', () => {
       expect(await openEnvelope(fakeCrypto, 'pair:x', bytes)).toEqual({
         ok: true,
         value: { v: 1, from: rook.id, room: 'pair:x', at: 1000, body },
+      })
+    }
+  })
+
+  it('takes a nonce and a hello’s binding in one spelling only', async () => {
+    const refused = [
+      { type: 'nonce', nonce: nonce.toUpperCase() },
+      // 16 bytes leave two bits over, which must be zero.
+      { type: 'nonce', nonce: `${'a'.repeat(25)}b` },
+      { type: 'nonce', nonce: 'a'.repeat(24) },
+      { type: 'hello', handle: 'Rook', binding: { ...binding, local: 'F'.repeat(64) } },
+      { type: 'hello', handle: 'Rook', binding: { ...binding, local: 'ff:'.repeat(32) } },
+      { type: 'hello', handle: 'Rook', binding: { ...binding, remote: '0'.repeat(40) } },
+      { type: 'hello', handle: 'Rook', binding: { ...binding, extra: 1 } },
+      { type: 'hello', handle: 'Rook', binding: { local: binding.local, remote: binding.remote } },
+    ]
+    for (const body of refused) {
+      const bytes = await sealEnvelope(rook, 'pair:x', 1, body as never)
+      expect(await openEnvelope(fakeCrypto, 'pair:x', bytes)).toEqual({
+        ok: false,
+        error: 'malformed',
       })
     }
   })

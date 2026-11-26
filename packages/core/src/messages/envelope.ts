@@ -11,6 +11,7 @@ import { isLighthouseAddress, type LighthouseAddress } from '../lighthouse/addre
 import { isSealingKey, type SealingKey } from '../mail/mail.ts'
 import { isPairSecret } from '../pairing/pair-rooms.ts'
 import { err, ok, type Result } from '../result/result.ts'
+import { isFingerprint } from '../transport/transport.ts'
 
 export const MAX_MESSAGE_BYTES = 64 * 1024
 export const MAX_HANDLE_LENGTH = 32
@@ -47,6 +48,18 @@ export function hasUnsafeHandleCharacters(text: string): boolean {
 export const cleanHandle = (text: string): string => text.replace(NOT_IN_HANDLE, '').trim()
 /** Lighthouses a Pigeon may name in its hello: where friends leave its mail. */
 export const MAX_LIGHTHOUSES = 4
+/** Random bytes in a `nonce`: 26 base32 characters. */
+export const NONCE_BYTES = 16
+
+/**
+ * What a hello is bound to: the `nonce` the connection it answers sent, and the channel's
+ * certificate fingerprints as the sender sees them (its own first).
+ */
+export interface HelloBinding {
+  readonly nonce: string
+  readonly local: string
+  readonly remote: string
+}
 
 export type Status = 'online' | 'away' | 'busy'
 
@@ -57,7 +70,9 @@ export type Body =
    * random id for this run of Pigeon, so a device that hears its own key with another one knows
    * it's open somewhere else too. `sealing`: this device's sealing key, signed by it, which
    * mail for it is sealed to. `lighthouses`: where to leave mail for this Pigeon. Pigeons that
-   * don't know either leave them out, and ignore them when others send them.
+   * don't know either leave them out, and ignore them when others send them. `binding`: the
+   * connection this hello answers (see `nonce`); a hello without one, from a Pigeon before
+   * binding, proves nothing in pair and self rooms.
    */
   | {
       readonly type: 'hello'
@@ -67,7 +82,13 @@ export type Body =
       readonly instance?: string
       readonly sealing?: SealingKey
       readonly lighthouses?: readonly LighthouseAddress[]
+      readonly binding?: HelloBinding
     }
+  /**
+   * Sent first on every new connection in pair and self rooms: `NONCE_BYTES` random bytes the
+   * other side's hello must sign, with the channel's fingerprints, to count on this connection.
+   */
+  | { readonly type: 'nonce'; readonly nonce: string }
   /** Your device log: which devices speak for you. Sent before hello by an identity with one. */
   | { readonly type: 'device-log'; readonly log: DeviceLog }
   | { readonly type: 'presence'; readonly status: Status; readonly message: string }
@@ -148,6 +169,24 @@ function isSummary(value: unknown): boolean {
   )
 }
 
+/** `NONCE_BYTES` bytes in Pigeon's own base32 spelling, the only one accepted. */
+export const isNonce = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false
+  const bytes = base32DecodeExact(value)
+  return bytes.ok && bytes.value.length === NONCE_BYTES
+}
+
+const isHelloBinding = (value: unknown) => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const b = value as Fields
+  return (
+    Object.keys(b).length === 3 &&
+    isNonce(b['nonce']) &&
+    isFingerprint(b['local']) &&
+    isFingerprint(b['remote'])
+  )
+}
+
 /** A run's id, as `encodeInstance` makes it. */
 const isInstance = (value: unknown) => typeof value === 'string' && /^[a-z2-7]{8,32}$/.test(value)
 
@@ -169,7 +208,9 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
     (b['lighthouses'] === undefined ||
       (Array.isArray(b['lighthouses']) &&
         b['lighthouses'].length <= MAX_LIGHTHOUSES &&
-        b['lighthouses'].every(isLighthouseAddress))),
+        b['lighthouses'].every(isLighthouseAddress))) &&
+    (b['binding'] === undefined || isHelloBinding(b['binding'])),
+  nonce: (b) => isNonce(b['nonce']),
   'device-log': (b) => isDeviceLog(b['log']),
   presence: (b) =>
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&

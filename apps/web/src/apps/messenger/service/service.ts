@@ -970,6 +970,7 @@ export async function createMessenger(deps: MessengerDeps) {
       presence: () => ({ status: profile().status, message: profile().message }),
       log: view.log,
       now: clock.now,
+      random: deps.random,
       onEvent: (event) =>
         (handlers[event.type] as (id: PeerId, event: PairEvent) => void)(id, event),
     })
@@ -1236,6 +1237,7 @@ export async function createMessenger(deps: MessengerDeps) {
       presence: () => ({ status: profile().status, message: profile().message }),
       log: emptyLog(legacy),
       now: clock.now,
+      random: deps.random,
       onEvent: (event) => {
         if (event.type !== 'online') return
         void session.unfriend().then(() => farewellHeard(id))
@@ -1305,6 +1307,7 @@ export async function createMessenger(deps: MessengerDeps) {
       presence: () => ({ status: profile().status, message: profile().message }),
       log: emptyLog(selfChat),
       now: clock.now,
+      random: deps.random,
       ...twinOptions,
       ...mailOptions,
       // Your own other devices: their sealing keys and Lighthouses, kept under your own id.

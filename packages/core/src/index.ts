@@ -151,6 +151,7 @@ export type {
   BodyType,
   DecodeError,
   Envelope,
+  HelloBinding,
   Speaker,
   Status,
 } from './messages/envelope.ts'
@@ -158,10 +159,12 @@ export {
   cleanHandle,
   hasUnsafeHandleCharacters,
   isHandle,
+  isNonce,
   MAX_HANDLE_LENGTH,
   MAX_LIGHTHOUSES,
   MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
+  NONCE_BYTES,
   openEnvelope,
   sealEnvelope,
 } from './messages/envelope.ts'
@@ -262,12 +265,14 @@ export {
   flush,
 } from './testing/testing.ts'
 export type {
+  ChannelBinding,
   ConnectionId,
   JoinOptions,
   Room,
   RoomName,
   Transport,
 } from './transport/transport.ts'
+export { isFingerprint } from './transport/transport.ts'
 export type {
   Bounds,
   Desktop,

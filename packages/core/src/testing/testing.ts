@@ -1,6 +1,6 @@
 // Fakes for tests across the repo: a deterministic, insecure Crypto and an in-memory network.
 // Only tests import these; nothing here is safe for real use.
-import { base32Encode, bytesEqual, concatBytes, utf8Encode } from '../encoding/bytes.ts'
+import { base32Encode, bytesEqual, concatBytes, hexEncode, utf8Encode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import type { SealCrypto, Sealer } from '../mail/seal-crypto.ts'
@@ -120,6 +120,8 @@ export async function flush(turns = 200): Promise<void> {
 
 interface Member {
   readonly connection: ConnectionId
+  /** The fingerprint of the certificate this member's channels present, as `ChannelBinding` has it. */
+  readonly certificate: string
   readonly messages: Set<(from: ConnectionId, message: Uint8Array) => void>
   readonly joins: Set<(peer: ConnectionId) => void>
   readonly leaves: Set<(peer: ConnectionId) => void>
@@ -129,7 +131,9 @@ interface Member {
  * Rooms shared by every transport made from one network. Delivery is asynchronous and in
  * order, like a data channel; `disconnect` cuts a transport off as if its network dropped. A
  * room's password works like Trystero's: peers with different passwords in a room of the same
- * name never meet, though a relay still sees them all under that name.
+ * name never meet, though a relay still sees them all under that name. Each connection presents
+ * a certificate of its own, as a browser's does, unless the transport was made with one
+ * `certificate` for all of them, as an attacker relaying between connections would.
  */
 export function createMemoryNetwork() {
   /** Keyed by name and password. */
@@ -140,7 +144,7 @@ export function createMemoryNetwork() {
   let nextConnection = 0
   const later = (run: () => void) => void Promise.resolve().then(run)
 
-  function transport(): Transport & { disconnect(): void } {
+  function transport(certificate?: string): Transport & { disconnect(): void } {
     const joined = new Map<string, Member>()
 
     function leaveRoom(at: string, member: Member) {
@@ -159,8 +163,10 @@ export function createMemoryNetwork() {
         joins.push({ name, options })
         const at = key(name, options.password)
         nextConnection += 1
+        const connection = `c${nextConnection}`
         const member: Member = {
-          connection: `c${nextConnection}`,
+          connection,
+          certificate: certificate ?? hexEncode(fakeHash(utf8Encode(`certificate:${connection}`))),
           messages: new Set(),
           joins: new Set(),
           leaves: new Set(),
@@ -194,6 +200,12 @@ export function createMemoryNetwork() {
         return {
           name,
           peers: () => [...members.keys()].filter((id) => id !== member.connection),
+          async binding(peer) {
+            const other = members.get(peer)
+            if (other === undefined || other === member || !members.has(member.connection))
+              return undefined
+            return { local: member.certificate, remote: other.certificate }
+          },
           send(to, message) {
             const target = members.get(to)
             if (target !== undefined) deliver(target, message)

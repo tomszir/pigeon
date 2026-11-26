@@ -2,10 +2,16 @@
 // pass typing, buzz and presence along. A friend can be in several rooms at once (today's and
 // yesterday's around midnight, or the old room while moving), so a session spans
 // rooms that come and go. Pure protocol over Rooms; the app stores the log and draws the events.
+//
+// A connection counts as a device only once that device's hello signs the nonce this side sent
+// on it and the channel's certificate fingerprints (see `ChannelBinding`). A hello forwarded
+// from another connection, or replayed from an old one, names a different channel and is
+// ignored, and nothing else counts from a connection until its hello does, so a relay in the
+// room can't stand in for a friend or one of your own devices.
 
 import { AVATAR_VERSION } from '../avatar/avatar.ts'
 import type { DeviceLog } from '../devices/device-log.ts'
-import { base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode, bytesEqual, hexDecode } from '../encoding/bytes.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import type { LighthouseAddress } from '../lighthouse/address.ts'
@@ -13,11 +19,12 @@ import { type SealingKey, verifySealingKey } from '../mail/mail.ts'
 import {
   type Body,
   MAX_MESSAGE_BYTES,
+  NONCE_BYTES,
   openEnvelope,
   type Status,
   sealEnvelope,
 } from '../messages/envelope.ts'
-import type { ConnectionId, Room, RoomName } from '../transport/transport.ts'
+import type { ChannelBinding, ConnectionId, Room, RoomName } from '../transport/transport.ts'
 import {
   appendMessage,
   batchEntries,
@@ -98,6 +105,8 @@ export interface PairSessionOptions {
   /** The chat as stored. The session keeps its own copy and reports every change. */
   readonly log: ChatLog
   readonly now: () => number
+  /** Random bytes, for the nonce each connection is sent. */
+  readonly random: (length: number) => Uint8Array
   readonly onEvent: (event: PairEvent) => void
   /**
    * Who a device is: one of the friend's, one of your own others, or nobody.
@@ -182,9 +191,25 @@ export interface PairSession {
 type Link = string
 const link = (room: RoomName, connection: ConnectionId): Link => `${room}\n${connection}`
 
+/** Most nonces answered on one connection: one per greeting, and a greeting is rare. */
+const MAX_ANSWERED = 8
+
+/** One connection id's time in a room, from when it's first heard or greeted until it leaves. */
+interface Token {
+  /** The nonce sent on it, which its hello must sign. */
+  sent?: Uint8Array
+  /** The nonce it sent last, which this side's hello to it signs. */
+  theirs?: string
+  /** Every nonce answered on it, each answered once. */
+  readonly answered: Set<string>
+  /** The device whose bound hello proved it, and as whom, until it says bye or is dropped. */
+  proved?: { readonly device: PeerId; readonly who: 'friend' | 'self' }
+}
+const newToken = (): Token => ({ answered: new Set() })
+
 export function startPairSession(options: PairSessionOptions): PairSession {
   const { crypto, signer, friend, chat } = options
-  const hello = (): Body => ({
+  const hello = (): Extract<Body, { type: 'hello' }> => ({
     type: 'hello',
     handle: options.handle(),
     avatar: options.avatar?.() ?? AVATAR_VERSION,
@@ -207,24 +232,43 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   const selfConnections = new Set<Link>()
   /** Which device each proved connection is, so a removal can cut it off. */
   const deviceOf = new Map<Link, PeerId>()
+  /**
+   * Each connection id while it's here, from its first message or greeting until it leaves.
+   * Every envelope is read against the token current when it arrived, so one received before a
+   * leave still counts once its connection is gone, nothing from before counts for whoever takes
+   * the id next, and a gone connection's token goes once the envelopes holding it are read.
+   */
+  const tokens = new Map<Link, Token>()
+  const tokenOf = (from: Link) => {
+    const current = tokens.get(from) ?? newToken()
+    tokens.set(from, current)
+    return current
+  }
   /** When the presence shown was sent: with several devices, the newest wins. */
   let presenceAt = Number.NEGATIVE_INFINITY
   // Sends go out in order even though sealing is async.
   let queue = Promise.resolve()
 
-  const deliver = (to: Link, bytes: Uint8Array) => {
+  const split = (to: Link) => {
     const cut = to.indexOf('\n')
-    rooms.get(to.slice(0, cut) as RoomName)?.room.send(to.slice(cut + 1), bytes)
+    return { room: to.slice(0, cut) as RoomName, connection: to.slice(cut + 1) }
+  }
+  const deliver = (to: Link, bytes: Uint8Array) => {
+    const { room, connection } = split(to)
+    rooms.get(room)?.room.send(connection, bytes)
   }
   const seal = (body: Body) => sealEnvelope(signer, chat, options.now(), body)
   /** `all`: the friend's devices; `everyone`: those and your own others, for chat entries. */
   const sendTo = (to: Link | 'all' | 'everyone', body: Body) => {
+    // A send to one connection is for that connection, not for whoever holds its id when the
+    // queue gets to it.
+    const token = to === 'all' || to === 'everyone' ? undefined : tokens.get(to)
     queue = queue.then(async () => {
       const bytes = await seal(body)
       if (to === 'all' || to === 'everyone') {
         for (const id of friendConnections) deliver(id, bytes)
         if (to === 'everyone') for (const id of selfConnections) deliver(id, bytes)
-      } else deliver(to, bytes)
+      } else if (token !== undefined && tokens.get(to) === token) deliver(to, bytes)
     })
   }
 
@@ -251,16 +295,65 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     const change = options.profile?.()
     if (change !== undefined) sendTo(to, { type: 'profile', ...change })
   }
+  /** A hello for one connection, bound to its nonce and channel; none while either is missing. */
+  const sayHello = (to: Link) => {
+    const token = tokens.get(to)
+    queue = queue.then(async () => {
+      const nonce = token?.theirs
+      const { room, connection } = split(to)
+      const view = await rooms
+        .get(room)
+        ?.room.binding(connection)
+        .catch(() => undefined)
+      if (nonce === undefined || view === undefined || tokens.get(to) !== token) return
+      const bytes = await seal({ ...hello(), binding: { nonce, ...view } })
+      if (tokens.get(to) === token) deliver(to, bytes)
+    })
+  }
+  /**
+   * A new connection: your device logs, then the nonce its hello must sign. Once per connection,
+   * though a peer already here can be both listed and announced, so a hello signing the first
+   * nonce still counts.
+   */
   const greet = (to: Link) => {
+    const token = tokenOf(to)
+    if (token.sent !== undefined) return
     const devices = devicesBody()
     if (devices !== undefined) sendTo(to, devices)
     const theirs = options.theirLog?.()
     if (theirs !== undefined && (theirs.epochs?.length ?? 0) > 0)
       sendTo(to, { type: 'device-log', log: theirs })
-    sendTo(to, hello())
+    const nonce = options.random(NONCE_BYTES)
+    token.sent = nonce
+    sendTo(to, { type: 'nonce', nonce: base32Encode(nonce) })
+  }
+  /** A connection just proved who it is: catch it up. Nothing of this goes to one that hasn't. */
+  const catchUp = (to: Link) => {
     sendTo(to, { type: 'presence', ...options.presence() })
     sendProfile(to)
     sendTo(to, { type: 'log-sync', have: summarize(log) })
+  }
+  /**
+   * Whether a hello signs the nonce sent on its connection and the channel's fingerprints as this
+   * side saw them when it arrived, swapped: then it was signed for that very channel.
+   */
+  async function bound(
+    body: Extract<Body, { type: 'hello' }>,
+    sent: Uint8Array | undefined,
+    channel: Promise<ChannelBinding | undefined>,
+  ): Promise<boolean> {
+    const claim = body.binding
+    if (sent === undefined || claim === undefined) return false
+    const nonce = base32DecodeExact(claim.nonce)
+    if (!nonce.ok || !bytesEqual(nonce.value, sent)) return false
+    const view = await channel
+    if (view === undefined) return false
+    const same = (a: string, b: string) => {
+      const x = hexDecode(a)
+      const y = hexDecode(b)
+      return x.ok && y.ok && bytesEqual(x.value, y.value)
+    }
+    return same(claim.local, view.remote) && same(claim.remote, view.local)
   }
 
   const setLog = (next: ChatLog) => {
@@ -270,10 +363,24 @@ export function startPairSession(options: PairSessionOptions): PairSession {
   }
 
   const drop = (from: Link) => {
+    const token = tokens.get(from)
+    if (token !== undefined) delete token.proved
     deviceOf.delete(from)
     selfConnections.delete(from)
     if (friendConnections.delete(from) && friendConnections.size === 0)
       options.onEvent({ type: 'offline' })
+  }
+  /**
+   * The connection is gone: nothing is sent to it, and no hello signing a nonce from before counts
+   * on it, so whoever takes its id next starts unproven.
+   */
+  const forget = (from: Link) => {
+    const token = tokens.get(from)
+    const proved = token?.proved
+    drop(from)
+    // Envelopes received before the leave still hold the token and read who it proved to be.
+    if (token !== undefined && proved !== undefined) token.proved = proved
+    tokens.delete(from)
   }
 
   // Merges run one after another so two batches can't race on `log`.
@@ -384,6 +491,19 @@ export function startPairSession(options: PairSessionOptions): PairSession {
 
   /** What your own other devices may send: they only catch the chat up. */
   const SELF: ReadonlySet<Body['type']> = new Set(['log-sync', 'log-entries'])
+  /**
+   * What still counts when it was received before its connection left: nothing that answers the
+   * connection or changes who it is (hello, bye, `log-sync`), and no typing from someone gone.
+   */
+  const LATE: ReadonlySet<Body['type']> = new Set([
+    'presence',
+    'profile',
+    'buzz',
+    'unfriend',
+    'pair-secret',
+    'pair-secret-ok',
+    'log-entries',
+  ])
   let inbound = Promise.resolve()
 
   let closed = false
@@ -393,41 +513,90 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       return
     }
     const offMessage = room.onMessage((connection, bytes) => {
+      const from = link(room.name, connection)
+      // Taken as it arrives: the connection, its nonce and its channel may be gone by the time
+      // it's read. The channel is read now for the same reason, in case this is its hello.
+      const token = tokenOf(from)
+      const sent = token.sent
+      const channel = room.binding(connection).catch(() => undefined)
       // One at a time, in order: a device log must be taken in before the hello after it.
       inbound = inbound
         .then(async () => {
           const opened = await openEnvelope(crypto, chat, bytes)
           if (!opened.ok || !rooms.has(room.name)) return
-          const from = link(room.name, connection)
           const { body, at } = opened.value
+          const device = opened.value.from
           if (body.type === 'device-log') {
             await options.onDeviceLog?.(body.log)
             recheck()
             return
           }
-          // Our own key, from a run that isn't this one: this device is open somewhere else.
-          if (opened.value.from === signer.id) {
-            if (
-              body.type === 'hello' &&
-              body.instance !== undefined &&
-              options.instance !== undefined &&
-              body.instance !== options.instance
+          // Our own key is another run of this device, a copied profile, so it gets a hello too.
+          const who = device === signer.id ? 'own' : accepts(device)
+          if (who === undefined) return
+          const late = () => tokens.get(from) !== token
+          // Received before its connection left: only what the device proved then still counts,
+          // and nothing goes back to the id, which may be someone else's by now.
+          if (late() && body.type !== 'hello') {
+            const was = token.proved
+            if (was?.device !== device || was.who !== who) return
+            if (!LATE.has(body.type) || (who === 'self' && !SELF.has(body.type))) return
+            if (ONCE.has(body.type) && !firstTime(`${device} ${at} ${body.type}`)) return
+            ;(handlers[body.type] as ((from: Link, body: Body, at: number) => void) | undefined)?.(
+              from,
+              body,
+              at,
             )
-              options.onTwin?.()
             return
           }
-          const who = accepts(opened.value.from)
-          if (who === undefined) return
-          if (body.type === 'hello') deviceOf.set(from, opened.value.from)
+          // A new nonce on a connection is a new greeting, as after a reconnection that kept its id.
+          if (body.type === 'nonce') {
+            if (token.answered.has(body.nonce) || token.answered.size >= MAX_ANSWERED) return
+            token.answered.add(body.nonce)
+            token.theirs = body.nonce
+            sayHello(from)
+            return
+          }
+          if (body.type === 'hello') {
+            if (!(await bound(body, sent, channel)) || !rooms.has(room.name)) return
+            // Asked again after the wait, so a removal taken in meanwhile still counts.
+            const now = device === signer.id ? 'own' : accepts(device)
+            if (now !== who) return
+            // Our own key, from a run that isn't this one: this device is open somewhere else.
+            if (who === 'own') {
+              if (
+                body.instance !== undefined &&
+                options.instance !== undefined &&
+                body.instance !== options.instance
+              )
+                options.onTwin?.()
+              return
+            }
+            // A connection is one device: another's hello can't take it over.
+            if (token.proved !== undefined && token.proved.device !== device) return
+            // It left before its hello was read: what it sent after the hello still counts.
+            if (late()) {
+              token.proved = { device, who }
+              return
+            }
+            const proved = deviceOf.get(from)
+            if (proved !== undefined && proved !== device) return
+            token.proved = { device, who }
+            deviceOf.set(from, device)
+            if (who === 'self') selfConnections.add(from)
+            else handlers.hello?.(from, body, at)
+            if (proved === undefined) catchUp(from)
+            return
+          }
+          // Anything else counts only from the device whose bound hello proved this connection.
+          if (who === 'own' || deviceOf.get(from) !== device) return
           if (who === 'self') {
-            if (body.type === 'hello') selfConnections.add(from)
-            else if (selfConnections.has(from) && SELF.has(body.type))
+            if (selfConnections.has(from) && SELF.has(body.type))
               (handlers[body.type] as (from: Link, body: Body, at: number) => void)(from, body, at)
             return
           }
-          // Anything but hello from a connection that hasn't said hello yet is ignored.
-          if (body.type !== 'hello' && !friendConnections.has(from)) return
-          if (ONCE.has(body.type) && !firstTime(`${opened.value.from} ${at} ${body.type}`)) return
+          if (!friendConnections.has(from)) return
+          if (ONCE.has(body.type) && !firstTime(`${device} ${at} ${body.type}`)) return
           const handler = handlers[body.type] as
             | ((from: Link, body: Body, at: number) => void)
             | undefined
@@ -437,10 +606,10 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         .catch(() => undefined)
     })
     const offJoin = room.onPeerJoin((peer) => greet(link(room.name, peer)))
-    // Behind the messages already in, so a hello read late can't bring a gone connection back.
-    const offLeave = room.onPeerLeave((peer) => {
-      inbound = inbound.then(() => drop(link(room.name, peer)))
-    })
+    // At once, not behind the messages still being read: nothing more is sent to the id, which
+    // someone else may take next, and a peer that reconnects under it is greeted afresh. What was
+    // received before still counts, read against the token it arrived under.
+    const offLeave = room.onPeerLeave((peer) => forget(link(room.name, peer)))
     rooms.set(room.name, {
       room,
       off: () => {
@@ -458,7 +627,8 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     await queue
     rooms.delete(name)
     entry.off()
-    for (const id of [...friendConnections]) if (id.startsWith(`${name}\n`)) drop(id)
+    for (const id of new Set([...deviceOf.keys(), ...tokens.keys()]))
+      if (id.startsWith(`${name}\n`)) forget(id)
     await entry.room.leave()
   }
 
@@ -485,7 +655,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       prepareBye()
     },
     announce() {
-      sendTo('all', hello())
+      for (const id of friendConnections) sayHello(id)
       sendTo('all', { type: 'presence', ...options.presence() })
       sendProfile('all')
     },

@@ -72,6 +72,35 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
   buzz, unfriend, pair-secret and pair-secret-ok only once.
 ```
 
+## Saying hello
+
+Every new connection in a pair or self room, between Toms's device and one of Mika's ([Rooms](protocol.md#rooms)). Each side does both halves at once; one is drawn. `T` and `M` are the certificate fingerprints of the data channel, as `binding` gives them.
+
+```text
+  Toms                     pair:<daily name>                     Mika
+  ----                     -----------------                     ----
+        |------------ device-log (if he has one) --------------->|
+        |------------ nonce { n: 16 random bytes } ------------->|
+        |                                                        |
+        |                        Mika's view: local M, remote T  |
+        |<----- hello { ..., binding: { n, local M, remote T } } |
+        |                                                        |
+  takes the hello only when n is the nonce sent on this
+  connection and local/remote are his view (T, M) swapped;
+  until then nothing else from it counts, and none of
+  presence, profile or log-sync goes to it
+        |------------ presence, log-sync ----------------------->|
+        |    (and profile, between your own devices)             |
+        |                                                        |
+        |  a relay between two connections has a certificate     |
+        |  of its own on each, so a hello it forwards names      |
+        |  the wrong channel and is ignored                      |
+        |                                                        |
+  a Pigeon from before binding never answers the nonce, and
+  its unbound hello counts for nothing: they meet only
+  through Lighthouses until it updates
+```
+
 ## Linking a device
 
 Toms puts his phone on his device log ([Devices](protocol.md#devices)). The laptop is the device that writes the log; the phone must have no friends of its own, or leave the Pigeon it has first.
