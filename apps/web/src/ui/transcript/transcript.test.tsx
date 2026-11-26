@@ -64,3 +64,50 @@ describe('Transcript', () => {
     })
   })
 })
+
+describe('Transcript letters', () => {
+  const heading = 'While you were away · 2 messages by letter, through Loft'
+  const letter = (id: string): Extract<TranscriptEntry, { kind: 'message' }> => ({
+    kind: 'message',
+    id,
+    from: 'Mika',
+    own: false,
+    text: `message ${id}`,
+    route: { kind: 'letter', text: 'Came by letter, through Loft', through: 'Loft' },
+  })
+  const section: TranscriptEntry = {
+    kind: 'section',
+    id: 's',
+    heading,
+    entries: [letter('1'), letter('2')],
+  }
+  const envelopes = () => screen.getAllByRole('button', { name: 'Came by letter, through Loft' })
+
+  it('puts messages that came together in one named section, with the sender said once', () => {
+    render(() => <Transcript label="Conversation" entries={[section]} />)
+    expect(screen.getByRole('region', { name: heading })).toBeTruthy()
+    expect(screen.getAllByText(/says:$/)).toHaveLength(1)
+    // Nothing visible under each message: an envelope for each, named by its words.
+    expect(envelopes()).toHaveLength(2)
+    expect(document.querySelectorAll('p[class*="route"]')).toHaveLength(0)
+  })
+
+  it('opens an envelope’s words on a click or tap, and closes them with Escape', () => {
+    render(() => <Transcript label="Conversation" entries={[section]} />)
+    const [first] = envelopes()
+    if (first === undefined) throw new Error('no envelope')
+    const shown = () => document.querySelectorAll('[aria-hidden="true"]:not([class*="icon"])')
+    expect(shown()).toHaveLength(0)
+    fireEvent.click(first)
+    expect(shown()).toHaveLength(1)
+    expect(shown()[0]?.textContent).toBe('Came by letter, through Loft')
+    fireEvent.keyDown(first, { key: 'Escape' })
+    expect(shown()).toHaveLength(0)
+  })
+
+  it('gives a lone message with a letter route its envelope, and no section', () => {
+    render(() => <Transcript label="Conversation" entries={[letter('1')]} />)
+    expect(screen.queryByRole('region', { name: heading })).toBeNull()
+    expect(envelopes()).toHaveLength(1)
+  })
+})

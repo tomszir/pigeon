@@ -60,7 +60,11 @@ export function routeText(
   route: MessageRoute | undefined,
 ): Extract<TranscriptEntry, { kind: 'message' }>['route'] {
   if (route?.kind !== 'arrived') return undefined
-  return { kind: 'letter', text: `Came by letter while you were away, through ${route.through}` }
+  return {
+    kind: 'letter',
+    text: `Came by letter, through ${route.through}`,
+    through: route.through,
+  }
 }
 
 type Way = NonNullable<Extract<TranscriptEntry, { kind: 'message' }>['way']>
@@ -102,6 +106,82 @@ export function wayText(
     default:
       return undefined
   }
+}
+
+type MessageEntry = Extract<TranscriptEntry, { kind: 'message' }>
+
+const cameByLetter = (entry: TranscriptEntry): entry is MessageEntry =>
+  entry.kind === 'message' && entry.route?.kind === 'letter'
+
+/** "3 messages by letter", "1 message by letter". */
+const countText = (count: number) => `${count} ${count === 1 ? 'message' : 'messages'} by letter`
+
+/** The Lighthouse names in a run of letter messages, once each, in the order they came. */
+const throughOf = (run: readonly MessageEntry[]): string[] => [
+  ...new Set(run.flatMap((entry) => entry.route?.through ?? [])),
+]
+
+/**
+ * Gathers the messages that came by letter and weren't read yet into sections: "While you were
+ * away · 3 messages by letter, through Dovecote".
+ *
+ * Messages arrived together when nothing else lies between them in the chat: a run of a friend's
+ * messages that all came by letter, with none of yours, none that came straight, no buzz and no
+ * coming or going in between. Unread is the other half: a message you had already read when the
+ * chat opened (`settled`, by entry id) is shown like any other message, with nothing to say it
+ * came by letter, so a section ends when you've read it and the chat is opened again. Every Lighthouse the run came through
+ * is named; mail is only ever fetched from your own list, so each one is yours.
+ *
+ * The chat doesn't keep when a letter was taken, only where it sits in the log, so the run
+ * itself is what says "together": a few letters taken hours apart, with nothing from either of
+ * you between, were all waiting when you came back.
+ */
+export function letterSections(
+  entries: readonly TranscriptEntry[],
+  settled: ReadonlySet<string>,
+): TranscriptEntry[] {
+  const out: TranscriptEntry[] = []
+  let run: MessageEntry[] = []
+  const end = () => {
+    if (run.length > 0)
+      out.push({
+        kind: 'section',
+        id: `letters-${run[0]?.id ?? ''}`,
+        heading: `While you were away · ${countText(run.length)}, through ${listOf(throughOf(run))}`,
+        entries: run,
+      })
+    run = []
+  }
+  for (const entry of entries) {
+    if (cameByLetter(entry) && !entry.own && !settled.has(entry.id)) {
+      run.push(entry)
+      continue
+    }
+    end()
+    // Read before the chat opened: a message like any other, with no mark of how it came.
+    if (cameByLetter(entry)) {
+      const { route: _route, ...plain } = entry
+      out.push(plain)
+      continue
+    }
+    out.push(entry)
+  }
+  end()
+  return out
+}
+
+/**
+ * Which entries had been read when a chat opened: all but the friend's last `unread`, since
+ * `unread` counts what arrived since you last looked. Entries that come later aren't in it.
+ */
+export function readAtOpen(view: FriendView, mine: (author: PeerId) => boolean): Set<string> {
+  const read = new Set<string>()
+  let unread = view.unread
+  for (const entry of view.log.entries.toReversed()) {
+    if (!mine(entry.author) && unread > 0) unread -= 1
+    else read.add(entry.sig)
+  }
+  return read
 }
 
 /** A way that needs a look: nothing has the message yet, and nothing is on its way to them. */
@@ -316,6 +396,13 @@ export function LiveConversation(props: LiveConversationProps) {
   const view = () => props.messenger.friend(props.friend)
   // What's kept of letters with them, so each message can say its way.
   void props.messenger.loadLetters(props.friend)
+  // What was read when this window opened, worked out once the friend is loaded, so the letters
+  // that came while you were away stay in their section for as long as it's open.
+  let readOnOpening: Set<string> | undefined
+  const readBefore = (current: FriendView): ReadonlySet<string> => {
+    readOnOpening ??= readAtOpen(current, props.messenger.isMine)
+    return readOnOpening
+  }
 
   createEffect(() => {
     const current = view()
@@ -339,12 +426,15 @@ export function LiveConversation(props: LiveConversationProps) {
           }
           route={current().online ? 'direct, encrypted' : 'offline'}
           connected={current().online}
-          entries={transcriptFor(
-            current(),
-            props.messenger.isMine,
-            props.messenger.profile().handle,
-            (entry) => props.messenger.messageRoute(props.friend, entry),
-            () => void props.messenger.tryAgain(props.friend),
+          entries={letterSections(
+            transcriptFor(
+              current(),
+              props.messenger.isMine,
+              props.messenger.profile().handle,
+              (entry) => props.messenger.messageRoute(props.friend, entry),
+              () => void props.messenger.tryAgain(props.friend),
+            ),
+            readBefore(current()),
           )}
           typing={current().typing ? `${current().name} is writing a message...` : ''}
           closed={current().removedYouAt !== undefined}

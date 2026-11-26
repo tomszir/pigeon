@@ -47,6 +47,10 @@
   background-image: url("../../icons/xp/checkmark.svg");
 }
 
+.letter {
+  background-image: url("../../icons/tango/internet-mail-16.png");
+}
+
 .waiting,
 .retrying {
   background-image: url("../../icons/tango/dialog-warning-16.png");
