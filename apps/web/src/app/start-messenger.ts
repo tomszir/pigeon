@@ -27,6 +27,7 @@ import { openBrowserSocket } from '../platform/lighthouse/browser-socket.ts'
 import { keepStorage } from '../platform/storage/browser-storage.ts'
 import type { Store } from '../platform/storage/storage.ts'
 import { createBrowserTransport } from '../platform/transport/browser-transport.ts'
+import { createBrowserWake } from '../platform/wake/browser-wake.ts'
 import { OFFICIAL_LIGHTHOUSES } from './official-lighthouses.ts'
 
 export const IDENTITY = 'identity'
@@ -82,6 +83,7 @@ export async function startMessenger(
     store,
     transport: createBrowserTransport(undefined, onNoRelay),
     clock: browserClock,
+    wake: createBrowserWake(),
     random: randomBytes,
     pake: createWasmPake(),
     inviteBase: `${location.origin}${location.pathname}`,

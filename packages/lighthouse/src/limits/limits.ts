@@ -63,7 +63,7 @@ export const DEFAULT_LIMITS: Limits = {
   connectionsPer48: 512,
   maxConnections: 10_000,
   // Pigeon looks for mail every 30 seconds while an invite of yours waits and every 10 minutes
-  // otherwise, and opens a new connection when its last one was closed: two minutes keeps the
+  // otherwise (and, at most every 5 seconds, when you come back to it or send), and opens a new connection when its last one was closed: two minutes keeps the
   // socket between quick checks and lets it go between slow ones.
   idleSeconds: 120,
 }
