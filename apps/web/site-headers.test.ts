@@ -11,7 +11,8 @@ const policy = directives(headers['Content-Security-Policy'] ?? '')
 describe('the site headers', () => {
   it('load nothing by default, and scripts only from the site itself', () => {
     expect(policy.get('default-src')).toEqual(["'none'"])
-    expect(policy.get('script-src')).toEqual(["'self'"])
+    // WebAssembly may be compiled (the site's own module, for pairing); JavaScript never eval'd.
+    expect(policy.get('script-src')).toEqual(["'self'", "'wasm-unsafe-eval'"])
     expect(policy.get('object-src')).toEqual(["'none'"])
     expect(policy.get('base-uri')).toEqual(["'none'"])
     expect(policy.get('form-action')).toEqual(["'none'"])

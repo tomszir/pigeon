@@ -18,7 +18,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 900 },
   },
   webServer: {
-    command: `pnpm exec vite --port ${PORT} --strictPort`,
+    // Builds packages/crypto-wasm first: the dev server serves its WebAssembly from pkg/.
+    command: `pnpm --filter @pigeon/crypto-wasm build && pnpm exec vite --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: process.env['CI'] === undefined,
   },

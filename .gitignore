@@ -16,3 +16,7 @@ apps/lighthouse/lighthouse.sqlite*
 # A Worker run locally: its secrets (wrangler dev) and state.
 .dev.vars
 .wrangler/
+
+# packages/crypto-wasm: Cargo's build output and the WebAssembly wasm-pack builds from it.
+packages/crypto-wasm/crate/target/
+packages/crypto-wasm/pkg/

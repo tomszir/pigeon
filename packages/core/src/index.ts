@@ -243,6 +243,8 @@ export type {
   OpenStep,
 } from './pairing/pairing.ts'
 export { hostInvite, openInvite } from './pairing/pairing.ts'
+export type { Pake, PakeRole, PakeStart } from './pake/pake.ts'
+export { PAKE_KEY_BYTES } from './pake/pake.ts'
 export type { RecoveryCode, RecoveryCodeError } from './recovery/recovery-code.ts'
 export {
   decodeRecoveryCode,
@@ -251,6 +253,7 @@ export {
 } from './recovery/recovery-code.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
+export { fakePake } from './testing/fake-pake.ts'
 export {
   createMemoryNetwork,
   fakeCrypto,

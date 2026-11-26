@@ -219,6 +219,9 @@ importers:
       '@pigeon/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@pigeon/crypto-wasm':
+        specifier: workspace:*
+        version: link:../../packages/crypto-wasm
       '@pigeon/pigeonhtml':
         specifier: workspace:*
         version: link:../../packages/pigeonhtml
@@ -262,6 +265,19 @@ importers:
 
   packages/core:
     devDependencies:
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))
+
+  packages/crypto-wasm:
+    dependencies:
+      '@pigeon/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))

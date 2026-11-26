@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../scripts/css-module-types.mjs apps/web/src && vite",
-    "build": "node ../../scripts/css-module-types.mjs apps/web/src && vite build",
+    "dev": "pnpm --filter @pigeon/crypto-wasm build && node ../../scripts/css-module-types.mjs apps/web/src && vite",
+    "build": "pnpm --filter @pigeon/crypto-wasm build && node ../../scripts/css-module-types.mjs apps/web/src && vite build",
     "preview": "vite preview",
     "typecheck": "node ../../scripts/css-module-types.mjs apps/web/src && tsc --noEmit -p . && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run --passWithNoTests",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@pigeon/core": "workspace:*",
+    "@pigeon/crypto-wasm": "workspace:*",
     "@pigeon/pigeonhtml": "workspace:*",
     "solid-js": "1.9.18",
     "trystero": "0.27.0",

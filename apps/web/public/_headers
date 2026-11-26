@@ -5,6 +5,9 @@
 # The policy, source by source:
 #   script-src 'self'     the bundle only: no inline scripts, no eval. The JSON-LD block in
 #                         index.html is data, which the policy doesn't govern.
+#   'wasm-unsafe-eval'    compiling WebAssembly: the password key exchange in packages/crypto-wasm
+#                         (the site's own module, fetched under connect-src 'self'). It allows no
+#                         eval of JavaScript, and no script runs in Explorer's frame to use it.
 #   style-src 'unsafe-inline'  Explorer's page frame inherits this policy, and pages are inline
 #                         <style> and style attributes. No script can run in the frame, so a
 #                         style can only change how a page looks.
@@ -17,7 +20,7 @@
 #   form-action 'none'    no form posts anywhere; the app handles every form itself.
 #   Referrer-Policy       links out say nothing about where they came from.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss: ws:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss: ws:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
