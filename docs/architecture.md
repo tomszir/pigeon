@@ -103,6 +103,12 @@ apps/
                 Messenger's state lives in messenger/service/: it loads friends and
                 chats from the Store, runs a core pair session per friend, hosts and
                 answers invites, and exposes Solid state the windows draw;
+                service/messenger.ts is what windows are given: the Messenger interface, written
+                out in role interfaces (MessengerFriends, MessengerChats, MessengerInvites,
+                MessengerDevices, MessengerMail and so on), and the views and results its members
+                hand out (FriendView, MessengerEvents, LinkingState). createMessenger in
+                service.ts builds one, and messenger.test.ts requires its return type and the
+                interface to accept each other;
                 service/stored.ts holds what the service keeps in storage: its keys, the
                 shape of each record and the checks on what is read back, importing nothing from
                 service.ts so the two never form a cycle;

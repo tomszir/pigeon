@@ -7,7 +7,7 @@ import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import { Conversation } from '../conversation/conversation.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import type { MessageRoute } from '../service/letters.ts'
-import type { FriendView, Messenger, Note } from '../service/service.ts'
+import type { FriendView, Messenger, Note } from '../service/messenger.ts'
 
 export interface LiveConversationProps {
   messenger: Messenger

@@ -72,13 +72,12 @@ import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
 import { loadDevices } from './devices.ts'
+import type { FriendView, MessengerEvents } from './messenger.ts'
 import {
   createMessenger,
-  type FriendView,
   MAIL_AFTER_SEND_MS,
   MAIL_EVERY_MS,
   MAIL_MIN_GAP_MS,
-  type MessengerEvents,
   MUTED_FOREVER,
 } from './service.ts'
 

@@ -1,7 +1,7 @@
 import { emptyLog } from '@pigeon/core'
 import { createRoot, createSignal } from 'solid-js'
 import { expect, it } from 'vitest'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import { createNotifications } from './notifications.tsx'
 
 const NOW = 10_000_000

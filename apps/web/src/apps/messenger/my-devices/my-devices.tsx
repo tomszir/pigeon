@@ -5,7 +5,7 @@ import { Button } from '../../../ui/button/button.tsx'
 import { classes } from '../../../ui/classes/classes.ts'
 import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import styles from './my-devices.module.css'
 
 export interface MyDevicesProps {

@@ -53,8 +53,6 @@ import {
   mergeEntries,
   type NewFriend,
   newCode,
-  type Offer,
-  type OpenResult,
   type OpenStep,
   openInvite,
   openLink,
@@ -65,7 +63,6 @@ import {
   type PairSession,
   type Pake,
   type PeerId,
-  type Presence,
   type ProfileChange,
   pairRoom,
   pairRoomOn,
@@ -103,6 +100,18 @@ import {
 } from './invite-links.ts'
 import { createLetters, type Letters } from './letters.ts'
 import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
+import type {
+  CodeAsk,
+  FriendView,
+  ImportResult,
+  JoinedIdentity,
+  LeaveProgress,
+  LinkingState,
+  MessengerEvents,
+  Note,
+  OpenedInvite,
+  RecoverResult,
+} from './messenger.ts'
 import {
   begin,
   consider,
@@ -155,57 +164,6 @@ export const TYPING_REFRESH_MS = 3000
 /** Stored for "until I unmute". */
 export const MUTED_FOREVER = -1
 
-export interface FriendView extends FriendRecord {
-  /** How many devices they have on their list. */
-  readonly devices: number
-  /**
-   * Their Pigeon accepts messages from this device. False when this isn't your first device and
-   * theirs is from before device logs: they hear your first device only, until they update.
-   */
-  readonly seesThisDevice: boolean
-  /** The petname if you gave one, else their handle: what every screen shows. */
-  readonly name: string
-  readonly fingerprint: string
-  readonly online: boolean
-  readonly presence: Presence
-  readonly typing: boolean
-  readonly log: ChatLog
-  /** Messages from them that arrived since you last looked. */
-  readonly unread: number
-  /** Buzzes, comings and goings this visit, not kept: each sits after `after` chat entries. */
-  readonly notes: readonly Note[]
-}
-
-export interface Note {
-  readonly id: number
-  readonly kind: 'buzz-in' | 'buzz-out' | 'online' | 'offline'
-  readonly after: number
-  readonly at: number
-}
-
-export interface MessengerEvents {
-  readonly onPaired?: (friend: FriendView) => void
-  /** Someone proved they hold your live code and asks to be friends: they wait for Add. */
-  readonly onCodeAsk?: (ask: CodeAsk) => void
-  /** Another of your devices took this one off your list. */
-  readonly onDeviceRemoved?: () => void
-  /** This device's key is open somewhere else too: a copied profile. Once a run. */
-  readonly onTwin?: () => void
-  readonly onMessage?: (friend: FriendView, entry: LogEntry) => void
-  readonly onBuzz?: (friend: FriendView) => void
-  readonly onOnline?: (friend: FriendView) => void
-  readonly onUnfriended?: (friend: FriendView) => void
-  /**
-   * Saved friends that couldn't be read were kept aside as they were stored, and everyone else
-   * loaded. `count` is every record kept aside so far, this run's and earlier runs'.
-   */
-  readonly onFriendsSetAside?: (count: number) => void
-  /** The same for blocked people whose saved records couldn't be read. */
-  readonly onBlockedSetAside?: (count: number) => void
-  /** The same for saved farewells (friends you removed who haven't been told) that couldn't be read. */
-  readonly onFarewellsSetAside?: (count: number) => void
-}
-
 export interface MessengerDeps {
   readonly crypto: Crypto
   readonly signer: Signer
@@ -255,8 +213,6 @@ export const MAIL_MIN_GAP_MS = 5 * 1000
  */
 export const MAIL_AFTER_SEND_MS = 10 * 1000
 
-export type Messenger = Awaited<ReturnType<typeof createMessenger>>
-
 const DEFAULT_PROFILE: Profile = { handle: '', status: 'online', message: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -294,67 +250,6 @@ export const inviteLink = (base: string, code: LiveCode, fingerprint: string): s
 /** What an export file says it is. */
 export const EXPORT_KIND = 'pigeon-export'
 
-export type ImportResult = 'imported' | 'not-yours' | 'unreadable'
-
-/** Recovering onto this Pigeon: done, or why not. */
-export type RecoverResult = 'recovered' | 'own' | 'linked' | 'has-friends' | 'waiting' | 'refused'
-
-/**
- * Linking a device from this one: the code it shows, and who asked, once someone has. Wrong
- * tries are confirmations that didn't hold; `stopped` once there were too many.
- */
-export interface LinkingState {
-  readonly code: LiveCode
-  readonly link: string
-  readonly expiresAt: number
-  readonly wrongTries: number
-  readonly stopped: boolean
-  readonly request?: {
-    readonly device: PeerId
-    readonly fingerprint: string
-    readonly name: string
-  }
-}
-
-/** Linking this device to another's identity: who answered, and this device's fingerprint. */
-export interface DeviceOffer {
-  readonly handle: string
-  /** This device's own fingerprint, which the other device shows too. */
-  readonly fingerprint: string
-  /** The identity's fingerprint: from a typed code, compare it with the other device's own. */
-  readonly identityFingerprint: string
-  /** It came from a link, whose fingerprint it matched. */
-  readonly checked: boolean
-  /**
-   * Asks to be linked, and resolves true once confirmed on the other device and this one has
-   * taken it all in.
-   */
-  confirmed(until: Promise<void>): Promise<boolean>
-  cancel(): Promise<void>
-}
-
-/** How far leaving a Pigeon has got: removing friends here, then telling them. */
-export interface LeaveProgress {
-  readonly step: 'removing' | 'telling'
-  /** Friends removed, or friends who have heard, so far. */
-  readonly done: number
-  readonly total: number
-}
-
-export type JoinedIdentity =
-  | { readonly ok: true; readonly offer: DeviceOffer }
-  | {
-      readonly ok: false
-      readonly error:
-        | 'stopped'
-        | 'impostor'
-        | 'wrong-code'
-        | 'has-friends'
-        | 'has-devices'
-        | 'waiting'
-        | 'own'
-    }
-
 /** How far ahead of this device's clock another of yours may stamp a name. */
 export const PROFILE_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
 
@@ -366,30 +261,6 @@ export const LINK_LIFETIME_MS = 10 * 60 * 1000
  * 64 KB blob, which base64 makes a third bigger), with room for the add about to be signed.
  */
 export const MAX_LINK_BUNDLE_BYTES = 44 * 1024
-
-/** Someone who proved they hold your code and asks to be friends, as Add a Friend shows them. */
-export interface CodeAsk {
-  readonly key: string
-  readonly id: PeerId
-  readonly handle: string
-  readonly fingerprint: string
-}
-
-/** An invite's answer as the Messenger hands it on: confirming adds the friend here too. */
-export interface FriendOffer extends Omit<Offer, 'confirm'> {
-  /**
-   * Asks to be friends; true once the inviter has added you, `declined` if they said no, false
-   * if `until` gives up first.
-   */
-  confirm(until: Promise<void>): Promise<boolean | 'declined'>
-}
-
-export type OpenedInvite =
-  | { readonly ok: true; readonly offer: FriendOffer }
-  | Extract<OpenResult, { ok: false }>
-  | { readonly ok: false; readonly error: 'own' }
-  /** The inviter is someone you blocked. */
-  | { readonly ok: false; readonly error: 'blocked'; readonly handle: string }
 
 export async function createMessenger(deps: MessengerDeps) {
   const { crypto, signer, store, clock } = deps

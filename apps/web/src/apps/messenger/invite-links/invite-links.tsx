@@ -9,7 +9,7 @@ import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { Select } from '../../../ui/select/select.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import type { LinkRequest, OwnLink } from '../service/invite-links.ts'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import styles from './invite-links.module.css'
 
 const MINUTE = 60 * 1000

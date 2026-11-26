@@ -9,7 +9,7 @@ import { GroupBox } from '../../../ui/group-box/group-box.tsx'
 import { useLayout } from '../../../ui/layout/layout.ts'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { QrCode } from '../qr-code/qr-code.tsx'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import styles from './link-device.module.css'
 
 export interface LinkDeviceProps {

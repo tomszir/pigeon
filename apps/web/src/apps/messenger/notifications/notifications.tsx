@@ -5,7 +5,7 @@ import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show 
 import { tango } from '../../../ui/icons/icons.ts'
 import { shortWhen } from '../buddy-list/buddy-list.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import styles from './notifications.module.css'
 
 /** A friend who added you this long ago is still news. */

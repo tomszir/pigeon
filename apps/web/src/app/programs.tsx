@@ -14,7 +14,7 @@ import {
   createNotifications,
   NotificationFlyout,
 } from '../apps/messenger/notifications/notifications.tsx'
-import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/service.ts'
+import type { FriendView, Messenger, MessengerEvents } from '../apps/messenger/service/messenger.ts'
 import { Today } from '../apps/messenger/today/today.tsx'
 import { Network } from '../apps/network/network/network.tsx'
 import { CHANGELOG_TEXT } from '../apps/reader/changelog/changelog.ts'

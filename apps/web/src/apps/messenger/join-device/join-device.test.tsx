@@ -1,6 +1,6 @@
 import { render, screen } from '@solidjs/testing-library'
 import { describe, expect, it, vi } from 'vitest'
-import type { Messenger } from '../service/service.ts'
+import type { Messenger } from '../service/messenger.ts'
 import { JoinDevice } from './join-device.tsx'
 
 describe('JoinDevice', () => {

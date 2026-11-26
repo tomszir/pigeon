@@ -1,6 +1,6 @@
 // What the Link to My Other Device window can be showing, and what it says when linking fails.
 import type { Invite } from '@pigeon/core'
-import type { DeviceOffer, LeaveProgress } from '../service/service.ts'
+import type { DeviceOffer, LeaveProgress } from '../service/messenger.ts'
 
 export type Join =
   | { readonly kind: 'enter'; readonly error?: string }

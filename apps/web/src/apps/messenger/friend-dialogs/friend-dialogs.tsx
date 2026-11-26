@@ -10,7 +10,8 @@ import { MessageBox } from '../../../ui/message-box/message-box.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
 import { clockTime } from '../live-conversation/live-conversation.tsx'
-import { type FriendView, type Messenger, MUTED_FOREVER } from '../service/service.ts'
+import type { FriendView, Messenger } from '../service/messenger.ts'
+import { MUTED_FOREVER } from '../service/service.ts'
 import styles from './friend-dialogs.module.css'
 
 const STATUS: Record<FriendView['presence']['status'], string> = {
