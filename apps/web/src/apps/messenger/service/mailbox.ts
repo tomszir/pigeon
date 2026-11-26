@@ -116,6 +116,12 @@ export interface MailboxDeps {
   readonly stopped: () => boolean
   /** A receipt came: `device` of `sender` has letter `id`. */
   readonly onReceipt?: ((sender: PeerId, id: string, device: PeerId) => void) | undefined
+  /**
+   * Where mail to `to` goes now, as far as this Pigeon knows and may reach: a letter to a friend
+   * put again goes there too, besides where it was put before, since they may have moved their
+   * mail since it was sealed. Nothing for anyone who isn't a friend.
+   */
+  readonly lighthousesOf?: ((to: PeerId) => Promise<readonly LighthouseAddress[]>) | undefined
   /** A letter waiting for receipts was put again, and these Lighthouses took it. */
   readonly onStored?:
     | ((to: PeerId, id: string, where: readonly LighthouseAddress[]) => void)
@@ -281,6 +287,29 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
 
   const newId = () => base32Encode(deps.random(10))
 
+  const addressKey = (address: LighthouseAddress) =>
+    `${address.id} ${address.url} ${address.pass ?? ''}`
+
+  /**
+   * Who a waiting letter is put to again: for a letter to a friend, the Lighthouses it went to
+   * before and the ones their mail goes to now. Where it was put stays on the list until its
+   * receipt comes, as a copy there may be the only one the friend's other devices still read.
+   */
+  async function reaching(letter: Outgoing): Promise<Recipient> {
+    if (
+      letter.kind !== 'letter' ||
+      letter.to.tags !== undefined ||
+      deps.lighthousesOf === undefined
+    )
+      return letter.to
+    const current = await deps.lighthousesOf(letter.to.identity).catch(() => [])
+    const known = new Set(letter.to.lighthouses.map(addressKey))
+    const added = current.filter((address) => !known.has(addressKey(address)))
+    return added.length === 0
+      ? letter.to
+      : { ...letter.to, lighthouses: [...letter.to.lighthouses, ...added] }
+  }
+
   async function receipt(to: Recipient, id: string) {
     // A receipt waits for none of its own: it's sent once, and a lost one only means a resend.
     await put('receipt', newId(), { for: id }, to, to.keys)
@@ -362,10 +391,11 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           // it goes out spelled as it's taken now, or it would be refused at every put.
           const body = lowSBody(letter.body)
           // The same id under today's tag: a device that has it already takes it once.
-          const where = await put(letter.kind, letter.id, body, letter.to, devices)
+          const reach = await reaching(letter)
+          const where = await put(letter.kind, letter.id, body, reach, devices)
           const stored = where.length > 0
           if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
-          next.push({ ...letter, body, putAt: stored ? at : letter.putAt })
+          next.push({ ...letter, body, to: reach, putAt: stored ? at : letter.putAt })
         }
         if (!deps.stopped()) await saveOutbox(next)
       }),
@@ -388,11 +418,12 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           }
           const devices = letter.to.keys.filter((key) => letter.waiting.includes(key.device))
           const body = lowSBody(letter.body)
-          const where = await put(letter.kind, letter.id, body, letter.to, devices)
+          const reach = await reaching(letter)
+          const where = await put(letter.kind, letter.id, body, reach, devices)
           const stored = where.length > 0
           if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
           else allTaken = false
-          next.push({ ...letter, body, putAt: stored ? at : 0 })
+          next.push({ ...letter, body, to: reach, putAt: stored ? at : 0 })
         }
         if (!deps.stopped()) await saveOutbox(next)
         return allTaken

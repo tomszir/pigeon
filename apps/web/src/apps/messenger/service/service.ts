@@ -708,6 +708,10 @@ export async function createMessenger(deps: MessengerDeps) {
           client: (address) => lighthouseClient(address) as LighthouseClient,
           head: () => ({ epoch: devices.epoch(), seq: devices.own().entries.length }),
           stopped: () => closed,
+          lighthousesOf: async (id) =>
+            friend(id) === undefined
+              ? []
+              : ((await recipient(id, friendMailSecret(id)))?.lighthouses ?? []),
           onReceipt: (sender, id) => void letters?.receipted(sender, id).catch(() => undefined),
           onStored: (to, id, where) => void letters?.stored(to, id, where).catch(() => undefined),
         })
