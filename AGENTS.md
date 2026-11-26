@@ -25,6 +25,7 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
 
 - Conventional Commits with no AI attribution, as [CONTRIBUTING.md](CONTRIBUTING.md) describes. The `commit-msg` hook and the `pr-title` CI job reject anything else.
 - One task, one commit; PRs are squash-merged under their title.
+- `feat` only for a significant new feature. A user-visible change made to fix a bug or add a missing protection is a `fix`, so it ships as a patch.
 
 ## Security
 
