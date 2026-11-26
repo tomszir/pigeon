@@ -52,21 +52,23 @@ export function isFriendRecords(value: unknown): value is readonly FriendRecord[
 }
 
 /**
- * Saved friends read one by one, so a record that fails its check costs only that friend. The
- * ones that fail come back untouched, exactly as stored, for the caller to keep. A stored value
- * that isn't a list at all counts as one unreadable record.
+ * Saved records read one by one, so a record that fails its check costs only itself. The ones
+ * that fail come back untouched, exactly as stored, for the caller to keep. A stored value that
+ * isn't a list at all counts as one unreadable record.
  */
-export function splitFriendRecords(value: unknown): {
-  readonly readable: readonly FriendRecord[]
-  readonly unreadable: readonly unknown[]
-} {
+function splitRecords<T>(
+  value: unknown,
+  isRecord: (record: unknown) => record is T,
+): { readonly readable: readonly T[]; readonly unreadable: readonly unknown[] } {
   if (value === undefined) return { readable: [], unreadable: [] }
   if (!Array.isArray(value)) return { readable: [], unreadable: [value] }
   return {
-    readable: value.filter(isFriendRecord),
-    unreadable: value.filter((record) => !isFriendRecord(record)),
+    readable: value.filter(isRecord),
+    unreadable: value.filter((record) => !isRecord(record)),
   }
 }
+
+export const splitFriendRecords = (value: unknown) => splitRecords(value, isFriendRecord)
 
 /**
  * A pair secret, if any, whether you've moved to its rooms, whether it's from before secrets
@@ -80,38 +82,36 @@ const isPlace = (record: Record<string, unknown>) =>
     (isReplacing(record['replacing']) && record['secret'] !== undefined)) &&
   (record['old'] === undefined || isPairSecret(record['old']))
 
-/** Farewells: records, or the bare ids stored before pair secrets. */
+/** A farewell: a record, or the bare id stored before pair secrets. */
+export const isFarewell = (entry: unknown): entry is PeerId | FarewellRecord =>
+  (typeof entry === 'string' && isPeerId(entry)) ||
+  (isObject(entry) && typeof entry['id'] === 'string' && isPeerId(entry['id']) && isPlace(entry))
+
 export function isFarewells(value: unknown): value is readonly (PeerId | FarewellRecord)[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (entry) =>
-        (typeof entry === 'string' && isPeerId(entry)) ||
-        (isObject(entry) &&
-          typeof entry['id'] === 'string' &&
-          isPeerId(entry['id']) &&
-          isPlace(entry)),
-    )
-  )
+  return Array.isArray(value) && value.every(isFarewell)
 }
+
+export const splitFarewells = (value: unknown) => splitRecords(value, isFarewell)
 
 export function isMessengerSettings(value: unknown): value is MessengerSettings {
   return isObject(value) && typeof value['relayOnly'] === 'boolean'
 }
 
-export function isBlockedRecords(value: unknown): value is readonly BlockedRecord[] {
+export function isBlockedRecord(record: unknown): record is BlockedRecord {
   return (
-    Array.isArray(value) &&
-    value.every(
-      (record) =>
-        isObject(record) &&
-        typeof record['id'] === 'string' &&
-        isPeerId(record['id']) &&
-        typeof record['handle'] === 'string' &&
-        typeof record['at'] === 'number',
-    )
+    isObject(record) &&
+    typeof record['id'] === 'string' &&
+    isPeerId(record['id']) &&
+    typeof record['handle'] === 'string' &&
+    typeof record['at'] === 'number'
   )
 }
+
+export function isBlockedRecords(value: unknown): value is readonly BlockedRecord[] {
+  return Array.isArray(value) && value.every(isBlockedRecord)
+}
+
+export const splitBlockedRecords = (value: unknown) => splitRecords(value, isBlockedRecord)
 
 export function isPeerIds(value: unknown): value is readonly PeerId[] {
   return Array.isArray(value) && value.every((id) => typeof id === 'string' && isPeerId(id))

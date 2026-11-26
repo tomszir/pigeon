@@ -131,11 +131,12 @@ import {
   importedSettings,
   isBlockedRecords,
   isChatLog,
-  isFarewells,
   isFriendRecords,
   isHostedInvite,
   isMessengerSettings,
   isProfile,
+  splitBlockedRecords,
+  splitFarewells,
   splitFriendRecords,
 } from './stored.ts'
 
@@ -244,6 +245,10 @@ export interface MessengerEvents {
    * loaded. `count` is every record kept aside so far, this run's and earlier runs'.
    */
   readonly onFriendsSetAside?: (count: number) => void
+  /** The same for blocked people whose saved records couldn't be read. */
+  readonly onBlockedSetAside?: (count: number) => void
+  /** The same for saved farewells (friends you removed who haven't been told) that couldn't be read. */
+  readonly onFarewellsSetAside?: (count: number) => void
 }
 
 export interface MessengerDeps {
@@ -304,6 +309,9 @@ const KEYS = {
   friends: 'friends',
   /** Saved friend records that failed their check, exactly as they were stored. Never written over. */
   unreadableFriends: 'friends-unreadable',
+  /** Same for blocked records and farewells. */
+  unreadableBlocked: 'blocked-unreadable',
+  unreadableFarewells: 'farewells-unreadable',
   invite: 'invite',
   blocked: 'blocked',
   /** Friends you removed who haven't been told yet. */
@@ -946,16 +954,29 @@ export async function createMessenger(deps: MessengerDeps) {
   const nameOf = (handle: string, petname: string | undefined) =>
     cleanHandle(petname ?? '') || cleanHandle(handle) || 'Friend'
 
-  const storedBlocked = await store.get(KEYS.blocked)
-  const [blocked, setBlocked] = createSignal<readonly BlockedRecord[]>(
-    isBlockedRecords(storedBlocked) ? storedBlocked : [],
-  )
+  /**
+   * Keeps records that couldn't be read exactly as stored under `key`, never written over. Done
+   * before anything saves the records that did load, which would drop these from their own list.
+   * A record already set aside by an earlier run isn't kept twice. Returns how many are set aside.
+   */
+  const setAside = async (key: string, unreadable: readonly unknown[]) => {
+    const earlier = await store.get(key)
+    const aside = Array.isArray(earlier) ? earlier : []
+    const seen = new Set(aside.map((record) => JSON.stringify(record)))
+    const added = unreadable.filter((record) => !seen.has(JSON.stringify(record)))
+    if (added.length > 0) await store.set(key, [...aside, ...added] as Json)
+    return aside.length + added.length
+  }
+  const storedBlocked = splitBlockedRecords(await store.get(KEYS.blocked))
+  const blockedAside = await setAside(KEYS.unreadableBlocked, storedBlocked.unreadable)
+  const [blocked, setBlocked] = createSignal<readonly BlockedRecord[]>(storedBlocked.readable)
   const isBlocked = (id: PeerId) => blocked().some((record) => record.id === id)
-  const storedFarewells = await store.get(KEYS.farewells)
+  const storedFarewells = splitFarewells(await store.get(KEYS.farewells))
+  const farewellsAside = await setAside(KEYS.unreadableFarewells, storedFarewells.unreadable)
   // A farewell stored before pair secrets was just an id.
-  let farewells: readonly FarewellRecord[] = isFarewells(storedFarewells)
-    ? storedFarewells.map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
-    : []
+  let farewells: readonly FarewellRecord[] = storedFarewells.readable.map((entry) =>
+    typeof entry === 'string' ? { id: entry } : entry,
+  )
   const farewellSessions = new Map<PeerId, PairSession>()
   /**
    * Set once `close` runs. Declared before anything that reads it can run: a farewell still owed
@@ -1686,17 +1707,11 @@ export async function createMessenger(deps: MessengerDeps) {
 
   // Load what's stored, then connect.
   const { readable, unreadable } = splitFriendRecords(await store.get(KEYS.friends))
-  if (unreadable.length > 0) {
-    // Set aside before anything saves the friends that did load, which would drop these from
-    // `friends`. A record already set aside by an earlier run isn't kept twice.
-    const earlier = await store.get(KEYS.unreadableFriends)
-    const aside = Array.isArray(earlier) ? earlier : []
-    const seen = new Set(aside.map((record) => JSON.stringify(record)))
-    const added = unreadable.filter((record) => !seen.has(JSON.stringify(record)))
-    if (added.length > 0) await store.set(KEYS.unreadableFriends, [...aside, ...added] as Json)
-  }
-  const setAside = await store.get(KEYS.unreadableFriends)
-  if (Array.isArray(setAside) && setAside.length > 0) events.onFriendsSetAside?.(setAside.length)
+  // Counts include what earlier runs set aside, so every start says so again.
+  const friendsAside = await setAside(KEYS.unreadableFriends, unreadable)
+  if (friendsAside > 0) events.onFriendsSetAside?.(friendsAside)
+  if (blockedAside > 0) events.onBlockedSetAside?.(blockedAside)
+  if (farewellsAside > 0) events.onFarewellsSetAside?.(farewellsAside)
   for (const record of readable) {
     const room = await pairRoom(crypto, self, record.id)
     const log = await store.get(KEYS.log(record.id))
