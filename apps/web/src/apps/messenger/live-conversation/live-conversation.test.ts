@@ -1,5 +1,6 @@
 import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
+import type { MessageRoute } from '../service/letters.ts'
 import type { FriendView } from '../service/service.ts'
 import {
   clockTime,
@@ -7,6 +8,7 @@ import {
   conversationText,
   SAVED_LINE_WIDTH,
   transcriptFor,
+  wayText,
 } from './live-conversation.tsx'
 
 /** 18:38 local time today, so the expected clock text doesn't depend on the time zone. */
@@ -52,6 +54,59 @@ describe('transcriptFor', () => {
       ['message', 'ok'],
       ['buzz', 'Mika has just sent you a buzz!'],
       ['system', 'Mika went offline at 6:38 PM.'],
+    ])
+  })
+})
+
+describe('a message of yours and its way', () => {
+  it('words each way for the icon', () => {
+    expect(wayText({ kind: 'sealing' }, 'Mika')).toEqual({ state: 'sealing', text: 'Sealing...' })
+    expect(wayText({ kind: 'left', where: ['Dovecote', 'Perch'] }, 'Mika')).toEqual({
+      state: 'left',
+      text: "Left at Dovecote and Perch for when Mika's back",
+    })
+    expect(wayText({ kind: 'has' }, 'Mika')).toEqual({ state: 'has', text: 'Mika has it' })
+    expect(wayText({ kind: 'waiting' }, 'Mika')?.text).toBe('Waits until Mika is online')
+    expect(wayText({ kind: 'retrying' }, 'Mika')?.state).toBe('retrying')
+    // A letter that came in is not one of yours.
+    expect(wayText({ kind: 'arrived', through: 'Loft' }, 'Mika')).toBeUndefined()
+    expect(wayText(undefined, 'Mika')).toBeUndefined()
+  })
+
+  it('spells out the newest message and any that needs attention, and only those', async () => {
+    const rook = fakeSigner('rook')
+    const mika = fakeSigner('mika')
+    let log = emptyLog('pair:x')
+    log = (await appendMessage(log, rook, 'one', 0)).log
+    log = (await appendMessage(log, rook, 'two', 0)).log
+    log = (await appendMessage(log, rook, 'three', 0)).log
+    log = (await appendMessage(log, rook, 'four', 0)).log
+    log = (await appendMessage(log, mika, 'later', 0)).log
+    const view = {
+      id: mika.id,
+      handle: 'Mika',
+      name: 'Mika',
+      addedAt: 0,
+      log,
+      notes: [],
+    } as unknown as FriendView
+    const routes: Record<string, MessageRoute> = {
+      one: { kind: 'has' },
+      two: { kind: 'waiting' },
+      three: { kind: 'left', where: ['Loft'] },
+      four: { kind: 'left', where: ['Loft'] },
+    }
+    const spelled = transcriptFor(view, rook.id, 'Rook', (entry) => routes[entry.text]).flatMap(
+      (entry) =>
+        entry.kind === 'message' && entry.way !== undefined
+          ? [[entry.text, entry.way.state, entry.way.spelled]]
+          : [],
+    )
+    expect(spelled).toEqual([
+      ['one', 'has', false],
+      ['two', 'waiting', true],
+      ['three', 'left', false],
+      ['four', 'left', true],
     ])
   })
 })

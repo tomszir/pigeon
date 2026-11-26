@@ -51,6 +51,11 @@
   color: var(--pg-text-error);
 }
 
+/* One message with its notes; the status icon's tooltip is placed against it. */
+.row {
+  position: relative;
+}
+
 /* A message's way, small under it (or, for one that came by letter, above it). */
 .route {
   margin: 1px 0 2px 10px;

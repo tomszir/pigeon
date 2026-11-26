@@ -1,0 +1,80 @@
+/* The status icon after a message, and the tooltip with its words. The tooltip is placed against
+   the message's row (the transcript's `.row`), so a long one wraps inside the chat. */
+
+.anchor {
+  display: inline-block;
+  vertical-align: text-bottom;
+  margin-left: 4px;
+  user-select: none;
+}
+
+.button {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 0;
+  cursor: default;
+}
+
+.button:focus-visible {
+  outline: 1px dotted var(--pg-text);
+  outline-offset: 1px;
+}
+
+/* 16px bitmaps, drawn whole: never scaled. */
+.icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+}
+
+.sealing {
+  background-image: url("../../icons/tango/view-refresh-16.png");
+}
+
+.left {
+  background-image: url("../../icons/tango/network-server-16.png");
+}
+
+.has {
+  background-image: url("../../icons/xp/checkmark.svg");
+}
+
+.waiting,
+.retrying {
+  background-image: url("../../icons/tango/dialog-warning-16.png");
+}
+
+/* The words for screen readers, where the tooltip's aren't shown. */
+.words {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tip {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 2px);
+  left: 10px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 10px);
+  padding: 2px 4px;
+  border: 1px solid #000000;
+  background: var(--pg-tooltip);
+  box-shadow: 1px 1px 2px rgb(0 0 0 / 30%);
+  color: var(--pg-text);
+  font: var(--pg-type-body);
+  pointer-events: none;
+}
