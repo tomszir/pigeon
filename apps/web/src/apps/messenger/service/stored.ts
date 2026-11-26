@@ -339,3 +339,34 @@ export function importedProfile(value: unknown): Profile | undefined {
 export function importedSettings(value: unknown): MessengerSettings | undefined {
   return isMessengerSettings(value) ? { relayOnly: value.relayOnly } : undefined
 }
+
+/** A plain copy of a round: what's read from the Solid store is a proxy, which storage can't clone. */
+export const plainRound = (round: Replacing): Replacing => ({
+  ...round,
+  ...(round.heard === undefined ? {} : { heard: [...round.heard] }),
+  ...(round.resent === undefined ? {} : { resent: [...round.resent] }),
+})
+
+/** What's stored of a secret's replacement. */
+export interface SecretFlags {
+  readonly sealed?: true
+  readonly replacing?: Replacing
+  readonly prior?: Replacing
+  readonly renew?: true
+  readonly begun?: string
+}
+
+/** What's stored of a secret's replacement: only what's set. */
+export const secretFlags = ({
+  sealed,
+  replacing,
+  prior,
+  renew,
+  begun,
+}: Pick<FriendRecord, 'sealed' | 'replacing' | 'prior' | 'renew' | 'begun'>): SecretFlags => ({
+  ...(sealed === true ? { sealed } : {}),
+  ...(replacing === undefined ? {} : { replacing: plainRound(replacing) }),
+  ...(replacing === undefined || prior === undefined ? {} : { prior: plainRound(prior) }),
+  ...(renew === true ? { renew } : {}),
+  ...(begun === undefined ? {} : { begun }),
+})
