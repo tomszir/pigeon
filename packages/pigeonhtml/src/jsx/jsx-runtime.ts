@@ -18,7 +18,7 @@ const ESCAPES: Readonly<Record<string, string>> = {
 }
 
 /** Text made safe for an element's content or a quoted attribute. */
-export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ESCAPES[c] ?? c)
+export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (c) => ESCAPES[c] ?? c)
 
 /**
  * The markup of every Html this module has made. A value that isn't in here is not Html, however
@@ -102,7 +102,7 @@ export function jsx(type: string | Component, props: Props, _key?: unknown): Htm
 }
 
 /** The same as `jsx`, for an element whose children are written out in the source. */
-export const jsxs = jsx
+export const jsxs: typeof jsx = jsx
 
 /** `<>...</>`: its children, with no element around them. */
 export const Fragment = (props: Props): Html => html(children(props['children'] as Child))

@@ -2,9 +2,10 @@
 // carry nothing extra to check in development. It is given where in the source each element is
 // (`isStatic`, `source`, `self`), and has no use for it.
 
-import { jsx } from './jsx-runtime.ts'
+import type { Html } from './elements.ts'
+import { Fragment, jsx, jsxs } from './jsx-runtime.ts'
 
-export { Fragment, jsx, jsxs } from './jsx-runtime.ts'
+export { Fragment, jsx, jsxs }
 
 export const jsxDEV = (
   type: Parameters<typeof jsx>[0],
@@ -13,4 +14,4 @@ export const jsxDEV = (
   _isStatic?: boolean,
   _source?: unknown,
   _self?: unknown,
-) => jsx(type, props, key)
+): Html => jsx(type, props, key)

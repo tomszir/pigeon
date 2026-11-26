@@ -10,13 +10,13 @@ export const GLOBAL_ATTRIBUTE_TABLE = ['id', 'class', 'title', 'lang', 'dir', 's
 
 export const GLOBAL_ATTRIBUTES: ReadonlySet<string> = new Set(GLOBAL_ATTRIBUTE_TABLE)
 
-const cellAlign = ['align', 'valign', 'char', 'charoff'] as const
-
 /**
  * The elements kept, each with the attributes it may carry beyond the global ones. `html`,
  * `head`, `body`, `title` and `style` are written by the sanitizer itself and aren't here.
  * Framesets and forms are deferred (docs/pigeonhtml.md). `img` has no `name`: a named image
- * would shadow properties of the frame's `document`, which Explorer reads.
+ * would shadow properties of the frame's `document`, which Explorer reads. The cells' alignment
+ * attributes (`align`, `valign`, `char`, `charoff`) are written out each time: the table has to be
+ * one literal, which a spread of a shared list isn't, for the types derived from it.
  */
 export const ELEMENT_TABLE = {
   a: ['href', 'name'],
@@ -35,8 +35,8 @@ export const ELEMENT_TABLE = {
   center: [],
   cite: [],
   code: [],
-  col: ['span', 'width', ...cellAlign],
-  colgroup: ['span', 'width', ...cellAlign],
+  col: ['span', 'width', 'align', 'valign', 'char', 'charoff'],
+  colgroup: ['span', 'width', 'align', 'valign', 'char', 'charoff'],
   dd: [],
   del: ['datetime'],
   dfn: [],
@@ -101,7 +101,7 @@ export const ELEMENT_TABLE = {
     'rules',
     'summary',
   ],
-  tbody: cellAlign,
+  tbody: ['align', 'valign', 'char', 'charoff'],
   td: [
     'abbr',
     'axis',
@@ -115,9 +115,12 @@ export const ELEMENT_TABLE = {
     'bordercolor',
     'width',
     'height',
-    ...cellAlign,
+    'align',
+    'valign',
+    'char',
+    'charoff',
   ],
-  tfoot: cellAlign,
+  tfoot: ['align', 'valign', 'char', 'charoff'],
   th: [
     'abbr',
     'axis',
@@ -131,10 +134,13 @@ export const ELEMENT_TABLE = {
     'bordercolor',
     'width',
     'height',
-    ...cellAlign,
+    'align',
+    'valign',
+    'char',
+    'charoff',
   ],
-  thead: cellAlign,
-  tr: ['bgcolor', 'background', 'height', ...cellAlign],
+  thead: ['align', 'valign', 'char', 'charoff'],
+  tr: ['bgcolor', 'background', 'height', 'align', 'valign', 'char', 'charoff'],
   tt: [],
   u: [],
   ul: ['type', 'compact'],
