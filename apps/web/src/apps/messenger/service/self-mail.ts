@@ -4,6 +4,7 @@
 // to. Each is a snapshot; the device log merges like any other copy, and the name and the list
 // go by when they were changed, the newest winning, as they do in the self room.
 import {
+  cleanHandle,
   type DeviceLog,
   isDeviceLog,
   isLighthouseAddress,
@@ -60,10 +61,10 @@ function readProfile(value: unknown): ProfileChange | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const { handle, message, changedAt } = value as Record<string, unknown>
   return isText(handle, MAX_HANDLE_LENGTH) &&
-    handle.trim() !== '' &&
+    cleanHandle(handle) !== '' &&
     isText(message, MAX_PERSONAL_MESSAGE_LENGTH) &&
     isTime(changedAt)
-    ? { handle, message, changedAt }
+    ? { handle: cleanHandle(handle), message, changedAt }
     : undefined
 }
 

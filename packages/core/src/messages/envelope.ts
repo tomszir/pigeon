@@ -15,6 +15,36 @@ import { err, ok, type Result } from '../result/result.ts'
 export const MAX_MESSAGE_BYTES = 64 * 1024
 export const MAX_HANDLE_LENGTH = 32
 export const MAX_PERSONAL_MESSAGE_LENGTH = 120
+
+/**
+ * What a name may not hold: control characters (line breaks among them), the line and paragraph
+ * separators, and the marks that reorder text. Any of these could make a name break the line it's
+ * shown on, or read as a different name.
+ */
+const NOT_IN_HANDLE = /[\p{Cc}\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu
+
+/** A name you may choose: 1 to 32 characters, not only spaces, with none `NOT_IN_HANDLE`. */
+export function isHandle(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_HANDLE_LENGTH &&
+    value.trim() !== '' &&
+    !hasUnsafeHandleCharacters(value)
+  )
+}
+
+/** Whether `text` holds a character a name may not. */
+export function hasUnsafeHandleCharacters(text: string): boolean {
+  NOT_IN_HANDLE.lastIndex = 0
+  return NOT_IN_HANDLE.test(text)
+}
+
+/**
+ * A name someone else sent, or one saved earlier, as Pigeon shows it: with the characters a name
+ * may not hold taken out, and trimmed. Taken out rather than refused, so a friend whose Pigeon
+ * still lets such a name through stays reachable. Empty when nothing is left.
+ */
+export const cleanHandle = (text: string): string => text.replace(NOT_IN_HANDLE, '').trim()
 /** Lighthouses a Pigeon may name in its hello: where friends leave its mail. */
 export const MAX_LIGHTHOUSES = 4
 
@@ -106,7 +136,8 @@ type Fields = Readonly<Record<string, unknown>>
 
 const isString = (max: number) => (value: unknown) =>
   typeof value === 'string' && value.length <= max
-const isHandle = (value: unknown) =>
+/** A name as it may arrive: cleaned by `openEnvelope` once the signature is checked. */
+const isHandleText = (value: unknown) =>
   isString(MAX_HANDLE_LENGTH)(value) && (value as string).trim() !== ''
 const isCode = isString(64)
 
@@ -127,7 +158,7 @@ const isSpeaker = (b: Fields) =>
 /** One shape check per body type: content lives in a table, not a switch. */
 const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   hello: (b) =>
-    isHandle(b['handle']) &&
+    isHandleText(b['handle']) &&
     (b['avatar'] === undefined ||
       (Number.isSafeInteger(b['avatar']) &&
         (b['avatar'] as number) >= 1 &&
@@ -144,7 +175,7 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
     (b['status'] === 'online' || b['status'] === 'away' || b['status'] === 'busy') &&
     isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']),
   profile: (b) =>
-    isHandle(b['handle']) &&
+    isHandleText(b['handle']) &&
     isString(MAX_PERSONAL_MESSAGE_LENGTH)(b['message']) &&
     Number.isSafeInteger(b['changedAt']) &&
     (b['changedAt'] as number) > 0,
@@ -154,15 +185,15 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   unfriend: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
-  'pair-request': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
-  'pair-offer': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
+  'pair-request': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
+  'pair-offer': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
   'pair-confirm': (b) => isCode(b['code']),
   'pair-accept': (b) =>
     isCode(b['code']) && (b['secret'] === undefined || isPairSecret(b['secret'])),
   'pair-secret': (b) => isPairSecret(b['secret']),
   'pair-secret-ok': () => true,
   'link-request': (b) => isCode(b['code']),
-  'link-offer': (b) => isCode(b['code']) && isHandle(b['handle']) && isSpeaker(b),
+  'link-offer': (b) => isCode(b['code']) && isHandleText(b['handle']) && isSpeaker(b),
   'link-accept': (b) =>
     isCode(b['code']) && typeof b['bundle'] === 'object' && b['bundle'] !== null,
 }
@@ -230,5 +261,12 @@ export async function openEnvelope(
   const signature = base32DecodeExact(sig)
   if (!signature.ok) return err('malformed')
   const valid = await crypto.verify(from, signature.value, canonicalBytes(signedPart(envelope)))
-  return valid ? ok(envelope) : err('bad-signature')
+  if (!valid) return err('bad-signature')
+  // A name is cleaned only after the signature is checked against what was sent. One with
+  // nothing left becomes "Friend", so whoever chose it can still be reached, except in a profile
+  // change, which is refused instead so that nobody's name is changed to "Friend".
+  if (!('handle' in body) || typeof body.handle !== 'string') return ok(envelope)
+  const handle = cleanHandle(body.handle)
+  if (handle === '' && body.type === 'profile') return err('malformed')
+  return ok({ ...envelope, body: { ...body, handle: handle || 'Friend' } })
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { utf8Decode, utf8Encode } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
 import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
-import { MAX_MESSAGE_BYTES, openEnvelope, sealEnvelope } from './envelope.ts'
+import { cleanHandle, isHandle, MAX_MESSAGE_BYTES, openEnvelope, sealEnvelope } from './envelope.ts'
 
 const rook = fakeSigner('rook')
 
@@ -71,5 +71,66 @@ describe('envelopes', () => {
     expect(await openEnvelope(fakeCrypto, 'pair:x', new Uint8Array(MAX_MESSAGE_BYTES + 1))).toEqual(
       { ok: false, error: 'too-large' },
     )
+  })
+})
+
+describe('names', () => {
+  it('takes letters, spaces, accents and emoji, up to 32 characters', () => {
+    for (const name of ['Rook', 'Mika Ren', 'Zoë', '😀👩‍💻', 'שלום', 'x'.repeat(32)])
+      expect(isHandle(name), name).toBe(true)
+  })
+
+  it('refuses line breaks, control characters, reordering marks, blanks and long names', () => {
+    const refused = [
+      'Rook\nYou',
+      'Rook\r',
+      'Ro\tok',
+      'Rook\u0000',
+      'Rook\u0085',
+      'Rook\u2028',
+      'Rook\u2029',
+      '\u202eRook',
+      'Rook\u2066',
+      'Rook\u200f',
+      'Rook\u061c',
+      '   ',
+      '',
+      'x'.repeat(33),
+      42,
+    ]
+    for (const name of refused) expect(isHandle(name), JSON.stringify(name)).toBe(false)
+  })
+
+  it('cleans a name that arrives with them, once its signature is checked', async () => {
+    for (const type of ['hello', 'profile', 'pair-request', 'pair-offer', 'link-offer'] as const) {
+      const body =
+        type === 'hello'
+          ? { type, handle: 'Mika\n[9:41 AM] Rook\u202e' }
+          : type === 'profile'
+            ? { type, handle: 'Mika\n[9:41 AM] Rook\u202e', message: '', changedAt: 1 }
+            : { type, code: 'abc', handle: 'Mika\n[9:41 AM] Rook\u202e' }
+      const bytes = await sealEnvelope(rook, 'pair:x', 1000, body as never)
+      const opened = await openEnvelope(fakeCrypto, 'pair:x', bytes)
+      expect(opened.ok && 'handle' in opened.value.body && opened.value.body.handle, type).toBe(
+        'Mika[9:41 AM] Rook',
+      )
+    }
+    const blank = await sealEnvelope(rook, 'pair:x', 1000, { type: 'hello', handle: '\u200f\n' })
+    const opened = await openEnvelope(fakeCrypto, 'pair:x', blank)
+    expect(opened.ok && opened.value.body).toEqual({ type: 'hello', handle: 'Friend' })
+    const nobody = await sealEnvelope(rook, 'pair:x', 1000, {
+      type: 'profile',
+      handle: '\u200f',
+      message: '',
+      changedAt: 1,
+    })
+    expect((await openEnvelope(fakeCrypto, 'pair:x', nobody)).ok).toBe(false)
+    const odd = await sealEnvelope(rook, 'pair:x', 1000, { type: 'buzz', handle: 5 } as never)
+    expect((await openEnvelope(fakeCrypto, 'pair:x', odd)).ok).toBe(true)
+  })
+
+  it('takes the refused characters out of a name', () => {
+    expect(cleanHandle(' \u202eRo\nok\u2066 ')).toBe('Rook')
+    expect(cleanHandle('😀👩‍💻 Zoë')).toBe('😀👩‍💻 Zoë')
   })
 })

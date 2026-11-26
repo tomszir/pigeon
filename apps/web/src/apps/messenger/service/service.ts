@@ -10,6 +10,7 @@ import {
   type ClientError,
   type Crypto,
   canonicalBytes,
+  cleanHandle,
   type DeviceLog,
   deviceState,
   emptyLog,
@@ -364,8 +365,12 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   const storedProfile = await store.get(KEYS.profile)
+  // A name saved before names were checked may hold characters a name may not; they're taken out,
+  // and a name with nothing left is asked for again.
   const [profile, setProfileSignal] = createSignal<Profile>(
-    isProfile(storedProfile) ? storedProfile : DEFAULT_PROFILE,
+    isProfile(storedProfile)
+      ? { ...storedProfile, handle: cleanHandle(storedProfile.handle) }
+      : DEFAULT_PROFILE,
   )
   const storedChangedAt = await store.get(KEYS.profileChangedAt)
   let profileChangedAt =
@@ -729,7 +734,10 @@ export async function createMessenger(deps: MessengerDeps) {
         }),
       ),
     )
-  const nameOf = (handle: string, petname: string | undefined) => petname ?? handle
+  // Names saved before they were checked, petnames included, are shown cleaned, so none can break
+  // a line or turn text around; one with nothing left shows as "Friend".
+  const nameOf = (handle: string, petname: string | undefined) =>
+    cleanHandle(petname ?? '') || cleanHandle(handle) || 'Friend'
 
   const storedBlocked = await store.get(KEYS.blocked)
   const [blocked, setBlocked] = createSignal<readonly BlockedRecord[]>(
@@ -1009,7 +1017,7 @@ export async function createMessenger(deps: MessengerDeps) {
     if (existing !== undefined) {
       // Paired again, perhaps after they'd removed you: friends once more.
       setState('friends', record.id, {
-        handle: record.handle,
+        handle: cleanHandle(record.handle),
         name: nameOf(record.handle, existing.petname),
         removedYouAt: undefined,
         ...(record.secret === undefined
@@ -1021,6 +1029,7 @@ export async function createMessenger(deps: MessengerDeps) {
     const room = await pairRoom(crypto, self, record.id)
     setState('friends', record.id, {
       ...record,
+      handle: cleanHandle(record.handle),
       devices: 1,
       seesThisDevice: true,
       name: nameOf(record.handle, record.petname),

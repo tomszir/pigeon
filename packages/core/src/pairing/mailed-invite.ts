@@ -27,7 +27,7 @@ import {
 import { MAX_BLOB_BYTES, MAX_MAIL_MS } from '../lighthouse/protocol.ts'
 import { isSealingKey, type SealingKey, verifySealingKey } from '../mail/mail.ts'
 import type { SealCrypto } from '../mail/seal-crypto.ts'
-import { MAX_HANDLE_LENGTH, MAX_LIGHTHOUSES } from '../messages/envelope.ts'
+import { cleanHandle, MAX_HANDLE_LENGTH, MAX_LIGHTHOUSES } from '../messages/envelope.ts'
 import { err, ok, type Result } from '../result/result.ts'
 
 const HOUR = 60 * 60 * 1000
@@ -270,7 +270,10 @@ export async function openInviteCard(
   const keys: SealingKey[] = []
   for (const key of fields.keys)
     if (active.has(key.device) && (await verifySealingKey(crypto, key))) keys.push(key)
-  return ok({ ...fields, keys })
+  // The name is cleaned only now, since the signature covers it as it was sent.
+  const name = cleanHandle(fields.name)
+  if (name === '') return err('malformed')
+  return ok({ ...fields, name, keys })
 }
 
 /** How far a device log has come: its epoch, then how many entries. */
@@ -348,10 +351,11 @@ export function readInviteRequest(sender: PeerId, body: unknown): InviteRequest 
     replyBytes === undefined ||
     !replyBytes.ok ||
     replyBytes.value.length !== INVITE_SECRET_BYTES ||
-    typeof link !== 'string'
+    typeof link !== 'string' ||
+    cleanHandle(name) === ''
   )
     return undefined
-  return { name, deviceLog, keys, lighthouses, reply, link }
+  return { name: cleanHandle(name), deviceLog, keys, lighthouses, reply, link }
 }
 
 /** Reads an answer's body for `sender`; nothing is checked cryptographically here. */
@@ -370,10 +374,11 @@ export function readInviteAnswer(sender: PeerId, body: unknown): InviteAnswer | 
     name.trim() === '' ||
     name.length > MAX_HANDLE_LENGTH ||
     !isDeviceLog(deviceLog) ||
-    deviceLog.identity !== sender
+    deviceLog.identity !== sender ||
+    cleanHandle(name) === ''
   )
     return undefined
-  return { answer: 'added', secret, name, deviceLog }
+  return { answer: 'added', secret, name: cleanHandle(name), deviceLog }
 }
 
 /** Whether `secret` is an invite's or a reply's: 16 bytes in base32. */
