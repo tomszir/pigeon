@@ -1,0 +1,66 @@
+/* My Devices: the list of devices, and the notices above it. */
+
+.devices {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.muted {
+  margin: 0;
+  color: var(--pg-text-muted);
+}
+
+.warning {
+  margin: 0;
+  color: var(--pg-text-error);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A device's fingerprint, compared by eye with the one that device shows for itself. */
+.print {
+  font-family: var(--pg-font-mono);
+  font-weight: 400;
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Phone: one column, the picture centred, buttons full width. */
+.phone {
+  gap: 12px;
+  padding: 12px;
+}
+
+.phone .buttons > * {
+  flex-grow: 1;
+}

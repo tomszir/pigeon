@@ -21,7 +21,6 @@ import {
   type IncomingInvite,
 } from '../apps/messenger/add-friend/add-friend.tsx'
 import { BuddyList } from '../apps/messenger/buddy-list/buddy-list.tsx'
-import { JoinDevice, LinkDevice, MyDevices } from '../apps/messenger/devices/devices.tsx'
 import {
   BlockedPeople,
   FriendProfile,
@@ -29,7 +28,10 @@ import {
   RemoveFriend,
   RenameFriend,
 } from '../apps/messenger/friend-dialogs/friend-dialogs.tsx'
+import { JoinDevice } from '../apps/messenger/join-device/join-device.tsx'
+import { LinkDevice } from '../apps/messenger/link-device/link-device.tsx'
 import { LiveConversation } from '../apps/messenger/live-conversation/live-conversation.tsx'
+import { MyDevices } from '../apps/messenger/my-devices/my-devices.tsx'
 import {
   createNotifications,
   NotificationFlyout,

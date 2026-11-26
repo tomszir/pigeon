@@ -1,4 +1,4 @@
-/* Linking and listing your devices: the same shapes as Add a Friend. */
+/* Link a Device: the code and QR code to share, then the check and the confirmation. */
 
 .devices {
   display: flex;
@@ -33,7 +33,6 @@
   color: var(--pg-text-muted);
 }
 
-.error,
 .warning {
   margin: 0;
   color: var(--pg-text-error);
@@ -58,27 +57,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-}
-
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* A device's fingerprint, compared by eye with the one that device shows for itself. */
-.print {
-  font-family: var(--pg-font-mono);
-  font-weight: 400;
-}
-
-.device {
-  display: flex;
-  align-items: center;
   gap: 6px;
 }
 
