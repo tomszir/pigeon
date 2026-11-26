@@ -9,7 +9,7 @@ import {
   mergeEntries,
 } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
-import { createMemoryStore } from '../../../platform/storage/storage.ts'
+import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
 import { createLetters, type LettersDeps } from './letters.ts'
 
 const me = fakeSigner('me')

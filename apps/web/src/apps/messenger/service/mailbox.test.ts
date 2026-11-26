@@ -13,7 +13,7 @@ import {
 } from '@pigeon/core'
 import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
 import { describe, expect, it, vi } from 'vitest'
-import { createMemoryStore } from '../../../platform/storage/storage.ts'
+import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
 import { createMailbox, RESEND_AFTER_MS, type Recipient, type Source } from './mailbox.ts'
 
 const DAY = 24 * 60 * 60 * 1000

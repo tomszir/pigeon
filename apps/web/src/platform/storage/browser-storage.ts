@@ -1,6 +1,7 @@
 // The Store in IndexedDB: one object store of structured-cloned values, so CryptoKeys survive
 // a reload without ever being exported.
-import { createMemoryStore, type Store } from './storage.ts'
+import { createMemoryStore } from './memory-storage.ts'
+import type { Store } from './storage.ts'
 
 const DATABASE = 'pigeon'
 const OBJECTS = 'kv'

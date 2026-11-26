@@ -68,7 +68,8 @@ vi.mock('@pigeon/core', async (importOriginal) => {
 })
 
 import type { Clock } from '../../../platform/clock/clock.ts'
-import { createMemoryStore, type Store } from '../../../platform/storage/storage.ts'
+import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
+import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
 import { loadDevices } from './devices.ts'
 import {

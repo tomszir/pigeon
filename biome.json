@@ -36,16 +36,20 @@
         "noExplicitAny": "error",
         "noImportCycles": {
           "level": "error",
-          "options": { "ignoreTypes": true }
+          "options": {
+            "ignoreTypes": true
+          }
         }
       },
       "style": {
         "useImportType": "error",
+        "noNonNullAssertion": "error",
         "noExcessiveLinesPerFile": {
           "level": "error",
-          "options": { "maxLines": 600 }
-        },
-        "noNonNullAssertion": "error"
+          "options": {
+            "maxLines": 600
+          }
+        }
       },
       "complexity": {
         "useLiteralKeys": "off"
@@ -65,24 +69,15 @@
   },
   "overrides": [
     {
-      "includes": ["packages/*/src/index.ts"],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noBarrelFile": "off",
-            "noReExportAll": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
       "linter": {
         "rules": {
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 1000 }
+              "options": {
+                "maxLines": 1000
+              }
             }
           }
         }
@@ -99,7 +94,9 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 700 }
+              "options": {
+                "maxLines": 700
+              }
             }
           }
         }
@@ -112,7 +109,9 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 800 }
+              "options": {
+                "maxLines": 800
+              }
             }
           }
         }
@@ -125,7 +124,9 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 1100 }
+              "options": {
+                "maxLines": 1100
+              }
             }
           }
         }
@@ -138,7 +139,9 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 1300 }
+              "options": {
+                "maxLines": 1300
+              }
             }
           }
         }
@@ -151,7 +154,9 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 3200 }
+              "options": {
+                "maxLines": 3200
+              }
             }
           }
         }
@@ -164,14 +169,34 @@
           "style": {
             "noExcessiveLinesPerFile": {
               "level": "error",
-              "options": { "maxLines": 4500 }
+              "options": {
+                "maxLines": 4500
+              }
             }
           }
         }
       }
     },
     {
-      "includes": ["**", "!**/*.test.ts", "!**/*.test.tsx"],
+      "includes": ["packages/*/src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off",
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/testing/**",
+        "!packages/*/src/index.ts"
+      ],
       "plugins": ["./biome-plugins/no-test-fakes.grit"]
     },
     {
@@ -249,7 +274,7 @@
       }
     },
     {
-      "includes": ["apps/web/src/shell/**"],
+      "includes": ["apps/web/src/shell/**", "!**/*.test.ts", "!**/*.test.tsx"],
       "linter": {
         "rules": {
           "style": {
@@ -279,7 +304,38 @@
       }
     },
     {
-      "includes": ["apps/web/src/apps/**"],
+      "includes": ["apps/web/src/shell/**/*.test.ts", "apps/web/src/shell/**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/apps/**", "**/app", "**/app/**"],
+                    "message": "shell/ may import ui/, packages/ and platform interfaces; app/ hands it everything else."
+                  },
+                  {
+                    "group": [
+                      "**/platform/**",
+                      "!**/platform/clock/clock.ts",
+                      "!**/platform/files/files.ts",
+                      "!**/platform/storage/storage.ts",
+                      "!**/platform/wake/wake.ts",
+                      "!**/platform/storage/memory-storage.ts"
+                    ],
+                    "message": "shell/ takes platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json. Tests may also import memory-storage.ts."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/**", "!**/*.test.ts", "!**/*.test.tsx"],
       "linter": {
         "rules": {
           "style": {
@@ -304,6 +360,41 @@
                       "!**/platform/wake/wake.ts"
                     ],
                     "message": "apps/ take platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/apps/**/*.test.ts", "apps/web/src/apps/**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/shell", "**/shell/**", "**/app", "**/app/**"],
+                    "message": "apps/ may import themselves, ui/, packages/ and platform interfaces."
+                  },
+                  {
+                    "group": ["../../*", "../../*/**", "!../../../**"],
+                    "message": "An app never imports another app; share through ui/ or packages/. App files live one folder deep: apps/<app>/<component>/."
+                  },
+                  {
+                    "group": [
+                      "**/platform/**",
+                      "!**/platform/clock/clock.ts",
+                      "!**/platform/files/files.ts",
+                      "!**/platform/storage/storage.ts",
+                      "!**/platform/wake/wake.ts",
+                      "!**/platform/storage/memory-storage.ts"
+                    ],
+                    "message": "apps/ take platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json. Tests may also import memory-storage.ts."
                   }
                 ]
               }

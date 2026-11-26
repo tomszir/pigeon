@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createMemoryStore } from '../platform/storage/storage.ts'
+import { createMemoryStore } from '../platform/storage/memory-storage.ts'
 import { isNewer, rememberVersion, SEEN_VERSION, updatedSinceLastVisit } from './whats-new.ts'
 
 describe('isNewer', () => {
