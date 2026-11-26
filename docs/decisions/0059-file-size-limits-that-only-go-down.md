@@ -13,7 +13,7 @@ Biome's `style/noExcessiveLinesPerFile` counts a file's lines, blank ones includ
 
 ## Decision
 
-- **One limit for source, one for tests.** 600 lines for a source file, 1,000 for a `*.test.ts` or `*.test.tsx` file, which holds many small cases under one `describe`. Blank lines count.
+- **One limit for source, one for tests.** 600 lines for a source file, 1,000 for a `*.test.ts`, `*.test.tsx` or Playwright `*.spec.ts` file, which holds many small cases under one `describe`. Blank lines count.
 - **Files already over get a per-file override.** Each is set to its size when the rule went in, rounded up to the next 100, in its own `biome.json` override. They can't grow past that. When a file is split, its number is lowered to match, or the override removed once it is under the limit.
 - **No function-length rule.** A factory such as `createMessenger` is one long closure on purpose, and a Solid component is a long function of markup. A length limit there would push code into helpers that share state through parameters and read worse. The file limit is what keeps those closures from collecting everything.
 
