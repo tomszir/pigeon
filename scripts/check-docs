@@ -9,6 +9,11 @@
 #   4. Docs and code are written for a stranger: outside docs/decisions/,
 #      docs/roadmap.md and its companions (docs/roadmap-*.md), nothing cites a decision record or a milestone, links to
 #      the roadmap, or mentions a homelab.
+#   5. No two decision records share a number, apart from the pairs named in
+#      SHARED_NUMBERS below, which were numbered in parallel before this check.
+#   6. Every repository path that docs/architecture.md or docs/verification.md cites exists:
+#      a `code span` starting at a top-level folder (apps/, packages/, ...) or at one of the web
+#      app's (ui/, app/, platform/, shell/), or a link target, outside fenced blocks.
 #
 # Usage: scripts/check-docs [--base <ref>] [--hook claude]
 #
@@ -29,7 +34,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--base) base=${2:?--base needs a ref}; shift 2 ;;
 	--hook) hook=${2:?--hook needs a name}; shift 2 ;;
-	-h | --help) sed -n '2,20s/^# \{0,1\}//p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,27s/^# \{0,1\}//p' "$0"; exit 0 ;;
 	*) echo "check-docs: unknown argument $1" >&2; exit 64 ;;
 	esac
 done
@@ -121,6 +126,50 @@ if [ -d docs ]; then
 			{ if ($0 ~ /^([#>|*-]|```|[0-9]+\.)/) exit 1; ok = 1; exit 0 }
 			END { if (!ok) exit 1 }
 		' "$f" || echo "$f must open with a \"# Heading\" and then a one-line summary." >>"$problems"
+	done
+
+	# Rule 5. Two records with one number came from branches that each took "the next one".
+	# The pairs listed here are the only ones allowed; a third record with either number, or a
+	# new pair, fails.
+	SHARED_NUMBERS=" 0039-link-previews-without-the-inviter.md 0039-messages-through-lighthouses.md 0040-a-content-security-policy-from-headers.md 0040-minor-versions-for-bigger-features.md "
+	if [ -d docs/decisions ]; then
+		find docs/decisions -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.md' | sed 's|.*/||' | sort | cut -c1-4 | uniq -d |
+			while IFS= read -r n; do
+				for f in docs/decisions/"$n"-*.md; do
+					case $SHARED_NUMBERS in
+					*" ${f##*/} "*) ;;
+					*) echo "$f shares the number $n with another decision record; take the number after the highest." >>"$problems" ;;
+					esac
+				done
+			done
+	fi
+
+	# Rule 6. A cited path that has gone is a doc that has drifted. Two kinds of citation are
+	# read, outside fenced blocks: a `code span` that starts at a top-level folder, or at one of
+	# the web app's own (ui/, app/, platform/, shell/, which the docs write relative to
+	# apps/web/src/), and the target of a [link](target). A bare file name or a placeholder such as
+	# apps/<name>/ is not read. A trailing :line:col, ?query or #anchor, and a leading ./, are
+	# not part of the path.
+	for doc in docs/architecture.md docs/verification.md; do
+		[ -f "$doc" ] || continue
+		prose=$(awk '/^(```|~~~)/ { fenced = !fenced; next } !fenced' "$doc")
+		clean() { sed -E 's/[#?].*$//; s/(:[0-9]+){1,2}(-[0-9]+)?$//; s|^\./||'; }
+		{
+			printf '%s\n' "$prose" | grep -oE '`[^`]+`' | tr -d '`' | clean |
+				grep -E '^(apps|packages|docs|scripts|verification|biome-plugins|vendor|assets|\.github|ui|app|platform|shell)/' |
+				grep -vE '[<>*{} ]|\.\.\.' | while IFS= read -r span; do
+					case $span in
+					ui/* | app/* | platform/* | shell/*) [ -e "apps/web/src/$span" ] || [ -e "$span" ] || echo "$span" ;;
+					*) [ -e "$span" ] || echo "$span" ;;
+					esac
+				done
+			printf '%s\n' "$prose" | sed -E 's/`[^`]*`//g' | grep -oE '\]\([^)]+\)' |
+				sed -E 's/^\]\(//; s/\)$//' | clean | grep -vE '^$|^[a-z]+:|^/' | while IFS= read -r link; do
+				[ -e "$(dirname "$doc")/$link" ] || echo "$(dirname "$doc")/$link"
+			done
+		} | sort -u | while IFS= read -r path; do
+			echo "$doc cites $path, which does not exist." >>"$problems"
+		done
 	done
 else
 	echo "docs/ is missing." >>"$problems"
