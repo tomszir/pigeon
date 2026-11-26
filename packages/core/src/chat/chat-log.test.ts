@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
-import { canonicalBytes } from '../encoding/canonical.ts'
+import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import { isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner, typedSigner } from '../testing/testing.ts'
 import {
   appendMessage,
   batchEntries,
@@ -184,15 +184,35 @@ describe('mergeEntries', () => {
 })
 
 describe('an entry’s signed bytes', () => {
-  it('say it’s a chat entry, and of which chat', async () => {
-    const { entry } = await appendMessage(emptyLog('pair:x'), rook, 'hi', 5)
-    const { sig, ...unsigned } = entry
-    const bytes = canonicalBytes({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned })
-    const signature = base32DecodeExact(sig)
-    expect(signature.ok && (await fakeCrypto.verify(rook.id, signature.value, bytes))).toBe(true)
+  it('are signed as every Pigeon checks them, and taken saying they’re a chat entry too', async () => {
+    const signedBy = async (signer: typeof rook, bytes: (u: object) => Uint8Array) => {
+      const { entry } = await appendMessage(emptyLog('pair:x'), signer, 'hi', 5)
+      const { sig, ...unsigned } = entry
+      const signature = base32DecodeExact(sig)
+      const holds =
+        signature.ok && (await fakeCrypto.verify(rook.id, signature.value, bytes(unsigned)))
+      const taken = await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)
+      return holds && taken.entries.length === 1
+    }
+    // Signed with no `v`, so a Pigeon that checks only those bytes takes it.
+    expect(
+      await signedBy(rook, (u) =>
+        canonicalBytes({ log: 'pair:x', ...(u as Record<string, Json>) }),
+      ),
+    ).toBe(true)
+    // A Pigeon that signs the bytes saying what it is, and of which chat, is taken too.
+    expect(
+      await signedBy(typedSigner(rook), (u) =>
+        canonicalBytes({
+          v: 'pigeon/chat-entry/v1',
+          log: 'pair:x',
+          ...(u as Record<string, Json>),
+        }),
+      ),
+    ).toBe(true)
   })
 
-  it('still verify as signed before they said what they are, and in no other shape', async () => {
+  it('are taken in either shape, and in no other', async () => {
     const unsigned = { author: mika.id, seq: 1, lamport: 1, at: 0, text: 'hi' }
     const over = async (value: Record<string, string | number>) => ({
       ...unsigned,
@@ -200,7 +220,7 @@ describe('an entry’s signed bytes', () => {
     })
     const take = async (entry: LogEntry) =>
       (await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)).entries.length
-    // As a Pigeon signed it before, and as one signs it now.
+    // With no `v`, and saying it's a chat entry.
     expect(await take(await over({ log: 'pair:x', ...unsigned }))).toBe(1)
     expect(await take(await over({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned }))).toBe(
       1,

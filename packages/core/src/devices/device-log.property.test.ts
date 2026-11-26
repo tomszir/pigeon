@@ -1,7 +1,7 @@
 // Property tests for the device log's merge rules. Each run writes a random history the way the
 // owner's devices would: adds, removes and renames, a recovery key, recoveries, and signatures
 // spelled high-S or low-S as Pigeons from before and after low-S spell them, over the bytes
-// entries are signed over now or the ones from before they said what they're for. From it come the
+// every Pigeon checks or the ones that say what an entry is. From it come the
 // copies others hold or can make: older copies, tails, a signature's other spelling or capitals,
 // a stolen writer adding to an epoch it was recovered out of, a recovery key used twice, and
 // recovers forged with keys already used. They're merged in random orders, and every result is
@@ -15,7 +15,7 @@ import type { Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import { canonicalSignature } from '../identity/signature.ts'
 import { flipS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeSigner, untypedSigner } from '../testing/testing.ts'
+import { fakeSigner, typedSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntry,
@@ -38,11 +38,10 @@ import {
 const crypto = p256Crypto()
 
 /**
- * How a device signed: an updated Pigeon low-S over bytes that say what they're for; one from
- * before that, low-S over the bytes entries were signed over then; one from before low-S over
- * those bytes too, either way.
+ * How a device signed: low-S over the bytes that say what an entry is; an updated Pigeon, low-S
+ * over the bytes every Pigeon checks; one from before low-S over those bytes too, either way.
  */
-type Spelling = 'updated' | 'untyped' | 'old-low' | 'old-high'
+type Spelling = 'typed' | 'updated' | 'old-low' | 'old-high'
 
 type Op =
   | {
@@ -106,11 +105,11 @@ const signerFor = (cast: Cast, id: PeerId, spelling: Spelling): Signer => {
         : cast.owner
       : cast.devices.find((device) => device.id === id)
   if (signer === undefined) throw new Error('no such device')
-  return spelling === 'updated' ? signer : untypedSigner(signer)
+  return spelling === 'typed' ? typedSigner(signer) : signer
 }
 
 /** Whether a Pigeon signing this way reads its stored log low-S, as Pigeons since low-S do. */
-const sinceLowS = (spelling: Spelling) => spelling === 'updated' || spelling === 'untyped'
+const sinceLowS = (spelling: Spelling) => spelling === 'typed' || spelling === 'updated'
 
 // What a log says, whatever spelling it says it in: every signature decoded, either case, and
 // made low-S. Only the first device's key is P-256, so it's the one a twin spelling can come from.
@@ -409,7 +408,7 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
   return { stored, sent, final, honest, forged, kept }
 }
 
-const spelling = fc.constantFrom<Spelling>('updated', 'untyped', 'old-low', 'old-high')
+const spelling = fc.constantFrom<Spelling>('typed', 'updated', 'old-low', 'old-high')
 // Removals are what most rules guard, and each needs an add before it, so they come up often.
 const change = fc.record({
   kind: fc.constantFrom<'add' | 'remove' | 'name'>('add', 'remove', 'add', 'remove', 'name'),
