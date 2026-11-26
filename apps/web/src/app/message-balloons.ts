@@ -26,8 +26,10 @@ export interface MessageSummary {
   readonly fromOne: boolean
 }
 
-/** Folds the waiting messages into one balloon's words. */
-export function summarizeMessages(waiting: readonly HeldMessage[]): MessageSummary {
+/** Folds two or more waiting messages into one balloon's words. */
+export function summarizeMessages(
+  waiting: readonly [HeldMessage, HeldMessage, ...HeldMessage[]],
+): MessageSummary {
   const names = [...new Set(waiting.map((message) => message.friend.name))]
   const who =
     names.length === 1
@@ -94,16 +96,15 @@ export function createMessageBalloons(deps: MessageBalloonsDeps): MessageBalloon
   let cancelFlush: (() => void) | undefined
   const sayMessages = () => {
     cancelFlush = undefined
-    const waiting = held
+    const [first, second, ...rest] = held
     held = []
-    const first = waiting[0]
     if (first === undefined) return
     lastMessageBalloon = now()
-    if (waiting.length === 1) {
+    if (second === undefined) {
       notifyFrom(first.friend, { title: `${first.friend.name} says:`, body: first.text })
       return
     }
-    const { title, body, fromOne } = summarizeMessages(waiting)
+    const { title, body, fromOne } = summarizeMessages([first, second, ...rest])
     api.notify({
       title,
       icon: fromOne ? (birds.get(first.friend.id) ?? friendIcon) : brandIcon('messenger-16'),

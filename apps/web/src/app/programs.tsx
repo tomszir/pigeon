@@ -1,5 +1,5 @@
-// What's on the desktop and in the menu, and what each opens. Content lives in tables here; the
-// shell draws it and the apps fill the windows.
+// What's on the desktop and in the menu, and what each opens: this file assembles the openers, the
+// tables of programs are in launchers.ts, the shell draws it and the apps fill the windows.
 
 import type { Invite } from '@pigeon/core'
 import { type Accessor, createEffect, createSignal, onCleanup, Show } from 'solid-js'
