@@ -32,7 +32,7 @@ ${figure(
    +------------------------------------------------------------+
 `),
 )}
-<p>The file is sealed with your passphrase, made slow to guess on purpose, so a stranger who finds it can't read it.</p>
+<p>The file is sealed with your passphrase, made slow to guess on purpose, so a stranger who finds it can't read it. Guard both: the file holds every chat you have. It also holds each friend's secret, which lets whoever opens it into your private meeting places with that friend, where they can see when your friend is online, their name and devices, and their address. They still can't read or send your messages there: that takes a key that never leaves your device.</p>
 
 <h2>Opening it on a device of yours</h2>
 ${steps([
