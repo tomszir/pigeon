@@ -4,6 +4,35 @@
      `---'       version, newest first
 ==============================================
 
+0.8.1, 26 November 2026
+----------------------------------------------
+  * Adding a friend is safer. Typed codes now
+    look like K7RT-VP2-BXQ, links and QR codes
+    carry a longer secret, and you approve
+    each person, with their name, fingerprint
+    and bird, before they're added.
+  * Linking a device shows its fingerprint on
+    both screens, so you can check it's yours.
+  * Pigeon checks that a friend's messages
+    come straight from them, not passed along
+    by someone in between.
+  * A device you removed stays removed, on
+    every browser.
+  * With "Always go through the relay" on,
+    Pigeon only reaches a Lighthouse a friend
+    names at a public address, and says when
+    someone else's Lighthouse would see yours.
+  * Friends still on 0.8.0 need to reload
+    Pigeon before you can add each other.
+  * Rejoin the self room and a link when
+    relay-only changes.
+  * Stop a made-up message time from breaking
+    a chat's sync.
+  * Stop saved chats and names from faking
+    your lines.
+  * Keep mail's expiry only to the hour.
+  * Start under plain Node again.
+
 0.8.0, 25 November 2026
 ----------------------------------------------
   * Write to a friend who's offline and your
