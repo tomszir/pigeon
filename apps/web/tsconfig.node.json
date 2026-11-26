@@ -9,6 +9,8 @@
     "ports.ts",
     "site-headers.ts",
     "site-headers.test.ts",
+    "version-file.ts",
+    "version-file.test.ts",
     "share-card.ts",
     "e2e"
   ]
