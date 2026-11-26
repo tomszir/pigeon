@@ -94,6 +94,7 @@ export function Today(props: TodayProps) {
       <Show
         when={props.messenger}
         fallback={<p class={styles.note}>{props.problem ?? 'Pigeon is starting...'}</p>}
+        keyed
       >
         {(messenger) => (
           <div class={styles.rows}>
@@ -120,7 +121,7 @@ export function Today(props: TodayProps) {
               </div>
               <NotificationList
                 notifications={props.notifications}
-                messenger={messenger()}
+                messenger={messenger}
                 now={time().getTime()}
                 onOpenConversation={props.onOpenConversation}
                 onOpenRequests={props.onOpenRequests}
@@ -141,7 +142,7 @@ export function Today(props: TodayProps) {
                         onClick={() => props.onOpenConversation(friend.id)}
                       >
                         <FriendAvatar
-                          messenger={messenger()}
+                          messenger={messenger}
                           id={friend.id}
                           name={friend.name}
                           size={64}
@@ -157,7 +158,7 @@ export function Today(props: TodayProps) {
 
             <Show when={name() !== '' && away().length === 0 && online().length === 0}>
               <Show
-                when={messenger().friends().length === 0}
+                when={messenger.friends().length === 0}
                 fallback={
                   <p class={styles.caughtUp}>
                     <img src={tango('face-smile', 22)} alt="" width="22" height="22" />
