@@ -661,6 +661,22 @@ export function createPrograms(
         icon: tangoIcon('dialog-warning', 16),
         body: 'Their saved records could not be read. They are kept as they were stored and not changed, and everyone else loaded.',
       }),
+    onBlockedSetAside: (count) =>
+      api.notify({
+        title:
+          count === 1
+            ? 'A blocked person could not be loaded'
+            : `${count} blocked people could not be loaded`,
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'Their saved records could not be read. They are kept as they were stored and not changed, and everyone else on your blocked list loaded.',
+      }),
+    onFarewellsSetAside: (count) =>
+      api.notify({
+        title:
+          count === 1 ? 'A farewell could not be loaded' : `${count} farewells could not be loaded`,
+        icon: tangoIcon('dialog-warning', 16),
+        body: 'Saved goodbyes to friends you removed could not be read, so those friends may not be told. They are kept as they were stored and not changed, and every other farewell loaded.',
+      }),
     onTwin: () =>
       api.notify({
         title: 'This Pigeon is also open somewhere else',

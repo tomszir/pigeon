@@ -1617,6 +1617,65 @@ describe('unreadable saved friends', () => {
   })
 })
 
+describe('unreadable saved blocks and farewells', () => {
+  const ids = [fakeSigner('b1').id, fakeSigner('b2').id, fakeSigner('b3').id]
+
+  it('sets an unreadable blocked record aside, keeps the rest blocked and never saves over it', async () => {
+    const store = createMemoryStore()
+    const one = { id: ids[0], handle: 'One', at: NOON }
+    const bad = { id: ids[1], handle: 7, at: NOON }
+    const three = { id: ids[2], handle: 'Three', at: NOON }
+    await store.set('blocked', [one, bad, three] as never)
+    const told: number[] = []
+    const rook = await messenger(createMemoryNetwork(), 'rook', {
+      store,
+      events: { onBlockedSetAside: (count) => told.push(count) },
+    })
+    expect(rook.messenger.blocked().map((record) => record.handle)).toEqual(['One', 'Three'])
+    expect(told).toEqual([1])
+    expect(await store.get('blocked-unreadable')).toEqual([bad])
+
+    // A save writes only the readable ones and leaves the set-aside one be.
+    await rook.messenger.unblock(ids[0] as never)
+    expect(await store.get('blocked')).toEqual([three])
+    expect(await store.get('blocked-unreadable')).toEqual([bad])
+
+    // Told again after another start, nothing kept twice.
+    await rook.messenger.close()
+    const again = await messenger(createMemoryNetwork(), 'rook', {
+      store,
+      events: { onBlockedSetAside: (count) => told.push(count) },
+    })
+    expect(again.messenger.blocked()).toHaveLength(1)
+    expect(told).toEqual([1, 1])
+    expect(await store.get('blocked-unreadable')).toEqual([bad])
+  })
+
+  it('keeps a blocked value that is no list at all', async () => {
+    const store = createMemoryStore()
+    await store.set('blocked', 'nope' as never)
+    const rook = await messenger(createMemoryNetwork(), 'rook', { store })
+    expect(rook.messenger.blocked()).toEqual([])
+    expect(await store.get('blocked-unreadable')).toEqual(['nope'])
+  })
+
+  it('sets an unreadable farewell aside, keeps the others, bare ids included', async () => {
+    const store = createMemoryStore()
+    const bad = { id: ids[1], secret: 'not a secret' }
+    await store.set('farewells', [ids[0], bad, { id: ids[2] }] as never)
+    const told: number[] = []
+    const rook = await messenger(createMemoryNetwork(), 'rook', {
+      store,
+      events: { onFarewellsSetAside: (count) => told.push(count) },
+    })
+    await flush()
+    expect(told).toEqual([1])
+    expect(await store.get('farewells-unreadable')).toEqual([bad])
+    await rook.messenger.close()
+    expect(await store.get('farewells-unreadable')).toEqual([bad])
+  })
+})
+
 describe('import checks', () => {
   async function exported() {
     const { a: rook } = await pair(createMemoryNetwork())
