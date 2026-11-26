@@ -4,7 +4,7 @@
 
 import type { Accessor } from 'solid-js'
 import { SOURCE_URL } from '../apps/about/about/about.tsx'
-import { HELP_HOME } from '../apps/help/help-pages/help-pages.ts'
+import { HELP_HOME } from '../apps/help/help-pages/help-pages.pigeon.tsx'
 import type { AddFriendTab, IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 import type { Messenger } from '../apps/messenger/service/service.ts'
 import type { HomeApp } from '../apps/messenger/today/today.tsx'

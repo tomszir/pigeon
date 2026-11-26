@@ -1,18 +1,14 @@
+/** @jsxImportSource @pigeon/pigeonhtml */
 // "The Pigeon Protocol": an RFC-style spec made from docs/ each build, so it can't drift from
 // them. docs/protocol.md gives the numbered sections, docs/flows.md and
 // docs/glossary.md the appendices, one page per `##` section.
 
+import { type BodyAttributes, type Child, type Html, raw } from '@pigeon/pigeonhtml/jsx-runtime'
 import flowsMarkdown from '../../../../../../docs/flows.md?raw'
 import glossaryMarkdown from '../../../../../../docs/glossary.md?raw'
 import protocolMarkdown from '../../../../../../docs/protocol.md?raw'
-import {
-  type Block,
-  escapeHtml,
-  parseBlocks,
-  renderBlock,
-  renderInline,
-} from '../markdown/markdown.ts'
-import { HELP_HOME, type HelpPage, helpDocument } from '../page/page.ts'
+import { type Block, parseBlocks, renderBlock, renderInline } from '../markdown/markdown.ts'
+import { HELP_HOME, type HelpPage, helpDocument, Pre } from '../page/page.pigeon.tsx'
 
 export const PROTOCOL_HOME = `${HELP_HOME}protocol/`
 
@@ -89,16 +85,19 @@ const parseDoc = (source: SpecSource): ParsedDoc => {
 }
 
 /** The 72-column header every RFC page carries. */
-const header = (right2: string) => {
+const Header = (props: { readonly right2: string }) => {
   const line = (left: string, right: string) =>
     `${left}${' '.repeat(Math.max(1, 72 - left.length - right.length))}${right}`
-  return `<pre class="head">${escapeHtml(
-    [
-      line('Pigeon Working Group', SPEC_TITLE),
-      line('Pigeon Note: 1', right2),
-      line('Category: Informational', 'Made from docs/ when built'),
-    ].join('\n'),
-  )}</pre>`
+  return (
+    <Pre
+      class="head"
+      text={[
+        line('Pigeon Working Group', SPEC_TITLE),
+        line('Pigeon Note: 1', props.right2),
+        line('Category: Informational', 'Made from docs/ when built'),
+      ].join('\n')}
+    />
+  )
 }
 
 const STYLE = `
@@ -117,24 +116,31 @@ th { background-color: #eeeeee; text-align: left; }
 .nav td { font-size: 12px; }
 `
 
-const BODY = 'bgcolor="#ffffff" text="#000000" link="#0000ee" vlink="#551a8b" alink="#ff0000"'
+const BODY: BodyAttributes = {
+  bgcolor: '#ffffff',
+  text: '#000000',
+  link: '#0000ee',
+  vlink: '#551a8b',
+  alink: '#ff0000',
+}
 
-const link = (address: string, text: string) =>
-  `<a href="${escapeHtml(address)}">${escapeHtml(text)}</a>`
-
-const specPage = (title: string, right2: string, body: string, nav: string) =>
+const specPage = (title: string, right2: string, body: Child, nav: Child) =>
   helpDocument({
     title,
     style: STYLE,
     bodyAttributes: BODY,
-    body: [
-      '<table width="680" cellpadding="0" cellspacing="0" border="0"><tr><td>',
-      header(right2),
-      body,
-      '<hr noshade size="1">',
-      nav,
-      '</td></tr></table>',
-    ].join('\n'),
+    body: (
+      <table width="680" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td>
+            <Header right2={right2} />
+            {body}
+            <hr noshade size="1" />
+            {nav}
+          </td>
+        </tr>
+      </table>
+    ),
   })
 
 /** Builds the spec's pages, and its contents, from the docs it's given. */
@@ -212,86 +218,146 @@ export function buildSpec(sources: readonly SpecSource[]): Spec {
       return doc.get(anchor.toLowerCase()) ?? doc.get('')
     }
 
-  const blocksHtml = (blocks: readonly Block[], file: string, number: string) => {
+  /** A doc's blocks, as the converter writes them: it escapes whatever it reads, so it's `raw`. */
+  const blocksHtml = (blocks: readonly Block[], file: string, number: string): Html => {
     let sub = 0
-    return blocks
-      .map((block) => {
-        if (block.kind === 'heading' && block.level === 3) {
-          sub++
-          return `<h3>${escapeHtml(`${number}.${sub}.`)}&nbsp;&nbsp;${renderInline(block.text, linkTo(file))}</h3>`
-        }
-        if (block.kind === 'heading') return `<h4>${renderInline(block.text, linkTo(file))}</h4>`
-        return renderBlock(block, linkTo(file))
-      })
-      .join('\n')
+    return (
+      <>
+        {blocks.map((block) => {
+          if (block.kind === 'heading' && block.level === 3) {
+            sub++
+            return (
+              <h3>
+                {`${number}.${sub}.`}&nbsp;&nbsp;{raw(renderInline(block.text, linkTo(file)))}
+              </h3>
+            )
+          }
+          if (block.kind === 'heading')
+            return <h4>{raw(renderInline(block.text, linkTo(file)))}</h4>
+          return raw(renderBlock(block, linkTo(file)))
+        })}
+      </>
+    )
   }
 
   const nav = (i: number) => {
     const prev = i === 0 ? undefined : placed[i - 1]
     const next = placed[i + 1]
     const name = (p: Placed) => `${p.number}. ${plainText(p.section?.heading ?? p.doc.title)}`
-    return [
-      '<table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>',
-      `<td align="left" width="40%">${prev ? link(prev.address, `<< ${name(prev)}`) : link(PROTOCOL_HOME, '<< Contents')}</td>`,
-      `<td align="center" width="20%">${link(PROTOCOL_HOME, 'Contents')}</td>`,
-      `<td align="right" width="40%">${next ? link(next.address, `${name(next)} >>`) : link(HELP_HOME, 'Help >>')}</td>`,
-      '</tr></table>',
-    ].join('\n')
+    return (
+      <table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="left" width="40%">
+            {prev ? (
+              <a href={prev.address}>&lt;&lt; {name(prev)}</a>
+            ) : (
+              <a href={PROTOCOL_HOME}>&lt;&lt; Contents</a>
+            )}
+          </td>
+          <td align="center" width="20%">
+            <a href={PROTOCOL_HOME}>Contents</a>
+          </td>
+          <td align="right" width="40%">
+            {next ? (
+              <a href={next.address}>{name(next)} &gt;&gt;</a>
+            ) : (
+              <a href={HELP_HOME}>Help &gt;&gt;</a>
+            )}
+          </td>
+        </tr>
+      </table>
+    )
   }
 
   const pages = new Map<string, HelpPage>()
 
   // The contents page: the memo's status, protocol.md's opening as the abstract, the contents.
   const main = docs[0]
-  const toc = contents
-    .map((entry) => {
-      // Appendix sections (A.1) sit under their appendix's line; body sections don't.
-      const indent = entry.number.includes('.') ? '      ' : '   '
-      const number = `${entry.number}.`.padEnd(entry.depth === 0 ? 14 : 6)
-      return `${indent}${escapeHtml(number)}${link(entry.address, entry.title)}`
-    })
-    .join('\n')
+  const first = placed[0]
   pages.set(
     PROTOCOL_HOME,
     specPage(
       SPEC_TITLE,
       'Contents',
-      [
-        `<h1>${escapeHtml(SPEC_TITLE)}</h1>`,
-        '<h2>Status of This Memo</h2>',
-        "<p>This memo says how Pigeon talks to other Pigeons: how a peer is known, how friends find each other, and what they send. It is put together from Pigeon's own notes every time Pigeon is built, so it always says what this copy of Pigeon does. Distribution of this memo is unlimited.</p>",
-        '<h2>Abstract</h2>',
-        main ? blocksHtml(main.intro, main.file, '0') : '',
-        '<h2>Table of Contents</h2>',
-        `<pre>${toc}</pre>`,
-        `<p>${link(HELP_HOME, 'Back to Help')}</p>`,
-      ].join('\n'),
-      `<table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="left">${link(HELP_HOME, '<< Help')}</td><td align="right">${placed[0] ? link(placed[0].address, `${placed[0].number}. ${plainText(placed[0].section?.heading ?? '')} >>`) : ''}</td></tr></table>`,
+      <>
+        <h1>{SPEC_TITLE}</h1>
+        <h2>Status of This Memo</h2>
+        <p>
+          This memo says how Pigeon talks to other Pigeons: how a peer is known, how friends find
+          each other, and what they send. It is put together from Pigeon's own notes every time
+          Pigeon is built, so it always says what this copy of Pigeon does. Distribution of this
+          memo is unlimited.
+        </p>
+        <h2>Abstract</h2>
+        {main ? blocksHtml(main.intro, main.file, '0') : ''}
+        <h2>Table of Contents</h2>
+        <pre>
+          {contents.map((entry, i) => (
+            <>
+              {i === 0 ? '' : '\n'}
+              {/* Appendix sections (A.1) sit under their appendix's line; body sections don't. */}
+              {entry.number.includes('.') ? '      ' : '   '}
+              {`${entry.number}.`.padEnd(entry.depth === 0 ? 14 : 6)}
+              <a href={entry.address}>{entry.title}</a>
+            </>
+          ))}
+        </pre>
+        <p>
+          <a href={HELP_HOME}>Back to Help</a>
+        </p>
+      </>,
+      <table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="left">
+            <a href={HELP_HOME}>&lt;&lt; Help</a>
+          </td>
+          <td align="right">
+            {first ? (
+              <a href={first.address}>
+                {first.number}. {plainText(first.section?.heading ?? '')} &gt;&gt;
+              </a>
+            ) : (
+              ''
+            )}
+          </td>
+        </tr>
+      </table>,
     ),
   )
 
   placed.forEach((p, i) => {
     const heading = p.section?.heading ?? p.doc.title
     const lead =
-      p.appendix !== undefined && (p.section === undefined || p.number.endsWith('.1'))
-        ? [
-            `<h2>${escapeHtml(`${p.appendix}.`)}&nbsp;&nbsp;${renderInline(p.doc.title, linkTo(p.doc.file))}</h2>`,
-            blocksHtml(p.doc.intro, p.doc.file, p.number),
-          ].join('\n')
-        : ''
+      p.appendix !== undefined && (p.section === undefined || p.number.endsWith('.1')) ? (
+        <>
+          <h2>
+            {`${p.appendix}.`}&nbsp;&nbsp;{raw(renderInline(p.doc.title, linkTo(p.doc.file)))}
+          </h2>
+          {blocksHtml(p.doc.intro, p.doc.file, p.number)}
+        </>
+      ) : (
+        ''
+      )
     const own =
-      p.section === undefined
-        ? ''
-        : [
-            `<h2>${escapeHtml(`${p.number}.`)}&nbsp;&nbsp;${renderInline(heading, linkTo(p.doc.file))}</h2>`,
-            blocksHtml(p.section.blocks, p.doc.file, p.number),
-          ].join('\n')
+      p.section === undefined ? (
+        ''
+      ) : (
+        <>
+          <h2>
+            {`${p.number}.`}&nbsp;&nbsp;{raw(renderInline(heading, linkTo(p.doc.file)))}
+          </h2>
+          {blocksHtml(p.section.blocks, p.doc.file, p.number)}
+        </>
+      )
     pages.set(
       p.address,
       specPage(
         `${p.number}. ${plainText(heading)} - ${SPEC_TITLE}`,
         p.appendix === undefined ? `Section ${p.number}` : p.appendix,
-        [lead, own].filter((part) => part !== '').join('\n'),
+        <>
+          {lead}
+          {own}
+        </>,
         nav(i),
       ),
     )

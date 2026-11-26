@@ -67,9 +67,12 @@ packages/
                 secrets go in; long-lived keys stay in WebCrypto.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse. allowlists.ts holds the
-                tables, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
-                allowlist, urls.ts the scheme check, and testing/ the tests' re-parse
-                audit and URL functions (docs/pigeonhtml.md).
+                tables, as literals the sanitizer's Maps and Sets and the JSX types are
+                built from, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
+                allowlist, urls.ts the scheme check, jsx/ the runtime that turns a page
+                written as JSX into text (exported as @pigeon/pigeonhtml/jsx-runtime and
+                jsx-dev-runtime) with its types in elements.ts, and testing/ the tests'
+                re-parse audit and URL functions (docs/pigeonhtml.md).
 apps/
   web/          The site (Vite + Solid), served by a Cloudflare Worker.
     worker/     The Worker: static assets, and /api/turn, which hands out short-lived
@@ -113,18 +116,21 @@ apps/
                 (the sandboxed frame, its CSP and base stylesheet), error-page/
                 ("page not hosted" and "too big"), and local-pages/, the pages
                 bundled with Pigeon as maps from address to page, looked up in
-                order. Explorer's start page is PigeonHTML in an .html file, which
-                Biome leaves alone since it's written for 2003. help/ is
+                order. Explorer's start page is PigeonHTML in a .html file, which Biome
+                leaves alone since it's written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
-                pigeon://help, with no window of its own; they are built in
-                TypeScript, not written as .html files:
-                help-pages/ exports HELP_PAGES, every page by address, which app/
-                hands to Explorer after the start page, and Help in the Pigeon
-                menu opens; how-pigeon-works/ is the hand-written guide;
+                pigeon://help, with no window of its own, written as typed JSX in
+                *.pigeon.tsx files (docs/pigeonhtml.md): help-pages/ exports
+                HELP_PAGES, every page by address, which app/bundled-pages.ts lists
+                after the start page for Explorer, and Help in the Pigeon
+                menu opens; how-pigeon-works/ is the hand-written guide, frame.pigeon.tsx
+                its shared look and a file for each chapter;
                 protocol-spec/ builds "The Pigeon Protocol" from docs/protocol.md,
                 flows.md and glossary.md, imported with ?raw, so it can't drift;
-                markdown/ is the small converter it uses, and page/ the parts
-                every page shares.
+                markdown/ is the small converter it uses, which writes escaped strings
+                that the spec puts in with raw(), and page/ the parts
+                every page shares: the document and <Pre>, which keeps a diagram's
+                whitespace.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
                 (app/programs.tsx, which keeps the assembly and imports the files that
@@ -133,6 +139,8 @@ apps/
                 the recovery key, given its clock and timer, and launchers.ts holds the
                 tables of the desktop's, the menu's and the Pocket's programs; each is
                 handed the openers it needs and nothing else imports them).
+                bundled-pages.ts lists the pages that come with Pigeon, and its test checks
+                each against PigeonHTML.
                 start-messenger.ts makes or loads the identity and this device's sealing key
                 and builds the Messenger; address-invite.ts reads an invite link
                 from the address bar once and removes it; official-lighthouses.ts lists the Lighthouses a new Pigeon
@@ -180,6 +188,7 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - **No import cycles.** Biome's `suspicious/noImportCycles` is an error, so a file never reaches itself through its imports; a shared type goes in a small file both sides import (`identity/peer-id.ts`, which `crypto.ts` and `identity.ts` share). The rule runs with `ignoreTypes`, so a cycle made only of `import type` is not reported; `messenger/service/stored.ts` and `service.ts` import each other's types that way.
 - **Files stay short.** Biome's `style/noExcessiveLinesPerFile` is an error above 600 lines for a source file and 1,000 for a test file (`*.test.ts`, `*.test.tsx`, `*.spec.ts`), blank lines counted. A file that was already longer has its own limit in `biome.json`, its size rounded up to the next 100, so it can't grow; splitting it means lowering that number, or deleting the override once the file is under the limit. There is no limit on a function's length, because a factory closure or a Solid component is long by design; the file limit is what stops one collecting everything.
 - **Packages name the type of every export.** Each `packages/*/tsconfig.json` sets `isolatedDeclarations`, so an exported function, constant or class says its return or value type (`export const MAX_BLOB_BYTES: number = 64 * 1024`) instead of leaving it to inference. A declaration file can then be made from one file at a time, and a package's public types don't shift when its implementation changes. Nothing is emitted: `declaration` is on only because the option needs it. The apps' `tsconfig.json` files don't set it.
+- **`.tsx` is Solid, except `*.pigeon.tsx`.** Solid's Vite plugin compiles every `.tsx` file to DOM code. A file named `*.pigeon.tsx` (or `*.pigeon.test.tsx`) is excluded from it and starts with `/** @jsxImportSource @pigeon/pigeonhtml */`, and a Vite plugin (`apps/web/pigeon-pages.ts`) refuses a `.tsx` file where the name and the pragma disagree: its JSX writes PigeonHTML text and is never a component (docs/pigeonhtml.md). Vite's `oxc.jsx` setting is the automatic runtime so that JSX Solid didn't compile is lowered, not preserved.
 - Content and numbers live in tables, not branches.
 - Kebab-case files, PascalCase components, no barrel files except each package's `index.ts`: Biome's `performance/noBarrelFile` and `noReExportAll` are errors, and off only for `packages/*/src/index.ts`.
 - **Test fakes stay in tests.** A file that isn't a test (`*.test.ts`, `*.test.tsx`, `*.spec.ts`), isn't inside a `testing/` folder and isn't a package's `index.ts` may not import or re-export, in any form (`import`, `import()`, `export ... from`), `@pigeon/core/testing`, `@pigeon/lighthouse/testing`, a relative path through a `testing/` folder, or a `store-contract` file. `biome-plugins/no-test-fakes.grit` reports it, and `biome.json` loads it for every file but those. What it does not cover: `@pigeon/core` itself exports the fakes (`fakeCrypto`, `fakeSigner`, `fakeSealCrypto`, `fakePake`, `createMemoryNetwork`, ...) from its index, so importing them from there is not refused.

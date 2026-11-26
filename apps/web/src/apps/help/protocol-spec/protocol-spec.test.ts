@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { DIAGRAM_NOTE } from '../markdown/markdown.ts'
-import { anchorOf, buildSpec, PROTOCOL_HOME, PROTOCOL_SPEC, SPEC_SOURCES } from './protocol-spec.ts'
+import {
+  anchorOf,
+  buildSpec,
+  PROTOCOL_HOME,
+  PROTOCOL_SPEC,
+  SPEC_SOURCES,
+} from './protocol-spec.pigeon.tsx'
 
 const sources = [
   {
@@ -48,8 +54,8 @@ describe('buildSpec', () => {
       `${PROTOCOL_HOME}flows/one`,
       `${PROTOCOL_HOME}glossary`,
     ])
-    expect(page(`${PROTOCOL_HOME}identity`)).toContain('<h2>1.&nbsp;&nbsp;Identity</h2>')
-    expect(page(`${PROTOCOL_HOME}identity`)).toContain('<h3>1.1.&nbsp;&nbsp;Fingerprints</h3>')
+    expect(page(`${PROTOCOL_HOME}identity`)).toContain('<h2>1.\u00a0\u00a0Identity</h2>')
+    expect(page(`${PROTOCOL_HOME}identity`)).toContain('<h3>1.1.\u00a0\u00a0Fingerprints</h3>')
     expect(spec.pages.get(`${PROTOCOL_HOME}rooms`)?.title).toBe('2. Rooms - The Pigeon Protocol')
   })
 
@@ -67,7 +73,7 @@ describe('buildSpec', () => {
 
   it("opens an appendix with its doc's heading and opening", () => {
     expect(page(`${PROTOCOL_HOME}flows/one`)).toMatch(
-      /Appendix A\.&nbsp;&nbsp;Flows<\/h2>\n<p>Drawn\.<\/p>\n<h2>A\.1\.&nbsp;&nbsp;One<\/h2>\n<pre> a --&gt; b<\/pre>/,
+      /Appendix A\.\u00a0\u00a0Flows<\/h2><p>Drawn\.<\/p><h2>A\.1\.\u00a0\u00a0One<\/h2><pre> a --&gt; b<\/pre>/,
     )
     expect(page(`${PROTOCOL_HOME}glossary`)).toContain('<li><b>Buzz</b>: shaking.</li>')
   })
