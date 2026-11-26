@@ -36,7 +36,7 @@ The Pigeon menu and taskbar follow the era's proportions more closely than the c
 
 ## Desktop and balloons
 
-The desktop shows Pigeon Messenger, Network, Read Me.txt, Changelog.txt, Letters, Shared Files, Source Code and Trash, and on an iPhone or iPad in a Safari tab Add to Home Screen.txt, which says why and how to keep Pigeon there (also in the menu's tools, and offered once in a balloon). The text files open in Pigeon Reader (`apps/reader/`), a plain-text window with Word Wrap; What's New in the menu opens Changelog.txt too.
+The desktop shows Pigeon Messenger, Network, Read Me.txt, Changelog.txt, Letters, Shared Files, Source Code and Trash, and on an iPhone or iPad in a Safari tab Add to Home Screen.txt, which says why and how to keep Pigeon there (also in the menu's tools, and offered once in a balloon). Read Me.txt says what works, how to start, what a Lighthouse sees and the known limits, and that Pigeon hasn't been independently audited, with where to report a problem. The text files open in Pigeon Reader (`apps/reader/`), a plain-text window with Word Wrap; What's New in the menu opens Changelog.txt too.
 
 The Messenger's File menu has Always Go Through the Relay, a check item that reconnects everything through the TURN relay and says so in a balloon; Network shows the same setting, so it isn't only in the Messenger. With it on and no relay to be had, Pigeon doesn't connect directly; a balloon says the relay can't be reached and where to turn the setting off.
 
