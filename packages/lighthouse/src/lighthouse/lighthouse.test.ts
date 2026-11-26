@@ -22,6 +22,7 @@ const bytes = (n: number) => new Uint8Array(32).fill(n)
 const key = (n: number) => base32Encode(bytes(n))
 const hashOf = async (n: number) => base32Encode(await fakeCrypto.sha256(bytes(n)))
 const NOW = 1_000_000
+const HOUR = 60 * 60 * 1000
 const NONCE = key(250)
 
 /** A reply, which every frame here should get rather than having its connection closed. */
@@ -133,7 +134,7 @@ describe('the Lighthouse', () => {
     const request = await put(1, [2, 3])
     const stored = await sender(request)
     const id = await mailBlobId(fakeCrypto, request.tag, request.blob, request.drops)
-    expect(stored).toEqual({ type: 'stored', id, expires: request.expires })
+    expect(stored).toEqual({ type: 'stored', id, expires: HOUR })
 
     // The recipient's laptop and phone each fetch it, on connections of their own.
     for (const [address, drop, remaining] of [
@@ -153,7 +154,7 @@ describe('the Lighthouse', () => {
         id,
         tag: key(1),
         blob: request.blob,
-        expires: request.expires,
+        expires: HOUR,
       })
       expect(await device({ type: 'drop', id, key: key(drop) })).toEqual({
         type: 'dropped',
@@ -197,10 +198,25 @@ describe('the Lighthouse', () => {
     expect(await ask(await put(1, [2], NOW))).toEqual({ type: 'error', error: 'malformed' })
     const stored = await ask(await put(1, [2], NOW + 100))
     const id = stored.type === 'stored' ? stored.id : ''
+    // Kept to the hour: still there after the time it asked for, gone once the hour turns.
     tick(100)
+    expect((await ask({ type: 'get', id })).type).toBe('blob')
+    tick(HOUR - NOW - 100)
     expect(await ask({ type: 'get', id })).toEqual({ type: 'error', error: 'unknown' })
     expect((await ask({ type: 'list', tags: [key(1)], cursor: 0 })).type).toBe('listed')
     expect(await lighthouse.sweep()).toBe(1)
+  })
+
+  it('keeps the expiry only to the hour, never past 30 days', async () => {
+    const ask = setup().open()
+    await ask(hello)
+    const soon = await ask(await put(1, [2], NOW + 1))
+    expect(soon.type === 'stored' && soon.expires).toBe(HOUR)
+    const longest = await ask(await put(3, [4], NOW + MAX_MAIL_MS))
+    const expires = longest.type === 'stored' ? longest.expires : 0
+    expect(expires % HOUR).toBe(0)
+    expect(expires).toBeLessThanOrEqual(NOW + MAX_MAIL_MS)
+    expect(expires).toBeGreaterThan(NOW + MAX_MAIL_MS - HOUR)
   })
 
   it('takes a retry as the same mail, held as first put, without counting it again', async () => {
