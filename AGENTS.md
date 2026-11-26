@@ -30,11 +30,14 @@ Start with docs/README.md. It indexes the docs and says how to run and check the
 ## Security
 
 - A security problem goes in a private draft advisory on GitHub, as [SECURITY.md](SECURITY.md) says, never in an issue, a public PR or a commit message before its release is live. Its fix is made in the advisory's temporary private fork, and the advisory is published once the release is out. Public issues can carry the parts of a fix that reveal nothing unfixed.
+- Each advisory has its own private fork. Worktrees share one git config, so name each fork's remote after its advisory (`ghsa-<id>`), never one shared `ghsa`, and check `git remote get-url` before pushing. CI doesn't run in those forks: run `mise run check`, `mise run build` and `mise run e2e` yourself and put the output in the PR.
+- An advisory's fix reaches `main` as "Merge commit from fork", which release-please skips. So its release's notes are added by hand: a plain line in the release PR's Changelog.txt section that doesn't say how to attack it, and a Security section in the GitHub release that links the advisory. Set each advisory's patched version when publishing it.
 - Use a standard construction or a maintained, reviewed library before writing Pigeon's own. A new construction needs a decision record that says why no standard fits.
 - Long-lived keys (identity, device, sealing) stay non-extractable in WebCrypto. Don't move them into JavaScript or WebAssembly memory; libraries there get short-lived or session secrets only.
 - `packages/crypto-wasm` is the one Rust crate: protocols from maintained Rust libraries only, never Pigeon's own logic, behind an interface core declares. A Rust change passes `pnpm --filter @pigeon/crypto-wasm lint` (rustfmt, Clippy with warnings as errors) and `test`, which `mise run check` runs; bumping the `wasm-bindgen` crate means bumping the wasm-bindgen CLI in `mise.toml` to the same version.
 - Anything signed, hashed or compared has exactly one accepted encoding. Compare decoded bytes, never the text of a signature or key.
 - Every signature says what it's for (its room or kind is in the signed bytes), so it can't be reused as something else.
+- A signature proves who wrote a message, not who is sending it now. A message that counts only when its sender is there (a hello, a handshake, anything a session acts on) is bound to the channel it arrives on and refused when replayed.
 - A change to crypto, pairing, linking, device logs, recovery, sessions or Lighthouse limits gets review rounds before it's merged: a fresh reviewer each round, given the diff, the decision records and the findings already fixed, asked for proven scenarios. The maintainer approves the merge.
 
 ## Issues and decisions
