@@ -1,7 +1,9 @@
 import { emptyLog } from '@pigeon/core'
-import { expect, it } from 'vitest'
-import type { FriendView } from '../service/service.ts'
-import { friendGroups } from './buddy-list.tsx'
+import { fireEvent, render, screen } from '@solidjs/testing-library'
+import { createSignal } from 'solid-js'
+import { expect, it, vi } from 'vitest'
+import type { FriendView, Messenger } from '../service/service.ts'
+import { BuddyList, friendGroups } from './buddy-list.tsx'
 
 const friend = (over: Partial<FriendView>): FriendView => ({
   id: 'x',
@@ -117,4 +119,67 @@ it('lists people you asked, until they add you, after your friends', () => {
       ],
     },
   ])
+})
+
+/** Only what the buddy list reads of a named Pigeon with no friends. */
+function named() {
+  const [profile, setProfile] = createSignal({
+    handle: 'Rook',
+    status: 'online' as const,
+    message: '',
+  })
+  const setProfileSpy = vi.fn(async (next: ReturnType<typeof profile>) => setProfile(next))
+  const messenger = {
+    self: 'rook',
+    profile,
+    setProfile: setProfileSpy,
+    friends: () => [],
+    sentAsks: () => [],
+    inviteLinks: () => [],
+    settings: () => ({ relayOnly: false }),
+    deviceStatus: () => 'active',
+    onlineCount: () => 0,
+    muted: () => false,
+    isMine: () => false,
+    avatarOf: async () => undefined,
+    isFirstDevice: () => false,
+    waitingForList: () => false,
+    recoveryKey: () => undefined,
+    nextEpoch: () => 0,
+    canJoin: () => false,
+  } as unknown as Messenger
+  return { messenger, setProfile: setProfileSpy }
+}
+
+it('saves a new name and personal message from File, Change my name', async () => {
+  const { messenger, setProfile } = named()
+  render(() => (
+    <BuddyList
+      messenger={messenger}
+      onOpenConversation={() => undefined}
+      onAddFriend={() => undefined}
+      onAbout={() => undefined}
+      onClose={() => undefined}
+    />
+  ))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'File' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Change my name...' }))
+  // The labels' access keys split their text, so the fields are found by order.
+  const fields = screen.getAllByRole('textbox')
+  fireEvent.input(fields[0] as HTMLElement, {
+    target: { value: 'Rook II' },
+  })
+  fireEvent.input(fields[1] as HTMLElement, {
+    target: { value: 'on the roof' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+  // The form closes at once, and the new name is saved, not lost to the form going away.
+  expect(screen.queryByRole('form', { name: /^Your/ })).toBeNull()
+  expect(setProfile).toHaveBeenCalledWith({
+    handle: 'Rook II',
+    status: 'online',
+    message: 'on the roof',
+  })
+  expect(await screen.findByText('Rook II')).toBeTruthy()
+  expect(screen.getByText('on the roof')).toBeTruthy()
 })
