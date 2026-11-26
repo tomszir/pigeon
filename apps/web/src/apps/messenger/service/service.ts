@@ -46,11 +46,9 @@ import {
   type LiveCode,
   type LogEntry,
   lowSDeviceLog,
-  lowSEntry,
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   MAX_WRONG_TRIES,
-  mergeEntries,
   type NewFriend,
   newCode,
   type OpenStep,
@@ -87,7 +85,7 @@ import {
   verifySealingKey,
 } from '@pigeon/core'
 import { batch, createSignal } from 'solid-js'
-import { createStore, produce, unwrap } from 'solid-js/store'
+import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
@@ -103,7 +101,6 @@ import { createMailbox, type Mailbox, type Recipient, type Source } from './mail
 import type {
   CodeAsk,
   FriendView,
-  ImportResult,
   JoinedIdentity,
   LeaveProgress,
   LinkingState,
@@ -124,7 +121,6 @@ import {
   priorWinner,
   propose,
   proposerGone,
-  type Replacing,
   roomSecrets,
   type SecretState,
   type Sender,
@@ -137,10 +133,6 @@ import {
   type FarewellRecord,
   type FriendRecord,
   type HostedInvite,
-  importedBlocked,
-  importedFriends,
-  importedProfile,
-  importedSettings,
   isBlockedRecords,
   isChatLog,
   isFriendRecords,
@@ -152,10 +144,12 @@ import {
   type MailBook,
   type MessengerSettings,
   type Profile,
+  secretFlags,
   splitBlockedRecords,
   splitFarewells,
   splitFriendRecords,
 } from './stored.ts'
+import { createYourData } from './your-data.ts'
 
 /** How long a "typing" lasts without a refresh, and how often the sender refreshes it. */
 export const TYPING_EXPIRES_MS = 6000
@@ -222,33 +216,8 @@ function secretState(record: FriendRecord): SecretState | undefined {
   return secret === undefined ? undefined : { secret, sealed, replacing, prior, renew, begun }
 }
 
-/** A plain copy of a round: what's read from the Solid store is a proxy, which storage can't clone. */
-const plainRound = (round: Replacing): Replacing => ({
-  ...round,
-  ...(round.heard === undefined ? {} : { heard: [...round.heard] }),
-  ...(round.resent === undefined ? {} : { resent: [...round.resent] }),
-})
-
-/** What's stored of a secret's replacement: only what's set. */
-const secretFlags = ({
-  sealed,
-  replacing,
-  prior,
-  renew,
-  begun,
-}: Pick<FriendRecord, 'sealed' | 'replacing' | 'prior' | 'renew' | 'begun'>) => ({
-  ...(sealed === true ? { sealed } : {}),
-  ...(replacing === undefined ? {} : { replacing: plainRound(replacing) }),
-  ...(replacing === undefined || prior === undefined ? {} : { prior: plainRound(prior) }),
-  ...(renew === true ? { renew } : {}),
-  ...(begun === undefined ? {} : { begun }),
-})
-
 export const inviteLink = (base: string, code: LiveCode, fingerprint: string): string =>
   `${base}#${encodeInviteLink(code, fingerprint)}`
-
-/** What an export file says it is. */
-export const EXPORT_KIND = 'pigeon-export'
 
 /** How far ahead of this device's clock another of yours may stamp a name. */
 export const PROFILE_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
@@ -2263,164 +2232,19 @@ export async function createMessenger(deps: MessengerDeps) {
     return linking()
   }
 
-  /** The self secret's replacement under way and the round before, for a bundle: plain copies. */
-  const selfReplacingField = () => {
-    const kept = devices.selfSecretState()
-    const replacing = kept?.replacing
-    if (replacing === undefined) return {}
-    return {
-      selfReplacing: plainRound(replacing),
-      ...(kept?.prior === undefined ? {} : { selfPrior: plainRound(kept.prior) }),
-    }
-  }
-
-  /** What a new device needs to be you: who you are, your devices, friends and settings. */
-  const bundle = (): Json =>
-    ({
-      self,
-      deviceLog: devices.own(),
-      selfSecret: devices.selfSecret() ?? '',
-      // Whether it's from before, so the new device replaces it too if this one can't yet.
-      selfSealed: devices.selfSecretState()?.sealed === true,
-      // A replacement of the self secret still under way goes along, so the new device still
-      // hears the old secret's mail and settles with the rest.
-      ...selfReplacingField(),
-      profile: profile(),
-      friends: friendList().map(
-        ({
-          id,
-          handle,
-          addedAt,
-          petname,
-          mutedUntil,
-          secret,
-          moved,
-          sealed,
-          replacing,
-          prior,
-          renew,
-          begun,
-        }) => ({
-          id,
-          handle,
-          addedAt,
-          ...(petname === undefined ? {} : { petname }),
-          ...(mutedUntil === undefined ? {} : { mutedUntil }),
-          ...(secret === undefined ? {} : { secret }),
-          ...(moved === true ? { moved } : {}),
-          ...secretFlags({ sealed, replacing, prior, renew, begun }),
-        }),
-      ),
-      blocked: blocked(),
-      friendDevices: Object.fromEntries(
-        friendList()
-          .map((view) => [view.id, devices.friendLog(view.id)] as const)
-          .filter(([, log]) => log.entries.length > 0),
-      ),
-    }) as unknown as Json
-
-  /**
-   * Your data for a file: friends with their pair secrets, petnames, blocks, chats,
-   * friends' device logs, your profile and settings. No keys: a device's never leave it.
-   */
-  const exportData = (): Json => {
-    const {
-      deviceLog: _log,
-      selfSecret: _secret,
-      selfReplacing: _replacing,
-      selfPrior: _prior,
-      selfSealed: _sealed,
-      ...data
-    } = bundle() as Record<string, unknown>
-    return {
-      kind: EXPORT_KIND,
-      v: 1,
-      at: clock.now(),
-      ...data,
-      logs: Object.fromEntries(friendList().map((view) => [view.id, view.log])),
-      settings: settings(),
-    } as unknown as Json
-  }
-
-  /**
-   * Merges an export into this device, then the Messenger has to start again. Only a device of
-   * the same identity takes one. Chats merge entry by entry, as a catch-up would; friends and
-   * blocks this device lacks are added, and where both have one, this device's copy stays. The
-   * profile and settings come along only when this device has no name yet.
-   */
-  async function importData(value: unknown): Promise<ImportResult> {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'unreadable'
-    const fields = value as Record<string, unknown>
-    if (fields['kind'] !== EXPORT_KIND || fields['v'] !== 1) return 'unreadable'
-    if (fields['self'] !== self) return 'not-yours'
-    const records = importedFriends(fields['friends'])
-    const blockedList = importedBlocked(fields['blocked'])
-    const profileValue = importedProfile(fields['profile'])
-    const settingsValue = importedSettings(fields['settings'])
-    const logs = fields['logs']
-    const friendDevices = fields['friendDevices']
-    if (records === undefined || blockedList === undefined) return 'unreadable'
-    if (typeof logs !== 'object' || logs === null || Array.isArray(logs)) return 'unreadable'
-    // Nothing more changes here before the restart, so a session can't write over the merge.
-    await disconnect()
-    const deviceLogs =
-      typeof friendDevices === 'object' && friendDevices !== null
-        ? Object.entries(friendDevices)
-        : []
-    const ids = new Set(records.map((record) => record.id))
-    // Friends' devices first, so entries from all of them count.
-    // An export is your own data, so what it keeps is read as kept data is: any signature
-    // spelled high-S before Pigeon took only low-S comes in low-S.
-    for (const [id, log] of deviceLogs)
-      if (ids.has(id) && isDeviceLog(log) && log.identity === id) {
-        await devices.loadFriend(id)
-        await devices.takeFriend(id, lowSDeviceLog(log))
-      }
-    const have = new Map(friendList().map((view) => [view.id, view]))
-    // A pair secret from a file may be known to whoever else had the file, or to a device it
-    // came from that has since been removed, as after a recovery: each is replaced.
-    const added = records
-      .filter((record) => !have.has(record.id) && !isBlocked(record.id))
-      .map((record) => (record.secret === undefined ? record : { ...record, renew: true }))
-    for (const record of records) {
-      if (isBlocked(record.id)) continue
-      const room = await pairRoom(crypto, self, record.id)
-      const stored = await store.get(KEYS.log(record.id))
-      // The chat as the Messenger shows it lives in a reactive store: unwrapped, so it can be kept.
-      const shown = have.get(record.id)?.log
-      const current =
-        (shown === undefined ? undefined : unwrap(shown)) ??
-        (isChatLog(stored) && stored.id === room ? stored : emptyLog(room))
-      const incoming = (logs as Record<string, unknown>)[record.id]
-      if (!isChatLog(incoming) || incoming.id !== room) {
-        if (!have.has(record.id)) await store.set(KEYS.log(record.id), current)
-        continue
-      }
-      await store.set(
-        KEYS.log(record.id),
-        await mergeEntries(
-          crypto,
-          current,
-          incoming.entries.map(lowSEntry),
-          devices.authors(record.id),
-        ),
-      )
-    }
-    // Records that couldn't be read were set aside when this started; only the readable ones are
-    // kept here.
-    const kept = splitFriendRecords(await store.get(KEYS.friends)).readable
-    await store.set(KEYS.friends, [...kept, ...added])
-    const blockedHere = new Set(blocked().map((record) => record.id))
-    await store.set(KEYS.blocked, [
-      ...blocked(),
-      ...blockedList.filter((record) => !blockedHere.has(record.id) && !have.has(record.id)),
-    ])
-    if (profile().handle === '' && profileValue !== undefined) {
-      await store.set(KEYS.profile, profileValue)
-      if (settingsValue !== undefined) await store.set(KEYS.settings, settingsValue)
-    }
-    return 'imported'
-  }
+  const { bundle, exportData, importData } = createYourData({
+    crypto,
+    store,
+    now: clock.now,
+    self,
+    devices,
+    profile,
+    settings,
+    friends: friendList,
+    blocked,
+    isBlocked,
+    disconnect,
+  })
 
   /**
    * Not the device in your hand: its request is refused, and the code waits for yours, while it

@@ -108,7 +108,10 @@ apps/
                 MessengerDevices, MessengerMail and so on), and the views and results its members
                 hand out (FriendView, MessengerEvents, LinkingState). createMessenger in
                 service.ts builds one, and messenger.test.ts requires its return type and the
-                interface to accept each other;
+                interface to be the same type;
+                service/your-data.ts is your data in and out: the bundle a new device is given,
+                the export file and merging one back in (createYourData, which service.ts wires
+                to its friends, blocks and devices);
                 service/stored.ts holds what the service keeps in storage: its keys, the
                 shape of each record and the checks on what is read back, importing nothing from
                 service.ts so the two never form a cycle;
