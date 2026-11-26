@@ -20,6 +20,8 @@ packages/
                   from the pair secret and the UTC day, and linking a new device
                   (link.ts).
       devices/    the signed device log that ties several devices to one identity.
+      argon2id/   Argon2id, the interface to a memory-hard key derivation for
+                  passphrases: bytes in, a 32-byte key out.
       pake/       Pake, the interface to a password-authenticated key exchange
                   (SPAKE2 in the browser): a one-use start whose finish gives a
                   32-byte key, or undefined for a malformed message, or which is
@@ -48,13 +50,14 @@ packages/
                 counts puts per IPv4 address or IPv6 /64, in memory only.
   crypto-wasm/  @pigeon/crypto-wasm: protocols from maintained Rust libraries, built
                 to WebAssembly. crate/ is the Rust crate (pigeon-crypto): pake.rs is
-                SPAKE2 from RustCrypto's spake2, alloc.rs the global allocator that wipes
-                every block it frees, lib.rs scrubStack, which wipes the stack after a
-                call, and tests/ the crate's tests and spake2's known-answer vectors.
-                wasm-pack builds it into pkg/ (git-ignored). src/ is the TypeScript
-                side: spake2/ is core's Pake over the module, which it imports and
-                instantiates on the first start. Only short-lived secrets go in;
-                long-lived keys stay in WebCrypto.
+                SPAKE2 from RustCrypto's spake2, argon2id.rs Argon2id from its argon2,
+                alloc.rs the global allocator that wipes every block it frees, lib.rs
+                scrubStack, which wipes the stack after a call, and tests/ the crate's
+                tests, spake2's known-answer vectors and Argon2id's. wasm-pack builds it
+                into pkg/ (git-ignored). src/ is the TypeScript side: spake2/ is core's
+                Pake and argon2id/ core's Argon2id over the module, which module.ts
+                imports and instantiates on first use, once per page. Only short-lived
+                secrets go in; long-lived keys stay in WebCrypto.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse. allowlists.ts holds the
                 tables, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
@@ -67,8 +70,9 @@ apps/
     src/
       platform/ The only code that touches browser APIs, one folder per concern:
                 crypto/ (WebCrypto keys behind core's Crypto and Signer, a device's
-                sealing key and core's SealCrypto, sealing with a passphrase, and
-                createWasmPake, core's Pake from packages/crypto-wasm), files/
+                sealing key and core's SealCrypto, sealing with a passphrase over
+                core's Argon2id, and createWasmPake and createWasmArgon2id, core's
+                Pake and Argon2id from packages/crypto-wasm), files/
                 (saving and opening text files), storage/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
                 (Trystero, with TURN servers from /api/turn), clock/, clipboard/,

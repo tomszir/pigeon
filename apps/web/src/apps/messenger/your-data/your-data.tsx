@@ -15,11 +15,19 @@ import styles from './your-data.module.css'
 /** A passphrase shorter than this is refused. */
 export const MIN_PASSPHRASE_LENGTH = 8
 
-/** Seals bytes with a passphrase into one line of text, and opens it again. */
+/**
+ * Seals bytes with a passphrase into one line of text, and opens it again. Both throw when the
+ * passphrase can't be stretched on this device (stretching it takes tens of megabytes), which
+ * says nothing about the passphrase; `open` gives undefined for one that doesn't open the text.
+ */
 export interface PassphraseSeal {
   seal(passphrase: string, data: Uint8Array): Promise<string>
   open(passphrase: string, text: string): Promise<Uint8Array | undefined>
 }
+
+/** What a person is told when a throw like that happens. */
+export const STRETCH_FAILED =
+  'Pigeon couldn’t work with that passphrase on this device. Close other tabs and try again.'
 
 /** "Pigeon data 2026-11-25.txt" */
 export const exportFileName = (at: number): string =>
@@ -51,6 +59,7 @@ export function ExportData(props: ExportDataProps) {
   const [passphrase, setPassphrase] = createSignal('')
   const [again, setAgain] = createSignal('')
   const [state, setState] = createSignal<'enter' | 'sealing' | 'saved'>('enter')
+  const [failed, setFailed] = createSignal('')
   const problem = () => {
     if (passphrase().length > 0 && passphrase().length < MIN_PASSPHRASE_LENGTH)
       return `Use at least ${MIN_PASSPHRASE_LENGTH} characters.`
@@ -63,8 +72,16 @@ export function ExportData(props: ExportDataProps) {
   const save = async () => {
     if (!ready()) return
     setState('sealing')
+    setFailed('')
     const bytes = canonicalBytes(props.messenger.exportData())
-    const sealed = await props.seal.seal(passphrase(), bytes)
+    let sealed: string
+    try {
+      sealed = await props.seal.seal(passphrase(), bytes)
+    } catch {
+      setFailed(STRETCH_FAILED)
+      setState('enter')
+      return
+    }
     props.files.saveText(
       exportFileName(props.now()),
       exportFileText(props.messenger.profile().handle, sealed),
@@ -114,7 +131,7 @@ export function ExportData(props: ExportDataProps) {
                 onInput={setAgain}
               />
               <span class={styles.error} role="alert">
-                {problem()}
+                {problem() || failed()}
               </span>
               <p class={styles.muted}>
                 Nobody can open it without the passphrase, not even Pigeon. Forget it and the file
@@ -176,7 +193,14 @@ export function ImportData(props: ImportDataProps) {
     if (file === undefined || passphrase() === '') return
     setBusy(true)
     setError('')
-    const opened = await props.seal.open(passphrase(), file)
+    let opened: Uint8Array | undefined
+    try {
+      opened = await props.seal.open(passphrase(), file)
+    } catch {
+      setBusy(false)
+      setError(STRETCH_FAILED)
+      return
+    }
     if (opened === undefined) {
       setBusy(false)
       setError('The passphrase doesn’t open that file.')

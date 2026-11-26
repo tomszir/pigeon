@@ -2,7 +2,7 @@
 
 Export My Data seals your friends, chats and settings with a passphrase, and Import My Data merges such a file into a device of the same identity, keeping what that device already has.
 
-- Status: accepted
+- Status: accepted; superseded in part by [0052](0052-file-passphrases-through-argon2id.md): files are sealed with Argon2id, not PBKDF2
 - Date: 2026-11-25
 
 ## Context

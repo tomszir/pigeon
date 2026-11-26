@@ -1,8 +1,8 @@
 //! Library-backed protocols for Pigeon, built to WebAssembly and called from TypeScript.
 //!
 //! This crate only ever holds short-lived secrets: a PAKE password and the session state built
-//! from it. Long-lived keys (identity, device, sealing) stay in WebCrypto as non-extractable keys
-//! and never come here. Every heap allocation is wiped when it is freed (see [`alloc`]), the
+//! from it, and a passphrase while Argon2id stretches it. Long-lived keys (identity, device,
+//! sealing) stay in WebCrypto as non-extractable keys and never come here. Every heap allocation is wiped when it is freed (see [`alloc`]), the
 //! TypeScript side calls [`scrub_stack`] after each call that touched a secret, and a session
 //! overwrites the randomness getrandom staged for it in JavaScript (see `pake.rs`), so a
 //! password, scalar or key the crate has finished with doesn't stay in the module's memory.
@@ -13,6 +13,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use zeroize::Zeroize;
 
 pub mod alloc;
+pub mod argon2id;
 pub mod pake;
 
 /// Bytes of stack [`scrub_stack`] overwrites: many times what a SPAKE2 start or finish uses

@@ -52,8 +52,9 @@ import { HOME_SCREEN_TEXT } from '../apps/reader/home-screen/home-screen-text.ts
 import { Reader } from '../apps/reader/reader/reader.tsx'
 import { README_TEXT } from '../apps/reader/readme/readme-text.ts'
 import { createBrowserCrypto } from '../platform/crypto/browser-crypto.ts'
-import { openWithPassphrase, sealWithPassphrase } from '../platform/crypto/passphrase.ts'
+import { createPassphraseSeal } from '../platform/crypto/passphrase.ts'
 import { generateRecoveryKey, recoverySigner } from '../platform/crypto/recovery-key.ts'
+import { createWasmArgon2id } from '../platform/crypto/wasm-argon2id.ts'
 import { browserFiles } from '../platform/files/browser-files.ts'
 import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { Launcher, ShellApi, ShellEnv, TraySpec } from '../shell/shell/types.ts'
@@ -323,7 +324,7 @@ export function createPrograms(
   }
 
   // Your data in a file, sealed with a passphrase.
-  const passphraseSeal: PassphraseSeal = { seal: sealWithPassphrase, open: openWithPassphrase }
+  const passphraseSeal: PassphraseSeal = createPassphraseSeal({ argon2id: createWasmArgon2id() })
   const dataIcon = tangoIcon('folder', 16)
   const openExportData = () => {
     const messenger = host.messenger()
