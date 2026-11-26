@@ -44,19 +44,27 @@ function repo(files: Record<string, string>): string {
   }
   mkdirSync(join(dir, 'scripts'), { recursive: true })
   copyFileSync(script, join(dir, 'scripts', 'check-docs'))
-  const git = (...args: string[]) =>
-    spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
-      cwd: dir,
-      encoding: 'utf8',
-    })
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-q', '-m', 'start')
+  git(dir, 'init', '-q')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-q', '-m', 'start')
   return dir
 }
 
-function check(dir: string): { ok: boolean; report: string } {
-  const run = spawnSync('sh', ['scripts/check-docs'], { cwd: dir, encoding: 'utf8' })
+function git(dir: string, ...args: string[]): void {
+  spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+  })
+}
+
+/** Writes a file into a repository made by `repo`, without committing it. */
+function write(dir: string, path: string, content: string): void {
+  mkdirSync(dirname(join(dir, path)), { recursive: true })
+  writeFileSync(join(dir, path), content)
+}
+
+function check(dir: string, ...args: string[]): { ok: boolean; report: string } {
+  const run = spawnSync('sh', ['scripts/check-docs', ...args], { cwd: dir, encoding: 'utf8' })
   return { ok: run.status === 0, report: run.stderr }
 }
 
@@ -169,5 +177,159 @@ describe('check-docs: paths the docs cite', () => {
       'docs/protocol.md': doc('Protocol', '\nSee `packages/core/src/gone.ts`.\n'),
     })
     assert.deepEqual(check(dir), { ok: true, report: '' })
+  })
+})
+
+describe('check-docs: what is read as a path', () => {
+  const clean = (body: string) =>
+    repo({
+      'packages/core/src/index.ts': '',
+      'scripts/tool.ts': '',
+      'docs/glossary.md': doc('Glossary'),
+      'docs/README.md': doc(
+        'Docs',
+        '\n- [decisions/](decisions/)\n- architecture.md\n- verification.md\n- protocol.md\n- glossary.md\n',
+      ),
+      'docs/architecture.md': doc('Architecture', body),
+    })
+
+  it('ignores code that has a link in it, and fenced blocks', () => {
+    const dir = clean(
+      [
+        '',
+        'Call `handlers[kind](frame)` or `table[key](value)`.',
+        '',
+        '```',
+        'packages/core/src/gone.ts',
+        'see [x](gone.md) and `packages/core/src/gone.ts`',
+        '```',
+        '',
+        '~~~',
+        '`scripts/gone.ts`',
+        '~~~',
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(check(dir), { ok: true, report: '' })
+  })
+
+  it('still reads a link after code on the same line', () => {
+    const dir = clean('\nUse `a[b](c)`, then [the missing one](gone.md).\n')
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /cites docs\/gone\.md, which does not exist/)
+    assert.doesNotMatch(report, /a\[b\]/)
+  })
+
+  it('does not count a suffix as part of a path that exists', () => {
+    const dir = clean(
+      [
+        '',
+        '`packages/core/src/index.ts:12`, `packages/core/src/index.ts:12:5`,',
+        '`packages/core/src/index.ts:12-20`, `packages/core/src/index.ts?raw`,',
+        '`packages/core/src/index.ts#exports`, `./scripts/tool.ts`, [t](./glossary.md#words),',
+        '[g](glossary.md?plain), [s](../scripts/tool.ts:3).',
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(check(dir), { ok: true, report: '' })
+  })
+
+  it('still fails a missing path that has a suffix, naming it without the suffix', () => {
+    const dir = clean('\n`packages/core/src/gone.ts:12:5` and `scripts/gone.ts?raw`.\n')
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /cites packages\/core\/src\/gone\.ts, which does not exist/)
+    assert.match(report, /cites scripts\/gone\.ts, which does not exist/)
+  })
+
+  it("reads the web app's own folders from apps/web/src", () => {
+    const dir = repo({
+      'apps/web/src/ui/window/window.tsx': '',
+      'apps/web/src/app/browser-env.ts': '',
+      'apps/web/src/platform/clock/clock.ts': '',
+      'apps/web/src/shell/stage.ts': '',
+      'docs/architecture.md': doc(
+        'Architecture',
+        '\n`ui/window/window.tsx`, `app/browser-env.ts`, `platform/clock/clock.ts`, `shell/stage.ts`, `ui/`.\n',
+      ),
+    })
+    assert.deepEqual(check(dir), { ok: true, report: '' })
+  })
+
+  it('fails a web app path that is not where it says', () => {
+    const dir = repo({
+      'apps/web/src/ui/window/window.tsx': '',
+      'docs/architecture.md': doc('Architecture', '\n`ui/window.tsx` draws a frame.\n'),
+    })
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /cites ui\/window\.tsx, which does not exist/)
+  })
+})
+
+describe('check-docs: the rules for every doc', () => {
+  it('fails a change outside docs/ with no change in docs/', () => {
+    const dir = repo({})
+    write(dir, 'apps/web/src/new.ts', 'export const x = 1\n')
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /Files changed outside docs\/ with no change in docs\//)
+    assert.match(report, /apps\/web\/src\/new\.ts/)
+  })
+
+  it('passes a change outside docs/ that comes with one inside docs/', () => {
+    const dir = repo({})
+    write(dir, 'apps/web/src/new.ts', 'export const x = 1\n')
+    write(dir, 'docs/protocol.md', doc('Protocol', '\nChanged.\n'))
+    assert.deepEqual(check(dir), { ok: true, report: '' })
+  })
+
+  it('passes a commit that says Docs: none, and fails one that does not', () => {
+    const dir = repo({})
+    write(dir, 'apps/web/src/new.ts', 'export const x = 1\n')
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-q', '-m', 'chore: add x', '-m', 'Docs: none')
+    assert.deepEqual(check(dir, '--base', 'HEAD~1'), { ok: true, report: '' })
+    write(dir, 'apps/web/src/newer.ts', 'export const y = 1\n')
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-q', '-m', 'chore: add y')
+    const { ok, report } = check(dir, '--base', 'HEAD~2')
+    assert.equal(ok, false)
+    assert.match(report, /apps\/web\/src\/newer\.ts/)
+    assert.doesNotMatch(report, /apps\/web\/src\/new\.ts/)
+  })
+
+  it('fails a doc that README.md does not list', () => {
+    const dir = repo({ 'docs/orphan.md': doc('Orphan') })
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /docs\/orphan\.md is not listed in docs\/README\.md/)
+  })
+
+  it('fails a doc with no one-line summary under its heading', () => {
+    const dir = repo({ 'docs/protocol.md': '# Protocol\n\n- straight into a list\n' })
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(
+      report,
+      /docs\/protocol\.md must open with a "# Heading" and then a one-line summary/,
+    )
+  })
+
+  it('fails a doc that cites a decision record, and allows the records themselves', () => {
+    // Spelled in pieces so this file doesn't itself cite one.
+    const cite = (n: string) => ['decision', n].join(' ')
+    const dir = repo({
+      ...Object.fromEntries([record('0001-first.md')]),
+      ...Object.fromEntries([
+        ['docs/decisions/' + '0002-second.md', doc('0002: Second', `\nSee ${cite('0001')}.\n`)],
+      ]),
+      'docs/protocol.md': doc('Protocol', `\nThis follows ${cite('0001')}.\n`),
+    })
+    const { ok, report } = check(dir)
+    assert.equal(ok, false)
+    assert.match(report, /docs\/protocol\.md:\d+:/)
+    assert.doesNotMatch(report, /000[12]-/)
   })
 })

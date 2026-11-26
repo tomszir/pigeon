@@ -161,7 +161,7 @@ Biome's `noRestrictedImports` overrides in `biome.json` enforce every row. An ap
 
 ## Shell and windows
 
-The window-manager state (open windows, bounds, z-order, focus, minimise and maximise) lives in `@pigeon/core` as pure functions (`windows/window-manager.ts`). The shell keeps one `Desktop` value in a Solid signal and replaces it through those functions. `ui/window.tsx` draws a frame at the bounds it is given and reports drags, clicks and keys; it never moves itself. Windows stay in opening order in the DOM and stack by `z-index`, so raising a window never re-parents it mid-drag.
+The window-manager state (open windows, bounds, z-order, focus, minimise and maximise) lives in `@pigeon/core` as pure functions (`windows/window-manager.ts`). The shell keeps one `Desktop` value in a Solid signal and replaces it through those functions. `ui/window/window.tsx` draws a frame at the bounds it is given and reports drags, clicks and keys; it never moves itself. Windows stay in opening order in the DOM and stack by `z-index`, so raising a window never re-parents it mid-drag.
 
 The shell reads the browser only through `ShellEnv` (viewport, reduced motion, clock, outside links), which `app/browser-env.ts` builds, so shell tests can pass fakes.
 
