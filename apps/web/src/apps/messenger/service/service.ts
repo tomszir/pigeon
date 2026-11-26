@@ -97,6 +97,7 @@ import { batch, createSignal } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
+import type { Wake } from '../../../platform/wake/wake.ts'
 import { DEVICE_KEYS, loadDevices } from './devices.ts'
 import {
   type InviteLinks,
@@ -265,6 +266,12 @@ export interface MessengerDeps {
   readonly store: Store
   readonly transport: Transport
   readonly clock: Clock
+  /**
+   * When the person may have come back or the network returned (a tab shown, a window focused,
+   * a connection restored): mail is looked for then rather than at the next check. Without it,
+   * only the timers and sending look.
+   */
+  readonly wake?: Wake | undefined
   readonly random: (length: number) => Uint8Array
   /** The key exchange live codes run: SPAKE2, in the browser. */
   readonly pake: Pake
@@ -291,6 +298,16 @@ export interface MessengerDeps {
 export const MAIL_EVERY_MS = 10 * 60 * 1000
 /** How often mail is looked for while a link of yours is open, or a request you sent waits. */
 export const INVITE_MAIL_EVERY_MS = 30 * 1000
+/**
+ * The least time between two looks that something other than a timer asked for (a tab shown,
+ * a window focused, the network back, a message sent), so a burst of them is one look.
+ */
+export const MAIL_MIN_GAP_MS = 5 * 1000
+/**
+ * How long after you send something mail is looked for: long enough for a letter that has to
+ * go through a Lighthouse to be put there, so the look can hear its receipt or a reply.
+ */
+export const MAIL_AFTER_SEND_MS = 10 * 1000
 
 /**
  * What a friend's devices said about their mail: each device's sealing key, and the Lighthouses
@@ -873,8 +890,10 @@ export async function createMessenger(deps: MessengerDeps) {
 
   /** Looks for mail at this Pigeon's Lighthouses, puts again what waits, and acts on what came. */
   let checking: Promise<void> | undefined
+  let lastLookAt = Number.NEGATIVE_INFINITY
   function checkMail(): Promise<void> {
     if (mailbox === undefined || closed) return Promise.resolve()
+    if (checking === undefined) lastLookAt = clock.now()
     checking ??= (async () => {
       await settleSecrets()
       const sources: Source[] = []
@@ -940,6 +959,26 @@ export async function createMessenger(deps: MessengerDeps) {
     })
     return checking
   }
+
+  /**
+   * Looks for mail soon, in `after` ms at the earliest and never within MAIL_MIN_GAP_MS of the
+   * last look. Asked again while one waits, it is that one: a tab shown, a window focused and a
+   * network back in the same moment are one look. A look in progress isn't joined, since what it
+   * has fetched may already be past what the person came back for; this one waits and goes after.
+   */
+  let looking = false
+  function lookSoon(after: number) {
+    if (mailbox === undefined || closed || looking) return
+    looking = true
+    void (async () => {
+      const wait = Math.max(after, lastLookAt + MAIL_MIN_GAP_MS - clock.now())
+      if (wait > 0) await clock.sleep(wait)
+      await checking?.catch(() => undefined)
+      looking = false
+      await checkMail().catch(() => undefined)
+    })()
+  }
+  const stopWaking = deps.wake?.on(() => lookSoon(0))
 
   // The store's own copy is mutable so Solid's path setters type-check; callers see FriendView.
   type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -2808,6 +2847,7 @@ export async function createMessenger(deps: MessengerDeps) {
   /** Stops everything: no rooms, no sessions, no link or invite hosting. */
   async function close() {
     closed = true
+    stopWaking?.()
     // A relay-only change halfway through would host rooms again after they're stopped.
     await relayChange
     for (const client of lighthouseClients.values()) client.close()
@@ -3198,6 +3238,7 @@ export async function createMessenger(deps: MessengerDeps) {
       lastTypingSent.delete(id)
       await sessions.get(id)?.send(trimmed)
       letters?.wrote(id)
+      lookSoon(MAIL_AFTER_SEND_MS)
     },
     /** Call on every edit of the draft; it throttles what goes on the wire. */
     typing(id: PeerId, active: boolean) {

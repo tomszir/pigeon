@@ -80,7 +80,8 @@ apps/
                 (a key-value Store over IndexedDB, plus a memory one), transport/
                 (Trystero, with TURN servers from /api/turn), clock/, clipboard/,
                 lighthouse/ (the WebSocket core's Lighthouse client talks over),
-                tab-lock/ (one tab at a time, with Web Locks and a BroadcastChannel)
+                tab-lock/ (one tab at a time, with Web Locks and a BroadcastChannel),
+                wake/ (the tab showing again, the window focused, the network back)
                 and back/ (core's back stack over `history`). Each is an interface
                 plus a browser implementation.
       ui/       The Pigeon UI kit (Window, Button, Menu, ...), one folder per component,

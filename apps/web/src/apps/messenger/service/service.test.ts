@@ -69,8 +69,17 @@ vi.mock('@pigeon/core', async (importOriginal) => {
 
 import type { Clock } from '../../../platform/clock/clock.ts'
 import { createMemoryStore, type Store } from '../../../platform/storage/storage.ts'
+import type { Wake } from '../../../platform/wake/wake.ts'
 import { loadDevices } from './devices.ts'
-import { createMessenger, type FriendView, type MessengerEvents, MUTED_FOREVER } from './service.ts'
+import {
+  createMessenger,
+  type FriendView,
+  MAIL_AFTER_SEND_MS,
+  MAIL_EVERY_MS,
+  MAIL_MIN_GAP_MS,
+  type MessengerEvents,
+  MUTED_FOREVER,
+} from './service.ts'
 
 const never = new Promise<void>(() => undefined)
 /** Every test Pigeon's random draws so far, so no two draws are the same. */
@@ -100,6 +109,7 @@ function messenger(
   options: {
     store?: Store
     clock?: Clock
+    wake?: Wake
     events?: MessengerEvents
     seed?: number
     lighthouses?: readonly LighthouseAddress[]
@@ -119,6 +129,7 @@ function messenger(
       store,
       transport,
       clock: options.clock ?? fakeClock(),
+      ...(options.wake === undefined ? {} : { wake: options.wake }),
       // Known bytes, but a new draw each time, even after a restart, as ids taken once need.
       random: (length) => {
         const bytes = new Uint8Array(length).fill(options.seed ?? name.length)
@@ -4200,5 +4211,154 @@ describe('replacing secrets after a removal', () => {
     expect((await fresh.store.get('friends')) as unknown[]).toMatchObject([
       { ...rounds, renew: true },
     ])
+  })
+})
+
+/** Rook and Mika, friends, with Rook's Lighthouse requests counted and a wake that Rook obeys. */
+async function watched() {
+  const clock = fakeClock(NOON)
+  const real = testLighthouse(clock)
+  const requests = { lists: 0, now: 0, most: 0 }
+  const lighthouse: TestLighthouse = {
+    ...real,
+    client: (address) => {
+      const client = real.client(address)
+      return {
+        ...client,
+        async request(request) {
+          if (request.type !== 'list') return client.request(request)
+          requests.lists += 1
+          requests.now += 1
+          requests.most = Math.max(requests.most, requests.now)
+          try {
+            return await client.request(request)
+          } finally {
+            requests.now -= 1
+          }
+        },
+      }
+    },
+  }
+  const listeners = new Set<() => void>()
+  const wake: Wake = {
+    on(listener) {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
+  }
+  const network = createMemoryNetwork()
+  const rook = await messenger(network, 'rook', { clock, wake, lighthouse })
+  const mika = await messenger(network, 'mika', { clock, lighthouse: real })
+  await pairWith(rook, mika)
+  await flush(400)
+  // What one look at the Lighthouse asks, so counts can be read as numbers of looks.
+  const before = requests.lists
+  await rook.messenger.checkMail()
+  const perLook = requests.lists - before
+  expect(perLook).toBeGreaterThan(0)
+  // Past the least gap, so each test starts with a look that may go at once.
+  await clock.tick(MAIL_MIN_GAP_MS)
+  await flush(400)
+  requests.lists = 0
+  requests.most = 0
+  const wakeUp = () => {
+    for (const listener of [...listeners]) listener()
+  }
+  const looks = () => requests.lists / perLook
+  return { clock, rook, mika, requests, wakeUp, looks, listeners }
+}
+
+describe('looking for mail when you come back', () => {
+  it('looks when the browser says you are back, and hears what waited', async () => {
+    const { clock, rook, mika, wakeUp, looks } = await watched()
+    // Mika writes while Rook's Pigeon isn't listening; Rook only hears it from the Lighthouse.
+    rook.transport.disconnect()
+    mika.transport.disconnect()
+    await flush()
+    const id = only(mika.messenger.friends()).id
+    await mika.messenger.send(id, 'are you there?')
+    await clock.tick(MAIL_AFTER_SEND_MS + 1000)
+    await flush(400)
+    // (Mika looked, not Rook: Rook hears nothing until it is woken.)
+    const heard = () => only(rook.messenger.friends()).log.entries.length
+    const before = heard()
+    expect(looks()).toBe(0)
+    wakeUp()
+    await flush(400)
+    expect(looks()).toBe(1)
+    expect(heard()).toBeGreaterThan(before)
+  })
+
+  it('looks once for a burst of events, then waits out the gap', async () => {
+    const { clock, wakeUp, looks } = await watched()
+    wakeUp()
+    wakeUp()
+    wakeUp()
+    await flush(400)
+    expect(looks()).toBe(1)
+    // Asked again at once, it goes after the gap, and as one look however often it was asked.
+    wakeUp()
+    wakeUp()
+    await flush(400)
+    await clock.tick(MAIL_MIN_GAP_MS - 1)
+    await flush(400)
+    expect(looks()).toBe(1)
+    await clock.tick(1)
+    await flush(400)
+    expect(looks()).toBe(2)
+    await clock.tick(MAIL_MIN_GAP_MS * 3)
+    await flush(400)
+    expect(looks()).toBe(2)
+  })
+
+  it('never looks twice at once, and looks again after the one in progress', async () => {
+    const { clock, rook, requests, wakeUp, looks } = await watched()
+    const running = rook.messenger.checkMail()
+    wakeUp()
+    await running
+    await flush(400)
+    expect(looks()).toBe(1)
+    await clock.tick(MAIL_MIN_GAP_MS)
+    await flush(400)
+    expect(looks()).toBe(2)
+    expect(requests.most).toBe(1)
+  })
+
+  it('looks soon after you send something, not at once', async () => {
+    const { clock, rook, mika, looks } = await watched()
+    const id = only(rook.messenger.friends()).id
+    await rook.messenger.send(id, 'on my way')
+    await flush(400)
+    expect(looks()).toBe(0)
+    await clock.tick(MAIL_AFTER_SEND_MS - 1)
+    await flush(400)
+    expect(looks()).toBe(0)
+    await clock.tick(1)
+    await flush(400)
+    expect(looks()).toBe(1)
+    // Several in a row are one look.
+    await clock.tick(MAIL_MIN_GAP_MS)
+    for (const text of ['a', 'b', 'c']) await rook.messenger.send(id, text)
+    await clock.tick(MAIL_AFTER_SEND_MS)
+    await flush(400)
+    expect(looks()).toBe(2)
+    expect(mika.messenger.friends()).toHaveLength(1)
+  })
+
+  it('still looks on its own every ten minutes', async () => {
+    const { clock, looks } = await watched()
+    await clock.tick(MAIL_EVERY_MS)
+    await flush(400)
+    expect(looks()).toBe(1)
+  })
+
+  it('stops listening when the Messenger closes', async () => {
+    const { rook, wakeUp, looks, listeners } = await watched()
+    expect(listeners.size).toBe(1)
+    await rook.messenger.close()
+    expect(listeners.size).toBe(0)
+    wakeUp()
+    await flush(400)
+    expect(looks()).toBe(0)
   })
 })
