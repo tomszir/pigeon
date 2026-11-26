@@ -2,10 +2,13 @@
 // treated as missing rather than trusted.
 import {
   type ChatLog,
+  isHandle,
   isLiveCode,
   isPairSecret,
   isPeerId,
   type LogEntry,
+  MAX_HANDLE_LENGTH,
+  MAX_PERSONAL_MESSAGE_LENGTH,
   type PeerId,
 } from '@pigeon/core'
 import { isReplacing } from './rekeys.ts'
@@ -142,4 +145,59 @@ export function isHostedInvite(value: unknown): value is HostedInvite {
     typeof value['expiresAt'] === 'number' &&
     (tries === undefined || (Number.isSafeInteger(tries) && (tries as number) >= 0))
   )
+}
+
+// What an imported file may bring. A file is handed over by someone else, so its names are held
+// to what live input holds and only the fields Pigeon knows are kept; the secret-replacement
+// fields are checked and copied as saved data has them.
+
+/** A name that fits live input's limit. Characters a name may not hold are taken out later, as for any saved name. */
+const fitsName = (value: string) => value.length <= MAX_HANDLE_LENGTH
+
+const importedFriend = (record: FriendRecord): FriendRecord | undefined => {
+  if (!fitsName(record.handle) || (record.petname !== undefined && !fitsName(record.petname)))
+    return undefined
+  return {
+    id: record.id,
+    handle: record.handle,
+    addedAt: record.addedAt,
+    ...(record.petname === undefined ? {} : { petname: record.petname }),
+    ...(record.mutedUntil === undefined ? {} : { mutedUntil: record.mutedUntil }),
+    ...(record.removedYouAt === undefined ? {} : { removedYouAt: record.removedYouAt }),
+    ...(record.secret === undefined ? {} : { secret: record.secret }),
+    ...(record.moved === undefined ? {} : { moved: record.moved }),
+    ...(record.sealed === undefined ? {} : { sealed: record.sealed }),
+    ...(record.replacing === undefined ? {} : { replacing: record.replacing }),
+  }
+}
+
+/** Friends from a file: undefined if any is unreadable or has a name over the limit. */
+export function importedFriends(value: unknown): readonly FriendRecord[] | undefined {
+  if (!isFriendRecords(value)) return undefined
+  const records = value.map(importedFriend)
+  return records.every((record) => record !== undefined)
+    ? (records as readonly FriendRecord[])
+    : undefined
+}
+
+/** Blocked people from a file: undefined if any is unreadable or has a name over the limit. */
+export function importedBlocked(value: unknown): readonly BlockedRecord[] | undefined {
+  if (!isBlockedRecords(value) || !value.every((record) => fitsName(record.handle)))
+    return undefined
+  return value.map(({ id, handle, at }) => ({ id, handle, at }))
+}
+
+/**
+ * A profile from a file, or undefined if it isn't one a person could have set: a name of 1 to 32
+ * characters with none a name may not hold, and a personal message of at most 120.
+ */
+export function importedProfile(value: unknown): Profile | undefined {
+  if (!isProfile(value)) return undefined
+  const { handle, status, message } = value
+  if (!isHandle(handle) || message.length > MAX_PERSONAL_MESSAGE_LENGTH) return undefined
+  return { handle, status, message }
+}
+
+export function importedSettings(value: unknown): MessengerSettings | undefined {
+  return isMessengerSettings(value) ? { relayOnly: value.relayOnly } : undefined
 }

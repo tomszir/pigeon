@@ -1615,6 +1615,70 @@ describe('unreadable saved friends', () => {
   })
 })
 
+describe('import checks', () => {
+  async function exported() {
+    const { a: rook } = await pair(createMemoryNetwork())
+    const data = JSON.parse(JSON.stringify(rook.messenger.exportData())) as Record<string, unknown>
+    return { data, id: only(rook.messenger.friends()).id }
+  }
+
+  it('refuses names over the limit, in friends, petnames and blocks', async () => {
+    const { data } = await exported()
+    const friends = data['friends'] as Record<string, unknown>[]
+    for (const change of [{ handle: 'x'.repeat(33) }, { petname: 'y'.repeat(33) }]) {
+      const fresh = await messenger(createMemoryNetwork(), 'rook')
+      const file = { ...data, friends: friends.map((record) => ({ ...record, ...change })) }
+      expect(await fresh.messenger.importData(file)).toBe('unreadable')
+      expect(await fresh.store.get('friends')).toBeUndefined()
+    }
+    const fresh = await messenger(createMemoryNetwork(), 'rook')
+    const blocked = [{ id: fakeSigner('eve').id, handle: 'e'.repeat(33), at: 1 }]
+    expect(await fresh.messenger.importData({ ...data, blocked })).toBe('unreadable')
+  })
+
+  it('does not import a profile a person could not have set', async () => {
+    const { data } = await exported()
+    const profile = data['profile'] as Record<string, unknown>
+    for (const bad of [
+      { handle: 'x'.repeat(33) },
+      { handle: 'line\nbreak' },
+      { handle: '   ' },
+      { message: 'm'.repeat(121) },
+    ]) {
+      const fresh = await messenger(createMemoryNetwork(), 'rook')
+      expect(await fresh.messenger.importData({ ...data, profile: { ...profile, ...bad } })).toBe(
+        'imported',
+      )
+      expect(await fresh.store.get('profile')).toBeUndefined()
+    }
+  })
+
+  it('drops keys it does not know from everything it stores', async () => {
+    const { data } = await exported()
+    const withExtras = (record: unknown) => ({ ...(record as object), extra: 'x', __proto2: 1 })
+    const file = {
+      ...data,
+      friends: (data['friends'] as unknown[]).map(withExtras),
+      blocked: [{ id: fakeSigner('eve').id, handle: 'Eve', at: 1, extra: true }],
+      profile: withExtras(data['profile']),
+      settings: withExtras(data['settings']),
+    }
+    const fresh = await messenger(createMemoryNetwork(), 'rook')
+    expect(await fresh.messenger.importData(file)).toBe('imported')
+    const stored = async (key: string) => JSON.stringify(await fresh.store.get(key))
+    for (const key of ['friends', 'blocked', 'profile', 'messengerSettings'])
+      expect(await stored(key)).not.toContain('extra')
+    expect(await fresh.store.get('blocked')).toEqual([
+      { id: fakeSigner('eve').id, handle: 'Eve', at: 1 },
+    ])
+    expect(await fresh.store.get('profile')).toEqual({
+      handle: 'Rook',
+      status: 'online',
+      message: '',
+    })
+  })
+})
+
 describe('the recovery key', () => {
   type Side = Awaited<ReturnType<typeof messenger>>
   async function pairAgain(host: Side, guest: Side) {

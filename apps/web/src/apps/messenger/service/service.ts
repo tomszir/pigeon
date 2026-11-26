@@ -123,6 +123,10 @@ import {
 } from './rekeys.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
+  importedBlocked,
+  importedFriends,
+  importedProfile,
+  importedSettings,
   isBlockedRecords,
   isChatLog,
   isFarewells,
@@ -2195,13 +2199,13 @@ export async function createMessenger(deps: MessengerDeps) {
     const fields = value as Record<string, unknown>
     if (fields['kind'] !== EXPORT_KIND || fields['v'] !== 1) return 'unreadable'
     if (fields['self'] !== self) return 'not-yours'
-    const records = fields['friends']
-    const blockedList = fields['blocked']
-    const profileValue = fields['profile']
-    const settingsValue = fields['settings']
+    const records = importedFriends(fields['friends'])
+    const blockedList = importedBlocked(fields['blocked'])
+    const profileValue = importedProfile(fields['profile'])
+    const settingsValue = importedSettings(fields['settings'])
     const logs = fields['logs']
     const friendDevices = fields['friendDevices']
-    if (!isFriendRecords(records) || !isBlockedRecords(blockedList)) return 'unreadable'
+    if (records === undefined || blockedList === undefined) return 'unreadable'
     if (typeof logs !== 'object' || logs === null || Array.isArray(logs)) return 'unreadable'
     // Nothing more changes here before the restart, so a session can't write over the merge.
     await disconnect()
@@ -2253,9 +2257,9 @@ export async function createMessenger(deps: MessengerDeps) {
       ...blocked(),
       ...blockedList.filter((record) => !blockedHere.has(record.id) && !have.has(record.id)),
     ])
-    if (profile().handle === '' && isProfile(profileValue)) {
+    if (profile().handle === '' && profileValue !== undefined) {
       await store.set(KEYS.profile, profileValue)
-      if (isMessengerSettings(settingsValue)) await store.set(KEYS.settings, settingsValue)
+      if (settingsValue !== undefined) await store.set(KEYS.settings, settingsValue)
     }
     return 'imported'
   }
