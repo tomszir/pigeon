@@ -1,0 +1,21 @@
+{
+  "name": "@pigeon/crypto-wasm",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "cargo fetch --quiet --locked --manifest-path crate/Cargo.toml && wasm-pack --quiet build crate --target web --release --out-dir ../pkg --no-pack --no-opt --mode no-install -- --locked",
+    "typecheck": "pnpm run build && tsc --noEmit -p .",
+    "test": "pnpm run build && cargo test --quiet --locked --manifest-path crate/Cargo.toml && vitest run",
+    "lint": "cargo fmt --check --manifest-path crate/Cargo.toml && cargo clippy --quiet --locked --manifest-path crate/Cargo.toml --all-targets -- -D warnings && cargo clippy --quiet --locked --manifest-path crate/Cargo.toml --target wasm32-unknown-unknown -- -D warnings"
+  },
+  "dependencies": {
+    "@pigeon/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "vitest": "5.0.5"
+  }
+}

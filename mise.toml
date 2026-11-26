@@ -2,6 +2,11 @@
 node = "24"
 pnpm = "12.15.0"
 lefthook = "2.2.2"
+# Rust, and the tools that build packages/crypto-wasm to WebAssembly. wasm-pack uses the
+# wasm-bindgen on the PATH when its version matches the crate's, so nothing is fetched at build time.
+rust = { version = "1.99.1", profile = "minimal", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown" }
+"aqua:drager/wasm-pack" = "0.15.1"
+"github:wasm-bindgen/wasm-bindgen" = "0.2.130"
 
 [tasks.setup]
 description = "One-time setup after cloning (safe to re-run)"
@@ -16,7 +21,7 @@ description = "Run a Lighthouse on this computer, from apps/lighthouse/lighthous
 run = "pnpm --filter lighthouse start"
 
 [tasks.build]
-description = "Build the static site into apps/web/dist"
+description = "Build the static site, and the WebAssembly it loads, into apps/web/dist"
 run = "pnpm --filter web build"
 
 [tasks."fonts:vendor"]
@@ -40,9 +45,10 @@ description = "Unit tests in every package"
 run = "pnpm -r test"
 
 [tasks.check]
-description = "The gate: lint, types, unit tests, docs (what CI runs)"
+description = "The gate: lint (Biome, rustfmt, Clippy), types, unit tests (Vitest, cargo test), docs (what CI runs)"
 run = [
   "pnpm biome check .",
+  "pnpm --filter @pigeon/crypto-wasm lint",
   "pnpm -r typecheck",
   "pnpm -r test",
   "node --test scripts/*.test.ts",

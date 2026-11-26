@@ -1,0 +1,26 @@
+[package]
+name = "pigeon-crypto"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "Library-backed protocols for Pigeon, built to WebAssembly. Holds short-lived secrets only."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+spake2 = { version = "=0.4.0", default-features = false }
+rand_core = { version = "0.6", features = ["getrandom"] }
+wasm-bindgen = "=0.2.130"
+zeroize = "1.8"
+
+# On the web, getrandom reads crypto.getRandomValues.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
