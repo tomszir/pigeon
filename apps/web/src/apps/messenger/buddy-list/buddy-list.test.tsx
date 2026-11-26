@@ -1,7 +1,7 @@
 import { emptyLog } from '@pigeon/core'
 import { fireEvent, render, screen } from '@solidjs/testing-library'
 import { createSignal } from 'solid-js'
-import { expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { FriendView, Messenger } from '../service/service.ts'
 import { BuddyList, friendGroups } from './buddy-list.tsx'
 
@@ -128,6 +128,11 @@ function named() {
     status: 'online' as const,
     message: '',
   })
+  const [look, setLook] = createSignal<{
+    at: number | undefined
+    state: 'idle' | 'waiting' | 'checking'
+  }>({ at: undefined, state: 'idle' })
+  const checkNow = vi.fn(() => 0)
   const setProfileSpy = vi.fn(async (next: ReturnType<typeof profile>) => setProfile(next))
   const messenger = {
     self: 'rook',
@@ -147,8 +152,10 @@ function named() {
     recoveryKey: () => undefined,
     nextEpoch: () => 0,
     canJoin: () => false,
+    mailLook: look,
+    checkNow,
   } as unknown as Messenger
-  return { messenger, setProfile: setProfileSpy }
+  return { messenger, setProfile: setProfileSpy, setLook, checkNow }
 }
 
 it('saves a new name and personal message from File, Change my name', async () => {
@@ -182,4 +189,47 @@ it('saves a new name and personal message from File, Change my name', async () =
   })
   expect(await screen.findByText('Rook II')).toBeTruthy()
   expect(screen.getByText('on the roof')).toBeTruthy()
+})
+
+describe('looking for mail', () => {
+  const show = () => {
+    const world = named()
+    render(() => (
+      <BuddyList
+        messenger={world.messenger}
+        onOpenConversation={() => undefined}
+        onAddFriend={() => undefined}
+        onAbout={() => undefined}
+        onClose={() => undefined}
+      />
+    ))
+    return world
+  }
+
+  it('says when it last looked, and Check Now looks', () => {
+    const { checkNow, setLook } = show()
+    expect(screen.getByText('Not looked for mail yet')).toBeTruthy()
+    setLook({ at: new Date(2026, 10, 24, 18, 38).getTime(), state: 'idle' })
+    expect(screen.getByText('Looked for mail at 6:38 PM')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Check Now' }))
+    expect(checkNow).toHaveBeenCalledOnce()
+  })
+
+  it('shows a look under way or waiting, and offers no second one', () => {
+    const { setLook } = show()
+    setLook({ at: undefined, state: 'waiting' })
+    expect(screen.getByText('Looking for mail in a moment...')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Check Now' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    setLook({ at: undefined, state: 'checking' })
+    expect(screen.getByText('Looking for mail...')).toBeTruthy()
+  })
+
+  it('offers Check for Mail Now in the Actions menu', () => {
+    const { checkNow } = show()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Check for Mail Now' }))
+    expect(checkNow).toHaveBeenCalledOnce()
+  })
 })

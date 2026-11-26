@@ -105,6 +105,20 @@ export function Transcript(props: { label: string; entries: readonly TranscriptE
                                 )}
                               >
                                 {way().text}
+                                <Show when={way().action}>
+                                  {(action) => (
+                                    <>
+                                      {' '}
+                                      <button
+                                        type="button"
+                                        class={styles.routeAction}
+                                        onClick={() => action().run()}
+                                      >
+                                        {action().label}
+                                      </button>
+                                    </>
+                                  )}
+                                </Show>
                               </p>
                             )}
                           </Show>

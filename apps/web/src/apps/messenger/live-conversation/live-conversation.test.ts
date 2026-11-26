@@ -306,3 +306,31 @@ describe('Save Conversation As', () => {
     expect(conversationFileName('***')).toBe('Conversation with a friend.txt')
   })
 })
+
+describe('Try Again', () => {
+  it('is offered under a message no Lighthouse took yet, once it can be called', () => {
+    const run = () => undefined
+    expect(wayText({ kind: 'retrying' }, 'Jo')).toEqual({
+      state: 'retrying',
+      text: 'Not left at a Lighthouse yet: Pigeon tries again at the next mail check.',
+    })
+    expect(wayText({ kind: 'retrying' }, 'Jo', run)?.action).toEqual({ label: 'Try Again', run })
+  })
+
+  it('says what a try did, and offers no second one while it runs', () => {
+    const run = () => undefined
+    expect(wayText({ kind: 'retrying', attempt: 'trying' }, 'Jo', run)).toEqual({
+      state: 'retrying',
+      text: 'Trying to leave it at a Lighthouse...',
+    })
+    const failed = wayText({ kind: 'retrying', attempt: 'failed' }, 'Jo', run)
+    expect(failed?.text).toMatch(/^Still not left at a Lighthouse/)
+    expect(failed?.action?.label).toBe('Try Again')
+  })
+
+  it('is offered for no other way', () => {
+    const run = () => undefined
+    expect(wayText({ kind: 'waiting' }, 'Jo', run)?.action).toBeUndefined()
+    expect(wayText({ kind: 'left', where: ['Loft'] }, 'Jo', run)?.action).toBeUndefined()
+  })
+})

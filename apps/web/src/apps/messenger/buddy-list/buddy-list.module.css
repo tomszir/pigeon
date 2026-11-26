@@ -89,6 +89,12 @@
   color: var(--pg-link-hover);
 }
 
+.mailLooked {
+  /* Under Check Now's label: past the 22px icon and its gap. */
+  margin: -4px 0 2px 27px;
+  color: var(--pg-text-muted);
+}
+
 .muted {
   color: var(--pg-text-muted);
 }

@@ -67,12 +67,14 @@ type Way = NonNullable<Extract<TranscriptEntry, { kind: 'message' }>['way']>
 
 /**
  * How a message of yours is getting there, as the icon after it and its words. Which of them is
- * spelled out in words under the message is left to the caller.
+ * spelled out in words under the message is left to the caller. With `tryAgain`, one that no
+ * Lighthouse took yet offers Try Again, which calls it.
  */
 export function wayText(
   route: MessageRoute | undefined,
   friend: string,
-): Pick<Way, 'state' | 'text'> | undefined {
+  tryAgain?: () => void,
+): Pick<Way, 'state' | 'text' | 'action'> | undefined {
   switch (route?.kind) {
     case 'sealing':
       return { state: 'sealing', text: 'Sealing...' }
@@ -84,7 +86,17 @@ export function wayText(
     case 'waiting':
       return { state: 'waiting', text: `Waits until ${friend} is online` }
     case 'retrying':
-      return { state: 'retrying', text: 'Not left at a Lighthouse yet: Pigeon tries again' }
+      // While a try runs there is nothing to press: the words say it is under way.
+      if (route.attempt === 'trying')
+        return { state: 'retrying', text: 'Trying to leave it at a Lighthouse...' }
+      return {
+        state: 'retrying',
+        text:
+          route.attempt === 'failed'
+            ? 'Still not left at a Lighthouse: none answered. Pigeon tries again at the next mail check.'
+            : 'Not left at a Lighthouse yet: Pigeon tries again at the next mail check.',
+        ...(tryAgain === undefined ? {} : { action: { label: 'Try Again', run: tryAgain } }),
+      }
     case 'has':
       return { state: 'has', text: `${friend} has it` }
     default:
@@ -101,6 +113,8 @@ export function transcriptFor(
   mine: PeerId | ((author: PeerId) => boolean),
   selfName: string,
   routeOf: (entry: LogEntry) => MessageRoute | undefined = () => undefined,
+  /** Puts what no Lighthouse took yet at once: offered under such a message as Try Again. */
+  tryAgain?: () => void,
 ) {
   const isMine = typeof mine === 'string' ? (author: PeerId) => author === mine : mine
   const entries: TranscriptEntry[] = []
@@ -130,7 +144,7 @@ export function transcriptFor(
     flush(index)
     const own = isMine(entry.author)
     const route = routeText(routeOf(entry))
-    const found = wayText(routeOf(entry), view.name)
+    const found = wayText(routeOf(entry), view.name, tryAgain)
     const way: Way | undefined =
       found === undefined
         ? undefined
@@ -330,6 +344,7 @@ export function LiveConversation(props: LiveConversationProps) {
             props.messenger.isMine,
             props.messenger.profile().handle,
             (entry) => props.messenger.messageRoute(props.friend, entry),
+            () => void props.messenger.tryAgain(props.friend),
           )}
           typing={current().typing ? `${current().name} is writing a message...` : ''}
           closed={current().removedYouAt !== undefined}

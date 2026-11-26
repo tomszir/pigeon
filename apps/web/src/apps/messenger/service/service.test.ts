@@ -2643,6 +2643,56 @@ describe('invite links through Lighthouses', () => {
   })
 })
 
+describe('Try Again', () => {
+  async function unsent() {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    await away(mika)
+    await flush(200)
+    lighthouse.down(true)
+    await rook.messenger.send(mikaId, 'are you there?')
+    await rook.messenger.loadLetters(mikaId)
+    await clock.tick(5000)
+    await flush(400)
+    const route = () => {
+      const entry = only(rook.messenger.friends()).log.entries[0]
+      if (entry === undefined) throw new Error('no entry')
+      return rook.messenger.messageRoute(mikaId, entry)
+    }
+    return { clock, lighthouse, rook, mikaId, route }
+  }
+
+  it('puts an unsent message at once and says where it was left', async () => {
+    const { lighthouse, rook, mikaId, route } = await unsent()
+    expect(route()).toEqual({ kind: 'retrying' })
+    // Still down: nothing is left, and the message says the try found nobody.
+    expect(await rook.messenger.tryAgain(mikaId)).toBe(false)
+    expect(route()).toEqual({ kind: 'retrying', attempt: 'failed' })
+    // Back, and no mail check in between: Try Again leaves it, and the message says where.
+    lighthouse.down(false)
+    expect(await rook.messenger.tryAgain(mikaId)).toBe(true)
+    expect(route()).toEqual({ kind: 'left', where: ['Test Lighthouse'] })
+    // Nothing waits any more: the next try has nothing to do.
+    expect(await rook.messenger.tryAgain(mikaId)).toBe(true)
+    expect(route()).toEqual({ kind: 'left', where: ['Test Lighthouse'] })
+  })
+
+  it('says it is trying while the try is under way', async () => {
+    const { lighthouse, rook, mikaId, route } = await unsent()
+    lighthouse.down(false)
+    const trying = rook.messenger.tryAgain(mikaId)
+    expect(route()).toEqual({ kind: 'retrying', attempt: 'trying' })
+    await trying
+    expect(route()?.kind).toBe('left')
+  })
+})
+
 describe('letters', () => {
   it('leaves messages for a friend who is offline, and says where each one is', async () => {
     const network = createMemoryNetwork()
@@ -4350,6 +4400,42 @@ describe('looking for mail when you come back', () => {
     await clock.tick(MAIL_EVERY_MS)
     await flush(400)
     expect(looks()).toBe(1)
+  })
+
+  it('Check Now looks at once, says when it last looked, and keeps the gap', async () => {
+    const { clock, rook, looks } = await watched()
+    // Starting looked once already, so there is a time to show.
+    const first = rook.messenger.mailLook()
+    expect(first.state).toBe('idle')
+    expect(first.at).toBeDefined()
+    // Past the gap: it goes at once, and the time moves to when it finished.
+    expect(rook.messenger.checkNow()).toBe(0)
+    await flush(400)
+    expect(looks()).toBe(1)
+    expect(rook.messenger.mailLook()).toEqual({ at: clock.now(), state: 'idle' })
+    // Again within the gap: it waits for what is left of it, says so, and looks once.
+    await clock.tick(2000)
+    expect(rook.messenger.checkNow()).toBe(MAIL_MIN_GAP_MS - 2000)
+    expect(rook.messenger.checkNow()).toBe(MAIL_MIN_GAP_MS - 2000)
+    expect(rook.messenger.mailLook().state).toBe('waiting')
+    await flush(400)
+    expect(looks()).toBe(1)
+    await clock.tick(MAIL_MIN_GAP_MS - 2000)
+    await flush(400)
+    expect(looks()).toBe(2)
+    expect(rook.messenger.mailLook()).toEqual({ at: clock.now(), state: 'idle' })
+  })
+
+  it('Check Now never runs two looks at once', async () => {
+    const { clock, rook, requests, looks } = await watched()
+    const running = rook.messenger.checkMail()
+    expect(rook.messenger.mailLook().state).toBe('checking')
+    rook.messenger.checkNow()
+    await running
+    await clock.tick(MAIL_MIN_GAP_MS)
+    await flush(400)
+    expect(looks()).toBe(2)
+    expect(requests.most).toBe(1)
   })
 
   it('stops listening when the Messenger closes', async () => {
