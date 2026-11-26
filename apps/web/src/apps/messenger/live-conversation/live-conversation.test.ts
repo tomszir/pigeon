@@ -1,11 +1,15 @@
 import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
+import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import type { MessageRoute } from '../service/letters.ts'
 import type { FriendView } from '../service/service.ts'
 import {
   clockTime,
   conversationFileName,
   conversationText,
+  letterSections,
+  readAtOpen,
+  routeText,
   SAVED_LINE_WIDTH,
   transcriptFor,
   wayText,
@@ -332,5 +336,114 @@ describe('Try Again', () => {
     const run = () => undefined
     expect(wayText({ kind: 'waiting' }, 'Jo', run)?.action).toBeUndefined()
     expect(wayText({ kind: 'left', where: ['Loft'] }, 'Jo', run)?.action).toBeUndefined()
+  })
+})
+
+describe('messages that came by letter', () => {
+  const routeFor = (through: string) => {
+    const route = routeText({ kind: 'arrived', through })
+    return route === undefined ? {} : { route }
+  }
+  const by = (id: string, through: string): TranscriptEntry => ({
+    kind: 'message',
+    id,
+    from: 'Mika',
+    own: false,
+    text: id,
+    ...routeFor(through),
+  })
+  const plain = (id: string, own = false): TranscriptEntry => ({
+    kind: 'message',
+    id,
+    from: own ? 'Rook' : 'Mika',
+    own,
+    text: id,
+  })
+  const shape = (entries: readonly TranscriptEntry[]) =>
+    entries.map((entry) =>
+      entry.kind === 'section'
+        ? [entry.heading, entry.entries.map((message) => message.id)]
+        : entry.id,
+    )
+
+  it('says in its details how a message came, without a line of its own', () => {
+    expect(routeText({ kind: 'arrived', through: 'Loft' })).toEqual({
+      kind: 'letter',
+      text: 'Came by letter, through Loft',
+      through: 'Loft',
+    })
+  })
+
+  it('gathers unread ones that arrived together under one heading', () => {
+    expect(
+      shape(
+        letterSections(
+          [plain('a'), by('b', 'Dovecote'), by('c', 'Dovecote'), by('d', 'Dovecote')],
+          new Set(['a']),
+        ),
+      ),
+    ).toEqual([
+      'a',
+      ['While you were away · 3 messages by letter, through Dovecote', ['b', 'c', 'd']],
+    ])
+  })
+
+  it('counts one message, and names every Lighthouse the run came through once', () => {
+    expect(shape(letterSections([by('a', 'Loft')], new Set()))).toEqual([
+      ['While you were away · 1 message by letter, through Loft', ['a']],
+    ])
+    expect(
+      shape(letterSections([by('a', 'Loft'), by('b', 'Dovecote'), by('c', 'Loft')], new Set())),
+    ).toEqual([
+      ['While you were away · 3 messages by letter, through Loft and Dovecote', ['a', 'b', 'c']],
+    ])
+  })
+
+  it('ends a section at anything that is not one of them', () => {
+    const entries = [
+      by('a', 'Loft'),
+      plain('b'),
+      by('c', 'Loft'),
+      plain('d', true),
+      by('e', 'Loft'),
+    ]
+    expect(
+      shape(letterSections(entries, new Set())).map((item) =>
+        typeof item === 'string' ? item : item[1],
+      ),
+    ).toEqual([['a'], 'b', ['c'], 'd', ['e']])
+    const buzz: TranscriptEntry = { kind: 'buzz', id: 'z', text: 'buzz' }
+    expect(
+      letterSections([by('a', 'Loft'), buzz, by('b', 'Loft')], new Set()).map((e) => e.kind),
+    ).toEqual(['section', 'buzz', 'section'])
+  })
+
+  it('shows messages read before the chat opened like any other, with no envelope', () => {
+    const out = letterSections([by('a', 'Loft'), by('b', 'Loft')], new Set(['a', 'b']))
+    expect(out.map((entry) => entry.kind)).toEqual(['message', 'message'])
+    expect(out.map((entry) => ('route' in entry ? entry.route : undefined))).toEqual([
+      undefined,
+      undefined,
+    ])
+  })
+
+  it('takes the friends last unread messages as unread when the chat opens', async () => {
+    const rook = fakeSigner('rook')
+    const mika = fakeSigner('mika')
+    let log = emptyLog('pair:x')
+    const sigs: string[] = []
+    for (const [who, text] of [
+      [mika, 'one'],
+      [rook, 'two'],
+      [mika, 'three'],
+      [mika, 'four'],
+    ] as const) {
+      const done = await appendMessage(log, who, text, at)
+      log = done.log
+      sigs.push(done.entry.sig)
+    }
+    const view = { id: mika.id, log, unread: 2 } as unknown as FriendView
+    const read = readAtOpen(view, (author) => author === rook.id)
+    expect([...read].sort()).toEqual([sigs[0], sigs[1]].sort())
   })
 })

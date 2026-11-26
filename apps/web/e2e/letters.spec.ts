@@ -1,6 +1,7 @@
 // A message to a friend who's offline, over the real internet and the official Lighthouses:
 // Mika closes Pigeon, Rook writes to her and closes his, and when Mika opens Pigeon again the
-// message is there, though Rook isn't online to send it. The same as farewells take.
+// message is there, though Rook isn't online to send it, in a section of what came by letter.
+// The same as farewells take.
 import { expect, type Page, test } from '@playwright/test'
 
 const messengerOf = (page: Page) => page.getByRole('dialog', { name: 'Pigeon', exact: true })
@@ -62,6 +63,16 @@ test('a message written to a friend who is offline reaches them later', async ({
         'are we still on for saturday?',
         { timeout: 30_000 },
       )
+      // Opened, the chat gathers what came while she was away under one heading, with an
+      // envelope on the message and no line of its own under it.
+      await mikaMessenger.getByRole('button', { name: /Rook/ }).dblclick()
+      const letters = back.getByRole('dialog', { name: 'Rook - Conversation' })
+      await expect(
+        letters.getByRole('region', {
+          name: /^While you were away · 1 message by letter, through .+$/,
+        }),
+      ).toContainText('are we still on for saturday?')
+      await expect(letters.getByRole('button', { name: /^Came by letter, through / })).toBeVisible()
       return
     } catch (error) {
       if (attempt === 2) throw error

@@ -1,10 +1,11 @@
-// The small icon after a message of yours that says how it is getting there. Its words are
+// The small icon after a message that says how it got or is getting there. Its words are
 // there for screen readers, in a tooltip on hover, and pinned open by a click or tap.
 import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
 import { classes } from '../classes/classes.ts'
 import styles from './message-way.module.css'
 
-export type WayState = 'sealing' | 'left' | 'has' | 'waiting' | 'retrying'
+/** `letter` is the envelope on a friend's message that came by letter. */
+export type WayState = 'sealing' | 'left' | 'has' | 'waiting' | 'retrying' | 'letter'
 
 export interface MessageWay {
   readonly state: WayState
