@@ -14,6 +14,7 @@ import {
   MAX_LAMPORT_LEAD,
   mergeEntries,
   missingFrom,
+  sameEntry,
   summarize,
 } from './chat-log.ts'
 
@@ -261,5 +262,8 @@ describe('a P-256 author', () => {
     // One who holds it already in the old spelling keeps one copy, and knows it by one key.
     expect((await mergeEntries(strict, kept, sent, authors)).entries.length).toBe(1)
     expect(entryKey(sent[0] as LogEntry)).toBe(entryKey(entry as LogEntry))
+    // Both spellings are the same entry; other words under that signature are not.
+    expect(sameEntry(sent[0] as LogEntry, entry as LogEntry)).toBe(true)
+    expect(sameEntry({ ...(entry as LogEntry), text: 'other' }, entry as LogEntry)).toBe(false)
   })
 })

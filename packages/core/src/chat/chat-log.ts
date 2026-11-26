@@ -1,7 +1,7 @@
 // A chat as signed append-only logs, one per author. Peers trade summaries of
 // the highest contiguous sequence they hold per author and send each other what's missing; the
 // view is the union sorted by Lamport time.
-import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
+import { base32DecodeExact, base32Encode, bytesEqual } from '../encoding/bytes.ts'
 import { canonicalBytes } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
@@ -74,6 +74,21 @@ const untypedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
  */
 export const entryKey = (entry: Pick<LogEntry, 'author' | 'seq'>): string =>
   `${entry.author}/${entry.seq}`
+
+/**
+ * Whether two copies are the same entry: the same signed content, and the same signature, its
+ * bytes read in their low-S spelling, never compared as text. False when either doesn't decode.
+ */
+export function sameEntry(a: LogEntry, b: LogEntry): boolean {
+  if (!bytesEqual(untypedBytes('', a), untypedBytes('', b))) return false
+  const left = base32DecodeExact(a.sig)
+  const right = base32DecodeExact(b.sig)
+  if (!left.ok || !right.ok) return false
+  return bytesEqual(
+    canonicalSignature(a.author, left.value),
+    canonicalSignature(b.author, right.value),
+  )
+}
 
 const compare = (a: LogEntry, b: LogEntry): number =>
   a.lamport - b.lamport || (a.author < b.author ? -1 : a.author > b.author ? 1 : a.seq - b.seq)

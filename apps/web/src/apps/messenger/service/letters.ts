@@ -19,6 +19,7 @@ import {
   lowSEntry,
   MAX_MAIL_MS,
   type PeerId,
+  sameEntry,
 } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import type { Store } from '../../../platform/storage/storage.ts'
@@ -353,11 +354,18 @@ export function createLetters(deps: LettersDeps) {
       const entries = body.entries.filter(isLogEntry).slice(0, MAX_LETTER_ENTRIES)
       const had = new Set(chat.entries.map(entryKey))
       if (!(await deps.takeEntries(friend, entries))) return false
-      const carried = new Set(entries.map(entryKey))
-      // The entries the chat holds now that it didn't before, from this letter.
+      // The entries the chat holds now that it didn't before and that are this letter's own:
+      // the same entry, signature and all, not just the same author and number. The letter's entries are
+      // unchecked until taken, and a live sync may bring the genuine one meanwhile.
+      const carried = new Map<string, LogEntry[]>()
+      for (const entry of entries)
+        carried.set(entryKey(entry), [...(carried.get(entryKey(entry)) ?? []), entry])
       const arrived = (deps.chat(friend)?.entries ?? [])
+        .filter((held) => {
+          const key = entryKey(held)
+          return !had.has(key) && (carried.get(key) ?? []).some((entry) => sameEntry(held, entry))
+        })
         .map(entryKey)
-        .filter((key) => !had.has(key) && carried.has(key))
       // Not waited on: this runs inside a mailbox fetch.
       if (arrived.length > 0 && !own)
         void update(friend, (letters) => ({
