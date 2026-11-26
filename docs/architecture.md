@@ -35,6 +35,10 @@ packages/
                   from their content, pigeon://lighthouse addresses, and client.ts, a
                   Pigeon's side of one Lighthouse over a socket the platform opens: a
                   fresh nonce per connection, one checked reply per request.
+      avatar/     the pixel pigeon every Pigeon draws for an id: the id's hash picks
+                  the traits, which draw a 32x32 picture, and nothing is sent.
+      recovery/   the recovery key on paper: the key's seed, the identity it brings
+                  back and its epoch, with a checksum, in groups of letters to copy by hand.
       windows/    window-manager state.
       back/       the back stack: what the browser's Back closes next, kept in step
                   with the browser's history through a small port.
@@ -108,10 +112,11 @@ apps/
                 (the sandboxed frame, its CSP and base stylesheet), error-page/
                 ("page not hosted" and "too big"), and local-pages/, the pages
                 bundled with Pigeon as maps from address to page, looked up in
-                order. Bundled pages are PigeonHTML in .html files, which Biome
-                leaves alone since they're written for 2003. help/ is
+                order. Explorer's start page is PigeonHTML in an .html file, which
+                Biome leaves alone since it's written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
-                pigeon://help, with no window of its own:
+                pigeon://help, with no window of its own; they are built in
+                TypeScript, not written as .html files:
                 help-pages/ exports HELP_PAGES, every page by address, which app/
                 hands to Explorer after the start page, and Help in the Pigeon
                 menu opens; how-pigeon-works/ is the hand-written guide;

@@ -9,6 +9,10 @@
 #   4. Docs and code are written for a stranger: outside docs/decisions/,
 #      docs/roadmap.md and its companions (docs/roadmap-*.md), nothing cites a decision record or a milestone, links to
 #      the roadmap, or mentions a homelab.
+#   5. No two decision records share a number, apart from the pairs named in
+#      SHARED_NUMBERS below, which were numbered in parallel before this check.
+#   6. Every repository path that docs/architecture.md or docs/verification.md cites exists:
+#      a `code span` starting at a top-level folder (apps/, packages/, ...), or a link target.
 #
 # Usage: scripts/check-docs [--base <ref>] [--hook claude]
 #
@@ -29,7 +33,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--base) base=${2:?--base needs a ref}; shift 2 ;;
 	--hook) hook=${2:?--hook needs a name}; shift 2 ;;
-	-h | --help) sed -n '2,20s/^# \{0,1\}//p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,26s/^# \{0,1\}//p' "$0"; exit 0 ;;
 	*) echo "check-docs: unknown argument $1" >&2; exit 64 ;;
 	esac
 done
@@ -121,6 +125,39 @@ if [ -d docs ]; then
 			{ if ($0 ~ /^([#>|*-]|```|[0-9]+\.)/) exit 1; ok = 1; exit 0 }
 			END { if (!ok) exit 1 }
 		' "$f" || echo "$f must open with a \"# Heading\" and then a one-line summary." >>"$problems"
+	done
+
+	# Rule 5. Two records with one number came from branches that each took "the next one".
+	# The pairs listed here are the only ones allowed; a third record with either number, or a
+	# new pair, fails.
+	SHARED_NUMBERS=" 0039-link-previews-without-the-inviter.md 0039-messages-through-lighthouses.md 0040-a-content-security-policy-from-headers.md 0040-minor-versions-for-bigger-features.md "
+	if [ -d docs/decisions ]; then
+		find docs/decisions -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.md' | sed 's|.*/||' | sort | cut -c1-4 | uniq -d |
+			while IFS= read -r n; do
+				for f in docs/decisions/"$n"-*.md; do
+					case $SHARED_NUMBERS in
+					*" ${f##*/} "*) ;;
+					*) echo "$f shares the number $n with another decision record; take the number after the highest." >>"$problems" ;;
+					esac
+				done
+			done
+	fi
+
+	# Rule 6. A cited path that has gone is a doc that has drifted. Only paths rooted at a
+	# top-level folder are read: a bare file name or a placeholder such as apps/<name>/ is not.
+	for doc in docs/architecture.md docs/verification.md; do
+		[ -f "$doc" ] || continue
+		{
+			grep -oE '`[^`]+`' "$doc" | tr -d '`' |
+				grep -E '^(apps|packages|docs|scripts|verification|biome-plugins|vendor|assets|\.github)/' |
+				grep -vE '[<>*{} ]|\.\.\.' | sed -E 's/:[0-9]+(-[0-9]+)?$//'
+			grep -oE '\]\([^)]+\)' "$doc" | sed -E 's/^\]\(//; s/\)$//; s/#.*$//' |
+				grep -vE '^$|^[a-z]+:' | while IFS= read -r link; do
+				echo "$(dirname "$doc")/$link"
+			done
+		} | sort -u | while IFS= read -r path; do
+			[ -e "$path" ] || echo "$doc cites $path, which does not exist." >>"$problems"
+		done
 	done
 else
 	echo "docs/ is missing." >>"$problems"
