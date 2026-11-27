@@ -1,6 +1,7 @@
 // The your-data model put together: how it settles, its scenarios, and its planted defects.
 import { canon, copy } from './canon.ts'
 import { dataChecks, dataFlags } from './data-checks.ts'
+import { finish, sweep } from './data-run.ts'
 import {
   type DataConfig,
   type DataRules,
@@ -10,7 +11,7 @@ import {
   initialState,
   REMOVED,
 } from './data-state.ts'
-import { check, finish, rekey, steps, sweep } from './data-steps.ts'
+import { check, rekey, steps } from './data-steps.ts'
 import type { Model } from './explore.ts'
 
 /**
@@ -54,22 +55,12 @@ const config = (
   devices: DataConfig['devices'],
   hostile: boolean,
   budgets: DataConfig['budgets'],
-  who: DataConfig['who'] = {},
-  targets?: DataConfig['targets'],
-  forges?: DataConfig['forges'],
-): DataConfig => ({
-  name,
-  devices,
-  hostile,
-  budgets,
-  who,
-  ...(targets ? { targets } : {}),
-  ...(forges ? { forges } : {}),
-  rules: DESIGN,
-})
+  more: Omit<Partial<DataConfig>, 'name' | 'devices' | 'hostile' | 'budgets' | 'rules'> = {},
+): DataConfig => ({ name, devices, hostile, budgets, ...more, rules: DESIGN })
 
 const unfriendF = { op: { k: 'tomb', fr: 'F', inc: 'F1' }, stamp: 'current' } as const
 const renameF = { op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'early' } as const
+const proposeF = { proposal: true } as const
 
 /** The scenarios, each small enough to explore every history of. */
 export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
@@ -81,8 +72,16 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     ['A', 'B', 'C'],
     false,
     { add: 1, unfriend: 1, pet: 2, lose: 1 },
-    { add: ['B'], unfriend: ['A'], pet: ['B', 'C'] },
-    ['G'],
+    { who: { add: ['B'], unfriend: ['A'], pet: ['B', 'C'] }, targets: ['G'] },
+  ),
+  // A friend unfriended and paired with again on one device, while the others are away: every
+  // device must end on the new friendship's secret, never the dead one's.
+  repair: config(
+    'repair: unfriended and paired with again',
+    ['A', 'B', 'C'],
+    false,
+    { unfriend: 1, add: 1, pet: 1, lose: 1 },
+    { who: { unfriend: ['A'], add: ['A'], pet: ['B'] }, targets: ['F'], adds: ['F'] },
   ),
   // Blocking and unblocking on two devices while the third is away and comes back.
   blocks: config(
@@ -90,8 +89,7 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     ['A', 'B', 'C'],
     false,
     { block: 1, unblock: 1, pet: 1, lose: 1 },
-    { block: ['A'], unblock: ['B'], pet: ['C'] },
-    ['F'],
+    { who: { block: ['A'], unblock: ['B'], pet: ['C'] }, targets: ['F'] },
   ),
   // Settings and a petname changed on devices while another is away and comes back with a change
   // of its own, made on an old clock.
@@ -100,31 +98,36 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     ['A', 'B', 'C'],
     false,
     { relay: 2, pet: 2 },
-    { relay: ['A', 'B'], pet: ['A', 'C'] },
-    ['F'],
+    { who: { relay: ['A', 'B'], pet: ['A', 'C'] }, targets: ['F'] },
   ),
-  // A hostile device is removed: it unfriends F at a current stamp and renames F at an early one,
-  // sends them, and reads whatever is sealed to it, while the writer replaces the secrets and B
-  // adds a friend.
+  // A device whose clock runs a month ahead renames and then unfriends a friend; the others must
+  // take both, and a later change made after seeing them must still win.
+  skew: config(
+    'skew: a device whose clock runs ahead',
+    ['A', 'B', 'C'],
+    false,
+    { skew: 1, unfriend: 1, pet: 2 },
+    { who: { skew: ['C'], unfriend: ['C'], pet: ['A', 'C'] }, targets: ['F'] },
+  ),
+  // A hostile device is removed: it proposes a pair secret of its own for F claiming a high round
+  // and unfriends F at a current stamp, sends them, and reads whatever is sealed to it, while the
+  // writer replaces the secrets and B adds a friend. (The early stamp is the room scenario's.)
   removal: config(
     'removal: a hostile removed device',
     ['A', 'B', 'X'],
     true,
     { remove: 1, add: 1 },
-    { add: ['B'] },
-    undefined,
-    [unfriendF, renameF],
+    { who: { add: ['B'] }, forges: [proposeF, unfriendF] },
   ),
   // The removed device meets a device that hasn't heard yet in the self room, and signs two
-  // entries with one number.
+  // entries with one number, one for the writer and one for the others; your devices swap
+  // entries by summary.
   room: config(
     'room: a removed device in the self room',
     ['A', 'B', 'X'],
     true,
     { remove: 1, fork: 1, meet: 2 },
-    {},
-    undefined,
-    [renameF],
+    { forges: [renameF] },
   ),
   // A device is linked after a removal, and a letter sealed before it is lost and put again.
   link: config(
@@ -132,13 +135,13 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     ['A', 'B', 'X'],
     true,
     { remove: 1, link: 1, pet: 1, lose: 1 },
-    { pet: ['B'] },
-    ['F'],
+    { who: { pet: ['B'] }, targets: ['F'] },
   ),
-  // The writer's tab closes between replacing a secret and putting the letters that say so.
+  // Tabs close between deciding to send and putting: after a replacement, and after a change.
   outbox: config('outbox: a tab closed before the put', ['A', 'B', 'X'], false, {
     remove: 1,
-    crash: 1,
+    pet: 1,
+    crash: 2,
   }),
   // A newer Pigeon writes an entry this one can't read, among ones it can.
   newer: config(
@@ -146,7 +149,7 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     ['A', 'B'],
     false,
     { future: 1, pet: 1, add: 1 },
-    { future: ['B'], add: ['B'], pet: ['A'] },
+    { who: { future: ['B'], add: ['B'], pet: ['A'] } },
   ),
 }
 
@@ -169,11 +172,25 @@ export const DEFECTS: readonly Defect[] = [
     caughtBy: 'T1 an ended friendship stays ended',
   },
   {
+    name: 'secret per friend, not per friendship',
+    what: 'pair-secret state is kept per friend, so pairing again leaves other devices on the dead secret',
+    scenario: 'repair',
+    rule: 'secretPerIncarnation',
+    caughtBy: 'P3 one pair secret per friend',
+  },
+  {
     name: 'last writer by arrival',
     what: 'a register takes whatever arrived last, so a device back from days away wins',
     scenario: 'settings',
     rule: 'stampOrder',
     caughtBy: 'W1 the newest change wins',
+  },
+  {
+    name: 'stamps refused when ahead',
+    what: 'an entry stamped further ahead than the receiving clock allows is refused',
+    scenario: 'skew',
+    rule: 'acceptAhead',
+    caughtBy: 'C1 devices on the list converge',
   },
   {
     name: 'sealed to every device ever known',
@@ -184,10 +201,31 @@ export const DEFECTS: readonly Defect[] = [
   },
   {
     name: 'secret without the log',
-    what: 'a letter carrying a new pair secret doesn’t carry the device log that removed X',
+    what: 'a letter carrying a new pair secret doesn\u2019t carry the device log that removed X',
     scenario: 'removal',
     rule: 'logFirst',
     caughtBy: 'P4 secret holders know the removal',
+  },
+  {
+    name: 'secret by the highest round',
+    what: 'a device takes whichever proposal claims the highest round, counted or not',
+    scenario: 'removal',
+    rule: 'chainRules',
+    caughtBy: 'P5 no friendship on a removed device\u2019s secret',
+  },
+  {
+    name: 'secret state dropped at a tombstone',
+    what: 'a tombstone drops its friendship\u2019s secret state, lost for good if the tombstone stops counting',
+    scenario: 'removal',
+    rule: 'keepEndedSecrets',
+    caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'the friend not told',
+    what: 'a device whose secret changes through your devices doesn\u2019t send it to the friend',
+    scenario: 'removal',
+    rule: 'tellFriend',
+    caughtBy: 'P3 one pair secret per friend',
   },
   {
     name: 'removed device not discounted',
@@ -204,6 +242,13 @@ export const DEFECTS: readonly Defect[] = [
     caughtBy: 'R1 nothing from a removed device once all know',
   },
   {
+    name: 'summaries without a digest',
+    what: 'a summary says only how far each author goes, so two entries under one number never cross',
+    scenario: 'room',
+    rule: 'forkDigest',
+    caughtBy: 'C1 devices on the list converge',
+  },
+  {
     name: 'same sealed letter put again',
     what: 'a lost letter is put again as first sealed: to a device removed since, not to one linked since',
     scenario: 'link',
@@ -211,15 +256,15 @@ export const DEFECTS: readonly Defect[] = [
     caughtBy: 'P1 sealed to the list',
   },
   {
-    name: 'replacement outside the outbox',
-    what: 'a new pair secret is sent without the outbox, and a closed tab loses it',
+    name: 'letters outside the outbox',
+    what: 'a new pair secret or a change is sent without the outbox, and a closed tab loses it',
     scenario: 'outbox',
     rule: 'outbox',
     caughtBy: 'P3 one pair secret per friend',
   },
   {
     name: 'one unreadable entry refuses the letter',
-    what: 'a letter holding an entry this Pigeon can’t read is refused whole',
+    what: 'a letter holding an entry this Pigeon can\u2019t read is refused whole',
     scenario: 'newer',
     rule: 'perEntry',
     caughtBy: 'C1 devices on the list converge',

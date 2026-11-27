@@ -1,9 +1,12 @@
 // The steps of the your-data model: what people do on a device, what devices send and take, what
-// the Lighthouses lose, and what a hostile removed device does. Each step returns a new state;
-// none changes the one it was given.
-import { canon, copy, uniq } from './canon.ts'
-import { fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
-import { deliver, meet, newLetter, sealTo, takeEntries } from './data-mail.ts'
+// the writer does on a removal, and what the Lighthouses lose. Each step returns a new state;
+// none changes the one it was given. What a hostile removed device does is in data-hostile.ts.
+import { copy, uniq } from './canon.ts'
+import { counts, fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
+import { hostileSteps } from './data-hostile.ts'
+import { deliver, meet, newLetter, sealTo, takeEntries, toSend } from './data-mail.ts'
+import { finish, type Step, spend, sweep } from './data-run.ts'
+import { countsOn, dropEnded, knew, winner } from './data-secrets.ts'
 import {
   type Budget,
   type DataConfig,
@@ -16,47 +19,29 @@ import {
   newDevice,
   type Op,
   onList,
+  type Proposal,
+  propKey,
   REMOVED,
   WRITER,
 } from './data-state.ts'
+import { tellFriends, winners } from './data-tell.ts'
 
-export type Step = readonly [string, DataState]
-
-function spend(state: DataState, budget: Budget): boolean {
-  const left = state.left[budget] ?? 0
-  if (left <= 0) return false
-  state.left[budget] = left - 1
-  return true
-}
+/** What an entry is about: a friend, or a setting. Stamps follow per subject. */
+const subjectOf = (op: Op): string => ('fr' in op ? `f:${op.fr}` : op.k)
 
 /**
- * Works out the ghosts that depend on the whole state, and has whoever takes mail at once take
- * it: a hostile removed device reads every letter sealed to it the moment it's put (the worst
- * case), and a friend's device takes its letters (when doesn't matter to anything checked here).
+ * A change a person makes on device `d`, as a new entry of its log. Its stamp is later than the
+ * device's own clock and than any entry it holds about the same subject, so a change made after
+ * seeing another beats it, while a stamp far ahead elsewhere never pushes this device's clock.
  */
-export function finish(cfg: DataConfig, state: DataState): DataState {
-  const readers = ['F', 'G', ...(cfg.hostile ? [REMOVED] : [])]
-  state.mail.forEach((l, i) => {
-    if (!l.put) return
-    for (const r of l.pending) if (readers.includes(r)) deliver(cfg, state, i, r)
-  })
-  sweep(state)
-  state.allKnew =
-    state.removalSt > 0 &&
-    honest(state, cfg).every((d) => {
-      const dev = state.devs[d]
-      return dev !== undefined && knowsRemoval(dev)
-    })
-  return state
-}
-
-/** A change a person makes on device `d`, as a new entry of its log. */
-function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry {
+export function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry {
   const dev = state.devs[d]
   if (!dev) throw new Error(`no device ${d}`)
   dev.clock += 1
+  const seen = dev.entries.filter((e) => subjectOf(e.op) === subjectOf(op)).map((e) => e.st)
+  const st = Math.max(dev.clock, ...seen.map((x) => x + 1))
   const n = dev.nextN++
-  const e: Entry = { by: d, n, st: dev.clock, op, sig: `${d}${n}a` }
+  const e: Entry = { by: d, n, st, op, sig: `${d}${n}a` }
   dev.entries = takeEntries(cfg, dev.entries, [e]).entries
   dev.dirty = true
   const field = fieldOf(e)
@@ -65,8 +50,45 @@ function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry {
   return e
 }
 
-const friendsOf = (cfg: DataConfig, state: DataState, d: Dev) =>
-  liveFriends(viewOf(state, cfg.rules, d))
+/** Every friendship with `fr` that device `d` holds and hasn't ended, shown or not. */
+function heldIncs(cfg: DataConfig, state: DataState, d: Dev, fr: FriendId): string[] {
+  const entries = (state.devs[d]?.entries ?? []).filter((e) => counts(state, cfg.rules, d, e))
+  const ended = new Set(entries.flatMap((e) => (e.op.k === 'tomb' ? [e.op.inc] : [])))
+  return uniq(
+    entries.flatMap((e) =>
+      e.op.k === 'add' && e.op.fr === fr && !ended.has(e.op.inc) ? [e.op.inc] : [],
+    ),
+  )
+}
+
+/** Pairing with `fr` on device `d`: a new friendship, on a new first secret. */
+function pair(cfg: DataConfig, s: DataState, d: Dev, fr: FriendId): void {
+  const k = Object.values(s.secrets).filter((x) => x.root === fr).length + 1
+  const inc = `${fr}${k}`
+  const dev = s.devs[d]
+  if (!dev) return
+  const root: Proposal = { id: `${inc}r0`, inc, replaces: null, at: dev.clock + 1, by: d, round: 0 }
+  write(cfg, s, d, { k: 'add', fr, inc })
+  const key = propKey(cfg.rules, fr, inc)
+  dev.props[key] = [...(dev.props[key] ?? []), root]
+  dev.learned = uniq([...dev.learned, root.id])
+  s.secrets[root.id] = { by: d, knew: knew(s, d), root: fr }
+  s.friends[fr] = { inc, props: [root], learned: [root.id], knowsR: knowsRemoval(dev) }
+}
+
+function unfriend(cfg: DataConfig, s: DataState, d: Dev, fr: FriendId, incs: string[]): void {
+  s.tombs = uniq([...s.tombs, ...incs])
+  const dev = s.devs[d]
+  if (!dev) return
+  if (!cfg.rules.tombstones) {
+    // Without tombstones the friendship is only dropped here.
+    dev.entries = dev.entries.filter((e) => !(e.op.k === 'add' && incs.includes(e.op.inc)))
+    dev.dirty = true
+    return
+  }
+  for (const inc of incs) write(cfg, s, d, { k: 'tomb', fr, inc })
+  dropEnded(cfg.rules, s, d)
+}
 
 function personSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
   const out: Step[] = []
@@ -80,25 +102,15 @@ function personSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
     change(next)
     out.push([`${d} ${label}`, finish(cfg, next)])
   }
-  if (!live.includes('G') && !view.blocked.G)
-    act('adds G', 'add', (s) => {
-      const k = Object.keys(s.secrets).filter((id) => /^G\d+r0$/.test(id)).length + 1
-      const inc = `G${k}`
-      const secret = { id: `G${k}r0`, round: 0 }
-      write(cfg, s, d, { k: 'add', fr: 'G', inc })
-      const dev = s.devs[d]
-      if (dev) {
-        dev.secrets.G = secret
-        dev.learned = uniq([...dev.learned, secret.id])
-      }
-      s.secrets[secret.id] = { by: d, knew: dev ? knowsRemoval(dev) : false }
-      s.friends.G = { secret, learned: [secret.id] }
-    })
+  for (const fr of cfg.adds ?? ['G'])
+    if (!live.includes(fr) && !view.blocked[fr])
+      act(`pairs with ${fr}`, 'add', (s) => pair(cfg, s, d, fr))
   for (const fr of live.filter((f) => !cfg.targets || cfg.targets.includes(f))) {
-    const incs = Object.entries(view.live).flatMap(([inc, f]) => (f === fr ? [inc] : []))
+    const incs = heldIncs(cfg, state, d, fr)
     act(`unfriends ${fr}`, 'unfriend', (s) => unfriend(cfg, s, d, fr, incs))
     const v = `p${d}`
-    if (view.pet[fr] !== v) act(`names ${fr} ${v}`, 'pet', (s) => write(cfg, s, d, pet(fr, v)))
+    if (view.pet[fr] !== v)
+      act(`names ${fr} ${v}`, 'pet', (s) => write(cfg, s, d, { k: 'pet', fr, v }))
     if (!view.blocked[fr])
       act(`blocks ${fr}`, 'block', (s) => {
         unfriend(cfg, s, d, fr, incs)
@@ -112,56 +124,65 @@ function personSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
   act('writes an entry only a newer Pigeon reads', 'future', (s) =>
     write(cfg, s, d, { k: 'future' }),
   )
+  act('has its clock run a month ahead', 'skew', (s) => {
+    const dev = s.devs[d]
+    if (dev) dev.clock += 10
+  })
   return out
 }
 
-const pet = (fr: FriendId, v: string): Op => ({ k: 'pet', fr, v })
+const entryId = (e: Entry): string => `${e.by}:${e.n}:${e.sig}`
 
-function unfriend(cfg: DataConfig, s: DataState, d: Dev, fr: FriendId, incs: string[]): void {
-  s.tombs = uniq([...s.tombs, ...incs])
-  const dev = s.devs[d]
-  if (!cfg.rules.tombstones) {
-    // Without tombstones the friendship is only dropped here.
-    if (dev) dev.entries = dev.entries.filter((e) => !(e.op.k === 'add' && incs.includes(e.op.inc)))
-    if (dev) dev.dirty = true
-    return
-  }
-  for (const inc of incs) write(cfg, s, d, { k: 'tomb', fr, inc })
-}
-
-/** Sends this device's whole log and its pair secrets to its other devices. */
+/**
+ * Sends this device's other devices what any of them isn't known to hold, by the summary each
+ * last sent, and its pair-secret proposals. The letter waits in the outbox until it's put.
+ */
 export function send(cfg: DataConfig, state: DataState, d: Dev): void {
   const dev = state.devs[d]
   if (!dev?.dirty) return
   const to = sealTo(cfg, state, d)
   dev.dirty = false
   if (to.length === 0) return
+  const wanted = new Set(to.flatMap((r) => toSend(cfg, dev.entries, dev.known[r]).map(entryId)))
+  const pick = dev.entries.filter((e) => wanted.has(entryId(e)))
   // A newer letter takes the place of an older one still waiting on the same devices.
   for (const old of state.mail)
     if (old.from === d && old.kind === 'sync') {
       old.pending = old.pending.filter((p) => !to.includes(p as Dev))
       old.lost = old.lost.filter((p) => !to.includes(p as Dev))
     }
-  newLetter(cfg, state, 'sync', d, to, dev.entries, dev.secrets, true)
-  state.mail = state.mail.filter((l) => l.pending.length > 0 || l.lost.length > 0 || !l.put)
+  state.mail = state.mail.filter(
+    (l) => l.from !== d || l.kind !== 'sync' || l.pending.length > 0 || l.lost.length > 0,
+  )
+  newLetter(cfg, state, 'sync', d, to, pick, dev.props, false)
 }
 
-/** The writer replaces every pair secret after a removal, for each friend live there. */
+/** The writer replaces the pair secret of every friendship live there, after a removal. */
 export function rekey(cfg: DataConfig, state: DataState): void {
   const dev = state.devs[WRITER]
   if (!state.renew || !dev || !knowsRemoval(dev)) return
   state.renew = false
-  for (const fr of friendsOf(cfg, state, WRITER)) {
-    const old = dev.secrets[fr]
-    if (!old) continue
-    const secret = { id: old.id.replace(/r\d+$/, `r${old.round + 1}`), round: old.round + 1 }
-    state.secrets[secret.id] = { by: WRITER, knew: true }
-    dev.secrets[fr] = secret
-    dev.learned = uniq([...dev.learned, secret.id])
+  for (const [inc, fr] of Object.entries(viewOf(state, cfg.rules, WRITER).live)) {
+    const key = propKey(cfg.rules, fr, inc)
+    const props = dev.props[key] ?? []
+    const held = winner(cfg.rules, props, countsOn(state, WRITER))
+    if (!held) continue
+    dev.clock += 1
+    const p: Proposal = {
+      id: `${inc}r${held.round + 1}`,
+      inc,
+      replaces: held.id,
+      at: dev.clock,
+      by: WRITER,
+      round: held.round + 1,
+    }
+    dev.props[key] = [...props, p]
+    dev.learned = uniq([...dev.learned, p.id])
     dev.dirty = true
-    const put = false
-    newLetter(cfg, state, 'rekey-friend', WRITER, [fr], [], { [fr]: secret }, put)
-    newLetter(cfg, state, 'rekey', WRITER, sealTo(cfg, state, WRITER), [], { [fr]: secret }, put)
+    state.secrets[p.id] = { by: WRITER, knew: true }
+    const chain = { [key]: dev.props[key] ?? [] }
+    newLetter(cfg, state, 'rekey-friend', WRITER, [fr], [], chain, false)
+    newLetter(cfg, state, 'rekey', WRITER, sealTo(cfg, state, WRITER), [], chain, false)
   }
 }
 
@@ -199,18 +220,13 @@ function writerSteps(cfg: DataConfig, state: DataState): Step[] {
         clock: writer.clock,
         log: [...writer.log],
         entries: [...writer.entries],
-        secrets: { ...writer.secrets },
-        learned: Object.values(writer.secrets).flatMap((s) => (s ? [s.id] : [])),
+        props: copy(writer.props),
+        learned: Object.values(writer.props).flatMap((ps) => ps.map((p) => p.id)),
       }
     }
     out.push([`${WRITER} links C`, finish(cfg, next)])
   }
   return out
-}
-
-/** Letters nobody has left to take, and none waiting to be put, are gone from the Lighthouse. */
-export function sweep(state: DataState): void {
-  state.mail = state.mail.filter((l) => l.pending.length > 0 || l.lost.length > 0 || !l.put)
 }
 
 /** Whether a mail check by `r` would do anything. */
@@ -229,7 +245,7 @@ function hasWork(state: DataState, r: string): boolean {
  * what was lost, opens every letter waiting for it before acting on any (so device logs are
  * merged first), and then sends its other devices what they may lack.
  */
-export function check(cfg: DataConfig, state: DataState, r: string): void {
+export function check(cfg: DataConfig, state: DataState, r: string, closes = false): void {
   const own = r === 'F' || r === 'G' || (r === REMOVED && cfg.hostile) ? undefined : (r as Dev)
   if (own) {
     for (const l of state.mail) if (l.from === own) l.put = true
@@ -245,34 +261,15 @@ export function check(cfg: DataConfig, state: DataState, r: string): void {
     dev.log = uniq([...dev.log, ...logs])
     if (dev.log.length !== before) dev.dirty = true
   }
+  const before = own ? winners(cfg, state, own) : {}
   for (const i of waiting) deliver(cfg, state, i, r)
+  if (own) tellFriends(cfg, state, own, before)
   if (own) send(cfg, state, own)
+  // What the check sent is put before it ends, unless the tab closes first.
+  if (own && !closes) for (const l of state.mail) if (l.from === own) l.put = true
+  if (own && closes && !cfg.rules.outbox)
+    state.mail = state.mail.filter((l) => l.from !== own || l.put)
   sweep(state)
-}
-
-function mailSteps(cfg: DataConfig, state: DataState): Step[] {
-  const out: Step[] = []
-  for (const r of honest(state, cfg))
-    if (hasWork(state, r)) {
-      const next = copy(state)
-      check(cfg, next, r)
-      out.push([`${r} checks mail`, finish(cfg, next)])
-    }
-  if ((state.left.lose ?? 0) <= 0) return out
-  state.mail.forEach((letter, i) => {
-    if (!letter.put) return
-    for (const r of letter.pending) {
-      const lost = copy(state)
-      spend(lost, 'lose')
-      const l = lost.mail[i]
-      if (l) {
-        l.pending = l.pending.filter((p) => p !== r)
-        l.lost = uniq([...l.lost, r])
-      }
-      out.push([`#${letter.id} is lost for ${r}`, finish(cfg, lost)])
-    }
-  })
-  return out
 }
 
 /** Puts again what was lost: sealed again to the list as it is now, or the same letter. */
@@ -292,78 +289,58 @@ export function putAgain(cfg: DataConfig, state: DataState, i: number): void {
   letter.sealedWith = [...dev.log]
 }
 
+function mailSteps(cfg: DataConfig, state: DataState): Step[] {
+  const out: Step[] = []
+  for (const r of honest(state, cfg))
+    if (hasWork(state, r)) {
+      const next = copy(state)
+      check(cfg, next, r)
+      out.push([`${r} checks mail`, finish(cfg, next)])
+      if ((state.left.crash ?? 0) > 0) {
+        const closed = copy(state)
+        spend(closed, 'crash')
+        check(cfg, closed, r, true)
+        out.push([`${r} checks mail, and its tab closes before it puts`, finish(cfg, closed)])
+      }
+    }
+  if ((state.left.lose ?? 0) <= 0) return out
+  state.mail.forEach((letter, i) => {
+    if (!letter.put) return
+    for (const r of letter.pending) {
+      const lost = copy(state)
+      spend(lost, 'lose')
+      const l = lost.mail[i]
+      if (l) {
+        l.pending = l.pending.filter((p) => p !== r)
+        l.lost = uniq([...l.lost, r])
+      }
+      out.push([`#${letter.id} is lost for ${r}`, finish(cfg, lost)])
+    }
+  })
+  return out
+}
+
+/**
+ * A tab closed before it puts a replacement (which waits for a check to be put): under the
+ * design the outbox keeps it, to be put at the next start, so only the budget changes; under the
+ * planted defect the letters are gone.
+ */
 function deviceSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
   const out: Step[] = []
-  if (
-    (state.left.crash ?? 0) > 0 &&
-    !cfg.rules.outbox &&
-    state.mail.some((l) => l.from === d && !l.put)
-  ) {
+  if ((state.left.crash ?? 0) > 0 && state.mail.some((l) => l.from === d && !l.put)) {
     const closed = copy(state)
     spend(closed, 'crash')
-    closed.mail = closed.mail.filter((l) => l.from !== d || l.put)
+    if (!cfg.rules.outbox) closed.mail = closed.mail.filter((l) => l.from !== d || l.put)
     out.push([`${d}'s tab closes before it puts`, finish(cfg, closed)])
   }
   for (const other of onList(state))
     if (other > d && (state.left.meet ?? 0) > 0 && honest(state, cfg).includes(other)) {
       const next = copy(state)
       spend(next, 'meet')
+      const was = { [d]: winners(cfg, next, d), [other]: winners(cfg, next, other) }
       meet(cfg, next, d, other)
+      for (const x of [d, other]) tellFriends(cfg, next, x, was[x] ?? {})
       out.push([`${d} and ${other} meet in the self room`, finish(cfg, next)])
-    }
-  return out
-}
-
-/** What a hostile removed device does: forge entries, fork one, send them, meet in the room. */
-function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
-  const out: Step[] = []
-  const x = state.devs[REMOVED]
-  if (!cfg.hostile || !x) return out
-  const top = Math.max(...Object.values(state.devs).map((d) => d?.clock ?? 0)) + 1
-  const forged = x.entries.filter((e) => e.by === REMOVED && e.sig.endsWith('a')).length
-  const forge = cfg.forges?.[forged]
-  if (forge) {
-    const next = copy(state)
-    const dev = next.devs[REMOVED]
-    if (dev) {
-      const n = dev.nextN++
-      const st = forge.stamp === 'early' ? 1 : top
-      const late = next.allKnew ? { late: true as const } : {}
-      dev.entries = [...dev.entries, { by: REMOVED, n, st, op: forge.op, sig: `X${n}a`, ...late }]
-      out.push([
-        `X forges ${canon(forge.op)} at ${forge.stamp === 'early' ? 'an early' : 'a current'} stamp`,
-        next,
-      ])
-    }
-  }
-  const last = x.entries.filter((e) => e.by === REMOVED).at(-1)
-  if ((state.left.fork ?? 0) > 0 && last && !x.entries.some((e) => e.sig === `X${last.n}b`)) {
-    const next = copy(state)
-    spend(next, 'fork')
-    const dev = next.devs[REMOVED]
-    if (dev) dev.entries = [...dev.entries, { ...last, op: pet('F', 'py'), sig: `X${last.n}b` }]
-    out.push(['X signs a second entry with the same number', next])
-  }
-  const own = x.entries.filter((e) => e.by === REMOVED)
-  if (own.length === 0) return out
-  for (const r of honest(state, cfg)) {
-    const variant = r === WRITER ? 'a' : 'b'
-    const pick = own.filter(
-      (e) => e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n),
-    )
-    if (state.xSent[r] === canon(pick)) continue
-    const next = copy(state)
-    next.xSent[r] = canon(pick)
-    const letter = newLetter(cfg, next, 'sync', REMOVED, [r], pick, {}, true)
-    letter.log = letter.log.filter((e) => e !== 'rmX')
-    out.push([`X sends its entries to ${r}`, finish(cfg, next)])
-  }
-  for (const r of honest(state, cfg))
-    if ((state.left.meet ?? 0) > 0) {
-      const next = copy(state)
-      spend(next, 'meet')
-      meet(cfg, next, REMOVED, r)
-      out.push([`X meets ${r} in the self room`, finish(cfg, next)])
     }
   return out
 }

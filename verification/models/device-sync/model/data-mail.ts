@@ -1,7 +1,9 @@
-// How the your-data model's letters are made and taken: sealed to a list, carrying the sender's
-// device log, entries and pair secrets; opened by merging the log first, then counting the rest
+// How the your-data model's letters are made and taken. A letter is sealed to a list and carries
+// the sender's device log, the entries the recipients aren't known to hold, the pair-secret
+// proposals, and the sender's summary. Whoever opens it merges the log first, and counts the rest
 // only from a device on the list that results.
 import { uniq } from './canon.ts'
+import { dropEnded, propIds, takeProps } from './data-secrets.ts'
 import {
   byEntry,
   type DataConfig,
@@ -10,13 +12,13 @@ import {
   type Entry,
   entryKey,
   everKnown,
-  type FriendId,
   type Letter,
   type LetterKind,
   type LogEvent,
   listOf,
+  type Proposal,
   REMOVED,
-  type Secret,
+  type Summary,
 } from './data-state.ts'
 
 /** Whom a letter from `d` is sealed to. */
@@ -34,6 +36,45 @@ export function listFor(state: DataState, log: readonly LogEvent[], from: Dev): 
     .sort()
 }
 
+/**
+ * Per author, the highest entry number held with none missing below it and, under the design, a
+ * digest of those entries' signatures. Two devices holding different entries under one number
+ * have the same number and different digests, so each sends the other that author's entries.
+ */
+export function summaryOf(cfg: DataConfig, entries: readonly Entry[]): Summary {
+  const out: Summary = {}
+  for (const by of uniq(entries.map((e) => e.by))) {
+    const mine = entries.filter((e) => e.by === by).sort(byEntry)
+    let n = 0
+    while (mine.some((e) => e.n === n + 1)) n++
+    const digest = cfg.rules.forkDigest ? digestOf(mine, n) : ''
+    out[by] = { n, digest }
+  }
+  return out
+}
+
+const digestOf = (entries: readonly Entry[], n: number): string =>
+  entries
+    .filter((e) => e.n <= n)
+    .map((e) => e.sig)
+    .join(',')
+
+/** The entries a device holding `held` sends one whose summary is `theirs`. */
+export function toSend(
+  cfg: DataConfig,
+  held: readonly Entry[],
+  theirs: Summary | undefined,
+): Entry[] {
+  if (!theirs) return [...held]
+  return held.filter((e) => {
+    const them = theirs[e.by]
+    if (!them || e.n > them.n) return true
+    if (!cfg.rules.forkDigest) return false
+    const mine = held.filter((h) => h.by === e.by)
+    return digestOf(mine, them.n) !== them.digest
+  })
+}
+
 export function newLetter(
   cfg: DataConfig,
   state: DataState,
@@ -41,7 +82,7 @@ export function newLetter(
   from: Dev,
   to: readonly string[],
   entries: readonly Entry[],
-  secrets: Partial<Record<FriendId, Secret>>,
+  props: Readonly<Record<string, readonly Proposal[]>>,
   put: boolean,
 ): Letter {
   const dev = state.devs[from]
@@ -58,7 +99,8 @@ export function newLetter(
     sealedWith: log,
     log: cfg.rules.logFirst ? log : [],
     entries: [...entries],
-    secrets: { ...secrets },
+    props: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, [...v]])),
+    summary: dev ? summaryOf(cfg, dev.entries) : {},
   }
   state.mail.push(letter)
   return letter
@@ -89,38 +131,25 @@ export function takeEntries(
   return { entries: cfg.rules.stampOrder ? out.sort(byEntry) : out, changed }
 }
 
-/** Takes the later round of each pair secret. A device never moves back to an earlier one. */
-export function takeSecrets(
-  mine: Partial<Record<FriendId, Secret>>,
-  incoming: Partial<Record<FriendId, Secret>>,
-): { secrets: Partial<Record<FriendId, Secret>>; changed: boolean } {
-  const out = { ...mine }
-  let changed = false
-  for (const fr of Object.keys(incoming) as FriendId[]) {
-    const theirs = incoming[fr]
-    const own = out[fr]
-    if (theirs && (!own || theirs.round > own.round)) {
-      out[fr] = theirs
-      changed = true
-    }
-  }
-  return { secrets: out, changed }
+/** A friend's device takes a replacement letter for the friendship it's in. */
+function friendTakes(state: DataState, letter: Letter, fr: 'F' | 'G'): void {
+  const friend = state.friends[fr]
+  if (!friend) return
+  if (letter.log.includes('rmX')) friend.knowsR = true
+  const props = Object.values(letter.props)
+    .flat()
+    .filter((p) => p.inc === friend.inc)
+  friend.learned = uniq([...friend.learned, ...props.map((p) => p.id)])
+  friend.props = [...friend.props, ...props.filter((p) => !friend.props.some((h) => h.id === p.id))]
 }
 
-const secretIds = (secrets: Partial<Record<FriendId, Secret>>): string[] =>
-  Object.values(secrets).flatMap((s) => (s ? [s.id] : []))
-
-/** Device `r` takes letter `letter` (its index in the mail). */
+/** Device `r` takes letter `index` of the mail. */
 export function deliver(cfg: DataConfig, state: DataState, index: number, r: string): void {
   const letter = state.mail[index]
   if (!letter) return
   letter.pending = letter.pending.filter((p) => p !== r)
   if (r === 'F' || r === 'G') {
-    const friend = state.friends[r]
-    const secret = letter.secrets[r]
-    if (!friend || !secret) return
-    friend.learned = uniq([...friend.learned, secret.id])
-    if (secret.round > friend.secret.round) friend.secret = secret
+    friendTakes(state, letter, r)
     return
   }
   const d = r as Dev
@@ -128,7 +157,7 @@ export function deliver(cfg: DataConfig, state: DataState, index: number, r: str
   if (!dev) return
   if (d === REMOVED && cfg.hostile) {
     // A hostile removed device reads whatever was sealed to it, and keeps it.
-    dev.learned = uniq([...dev.learned, ...secretIds(letter.secrets)])
+    dev.learned = uniq([...dev.learned, ...propIds(letter.props)])
     return
   }
   if (d === REMOVED && dev.log.includes('rmX')) return
@@ -143,17 +172,21 @@ export function deliver(cfg: DataConfig, state: DataState, index: number, r: str
     if (changed) dev.dirty = true
     return
   }
+  dev.known[letter.from] = letter.summary
   const entries = takeEntries(cfg, dev.entries, letter.entries)
+  // A sender that lacks something this device holds is sent it at this device's next letter.
+  if (toSend(cfg, entries.entries, letter.summary).length > 0) changed = true
   dev.entries = entries.entries
-  for (const e of letter.entries) dev.clock = Math.max(dev.clock, e.st)
-  const secrets = takeSecrets(dev.secrets, letter.secrets)
-  dev.secrets = secrets.secrets
-  dev.learned = uniq([...dev.learned, ...secretIds(letter.secrets)])
-  changed = changed || entries.changed || secrets.changed
+  const props = takeProps(state, d, letter.props)
+  changed = changed || entries.changed || props
+  dropEnded(cfg.rules, state, d)
   if (changed) dev.dirty = true
 }
 
-/** Two devices in the self room: each merges the other's log, then takes from it if it counts. */
+/**
+ * Two devices in the self room: each merges the other's log, then, if the other is on its list,
+ * swaps summaries and takes what it lacks.
+ */
 export function meet(cfg: DataConfig, state: DataState, a: Dev, b: Dev): void {
   const da = state.devs[a]
   const db = state.devs[b]
@@ -162,6 +195,7 @@ export function meet(cfg: DataConfig, state: DataState, a: Dev, b: Dev): void {
   const logA = hides(a) ? da.log.filter((e) => e !== 'rmX') : da.log
   const logB = hides(b) ? db.log.filter((e) => e !== 'rmX') : db.log
   const merged = uniq([...logA, ...logB])
+  const summaries = { [a]: summaryOf(cfg, da.entries), [b]: summaryOf(cfg, db.entries) }
   const pass = (from: Dev, to: Dev) => {
     const src = state.devs[from]
     const dst = state.devs[to]
@@ -173,16 +207,15 @@ export function meet(cfg: DataConfig, state: DataState, a: Dev, b: Dev): void {
     }
     if (!listOf(state, to).includes(from) || !listOf(state, from).includes(to)) return
     if (hides(to)) {
-      dst.learned = uniq([...dst.learned, ...secretIds(src.secrets)])
+      dst.learned = uniq([...dst.learned, ...propIds(src.props)])
       return
     }
-    const entries = takeEntries(cfg, dst.entries, src.entries)
-    const secrets = takeSecrets(dst.secrets, src.secrets)
+    const sent = toSend(cfg, src.entries, summaries[to])
+    const entries = takeEntries(cfg, dst.entries, sent)
     dst.entries = entries.entries
-    dst.secrets = secrets.secrets
-    for (const e of src.entries) dst.clock = Math.max(dst.clock, e.st)
-    dst.learned = uniq([...dst.learned, ...secretIds(src.secrets)])
-    if (entries.changed || secrets.changed) dst.dirty = true
+    dst.known[from] = summaries[from] ?? {}
+    const props = takeProps(state, to, src.props)
+    if (entries.changed || props) dst.dirty = true
   }
   pass(a, b)
   pass(b, a)

@@ -6,7 +6,9 @@
 //   nothing brings that incarnation back, only pairing again, which is a new one.
 // - A petname, a block and the relay setting each take the value of the entry with the highest
 //   stamp, then device, then number (the last two only settle ties).
-// - A block hides every friendship added before it (by stamp); one added after it stays.
+// - A block hides every friendship added at or before it (by stamp); one added after it stays.
+// - Of two live friendships with one friend (paired again on two devices at once), the newer add
+//   shows.
 // - Entries a removed device stamped at or after its removal count for nothing on a device that
 //   knows of the removal. Those it stamped before still count: that is its own word, as a chat
 //   entry's time is.
@@ -57,10 +59,15 @@ export function valueIn(e: Entry): string {
 export function counts(state: DataState, rules: DataRules, d: Dev, e: Entry): boolean {
   if (e.op.k === 'future') return false
   const dev = state.devs[d]
+  // The defect: an entry stamped further ahead of this device's clock than it allows is refused.
+  if (!rules.acceptAhead && dev && e.st > dev.clock + AHEAD) return false
   if (rules.discountRemoved && e.by === REMOVED && dev && knowsRemoval(dev))
     return e.st < state.removalSt
   return true
 }
+
+/** How far ahead of its own clock a device takes a stamp, under the planted defect only. */
+export const AHEAD = 2
 
 const later = (a: Entry, b: Entry): boolean =>
   a.st !== b.st ? a.st > b.st : a.by !== b.by ? a.by > b.by : a.n > b.n
@@ -91,12 +98,15 @@ export function viewOf(state: DataState, rules: DataRules, d: Dev): View {
   const live: Record<string, FriendId> = {}
   const pet: Partial<Record<FriendId, string>> = {}
   const blocked: Partial<Record<FriendId, boolean>> = {}
+  const newest = new Map<FriendId, Entry>()
   for (const e of counting) {
     if (e.op.k !== 'add' || ended.has(e.op.inc)) continue
     const block = win.get(`block:${e.op.fr}`)
-    if (block?.op.k === 'block' && block.op.v && block.st > e.st) continue
-    live[e.op.inc] = e.op.fr
+    if (block?.op.k === 'block' && block.op.v && block.st >= e.st) continue
+    const held = newest.get(e.op.fr)
+    if (!held || later(e, held)) newest.set(e.op.fr, e)
   }
+  for (const e of newest.values()) if (e.op.k === 'add') live[e.op.inc] = e.op.fr
   for (const e of win.values()) {
     if (e.op.k === 'pet') pet[e.op.fr] = e.op.v
     if (e.op.k === 'block') blocked[e.op.fr] = e.op.v

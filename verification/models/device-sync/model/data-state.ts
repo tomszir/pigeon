@@ -36,20 +36,37 @@ export interface Entry {
   readonly late?: true
 }
 
-/** A pair secret, and the round of replacement it came from: a later round replaces it. */
-export interface Secret {
+/**
+ * A pair secret, as the signed proposal that made it. The first secret of a friendship (made when
+ * pairing) replaces nothing; each replacement names the secret it replaces, when it was proposed
+ * and by which device, as replacement rounds do. `round` is how many replacements deep it claims
+ * to be, which the design never trusts and a planted defect does.
+ */
+export interface Proposal {
   readonly id: string
+  /** The friendship (incarnation) it belongs to. */
+  readonly inc: string
+  readonly replaces: string | null
+  readonly at: number
+  readonly by: string
   readonly round: number
 }
+
+/** Per author: the highest entry number held with none missing, and a digest of those entries. */
+export type Summary = Partial<Record<Dev, { readonly n: number; readonly digest: string }>>
 
 /** The device log events a device has merged: X's removal, C's adding. */
 export type LogEvent = 'rmX' | 'addC'
 
 export interface Device {
+  /** This device's own clock, which only its own actions move (and a clock gone wrong). */
   clock: number
   log: LogEvent[]
   entries: Entry[]
-  secrets: Partial<Record<FriendId, Secret>>
+  /** The pair-secret proposals it knows, per friendship (or per friend, under a planted defect). */
+  props: Record<string, Proposal[]>
+  /** What each other device of yours is known to hold, from that device's own letters. */
+  known: Partial<Record<Dev, Summary>>
   /** Holds something it hasn't sent its other devices since. */
   dirty: boolean
   nextN: number
@@ -78,7 +95,10 @@ export interface Letter {
   /** The device log events it carries, merged first by whoever opens it. */
   log: LogEvent[]
   entries: Entry[]
-  secrets: Partial<Record<FriendId, Secret>>
+  /** Pair-secret proposals, per friendship, sealed beside the entries. */
+  props: Record<string, Proposal[]>
+  /** What the sender holds, so the recipient knows what to send it back. */
+  summary: Summary
 }
 
 /** A change a device on the list made, as the person meant it: the ghost the oracle reads. */
@@ -105,7 +125,15 @@ export type Budget =
   | 'forge'
   | 'fork'
   | 'future'
-  | 'stale'
+  | 'skew'
+
+export interface FriendDevice {
+  inc: string
+  props: Proposal[]
+  learned: string[]
+  /** Has merged the device log that removed X, from a letter carrying it. */
+  knowsR: boolean
+}
 
 export interface DataState {
   devs: Partial<Record<Dev, Device>>
@@ -115,11 +143,11 @@ export interface DataState {
   allKnew: boolean
   /** The writer removed a device and hasn't replaced the secrets yet. */
   renew: boolean
-  /** Each friend's device: the pair secret it's on, and every one it has read. */
-  friends: Partial<Record<FriendId, { secret: Secret; learned: string[] }>>
+  /** Each friend's device: the friendship it's in, the proposals it knows, and what it has read. */
+  friends: Partial<Record<FriendId, FriendDevice>>
   mail: Letter[]
   /** Ghost: every pair secret made, by whom, and whether its maker knew of X's removal. */
-  secrets: Record<string, { by: string; knew: boolean }>
+  secrets: Record<string, { by: string; knew: boolean; root?: FriendId }>
   actions: Action[]
   /** Ghost: friendships (incarnations) a device on the list ended. */
   tombs: string[]
@@ -151,6 +179,22 @@ export interface DataRules {
   readonly outbox: boolean
   /** Two different entries with one author and number: the lower signature wins everywhere. */
   readonly lowerSigWins: boolean
+  /** A summary carries a digest per author, so two entries with one number are both sent. */
+  readonly forkDigest: boolean
+  /** Pair-secret state belongs to a friendship (an incarnation). Off: to the friend. */
+  readonly secretPerIncarnation: boolean
+  /**
+   * A secret is chosen as replacement rounds choose: from the friendship's first secret, the
+   * earliest proposal (time, device, secret) for the one held, counting only proposals whose
+   * device is on its side's list. Off: the highest round anyone claims.
+   */
+  readonly chainRules: boolean
+  /** An entry is taken whatever its stamp. Off: one more than 2 ahead of this clock is refused. */
+  readonly acceptAhead: boolean
+  /** A friendship's pair-secret state is kept after its tombstone. Off: the tombstone drops it. */
+  readonly keepEndedSecrets: boolean
+  /** A device whose secret for a friendship changes sends the proposals to the friend too. */
+  readonly tellFriend: boolean
 }
 
 export const DESIGN: DataRules = {
@@ -164,6 +208,12 @@ export const DESIGN: DataRules = {
   perEntry: true,
   outbox: true,
   lowerSigWins: true,
+  forkDigest: true,
+  secretPerIncarnation: true,
+  chainRules: true,
+  acceptAhead: true,
+  keepEndedSecrets: true,
+  tellFriend: true,
 }
 
 export interface DataConfig {
@@ -175,28 +225,50 @@ export interface DataConfig {
   readonly budgets: Partial<Record<Budget, number>>
   /** Which devices may spend each budget; any of them when left out. */
   readonly who?: Partial<Record<Budget, readonly Dev[]>>
-  /** What a hostile removed device forges, in order, each at an early stamp or a current one. */
-  readonly forges?: readonly { readonly op: Op; readonly stamp: 'early' | 'current' }[]
+  /**
+   * What a hostile removed device forges, in order: an entry at an early or a current stamp, or a
+   * pair-secret proposal of its own for F, claiming a high round.
+   */
+  readonly forges?: readonly (
+    | { readonly op: Op; readonly stamp: 'early' | 'current' }
+    | { readonly proposal: true }
+  )[]
+  /** Which friends a person may pair with (again, after an unfriend); G when left out. */
+  readonly adds?: readonly FriendId[]
   /** Which friends people change; any when left out. */
   readonly targets?: readonly FriendId[]
   readonly rules: DataRules
 }
 
 export function newDevice(): Device {
-  return { clock: 1, log: [], entries: [], secrets: {}, dirty: false, nextN: 1, learned: [] }
+  return {
+    clock: 1,
+    log: [],
+    entries: [],
+    props: {},
+    known: {},
+    dirty: false,
+    nextN: 1,
+    learned: [],
+  }
 }
+
+/** Where a friendship's pair-secret proposals are kept: by friendship, or by friend. */
+export const propKey = (rules: DataRules, fr: FriendId, inc: string): string =>
+  rules.secretPerIncarnation ? inc : fr
 
 /** F is already a friend on every device, on secret F1r0, with an `add` entry the writer made. */
 export function initialState(cfg: DataConfig): DataState {
   const add: Entry = { by: WRITER, n: 1, st: 1, op: { k: 'add', fr: 'F', inc: 'F1' }, sig: 'A1a' }
-  const first: Secret = { id: 'F1r0', round: 0 }
+  const first: Proposal = { id: 'F1r0', inc: 'F1', replaces: null, at: 1, by: WRITER, round: 0 }
+  const key = propKey(cfg.rules, 'F', 'F1')
   const devs: Partial<Record<Dev, Device>> = {}
   for (const d of cfg.devices) {
     devs[d] = {
       ...newDevice(),
       log: cfg.devices.includes('C') ? ['addC'] : [],
       entries: [add],
-      secrets: { F: first },
+      props: { [key]: [first] },
       nextN: d === WRITER ? 2 : 1,
       learned: [first.id],
     }
@@ -206,9 +278,9 @@ export function initialState(cfg: DataConfig): DataState {
     removalSt: 0,
     allKnew: false,
     renew: false,
-    friends: { F: { secret: first, learned: [first.id] } },
+    friends: { F: { inc: 'F1', props: [first], learned: [first.id], knowsR: false } },
     mail: [],
-    secrets: { [first.id]: { by: WRITER, knew: false } },
+    secrets: { [first.id]: { by: WRITER, knew: false, root: 'F' } },
     actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add' }],
     tombs: [],
     left: { ...cfg.budgets },

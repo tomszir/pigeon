@@ -10,7 +10,9 @@ import { MAX_STATES, WALK_LENGTH, WALKS } from './limits.ts'
 /** What each scenario must reach once settled, so it can't pass by never getting there. */
 const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   friends: ['settled:G live on A', 'settled:G live on C', 'settled:unfriended', 'letter lost'],
+  repair: ['settled:F paired again', 'settled:F2 live on B', 'settled:F2 live on C', 'letter lost'],
   blocks: ['settled:blocked', 'letter lost'],
+  skew: ['settled:a clock ran ahead', 'settled:unfriended', 'settled:petname set'],
   settings: ['settled:relay on', 'settled:petname set'],
   removal: [
     'removed',
@@ -18,10 +20,15 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
     'settled:secret replaced after removal',
     'settled:G live on A',
     'forged entry taken',
+    'forged proposal taken',
   ],
-  room: ['forged entry taken', 'settled:every device knew of the removal'],
+  room: [
+    'forged entry taken',
+    'devices hold different entries under one number',
+    'settled:every device knew of the removal',
+  ],
   link: ['C linked', 'letter lost', 'settled:secret replaced after removal'],
-  outbox: ['settled:secret replaced after removal'],
+  outbox: ['settled:secret replaced after removal', 'settled:petname set', 'settled:a tab closed'],
   newer: ['settled:unreadable entry held', 'settled:G live on A'],
 }
 
@@ -38,7 +45,7 @@ describe('your data, under the design', () => {
         assert.ok(result.reached.includes(flag), `never reached ${flag}`)
     })
 
-  for (const key of ['removal', 'room', 'link'])
+  for (const key of ['repair', 'removal', 'room', 'link'])
     it(`${key}: random walks deeper than the search`, () => {
       const cfg = SCENARIOS[key]
       assert.ok(cfg)

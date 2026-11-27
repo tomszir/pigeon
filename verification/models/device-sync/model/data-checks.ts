@@ -2,6 +2,7 @@
 import { canon } from './canon.ts'
 import { counts, fieldOf, valueIn, viewOf } from './data-fold.ts'
 import { listFor } from './data-mail.ts'
+import { friendSecret, secretOf } from './data-secrets.ts'
 import {
   type DataConfig,
   type DataState,
@@ -37,7 +38,7 @@ const noNewSecretToRemoved = (): Check => ({
   id: 'P2 no new secret to a removed device',
   check: (s) => {
     const x = s.devs[REMOVED]
-    const leaked = x?.learned.filter((id) => s.secrets[id]?.knew)
+    const leaked = x?.learned.filter((id) => s.secrets[id]?.knew && s.secrets[id]?.by !== REMOVED)
     return leaked?.length ? `${REMOVED} holds ${leaked.join(',')}` : undefined
   },
 })
@@ -49,8 +50,10 @@ const holdersKnowRemoval = (cfg: DataConfig): Check => ({
     for (const d of honestDevs(cfg, s)) {
       const dev = s.devs[d]
       if (!dev || knowsRemoval(dev)) continue
-      const held = Object.values(dev.secrets).filter((x) => x && s.secrets[x.id]?.knew)
-      if (held.length) return `${d} holds ${held.map((x) => x?.id).join(',')} without the removal`
+      const held = Object.values(dev.props)
+        .flat()
+        .filter((p) => s.secrets[p.id]?.knew && p.by !== REMOVED)
+      if (held.length) return `${d} holds ${held.map((p) => p.id).join(',')} without the removal`
     }
     return undefined
   },
@@ -205,14 +208,38 @@ const newestWins = (cfg: DataConfig): Check => ({
 const sameSecret = (cfg: DataConfig): Check => ({
   id: 'P3 one pair secret per friend',
   check: (s) => {
-    for (const d of honestDevs(cfg, s)) {
-      const view = viewOf(s, cfg.rules, d)
-      for (const fr of new Set(Object.values(view.live))) {
-        const mine = s.devs[d]?.secrets[fr]?.id
-        const theirs = s.friends[fr]?.secret.id
-        if (mine !== theirs)
-          return `${d} is on ${mine ?? 'nothing'} for ${fr}, ${fr} is on ${theirs}`
+    for (const d of honestDevs(cfg, s))
+      for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
+        const mine = secretOf(cfg.rules, s, d, fr, inc)?.id
+        const friend = s.friends[fr]
+        const theirs = friend ? `${friendSecret(cfg.rules, friend)?.id} in ${friend.inc}` : 'none'
+        if (`${mine} in ${inc}` !== theirs)
+          return `${d} is on ${mine ?? 'nothing'} for ${fr} in ${inc}, ${fr} is on ${theirs}`
       }
+    return undefined
+  },
+})
+
+/** P5: once mail settles, no friendship is on a secret a removed device proposed. */
+const notOnRemoved = (cfg: DataConfig): Check => ({
+  id: 'P5 no friendship on a removed device\u2019s secret',
+  check: (s) => {
+    if (s.removalSt === 0) return undefined
+    for (const d of honestDevs(cfg, s))
+      for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
+        const mine = secretOf(cfg.rules, s, d, fr, inc)
+        if (mine?.by === REMOVED && mine.replaces !== null)
+          return `${d} is on ${mine.id}, by ${REMOVED}`
+      }
+    const live = new Set(
+      honestDevs(cfg, s).flatMap((d) => Object.keys(viewOf(s, cfg.rules, d).live)),
+    )
+    for (const [fr, friend] of Object.entries(s.friends)) {
+      // A friendship your devices ended is the friend's to drop; only a live one is checked.
+      if (!friend || !live.has(friend.inc)) continue
+      const theirs = friendSecret(cfg.rules, friend)
+      if (theirs?.by === REMOVED && theirs.replaces !== null)
+        return `${fr} is on ${theirs.id}, by ${REMOVED}`
     }
     return undefined
   },
@@ -228,7 +255,13 @@ export function dataChecks(cfg: DataConfig) {
       discounted(cfg),
     ],
     stepChecks: [tombsHold(cfg)],
-    settled: [converge(cfg), unfriendStays(cfg), newestWins(cfg), sameSecret(cfg)],
+    settled: [
+      converge(cfg),
+      unfriendStays(cfg),
+      newestWins(cfg),
+      sameSecret(cfg),
+      notOnRemoved(cfg),
+    ],
   }
 }
 
@@ -237,10 +270,24 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
   const flags: string[] = []
   if (s.removalSt > 0) flags.push('removed')
   if (s.allKnew) flags.push('every device knew of the removal')
-  if (Object.values(s.secrets).some((x) => x.knew)) flags.push('secret replaced after removal')
+  if (Object.values(s.secrets).some((x) => x.knew && x.by !== REMOVED && !x.root))
+    flags.push('secret replaced after removal')
+  if (Object.values(s.secrets).filter((x) => x.root === 'F').length > 1)
+    flags.push('F paired again')
+  if (
+    s.devs[REMOVED]?.props &&
+    Object.values(s.devs[REMOVED]?.props ?? {})
+      .flat()
+      .some((p) => p.by === REMOVED)
+  )
+    flags.push('X forged a proposal')
   if (s.tombs.length) flags.push('unfriended')
   if (s.left.link === 0) flags.push('C linked')
+  if ((cfg.budgets.crash ?? 0) > (s.left.crash ?? 0)) flags.push('a tab closed')
   if (s.mail.some((l) => l.lost.length)) flags.push('letter lost')
+  const sigs = honestDevs(cfg, s).flatMap((d) => (s.devs[d]?.entries ?? []).map((e) => e.sig))
+  if (sigs.some((x) => x.endsWith('a') && sigs.includes(`${x.slice(0, -1)}b`)))
+    flags.push('devices hold different entries under one number')
   for (const d of honestDevs(cfg, s)) {
     const view = viewOf(s, cfg.rules, d)
     if (Object.values(view.live).includes('G')) flags.push(`G live on ${d}`)
@@ -250,6 +297,10 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
     const entries = s.devs[d]?.entries ?? []
     if (entries.some((e) => e.by === REMOVED && cfg.hostile)) flags.push('forged entry taken')
     if (entries.some((e) => e.op.k === 'future')) flags.push('unreadable entry held')
+    if (Object.keys(view.live).includes('F2')) flags.push(`F2 live on ${d}`)
+    const props = Object.values(s.devs[d]?.props ?? {}).flat()
+    if (props.some((p) => p.by === REMOVED)) flags.push('forged proposal taken')
+    if ((s.devs[d]?.clock ?? 0) > 9) flags.push('a clock ran ahead')
   }
   return [...new Set(flags)].sort()
 }
