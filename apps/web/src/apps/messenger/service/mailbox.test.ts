@@ -370,6 +370,101 @@ describe('the mailbox', () => {
     expect(take).toHaveBeenCalledOnce()
   })
 
+  it('puts a letter again sealed to the friend’s devices as they are then', async () => {
+    const { address, device, tick } = setup()
+    const laptop = device('mika-laptop', 'mika')
+    const phone = device('mika-phone', 'mika')
+    const tablet = device('mika-tablet', 'mika')
+    const keyOf = (d: ReturnType<typeof device>) => bindSealingKey(d.signer, d.sealer)
+    // Mika's devices as Rook knows them when each put is made.
+    let mikas = [laptop, phone]
+    const listOf = async () => ({
+      devices: mikas.map((d) => d.signer.id),
+      keys: await Promise.all(mikas.map(keyOf)),
+    })
+    const rook = device('rook-laptop', 'rook', { listOf })
+    const toRook: Recipient = {
+      identity: fakeSigner('rook').id,
+      secret,
+      keys: [await keyOf(rook)],
+      lighthouses: [address],
+    }
+    const toMika: Recipient = {
+      ...toRook,
+      identity: fakeSigner('mika').id,
+      keys: (await listOf()).keys,
+    }
+    await rook.mailbox.send('letter', toMika, { hello: 1 })
+    const fromRook: Source = { sender: toRook.identity, secret, kinds: ['letter'], replyTo: toRook }
+    const take = vi.fn(async (_source: Source, letter: Letter) => letter.id.length > 0)
+    const opened = async (d: ReturnType<typeof device>) => {
+      const seen: Letter[] = []
+      await d.mailbox.fetch([address], [fromRook], take, async (letters) => {
+        seen.push(...letters.map(({ letter }) => letter))
+      })
+      return seen
+    }
+    const receipts = () =>
+      rook.mailbox.fetch(
+        [address],
+        [{ sender: toMika.identity, secret, kinds: ['receipt'] }],
+        async () => true,
+      )
+    const [first] = await opened(laptop)
+    expect(take).toHaveBeenCalledOnce()
+    // Mika takes her phone off her list and links a tablet; days pass with no receipt from
+    // either, as the tablet is away.
+    mikas = [laptop, tablet]
+    tick(RESEND_AFTER_MS + DAY)
+    await rook.mailbox.resend()
+    await receipts()
+    // The laptop's receipt came, but the letter waits on the tablet now, so it goes again.
+    expect((await rook.mailbox.waitingOn()).map((to) => to.identity)).toEqual([toMika.identity])
+    tick(RESEND_AFTER_MS + DAY)
+    await rook.mailbox.resend()
+
+    // The tablet gets it, under the same id, once; the removed phone only ever the first put.
+    const onTablet = await opened(tablet)
+    expect(onTablet.map((letter) => letter.id)).toEqual([first?.id, first?.id])
+    expect(take).toHaveBeenCalledTimes(2)
+    expect((await opened(phone)).map((letter) => letter.date)).toEqual([first?.date])
+    await receipts()
+    expect(await rook.mailbox.waitingOn()).toEqual([])
+  })
+
+  it('puts a letter again to nobody removed, even when no key is left', async () => {
+    const { address, device, recipient, tick } = setup()
+    const phone = device('rook-phone', 'rook')
+    const tablet = device('rook-tablet', 'rook')
+    const keyOf = (d: ReturnType<typeof device>) => bindSealingKey(d.signer, d.sealer)
+    let list: RecipientList = { devices: [phone.signer.id], keys: [await keyOf(phone)] }
+    const laptop = device('rook-laptop', 'rook', { listOf: async () => list })
+    const toPhone = await recipient(phone, 'rook')
+    await laptop.mailbox.send('self', toPhone, { news: 1 })
+    await laptop.mailbox.send('rekey', toPhone, { again: 1 }, { pinned: true })
+    // The phone is taken off the list and a tablet linked: the pinned letter isn't widened to
+    // it, and nothing goes to the phone's key again.
+    list = { devices: [tablet.signer.id], keys: [await keyOf(tablet)] }
+    tick(RESEND_AFTER_MS + DAY)
+    await laptop.mailbox.resend()
+    const fromLaptop: Source = { sender: toPhone.identity, secret, kinds: ['self', 'rekey'] }
+    const bodies = async (d: ReturnType<typeof device>) => {
+      const got: unknown[] = []
+      await d.mailbox.fetch([address], [fromLaptop], async (_source, letter) => {
+        got.push(letter.body)
+        return true
+      })
+      return got
+    }
+    expect(await bodies(tablet)).toEqual([{ news: 1 }])
+    expect(await laptop.mailbox.waitingOn()).toHaveLength(1)
+    // With every device removed and no key left, nothing more is put, to anyone.
+    list = { devices: [], keys: [] }
+    tick(RESEND_AFTER_MS + DAY)
+    await laptop.mailbox.resend()
+    expect(await laptop.mailbox.waitingOn()).toEqual([])
+  })
+
   it('measures each blob it gets, whatever size the Lighthouse listed', async () => {
     for (const [maxBytes, understate, taken] of [
       [64 * 1024, true, 1],
