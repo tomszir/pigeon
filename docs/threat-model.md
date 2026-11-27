@@ -95,6 +95,7 @@ A device of yours that someone else holds while it's still on your list: one lef
 
 - Until it's removed, it is you. Device keys are non-extractable, so nobody can copy them out of the browser, but the page there can use them. It reads your chats, writes as that device, and holds what any linked device holds: your friends and their pair secrets, the self secret, the blocked list and your invite links.
 - Through your shared log, what it changes reaches every device of yours: it can rename, mute, block or unfriend anyone, everywhere. A friendship it ends stays ended (only pairing again makes a new one), and a value it sets is undone by changing it again after. A stamp it makes far ahead wins every race until you change that value again after seeing it, and moves nobody's clock.
+- It can unfriend anyone on all your devices at once, and their chats are deleted on each; pairing again is the remedy, as it was for an unfriend on that device alone.
 - If it's the device that writes your list (the first device, unless a recovery named another), it can add and remove devices, and only your recovery key takes the list back. If it isn't, it can't change the list at all.
 - It can't replace a recovery key you've committed: where two copies of a log name different keys, the one a Pigeon had first stays. If you haven't committed one, a stolen first device can.
 

@@ -1,0 +1,17 @@
+defect: unfriending writes no tombstone, so the friend and the chat stay on your other devices
+test: apps/web src/apps/messenger/service/data-sync.test.ts
+expect: unfriends everywhere
+
+diff --git i/apps/web/src/apps/messenger/service/data-sync.ts w/apps/web/src/apps/messenger/service/data-sync.ts
+index 88528cd..cbdf4b7 100644
+--- i/apps/web/src/apps/messenger/service/data-sync.ts
++++ w/apps/web/src/apps/messenger/service/data-sync.ts
+@@ -159,7 +159,7 @@ export function createDataSync(deps: DataSyncDeps) {
+       if (record === undefined) return
+       leaving.add(id)
+       try {
+-        await shared.write(await endings(record, options.block))
++        if (options.block) await shared.write([{ kind: 'block', friend: id, on: true }])
+         await deps.removeFriend(id, options)
+       } finally {
+         leaving.delete(id)

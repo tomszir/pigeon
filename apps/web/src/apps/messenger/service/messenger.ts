@@ -203,7 +203,13 @@ export interface MessengerFriends {
   /** Quiets a friend until `until` (a time, or MUTED_FOREVER); undefined unmutes. */
   mute(id: PeerId, until: number | undefined): Promise<void>
   muted(id: PeerId): boolean
+  /** Unfriends them, or blocks them, on every device of yours, deleting the chat on each. */
   remove: (id: PeerId, options: { block: boolean }) => Promise<void>
+  /**
+   * The names of your other devices on your list that haven't said they keep your data in step,
+   * on a Pigeon from before: an unfriend or block made here doesn't reach them until they update.
+   */
+  notInStep: () => readonly string[]
   blocked: Accessor<readonly BlockedRecord[]>
   unblock(id: PeerId): Promise<void>
 }

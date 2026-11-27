@@ -1,9 +1,11 @@
 // The entries a person's change on one device becomes. Each is written as this device's next
 // entry and stamped by `stampFor`, so a change made after seeing another beats it.
 
-import type { Signer } from '../identity/crypto.ts'
+import { base32Encode, utf8Encode } from '../encoding/bytes.ts'
+import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
+  INCARNATION_BYTES,
   MAX_SHARED_ENTRIES_PER_DEVICE,
   type SharedEntry,
   type SharedOp,
@@ -117,4 +119,17 @@ export async function appendShared(
   const at = Math.min(stamp ?? stampFor(log, context, op, now), STAMP_CAP)
   const entry = await signEntry(signer, log.identity, n, at, op)
   return { log: withEntry(log, entry), entry }
+}
+
+/** A new friendship's incarnation id: `INCARNATION_BYTES` random bytes. */
+export const newIncarnation = (random: (length: number) => Uint8Array): string =>
+  base32Encode(random(INCARNATION_BYTES))
+
+/**
+ * The incarnation id of a friendship from before your devices shared a log: derived from the
+ * friend's id alone, so every device that held the friend then derives the same one.
+ */
+export async function incarnationBefore(crypto: Crypto, friend: PeerId): Promise<string> {
+  const hash = await crypto.sha256(utf8Encode(`pigeon/incarnation-before/v1:${friend}`))
+  return base32Encode(hash.subarray(0, INCARNATION_BYTES))
 }

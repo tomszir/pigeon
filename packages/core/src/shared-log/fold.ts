@@ -48,6 +48,11 @@ export interface SharedView {
   /** Each blocked person, with what they were called when blocked. */
   readonly blocked: ReadonlyMap<PeerId, { readonly name?: string }>
   readonly relay: boolean
+  /**
+   * The registers some counting entry speaks for (`pet:<friend>`, `mute:<friend>`,
+   * `block:<friend>`, `setting:relay`), so an unset value is told apart from one nobody set.
+   */
+  readonly said: ReadonlySet<string>
 }
 
 /** Which of two entries is later: stamp, then device, then number. */
@@ -135,7 +140,16 @@ export function foldShared(log: SharedLog, context: FoldContext): SharedView {
       shownEntry.set(friend, entry)
     }
   }
-  return { friendships, shown, ended, petnames, mutes, blocked, relay }
+  return {
+    friendships,
+    shown,
+    ended,
+    petnames,
+    mutes,
+    blocked,
+    relay,
+    said: new Set(winners.keys()),
+  }
 }
 
 /** Every live friendship with `friend`, newest first. */

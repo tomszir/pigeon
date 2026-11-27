@@ -311,6 +311,8 @@ export {
   appendShared,
   blockOps,
   heldFriendships,
+  incarnationBefore,
+  newIncarnation,
   removalAt,
   settleOps,
   stampFor,
