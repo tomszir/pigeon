@@ -68,6 +68,11 @@ export interface MailWaits {
   /** Waiting turned off, or relay-only on: every connection with a wait standing is closed. */
   stop(): void
   /**
+   * Your Lighthouses are now `list`: one that left it waits no more, and is never waited at again
+   * (nor reopened) until a look reads it as one of yours.
+   */
+  retain(list: readonly LighthouseAddress[]): void
+  /**
    * A look's `take`, noting whether it took anything that counted, which says how soon the next
    * cue may bring a look.
    */
@@ -210,6 +215,18 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       else if (cued) emptyCues += 1
       cued = false
       took = false
+    },
+    retain(list) {
+      const kept = new Set(list.map(keyOf))
+      for (const [key, state] of waiting) {
+        if (kept.has(key)) continue
+        waiting.delete(key)
+        state.gen += 1
+        if (state.standing) {
+          state.standing = false
+          deps.client(state.address)?.close()
+        }
+      }
     },
     stop() {
       for (const state of waiting.values()) {

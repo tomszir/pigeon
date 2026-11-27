@@ -52,7 +52,7 @@ On start it prints its address, `pigeon://lighthouse/<key>?url=...&name=...`, wh
 
 Limits are counted per address range, an IPv4 address or an IPv6 /64, since whoever has one IPv6 address has the 2^64 around it. The caps per IPv6 /48 keep someone with a block of /64s from getting round them, and from filling the ranges tracked with fresh ones. The cost: mobile carriers often hand each phone a /64 from one shared /48, so a few abusive phones on the same carrier can use up a /48's frames and reads for everyone on it until the minute turns.
 
-- `framesPerMinute` (1200) and `framesPerMinutePer48` (4800): frames of any kind, counted before a frame is read, hashed or answered, so not even a refusal is signed past them. A connection whose range goes over is closed unanswered (WebSocket code 1008).
+- `framesPerMinute` (1200) and `framesPerMinutePer48` (4800): request frames of any kind, counted before a frame is read, hashed or answered (a keepalive, `ping`, counts against no limit), so not even a refusal is signed past them. A connection whose range goes over is closed unanswered (WebSocket code 1008).
 - `readsPerMinute` (600) and `readsPerMinutePer48` (2400): hellos, lists (claimed ones too), gets, drops and waits; past them each is refused with `limit`. The Worker counts these in memory, which it loses when it sleeps.
 - `putsPerHour` (2000), `putsPerHourPer48` (8000), `bytesPerHour` (64 MiB) and `blobsPerTagPerDay` (200): puts, checked before a put is hashed or anything is read from the store. A sender's retry of mail already held isn't counted, though while its range is over a limit it's refused like any put, and tried again later.
 - `totalPutsPerHour` (200,000): puts from everyone together; past it nobody can put until the hour turns.

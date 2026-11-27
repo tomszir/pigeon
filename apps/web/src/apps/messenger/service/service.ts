@@ -610,6 +610,7 @@ export async function createMessenger(deps: MessengerDeps) {
     )
     lighthousesChangedAt = changedAt
     setLighthousesSignal(unique)
+    mailWaits.retain(unique)
     await store.set(KEYS.lighthouses, unique)
     await store.set(KEYS.lighthousesChangedAt, changedAt)
     for (const session of sessions.values()) session.announce()

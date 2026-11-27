@@ -218,6 +218,18 @@ describe('waiting at a Lighthouse', () => {
     expect(room.waits).toHaveLength(2)
   })
 
+  it('ends the wait at a Lighthouse taken off your list, and never opens it again', async () => {
+    const h = harness()
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waitsFor.retain([])
+    expect(h.closed()).toBe(1)
+    h.waits[0]?.answer({ ok: false, error: 'unreachable' })
+    await flush()
+    await h.pass(4 * REOPEN_FIRST_MS)
+    expect(h.waits).toHaveLength(1)
+  })
+
   it('closes the connection of a wait standing when waiting is turned off', async () => {
     const h = harness()
     h.waitsFor.looked(lighthouse, looked())
