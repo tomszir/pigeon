@@ -89,8 +89,11 @@ export interface SharedLogKeeper {
   readonly view: Accessor<SharedView>
   readonly log: () => SharedLog
   readonly context: () => FoldContext
-  /** Writes each op as this device's next entry, in order, and passes them on. */
-  readonly write: (ops: readonly SharedOp[]) => Promise<void>
+  /**
+   * Writes each op as this device's next entry, in order, and passes them on; at `stamps[i]` when
+   * given, as the update writes what a device held before.
+   */
+  readonly write: (ops: readonly SharedOp[], stamps?: readonly number[]) => Promise<void>
   /** A `mail:sync` letter from another of your devices, its device log already merged. */
   readonly takeLetter: (letter: Letter) => Promise<boolean>
   /** Another of your devices said which kinds of mail it reads. */
@@ -275,12 +278,12 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
     view,
     log: () => log,
     context,
-    write: (ops) =>
+    write: (ops, stamps) =>
       serial(async () => {
         if (!active() || ops.length === 0) return
         const written: SharedEntry[] = []
-        for (const op of ops) {
-          const next = await appendShared(log, signer, op, clock.now(), context())
+        for (const [i, op] of ops.entries()) {
+          const next = await appendShared(log, signer, op, clock.now(), context(), stamps?.[i])
           if (next === undefined) break
           log = next.log
           written.push(next.entry)

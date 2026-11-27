@@ -156,8 +156,9 @@ describe('two friendships with one friend', () => {
     const incPhone = 'aaaaaaaaaaaaaaaaaaaaaaaaaa'
     await theirs.write([{ kind: 'add', friend: mika, inc: incPhone }])
     await mine.selfRoom.take(phone.id, theirs.log().entries as never)
-    const sync = createDataSync({
+    const sync = await createDataSync({
       ...{ crypto: fakeCrypto, random: () => new Uint8Array(16).fill(9), shared: mine },
+      store: createMemoryStore(),
       ...{ friends: () => [], friend: () => undefined, setState: (() => undefined) as never },
       ...{ saveFriends: async () => undefined, blocked: () => [], block: async () => undefined },
       ...{ unblock: async () => undefined, rename: async () => undefined },

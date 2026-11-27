@@ -26,14 +26,17 @@ import {
   settleOps,
   unfriendOps,
 } from '@pigeon/core'
+import { createSignal } from 'solid-js'
 import type { SetStoreFunction } from 'solid-js/store'
+import type { Store } from '../../../platform/storage/storage.ts'
 import { type FriendStore, nameOf } from './friends.ts'
-import type { FriendView } from './messenger.ts'
+import type { Elsewhere, FriendView } from './messenger.ts'
 import type { SharedLogKeeper } from './shared-log.ts'
-import type { BlockedRecord } from './stored.ts'
+import { type BlockedRecord, KEYS } from './stored.ts'
 
 export interface DataSyncDeps {
   readonly crypto: Crypto
+  readonly store: Store
   readonly random: (length: number) => Uint8Array
   readonly shared: SharedLogKeeper
   readonly friends: () => readonly FriendView[]
@@ -56,8 +59,12 @@ export interface DataSyncDeps {
   readonly setRelayOnly: (relayOnly: boolean) => Promise<void>
 }
 
-export function createDataSync(deps: DataSyncDeps) {
-  const { shared } = deps
+export async function createDataSync(deps: DataSyncDeps) {
+  const { shared, store } = deps
+  const storedKept = await store.get(KEYS.keptElsewhere)
+  const [kept, setKept] = createSignal<readonly string[]>(
+    Array.isArray(storedKept) ? storedKept.filter((inc) => typeof inc === 'string') : [],
+  )
   const before = new Map<PeerId, string>()
   /** Friends being removed here, whose own tombstones mustn't remove them a second time. */
   const leaving = new Set<PeerId>()
@@ -120,8 +127,61 @@ export function createDataSync(deps: DataSyncDeps) {
       await deps.setRelayOnly(view.relay)
   }
 
+  /**
+   * The update: on its first start with your shared log, a device writes what it holds, at the
+   * lowest stamps so any change made since on another device wins. An `add` for each friend
+   * (marked as from before, with the id derived from theirs), petnames and mutes at stamp 1, a
+   * block for each blocked person at stamp 2 so a blocked friend stays hidden, and Always Go
+   * Through the Relay when it's on, since a device that had it off said nothing either way.
+   */
+  async function update(): Promise<boolean> {
+    if ((await store.get(KEYS.sharedUpdated)) === true) return false
+    const ops: SharedOp[] = []
+    const stamps: number[] = []
+    const at = (op: SharedOp, stamp: number) => {
+      ops.push(op)
+      stamps.push(stamp)
+    }
+    for (const record of deps.friends()) {
+      if (record.inc !== undefined) continue
+      const name = record.handle.slice(0, MAX_HANDLE_LENGTH)
+      at({ kind: 'add', friend: record.id, inc: await incOf(record), name, before: true }, 1)
+      if (record.petname !== undefined)
+        at({ kind: 'pet', friend: record.id, name: record.petname.slice(0, MAX_HANDLE_LENGTH) }, 1)
+      if (record.mutedUntil !== undefined)
+        at({ kind: 'mute', friend: record.id, until: record.mutedUntil }, 1)
+    }
+    for (const { id, handle } of deps.blocked())
+      at({ kind: 'block', friend: id, on: true, name: handle.slice(0, MAX_HANDLE_LENGTH) }, 2)
+    if (deps.relayOnly()) at({ kind: 'setting', key: 'relay', value: true }, 1)
+    await shared.write(ops, stamps)
+    await store.set(KEYS.sharedUpdated, true)
+    return true
+  }
+
   return {
     apply,
+    update,
+    /**
+     * Friends from before the update on another of your devices that this one never held: one
+     * may have been added there, or removed here before your devices kept in step, which no
+     * device can tell, so you choose.
+     */
+    elsewhere(): readonly Elsewhere[] {
+      const held = new Set(deps.friends().map((record) => record.id))
+      const keep = new Set(kept())
+      return [...shared.view().friendships.values()]
+        .filter((f) => f.before && !held.has(f.friend) && !keep.has(f.inc))
+        .map((f) => ({ id: f.friend, inc: f.inc, name: f.name ?? '' }))
+    },
+    /** Keeps one on your other devices, or removes it there with a tombstone. */
+    async settleElsewhere(inc: string, keep: boolean) {
+      const friendship = shared.view().friendships.get(inc)
+      if (friendship === undefined) return
+      if (!keep) return shared.write([{ kind: 'tomb', friend: friendship.friend, inc }])
+      setKept([...kept(), inc])
+      await store.set(KEYS.keptElsewhere, kept())
+    },
     /** A friendship that begins here: a new incarnation, written to the log. */
     newInc: () => newIncarnation(deps.random),
     /**

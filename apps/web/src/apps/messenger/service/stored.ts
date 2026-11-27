@@ -157,6 +157,10 @@ export const KEYS = {
   sharedKnown: 'shared-known',
   /** Your other devices that said they read `mail:sync`. */
   syncReaders: 'sync-readers',
+  /** Set once this device has written what it held before into your shared log. */
+  sharedUpdated: 'shared-log-updated',
+  /** Friendships on your other devices only, from before, that you chose to keep there. */
+  keptElsewhere: 'kept-elsewhere',
   /** What a friend's devices (or your own, under your own id) said about their mail. */
   mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,

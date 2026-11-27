@@ -740,8 +740,8 @@ export async function createMessenger(deps: MessengerDeps) {
     onChange: (view) => dataSync.apply(view),
   })
   /** Friends, petnames, mutes, blocks and the relay setting, in step through your shared log. */
-  const dataSync = createDataSync({
-    ...{ crypto, random: deps.random, shared: sharedLog, friend, setState, saveFriends },
+  const dataSync = await createDataSync({
+    ...{ crypto, store, random: deps.random, shared: sharedLog, friend, setState, saveFriends },
     ...{ blocked, block, unblock, rename, mute, removeFriend, setRelayOnly },
     friends: friendList,
     relayOnly: () => settings().relayOnly,
@@ -2065,6 +2065,9 @@ export async function createMessenger(deps: MessengerDeps) {
   void inviteLinks?.resume().catch(() => undefined)
   // A removal kept in the log before a tab closed, but not acted on.
   await actOnRemovals()
+  // What this device held before your devices shared a log, written into it once, and news that
+  // says it reads `mail:sync`, so your other devices mail it the log even if nothing else changes.
+  if (await dataSync.update().catch(() => false)) tellOwnDevices()
 
   async function disconnect() {
     // A hosting still being joined sees this and stops itself.
@@ -2717,6 +2720,8 @@ export async function createMessenger(deps: MessengerDeps) {
       devices.devices().flatMap((d) => (d.here || sharedLog.reads('sync', d.id) ? [] : [d.name])),
     blocked,
     unblock: dataSync.unblock,
+    elsewhere: dataSync.elsewhere,
+    settleElsewhere: dataSync.settleElsewhere,
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
     setRelayOnly: dataSync.setRelayOnly,

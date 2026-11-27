@@ -1,0 +1,17 @@
+defect: a friend this device holds is listed as on your other devices only
+test: apps/web src/apps/messenger/service/update.test.ts
+expect: lists a friend only another device held
+
+diff --git i/apps/web/src/apps/messenger/service/data-sync.ts w/apps/web/src/apps/messenger/service/data-sync.ts
+index b0ce4d2..c61e038 100644
+--- i/apps/web/src/apps/messenger/service/data-sync.ts
++++ w/apps/web/src/apps/messenger/service/data-sync.ts
+@@ -170,7 +170,7 @@ export async function createDataSync(deps: DataSyncDeps) {
+       const held = new Set(deps.friends().map((record) => record.id))
+       const keep = new Set(kept())
+       return [...shared.view().friendships.values()]
+-        .filter((f) => f.before && !held.has(f.friend) && !keep.has(f.inc))
++        .filter((f) => f.before && held.size >= 0 && !keep.has(f.inc))
+         .map((f) => ({ id: f.friend, inc: f.inc, name: f.name ?? '' }))
+     },
+     /** Keeps one on your other devices, or removes it there with a tombstone. */

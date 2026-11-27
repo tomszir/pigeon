@@ -48,6 +48,32 @@ export function MyDevices(props: MyDevicesProps) {
           </div>
         </GroupBox>
       </Show>
+      <Show when={props.messenger.elsewhere().length > 0}>
+        <GroupBox legend="On your other devices only">
+          <div class={styles.column}>
+            <p>
+              These friends were on another of your devices before your devices kept your friends in
+              step, and never on this one. They may have been added there, or removed here: keep
+              them there, or remove them from all your devices.
+            </p>
+            <For each={props.messenger.elsewhere()}>
+              {(friend) => (
+                <div class={styles.buttons}>
+                  <span>{friend.name || 'A friend'}</span>
+                  <Button
+                    label="Keep"
+                    onClick={() => void props.messenger.settleElsewhere(friend.inc, true)}
+                  />
+                  <Button
+                    label="Remove Everywhere"
+                    onClick={() => void props.messenger.settleElsewhere(friend.inc, false)}
+                  />
+                </div>
+              )}
+            </For>
+          </div>
+        </GroupBox>
+      </Show>
       <Show when={props.messenger.twin()}>
         <GroupBox legend="Also open somewhere else">
           <div class={styles.column}>
