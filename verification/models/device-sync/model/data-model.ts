@@ -231,6 +231,21 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     { remove: 1 },
     { xMails: ['A'], forges: [{ op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'early', skip: true }] },
   ),
+  // X signs two entries, skipping the number before the first, and sends each device only its
+  // latest: one device can end up holding an entry the other, further along, lacks.
+  gaps: config(
+    'gaps: a skipped number, and entries one device holds and another lacks',
+    ['A', 'B', 'X'],
+    true,
+    {},
+    {
+      xSendsLatest: true,
+      forges: [
+        { op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'early', skip: true },
+        { op: { k: 'relay', v: true }, stamp: 'early' },
+      ],
+    },
+  ),
   // Once removed, X sends B an entry stamped one below the cap. B takes it before it hears; then,
   // having heard, B renames F, and A renames F after seeing B's change.
   capped: config(

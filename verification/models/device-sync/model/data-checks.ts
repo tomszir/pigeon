@@ -434,6 +434,10 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
   if ((cfg.budgets.crash ?? 0) > (s.left.crash ?? 0)) flags.push('a tab closed')
   if (s.mail.some((l) => l.lost.length)) flags.push('letter lost')
   const sigs = honestDevs(cfg, s).flatMap((d) => (s.devs[d]?.entries ?? []).map((e) => e.sig))
+  const xOn = (d: Dev) => (s.devs[d]?.entries ?? []).filter((e) => e.by === REMOVED).map((e) => e.n)
+  const xSets = honestDevs(cfg, s).map((d) => canon(xOn(d)))
+  if (new Set(xSets).size > 1 && xSets.every((x) => x !== '[]'))
+    flags.push('devices hold different entries of one author')
   if (sigs.some((x) => x.endsWith('a') && sigs.includes(`${x.slice(0, -1)}b`)))
     flags.push('devices hold different entries under one number')
   for (const d of honestDevs(cfg, s)) {

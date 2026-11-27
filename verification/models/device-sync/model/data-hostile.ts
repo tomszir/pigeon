@@ -114,9 +114,11 @@ export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
     for (const r of honest(state, cfg).filter((d) => !cfg.xMails || cfg.xMails.includes(d))) {
       // A second entry under one number goes to the writer one way and to the others the other.
       const variant = r === WRITER ? 'a' : 'b'
-      const pick = own.filter(
+      const picked = own.filter(
         (e) => e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n),
       )
+      const latest = Math.max(...picked.map((e) => e.n))
+      const pick = cfg.xSendsLatest ? picked.filter((e) => e.n === latest) : picked
       const sent = canon([pick, forged])
       if (state.xSent[r] === sent) continue
       const next = copy(state)

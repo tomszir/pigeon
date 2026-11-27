@@ -24,6 +24,7 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   ],
   race: ['settled:F paired twice at once', 'settled:unfriended'],
   kinds: ['unreadable entry held', 'settled:petname set'],
+  gaps: ['devices hold different entries of one author', 'settled:relay on'],
   gap: ['settled:every device knew of the removal', 'forged entry taken'],
   capped: ['settled:petname set', 'forged entry taken'],
   skewpair: ['settled:threshold later than the removal', 'settled:G live on A'],

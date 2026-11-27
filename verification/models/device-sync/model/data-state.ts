@@ -371,6 +371,8 @@ export interface DataConfig {
   )[]
   /** People change petnames only on devices that have heard of the removal (one scenario). */
   readonly petAfterRemoval?: boolean
+  /** A hostile removed device sends each device only its latest entry, so devices hold different ones. */
+  readonly xSendsLatest?: boolean
   /** The devices of yours a hostile removed device mails, besides the friends; all when left out. */
   readonly xMails?: readonly Dev[]
   /** Which friends a person may pair with (again, after an unfriend); G when left out. */
