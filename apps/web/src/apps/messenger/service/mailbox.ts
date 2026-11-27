@@ -1,7 +1,8 @@
 // The Messenger's mail through Lighthouses: sealed letters left for friends who are offline, and
-// letters fetched for this device. A letter is sealed to each of its recipient's devices and put
-// at every Lighthouse they named; it stays in this Pigeon's outbox, put again every few days,
-// until each of those devices sends a receipt or 30 days pass. Fetching asks each Lighthouse for
+// letters fetched for this device. A letter goes into this Pigeon's outbox before it's sealed to
+// each of its recipient's devices and put at every Lighthouse they named, so one whose tab closed
+// before the put goes at the next start; it stays there, put again every few days, until each of
+// those devices sends a receipt or 30 days pass. Fetching asks each Lighthouse for
 // this identity's tags since the last time, opens what's there, takes each (sender, id) once,
 // drops its own copy and sends a receipt back.
 import {
@@ -12,8 +13,6 @@ import {
   dropHashes,
   inviteAnswerTag,
   inviteAskTag,
-  isLighthouseAddress,
-  isSealingKey,
   type Json,
   type Letter,
   type LighthouseAddress,
@@ -34,6 +33,9 @@ import {
   utcDate,
 } from '@pigeon/core'
 import type { Store } from '../../../platform/storage/storage.ts'
+import { createOutbox, letterKey, type Outgoing, type Recipient, type TagScheme } from './outbox.ts'
+
+export type { Recipient, TagScheme } from './outbox.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 /** How long a letter waits for its receipts before it's put again. */
@@ -53,34 +55,6 @@ const KEYS = {
   /** (sender, id) of letters already taken, with when, kept as long as mail can be. */
   seen: 'mail-seen',
 } as const
-
-/**
- * Which tags a secret makes: a mailbox's (the pair or self secret's, for the recipient and day),
- * an invite's requests (from its secret), or one request's answers (from its reply secret).
- */
-export type TagScheme = 'mail' | 'invite-ask' | 'invite-answer'
-
-/** Someone to send to: where their mail goes and what it's sealed to. */
-export interface Recipient {
-  readonly identity: PeerId
-  /** The secret their tags come from, base32: the pair or self secret unless `tags` says. */
-  readonly secret: string
-  readonly tags?: TagScheme | undefined
-  readonly keys: readonly SealingKey[]
-  readonly lighthouses: readonly LighthouseAddress[]
-}
-
-/** A letter still waiting for receipts: everything needed to put it again. */
-interface Outgoing {
-  readonly id: string
-  readonly kind: MailKind
-  readonly body: Json
-  readonly to: Recipient
-  /** The devices whose receipt hasn't come yet. */
-  readonly waiting: readonly PeerId[]
-  readonly sentAt: number
-  readonly putAt: number
-}
 
 /** Whose mail to look for: a sender, the secret their tags to you come from, and what they send. */
 export interface Source {
@@ -128,6 +102,24 @@ export interface MailboxDeps {
     | undefined
   /** Where this device's log stands, said in every letter it writes. */
   readonly head: () => LogHead
+  /**
+   * The devices on a letter's recipient's list now, and the sealing keys known for them, for a
+   * letter put after it was sealed; undefined for one whose list this Pigeon doesn't keep, which
+   * goes to the devices it was sealed to.
+   */
+  readonly listOf?:
+    | ((letter: {
+        readonly kind: MailKind
+        readonly to: Recipient
+        readonly body: Json
+      }) => Promise<RecipientList | undefined>)
+    | undefined
+}
+
+/** A recipient's devices as their list stands, and the sealing keys known for them. */
+export interface RecipientList {
+  readonly devices: readonly PeerId[]
+  readonly keys: readonly SealingKey[]
 }
 
 export interface Mailbox {
@@ -149,12 +141,26 @@ export interface Mailbox {
        * asked through an invite link can fetch the answer, so only its receipt can come.
        */
       readonly waitFor?: readonly PeerId[]
+      /**
+       * Sealed to exactly `to`'s devices each time it's put, whatever their list says: for
+       * devices just taken off your list, told so.
+       */
+      readonly fixed?: boolean
+      /** For `to`'s devices alone, while they stay on their list: none linked since is added. */
+      readonly pinned?: boolean
       /** Its id, when the caller keeps track of it; a new random one otherwise. */
       readonly id?: string
       /** Told which Lighthouses took it, when any did. */
       readonly onStored?: (where: readonly LighthouseAddress[]) => void
     },
   ): Promise<boolean>
+  /**
+   * Like `send`, but done once the letter is in the outbox, saying whether it is: it's put in the
+   * background, after any fetch under way. For a letter that must not be lost to a tab that
+   * closes, written before whatever made it is kept, while a fetch, which `send` would wait
+   * for, is still running. False when the Messenger has closed; it rejects when the store does.
+   */
+  queue(kind: Exclude<MailKind, 'receipt'>, to: Recipient, body: Json): Promise<boolean>
   /** Puts again what's waited long enough for its receipts, and forgets what expired. */
   resend(): Promise<void>
   /**
@@ -201,26 +207,6 @@ async function tagFor(
   return bytes === undefined ? undefined : mailTag(crypto, bytes, identity, date)
 }
 
-const isRecipient = (value: unknown): value is Recipient => {
-  if (typeof value !== 'object' || value === null) return false
-  const r = value as Recipient
-  return (
-    typeof r.identity === 'string' &&
-    typeof r.secret === 'string' &&
-    Array.isArray(r.keys) &&
-    r.keys.every(isSealingKey) &&
-    Array.isArray(r.lighthouses) &&
-    r.lighthouses.every(isLighthouseAddress)
-  )
-}
-
-const isOutgoing = (value: unknown): value is Outgoing =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as Outgoing).id === 'string' &&
-  isRecipient((value as Outgoing).to) &&
-  Array.isArray((value as Outgoing).waiting)
-
 /**
  * The UTC dates from the day before `from` to `to`, at most 30 days back, and tomorrow in the
  * last two hours of today, when a sender whose clock runs ahead may already be there.
@@ -236,7 +222,7 @@ function datesBetween(from: number, to: number): string[] {
 
 export function createMailbox(deps: MailboxDeps): Mailbox {
   const { crypto, store, now } = deps
-  // One operation at a time, so a send never lands between a resend's read and its write.
+  // One operation with the Lighthouses at a time: puts, resends and fetches.
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(run: () => Promise<T>): Promise<T> => {
     const next = queue.then(run, run)
@@ -244,11 +230,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
     return next
   }
 
-  async function outbox(): Promise<Outgoing[]> {
-    const stored = await store.get(KEYS.outbox)
-    return Array.isArray(stored) ? stored.filter(isOutgoing) : []
-  }
-  const saveOutbox = (letters: readonly Outgoing[]) => store.set(KEYS.outbox, letters)
+  const outbox = createOutbox(store, KEYS.outbox, deps.stopped)
 
   /** Seals and puts one letter to `to`'s waiting devices; says which Lighthouses stored it. */
   async function put(
@@ -291,13 +273,13 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
     `${address.id} ${address.url} ${address.pass ?? ''}`
 
   /**
-   * Who a waiting letter is put to again: for a letter to a friend, the Lighthouses it went to
+   * Who a waiting letter is put to again: for a letter or a secret's proposal to a friend, the Lighthouses it went to
    * before and the ones their mail goes to now. Where it was put stays on the list until its
    * receipt comes, as a copy there may be the only one the friend's other devices still read.
    */
   async function reaching(letter: Outgoing): Promise<Recipient> {
     if (
-      letter.kind !== 'letter' ||
+      (letter.kind !== 'letter' && letter.kind !== 'rekey') ||
       letter.to.tags !== undefined ||
       deps.lighthousesOf === undefined
     )
@@ -327,105 +309,187 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
 
   /** A receipt from one of `sender`'s devices for letter `id`; true when that was the last. */
   async function received(sender: PeerId, device: PeerId, id: string): Promise<boolean> {
-    const letters = await outbox()
     let completed = false
-    const next: Outgoing[] = []
-    for (const letter of letters) {
-      if (letter.id !== id || letter.to.identity !== sender) {
-        next.push(letter)
-        continue
-      }
-      const waiting = letter.waiting.filter((other) => other !== device)
-      if (waiting.length === 0) completed = true
-      else next.push({ ...letter, waiting })
-    }
-    await saveOutbox(next)
+    await outbox.change((letters) =>
+      letters.flatMap((letter) => {
+        if (letter.id !== id || letter.to.identity !== sender) return [letter]
+        const waiting = letter.waiting.filter((other) => other !== device)
+        if (waiting.length > 0) return [{ ...letter, waiting }]
+        completed = true
+        return []
+      }),
+    )
     return completed
   }
 
+  type SendOptions = Parameters<Mailbox['send']>[3]
+
+  /**
+   * Puts `letter` in the outbox, put nowhere yet, so the next check tries it if nothing else
+   * does first, taking the place of the letters it supersedes.
+   */
+  function enqueue(letter: Outgoing, options: SendOptions): Promise<boolean> {
+    const reaches = new Set(letter.to.keys.map((key) => key.device))
+    return outbox.change((letters) => [
+      ...letters.filter(
+        (other) =>
+          options?.supersede !== true ||
+          other.kind !== letter.kind ||
+          other.to.identity !== letter.to.identity ||
+          !other.waiting.every((device) => reaches.has(device)),
+      ),
+      letter,
+    ])
+  }
+
+  /**
+   * `letter` sealed to its recipient's list as it stands now: to the devices on it with a key
+   * known here, waiting on those it waited on that are still on it and on those linked since,
+   * so one removed since is neither sealed to nor waited on. A pinned letter adds no device, and
+   * a fixed one, or one whose list this Pigeon doesn't keep, goes as it was sealed. Undefined
+   * when the list can't be read now: nothing is put, rather than put to the devices from before.
+   */
+  async function resealed(letter: Outgoing): Promise<Outgoing | undefined> {
+    if (letter.fixed === true || deps.listOf === undefined) return letter
+    let list: RecipientList | undefined
+    try {
+      list = await deps.listOf(letter)
+    } catch {
+      return undefined
+    }
+    if (list === undefined) return letter
+    const listed = new Set(list.devices)
+    const keys = list.keys.filter((key) => listed.has(key.device))
+    const before = new Set(letter.to.keys.map((key) => key.device))
+    const added =
+      letter.pinned === true
+        ? []
+        : keys
+            .map((key) => key.device)
+            .filter((device) => !before.has(device) && !letter.waiting.includes(device))
+    return {
+      ...letter,
+      to: {
+        ...letter.to,
+        keys: letter.pinned === true ? keys.filter((key) => before.has(key.device)) : keys,
+      },
+      waiting: [...letter.waiting.filter((device) => listed.has(device)), ...added],
+    }
+  }
+
+  /**
+   * Puts `kept` once: the first put sealed to the list as it stands (to `everyone` it's sealed
+   * to, as its first put is, or only to those it waits on), and the letter as it's kept after;
+   * none once nobody it waits on is left on the list. Under the same id each time, so a device
+   * that has it takes it once and its receipt still names it.
+   */
+  async function putLetter(
+    kept: Outgoing,
+    everyone: boolean,
+  ): Promise<{ readonly after: Outgoing | undefined; readonly where: LighthouseAddress[] }> {
+    const letter = kept.putAt === 0 ? await resealed(kept) : kept
+    if (letter === undefined) return { after: kept, where: [] }
+    if (letter.waiting.length === 0) return { after: undefined, where: [] }
+    const devices = everyone
+      ? letter.to.keys
+      : letter.to.keys.filter((key) => letter.waiting.includes(key.device))
+    // Kept here, perhaps since before Pigeon took only low-S signatures: what's signed in it
+    // goes out spelled as it's taken now, or it would be refused at every put.
+    const body = lowSBody(letter.body)
+    // The same id under today's tag: a device that has it already takes it once.
+    const reach = await reaching(letter)
+    const where = await put(letter.kind, letter.id, body, reach, devices)
+    const putAt = where.length > 0 ? now() : letter.putAt
+    return { after: { ...letter, body, to: reach, putAt }, where }
+  }
+
+  /**
+   * The first put of a letter in the outbox; true if a Lighthouse took it, then or in a resend
+   * that came first. Nothing for one superseded or receipted meanwhile.
+   */
+  async function putQueued(letter: Outgoing, options: SendOptions): Promise<boolean> {
+    if (deps.stopped()) return false
+    const kept = (await outbox.read()).find((other) => letterKey(other) === letterKey(letter))
+    if (kept === undefined) return false
+    if (kept.putAt !== 0) return true
+    const { after, where } = await putLetter(kept, true)
+    if (where.length > 0) options?.onStored?.(where)
+    await outbox.update([{ before: kept, after }], () => true)
+    return where.length > 0
+  }
+
+  /** A new letter, as the outbox keeps it until its receipts come. */
+  const outgoing = (kind: MailKind, to: Recipient, body: Json, options: SendOptions): Outgoing => ({
+    id: options?.id ?? newId(),
+    kind,
+    body,
+    to,
+    waiting: options?.waitFor ?? to.keys.map((key) => key.device),
+    sentAt: now(),
+    putAt: 0,
+    ...(options?.fixed === true ? { fixed: true } : {}),
+    ...(options?.pinned === true ? { pinned: true } : {}),
+  })
+
   return {
-    send: (kind, to, body, options) =>
-      serial(async () => {
-        if (deps.stopped()) return false
-        const id = options?.id ?? newId()
-        const where = await put(kind, id, body, to, to.keys)
-        const stored = where.length > 0
-        if (stored) options?.onStored?.(where)
-        if (options?.once === true) return stored
-        const at = now()
-        const reaches = new Set(to.keys.map((key) => key.device))
-        const letters = (await outbox()).filter(
-          (letter) =>
-            options?.supersede !== true ||
-            letter.kind !== kind ||
-            letter.to.identity !== to.identity ||
-            !letter.waiting.every((device) => reaches.has(device)),
-        )
-        letters.push({
-          id,
-          kind,
-          body,
-          to,
-          waiting: options?.waitFor ?? to.keys.map((key) => key.device),
-          sentAt: at,
-          // Put nowhere yet: tried again at the next check, not days later.
-          putAt: stored ? at : 0,
+    async send(kind, to, body, options) {
+      if (deps.stopped()) return false
+      if (options?.once === true)
+        return serial(async () => {
+          if (deps.stopped()) return false
+          const where = await put(kind, options.id ?? newId(), body, to, to.keys)
+          if (where.length > 0) options.onStored?.(where)
+          return where.length > 0
         })
-        if (!deps.stopped()) await saveOutbox(letters)
-        return stored
-      }),
+      const letter = outgoing(kind, to, body, options)
+      if (!(await enqueue(letter, options))) return false
+      return serial(() => putQueued(letter, options))
+    },
+
+    async queue(kind, to, body) {
+      if (deps.stopped()) return false
+      const letter = outgoing(kind, to, body, undefined)
+      if (!(await enqueue(letter, undefined))) return false
+      void serial(() => putQueued(letter, undefined)).catch(() => undefined)
+      return true
+    },
 
     resend: () =>
       serial(async () => {
         const at = now()
-        const letters = (await outbox()).filter((letter) => letter.sentAt + MAX_MAIL_MS > at)
-        const next: Outgoing[] = []
-        for (const letter of letters) {
+        const live = (letter: Outgoing) => letter.sentAt + MAX_MAIL_MS > at
+        const changes: { before: Outgoing; after: Outgoing | undefined }[] = []
+        for (const kept of (await outbox.read()).filter(live)) {
           if (deps.stopped()) return
-          if (letter.putAt + RESEND_AFTER_MS > at) {
-            next.push(letter)
-            continue
-          }
-          const devices = letter.to.keys.filter((key) => letter.waiting.includes(key.device))
-          // Kept here, perhaps since before Pigeon took only low-S signatures: what's signed in
-          // it goes out spelled as it's taken now, or it would be refused at every put.
-          const body = lowSBody(letter.body)
-          // The same id under today's tag: a device that has it already takes it once.
-          const reach = await reaching(letter)
-          const where = await put(letter.kind, letter.id, body, reach, devices)
-          const stored = where.length > 0
-          if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
-          next.push({ ...letter, body, to: reach, putAt: stored ? at : letter.putAt })
+          if (kept.putAt + RESEND_AFTER_MS > at) continue
+          const { after, where } = await putLetter(kept, false)
+          if (where.length > 0) deps.onStored?.(kept.to.identity, kept.id, where)
+          changes.push({ before: kept, after })
         }
-        if (!deps.stopped()) await saveOutbox(next)
+        await outbox.update(changes, live)
       }),
 
     retry: (to) =>
       serial(async () => {
         const at = now()
         let allTaken = true
-        const next: Outgoing[] = []
-        for (const letter of await outbox()) {
+        const changes: { before: Outgoing; after: Outgoing | undefined }[] = []
+        for (const kept of await outbox.read()) {
           // Only a letter put nowhere yet: one a Lighthouse holds waits for its receipts instead.
           if (
             deps.stopped() ||
-            letter.to.identity !== to ||
-            letter.putAt !== 0 ||
-            letter.sentAt + MAX_MAIL_MS <= at
-          ) {
-            next.push(letter)
+            kept.to.identity !== to ||
+            kept.putAt !== 0 ||
+            kept.sentAt + MAX_MAIL_MS <= at
+          )
             continue
-          }
-          const devices = letter.to.keys.filter((key) => letter.waiting.includes(key.device))
-          const body = lowSBody(letter.body)
-          const reach = await reaching(letter)
-          const where = await put(letter.kind, letter.id, body, reach, devices)
-          const stored = where.length > 0
-          if (stored) deps.onStored?.(letter.to.identity, letter.id, where)
-          else allTaken = false
-          next.push({ ...letter, body, to: reach, putAt: stored ? at : 0 })
+          const { after, where } = await putLetter(kept, false)
+          if (where.length > 0) deps.onStored?.(kept.to.identity, kept.id, where)
+          // One with nobody left to hear it isn't waiting to be taken.
+          else if (after !== undefined) allTaken = false
+          changes.push({ before: kept, after })
         }
-        if (!deps.stopped()) await saveOutbox(next)
+        await outbox.update(changes, () => true)
         return allTaken
       }),
 
@@ -581,17 +645,14 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
       }),
 
     async waitingOn() {
-      const letters = await outbox()
+      const letters = await outbox.read()
       const byIdentity = new Map<PeerId, Recipient>()
       for (const letter of letters) byIdentity.set(letter.to.identity, letter.to)
       return [...byIdentity.values()]
     },
 
-    forget: (identity) =>
-      serial(async () => {
-        const letters = await outbox()
-        if (!deps.stopped())
-          await saveOutbox(letters.filter((letter) => letter.to.identity !== identity))
-      }),
+    async forget(identity) {
+      await outbox.change((letters) => letters.filter((letter) => letter.to.identity !== identity))
+    },
   }
 }
