@@ -134,6 +134,8 @@ What didn't hold up across devices and offline: friends, petnames and blocks kep
 
 Shared spaces (a room, a member list, a signed log and an ephemeral channel) that pair chats move onto; private groups of up to 12 with an owner-signed membership log; group invites and group mail through the Lighthouse mailbox, so a group works when its members are never online together; the decision between MLS (RFC 9420) and sender keys for group messages as Lighthouses carry them.
 
+A group's chat uses the same panels as a pair's, and its format comes with this release: each member's name and colour above their panels, one mark per message with a list of who has it, one envelope naming everyone who left letters, quiet lines for people joining and leaving, and "Ren and Sam are typing". How a group's messages are signed and receipted is the protocol work above; what a group looks like is only fixed once that is.
+
 So groups feel alive, Pigeon on your phone comes with them: installable from the browser to the Home Screen; Web Push for every device through the Lighthouse, which holds the push subscriptions and sends nothing or a sealed line, so a closed Pigeon still says something arrived; opt-in per device, with what the push service learns (when, never what) said where you turn it on. On an iPhone, web push works only for Home Screen apps, so there it comes with installing.
 
 **Done when** five friends use a group for a week without any two needing to be online at once, a member who was offline catches up, and a removed member gets nothing new; and Mika's phone, with Pigeon closed, shows that Toms wrote, and opening it shows the message.

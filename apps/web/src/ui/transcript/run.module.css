@@ -1,0 +1,183 @@
+/* Panels: the era's 1px frame, a white inner highlight and a hard 1px shadow; corners of 8px and
+   3px, never a pill. */
+
+.run {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.mine {
+  justify-content: flex-end;
+}
+
+.bird {
+  flex: none;
+  line-height: 0;
+}
+
+.column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 80%;
+  min-width: 0;
+}
+
+.mine .column {
+  align-items: flex-end;
+}
+
+.panel {
+  position: relative;
+  box-sizing: border-box;
+  padding: 4px 9px 3px;
+  border: 1px solid var(--pg-menu-border);
+  border-radius: 3px 8px 8px 3px;
+  background: var(--pg-grad-panel-friend);
+  box-shadow:
+    inset 1px 1px var(--pg-panel-highlight),
+    1px 1px 0 var(--pg-panel-shadow);
+}
+
+.first {
+  border-top-left-radius: 8px;
+}
+
+.last {
+  border-bottom-left-radius: 2px;
+}
+
+.mine .panel {
+  border-color: var(--pg-panel-own-border);
+  border-radius: 8px 3px 3px 8px;
+  background: var(--pg-grad-panel-own);
+}
+
+.mine .first {
+  border-top-right-radius: 8px;
+}
+
+.mine .last {
+  border-bottom-right-radius: 2px;
+}
+
+.text {
+  overflow-wrap: anywhere;
+}
+
+/* Time and mark, in the panel's corner. */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 1px;
+  color: var(--pg-text-faint);
+  font-size: 10px;
+  line-height: 12px;
+}
+
+/* What a panel waits for, quietly, or why it needs a look, in red. */
+.note {
+  margin: 2px 0 1px;
+  color: var(--pg-text-faint);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.bad {
+  color: var(--pg-text-error);
+}
+
+.action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--pg-link-hover);
+}
+
+.action:focus-visible {
+  outline: 1px dotted var(--pg-text);
+  outline-offset: 1px;
+}
+
+/* Bitmaps drawn whole: never scaled. */
+.mark {
+  display: inline-block;
+  flex: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+}
+
+.mailed {
+  width: 11px;
+  height: 11px;
+  background-image: url("../../icons/brand/tick-mailed.png");
+}
+
+.received {
+  width: 16px;
+  height: 11px;
+  background-image: url("../../icons/brand/tick-received.png");
+}
+
+.sealing {
+  width: 16px;
+  height: 16px;
+  background-image: url("../../icons/tango/view-refresh-16.png");
+}
+
+.failed {
+  width: 16px;
+  height: 16px;
+  background-image: url("../../icons/tango/dialog-warning-16.png");
+}
+
+/* For screen readers, where the mark and the sender's name aren't drawn. */
+.words {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A panel coming in when a letter opens, one after another. */
+.arriving {
+  animation: pop 0.24s steps(3) both;
+  animation-delay: calc(1.3s + var(--order, 0) * 0.2s);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arriving {
+    animation-duration: 0.001s;
+    animation-delay: 0s;
+  }
+}
+
+.typing .text {
+  color: var(--pg-text-faint);
+  font-style: italic;
+}

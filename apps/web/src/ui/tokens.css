@@ -68,6 +68,11 @@
   --pg-status-away: #f0aa1e;
   --pg-status-offline: #a8a8a8;
   --pg-accent-letter: #d23c12;
+  /* The chat's pale area, and the panel frames in it: yours in Luna blue, theirs in warm grey. */
+  --pg-chat-area: #eef2f9;
+  --pg-panel-own-border: #7ba2e7;
+  --pg-panel-highlight: #ffffff;
+  --pg-panel-shadow: rgb(0 20 80 / 16%);
   --pg-task-pane-link: #215dc6;
 
   /* Gradients */
@@ -205,6 +210,8 @@
   --pg-grad-toolbar: linear-gradient(180deg, #fcfcf9 0%, #f1efe2 100%);
   --pg-grad-tab: linear-gradient(180deg, #ffffff 0%, #fafaf9 26%, #f0f0ea 95%, #ecebe5 100%);
   --pg-grad-tab-panel: linear-gradient(180deg, #fcfcfe 0%, #f4f3ee 100%);
+  --pg-grad-panel-own: linear-gradient(180deg, #f4f8ff 0%, #dbe7fb 100%);
+  --pg-grad-panel-friend: linear-gradient(180deg, #ffffff 0%, #f3f2ec 100%);
   --pg-grad-user-band: linear-gradient(180deg, #ffffff 0%, #e4ecfb 55%, #ccdbf5 100%);
   --pg-grad-task-pane: linear-gradient(180deg, #7ba2e7 0%, #6375d6 100%);
   --pg-grad-task-pane-header: linear-gradient(90deg, #ffffff 0%, #c6d3f7 100%);

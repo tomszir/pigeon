@@ -2403,6 +2403,38 @@ describe('letters', () => {
     ])
   })
 
+  it('says a message sent straight to a friend is received only once their sync holds it', async () => {
+    const network = createMemoryNetwork()
+    const clock = fakeClock(NOON)
+    const lighthouse = testLighthouse(clock)
+    const rook = await messenger(network, 'rook', { clock, lighthouse })
+    const mika = await messenger(network, 'mika', { clock, lighthouse })
+    await pairWith(rook, mika)
+    await flush(400)
+    const mikaId = only(rook.messenger.friends()).id
+    // Both are online: the message goes straight to her.
+    await rook.messenger.send(mikaId, 'are you there?')
+    await flush(200)
+    await rook.messenger.loadLetters(mikaId)
+    const route = () => {
+      const entry = only(rook.messenger.friends()).log.entries[0]
+      if (entry === undefined) throw new Error('no entry')
+      return rook.messenger.messageRoute(mikaId, entry)
+    }
+    expect(route()).toBeUndefined()
+    // She stayed connected long enough for it to count as hers when mail is decided, but
+    // nothing she has said holds it: it isn't called received.
+    await clock.tick(5000)
+    await flush(200)
+    expect(route()).toBeUndefined()
+    // She leaves and comes back: her sync says she holds it.
+    await away(mika)
+    await flush(200)
+    await messenger(network, 'mika', { clock, lighthouse, store: mika.store })
+    await flush(800)
+    expect(route()).toEqual({ kind: 'has' })
+  })
+
   it('gives your other devices what you wrote by letter, though the friend is never there', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)

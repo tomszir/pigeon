@@ -346,7 +346,9 @@ export interface MessengerMail {
   ): Promise<Result<LighthouseSoftware, ClientError | 'no-client'>>
   /**
    * Where one of the chat's messages is: sealing, left at Lighthouses, received, or come by
-   * letter; nothing for one that went straight to them. Call `loadLetters` when the chat opens.
+   * letter. Received only on their word (a sync of theirs that holds it, or a receipt), so
+   * nothing for one that went straight to them that they haven't said they hold. Call
+   * `loadLetters` when the chat opens.
    */
   messageRoute: (id: PeerId, entry: LogEntry) => MessageRoute | undefined
   loadLetters: (id: PeerId) => Promise<void> | Promise<number>
