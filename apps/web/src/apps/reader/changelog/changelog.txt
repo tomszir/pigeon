@@ -4,6 +4,36 @@
      `---'       version, newest first
 ==============================================
 
+0.8.3, 27 November 2026
+----------------------------------------------
+  * Messages written on your phone show on
+    your computer sooner: Pigeon looks for
+    mail when you come back to it, and soon
+    after you send.
+  * Changing your name or personal message
+    works again.
+  * An open Pigeon updates itself to a new
+    version, waiting until nothing would be
+    lost.
+  * A Lighthouse missing one letter no longer
+    holds back the rest of your mail.
+  * Each message shows a small icon for where
+    it is: hover or tap it for the details.
+  * A message that couldn't be left at a
+    Lighthouse offers Try Again, and Pigeon
+    says when it last looked for mail, with
+    Check Now.
+  * Messages that came by letter while you
+    were away sit together under one heading.
+  * A letter sent again goes to the friend's
+    current Lighthouses.
+  * Invite links made by earlier versions of
+    Pigeon no longer open: make a new link and
+    share it again in their place.
+  * An invite link now lasts at most a week.
+  * A device you've removed can no longer use
+    invite links made by your other devices.
+
 0.8.2, 26 November 2026
 ----------------------------------------------
   * Secrets you share with friends from
