@@ -162,18 +162,18 @@ What each side keeps once a live code pairs them:
 The link, on the device that made it. Only that device answers through it.
 
 ```text
-         Make an Invite Link: 1 hour to 30 days, for 1 to 25 people;
-         its card put, claimed, at each of this device's Lighthouses
-         without a pass
+         Make an Invite Link: 1 hour, 1 day or 7 days, for 1 to 25
+         people; the link names this device and its end; its card put,
+         claimed, at each of this device's Lighthouses without a pass
                                    |
                                    v
                               +---------+   the device log, name or Lighthouses
                               |  OPEN   |<--+ change: the card is put again
                               +---------+---+
                                |       |
-       its last place taken,   |       | its time is up: the card
-       Cancel, or its device   |       | expires at the Lighthouses
-       taken off your list (*) |       v
+       its last place taken,   |       | its end: the card expires at the
+       or Cancel               |       | Lighthouses, and nobody asks after
+                               |       v
                                |  +---------+
                                |  | EXPIRED |
                                v  +---------+
@@ -181,10 +181,9 @@ The link, on the device that made it. Only that device answers through it.
                               | CLOSED  |  a closed card put, which wins over
                               +---------+  an open one on the same log;
                                            everyone waiting is told `closed`
-
-   (*) Another of your devices closes it, with a card signed on the newer log
-       and claimed with the link's claim key.
 ```
+
+Removing a device moves no link: your other devices' links stay as they are, since nobody takes a card or an answer through them from any other device, and the removed device's own links stay OPEN to it until their end. An honest removed device stops answering, so its links go silent.
 
 One person's request through it, kept per identity:
 
@@ -221,32 +220,38 @@ One person's request through it, kept per identity:
 The asker's side of one request:
 
 ```text
-     opens the link: at the official Lighthouses and the one the link
-     names, up to 16 claimed cards under its card tag, then up to 100 of
-     everything there, newest first; of the cards that hold, the newest
-     log wins
+     opens the link: refused if it's an `#a/` link, has ended, or ends
+     more than 7 days and a day from now; at the official Lighthouses and
+     the one the link names, up to 16 claimed cards under its card tag,
+     then up to 100 of everything there, newest first; of the cards that
+     hold and are signed by the device the link names, an open one ending
+     no later than the link, the newest log wins
                                    |
-                                   | Ask to Be Friends: mail:invite sealed to
-                                   | the card's devices, put once
+                                   | Ask to Be Friends, before the link's end:
+                                   | mail:invite sealed to the card's devices,
+                                   | put once
                                    v
                              +-----------+   mail looked for every 30 seconds,
                              |  WAITING  |   under its own reply secret's tags
                              +-----------+
                                |   |   |
                                |   |   +-- `declined`, `closed` or `busy`, from
-                               |   |       a device on the card, or `closed` with
-                               |   |       a log its device is on --> that answer;
-                               |   |       no `added` taken after `closed`
+                               |   |       the device the link names --> that
+                               |   |       answer; no `added` taken after
+                               |   |       `closed`; any other device's answer,
+                               |   |       of any kind, is dropped
                                |   +------ the link's end and 2 days more -> stops looking
                                |
-                               | `added`, from a device on the log it carries, merged
-                               | with any a `closed` answer carried, the sender being
-                               | the identity the card named
+                               | `added`, from the device the link names, on the log it
+                               | carries merged with the card's, the one kept for them
+                               | and any a `closed` answer carried, the sender being the
+                               | identity the card named; saved with that merged log
                                v
                              FRIENDS, with that secret; its answers still looked
                              at (every 10 minutes) until the link's end and 2 days
-                             more: a `closed` answer's log is merged into the friend's,
-                             so a device it took off their list stops counting
+                             more, for the receipt to the maker's `added` put
+                             again; only the maker's answers are read, and a
+                             `closed` log from it is merged into the friend's
 ```
 
 ## Linking a device

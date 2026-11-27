@@ -1,0 +1,16 @@
+defect: an opener takes a card signed by any device on the inviter's list, not only the link's maker
+test: apps/web src/apps/messenger/service/link-makers.test.ts
+expect: refuses the thief's card
+
+diff --git a/packages/core/src/pairing/invite-link-rules.ts b/packages/core/src/pairing/invite-link-rules.ts
+index 6d226cb..f682398 100644
+--- a/packages/core/src/pairing/invite-link-rules.ts
++++ b/packages/core/src/pairing/invite-link-rules.ts
+@@ -35,7 +35,6 @@ export async function cardFitsLink(
+   link: InviteLink,
+   card: InviteCard,
+ ): Promise<boolean> {
+-  if (!(await linkNames(crypto, link.maker, card.from))) return false
+   return !card.open || card.expires <= link.end
+ }
+ 

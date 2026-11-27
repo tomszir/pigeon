@@ -62,6 +62,8 @@ type Failure =
   | 'link-not-found'
   | 'link-closed'
   | 'link-expired'
+  | 'link-retired'
+  | 'link-too-long'
   | 'link-unsent'
   | 'link-no-lighthouse'
   | 'old'
@@ -101,6 +103,10 @@ const FAILURES: Record<Failure, string> = {
   'link-closed':
     'This invite link is closed: it was used up, or your friend closed it. Ask them for a new one.',
   'link-expired': 'This invite link has run out. Ask your friend for a new one.',
+  'link-retired':
+    'This invite link was made by an older Pigeon, and links like it no longer open. Ask your friend for a new one.',
+  'link-too-long':
+    "This invite link says it lasts more than a week from now, and no Pigeon link does. Check your computer's date and time, or ask your friend for a new link.",
   'link-unsent':
     "Pigeon couldn't leave your request at your friend's Lighthouses. Check your connection and try again.",
   'link-no-lighthouse':
@@ -208,6 +214,12 @@ export function AddFriend(props: AddFriendProps) {
       case 'expired':
         setView({ kind: 'failed', failure: 'link-expired' })
         return
+      case 'retired':
+        setView({ kind: 'failed', failure: 'link-retired' })
+        return
+      case 'too-long':
+        setView({ kind: 'failed', failure: 'link-too-long' })
+        return
       default:
         setView({ kind: 'failed', failure: 'link-not-found' })
     }
@@ -222,7 +234,14 @@ export function AddFriend(props: AddFriendProps) {
     else
       setView({
         kind: 'failed',
-        failure: sent === 'no-lighthouse' ? 'link-no-lighthouse' : 'link-unsent',
+        failure:
+          sent === 'no-lighthouse'
+            ? 'link-no-lighthouse'
+            : sent === 'expired'
+              ? 'link-expired'
+              : sent === 'too-long'
+                ? 'link-too-long'
+                : 'link-unsent',
       })
   }
 
@@ -265,7 +284,7 @@ export function AddFriend(props: AddFriendProps) {
   })
 
   const submit = () => {
-    if (decodeInviteLink(typed()).ok || typed().includes('#a/')) {
+    if (decodeInviteLink(typed()).ok || /#[ab]\//.test(typed())) {
       void openLink(typed())
       return
     }
@@ -588,6 +607,7 @@ const ASK_STATES: Record<SentAsk['state'], string> = {
   busy: 'too many were waiting on the link; ask again later',
   // Never shown: an added request leaves the list.
   added: 'they added you',
+  retired: 'the link was made by an older Pigeon and no longer works; ask them for a new one',
 }
 
 /** Requests you sent through friends' links, until each is answered and forgotten. */

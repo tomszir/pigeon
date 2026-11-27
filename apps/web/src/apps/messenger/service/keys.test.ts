@@ -72,9 +72,9 @@ describe('storage keys', () => {
   it('reads every table whole', () => {
     // A table that came back short would make the check below pass for nothing. These counts are
     // each table's keys today: adding a key to a table means raising its number here.
-    expect(tables.service).toHaveLength(19)
+    expect(tables.service).toHaveLength(18)
     expect(tables.devices).toHaveLength(5)
-    expect(tables['invite-links']).toHaveLength(4)
+    expect(tables['invite-links']).toHaveLength(3)
     expect(tables.mailbox).toHaveLength(3)
   })
 

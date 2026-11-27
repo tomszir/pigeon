@@ -13,8 +13,10 @@ import {
   inviteAskTag,
   inviteCardClaim,
   inviteCardTag,
+  inviteLinkEnd,
   isInviteClaimKey,
   linkFingerprint,
+  linkMaker,
   newestCard,
   openInviteCard,
   readInviteAnswer,
@@ -29,8 +31,15 @@ const stranger = fakeSigner('stranger')
 const secret = base32Encode(new Uint8Array(16).fill(7))
 const loft: LighthouseAddress = { id: fakeSigner('loft').id, name: 'Loft', url: 'wss://loft.test/' }
 
-async function linkFor(id = rook.id): Promise<InviteLink> {
-  return { secret, fingerprint: await linkFingerprint(fakeCrypto, id) }
+const END = Date.parse('2026-12-01T10:00:00Z')
+
+async function linkFor(id = rook.id, maker = rook.id): Promise<InviteLink> {
+  return {
+    secret,
+    fingerprint: await linkFingerprint(fakeCrypto, id),
+    maker: await linkMaker(fakeCrypto, maker),
+    end: END,
+  }
 }
 
 async function card(
@@ -52,10 +61,10 @@ async function card(
 }
 
 describe('invite links', () => {
-  it('reads back the link it writes, with and without a Lighthouse', async () => {
+  it('reads back the link it writes, with its maker and end, with and without a Lighthouse', async () => {
     const link = await linkFor()
     const fragment = encodeInviteLinkFragment(link)
-    expect(fragment).toMatch(/^a\/[a-z2-7]{52}$/)
+    expect(fragment).toMatch(/^b\/[a-z2-7]{86}$/)
     expect(decodeInviteLink(`https://pigeon.test/#${fragment}`)).toEqual({
       ok: true,
       value: { ...link, lighthouse: undefined },
@@ -64,10 +73,44 @@ describe('invite links', () => {
     expect(decodeInviteLink(named)).toEqual({ ok: true, value: { ...link, lighthouse: loft } })
   })
 
+  it('names the device that made it apart from every other device', async () => {
+    expect(await linkMaker(fakeCrypto, rook.id)).toMatch(/^[0-9a-f]{32}$/)
+    expect(await linkMaker(fakeCrypto, rookPhone.id)).not.toBe(await linkMaker(fakeCrypto, rook.id))
+    const fromPhone = await linkFor(rook.id, rookPhone.id)
+    const decoded = decodeInviteLink(encodeInviteLinkFragment(fromPhone))
+    expect(decoded.ok && decoded.value.maker).toBe(await linkMaker(fakeCrypto, rookPhone.id))
+  })
+
+  it('carries its end to the second, with one spelling', async () => {
+    expect(inviteLinkEnd(END + 999)).toBe(END)
+    const link = await linkFor()
+    const fragment = encodeInviteLinkFragment(link)
+    // The end is the last 8 characters, 5 bytes with no bits left over.
+    const body = fragment.slice(2)
+    const decoded = decodeInviteLink(fragment)
+    expect(decoded.ok && decoded.value.end).toBe(END)
+    expect(decodeInviteLink(`b/${body.slice(0, -8)}aaaaaaaa`).ok).toBe(false)
+    // Lowercase only: capitals, or the Kelvin sign that lowercases to `k`, are another spelling.
+    expect(decodeInviteLink(fragment.toUpperCase().replace('B/', 'b/')).ok).toBe(false)
+    expect(decodeInviteLink(`b/${body.slice(0, 1).toUpperCase()}${body.slice(1)}`).ok).toBe(false)
+    expect(decodeInviteLink(`b/\u212a${body.slice(1)}`).ok).toBe(false)
+  })
+
+  it('refuses a link made by an older Pigeon, which carries no maker or end', async () => {
+    const link = await linkFor()
+    const old = `a/${link.secret}${base32Encode(new Uint8Array(16).fill(1))}`
+    expect(decodeInviteLink(`https://pigeon.test/#${old}`)).toEqual({ ok: false, error: 'old' })
+    expect(decodeInviteLink(`Rook invites you!\nhttps://pigeon.test/#${old}`)).toEqual({
+      ok: false,
+      error: 'old',
+    })
+  })
+
   it('refuses a link that is cut short, or names a Lighthouse with a pass', async () => {
     const fragment = encodeInviteLinkFragment(await linkFor())
-    expect(decodeInviteLink(fragment.slice(0, -1)).ok).toBe(false)
+    expect(decodeInviteLink(fragment.slice(0, -1))).toEqual({ ok: false, error: 'malformed' })
     expect(decodeInviteLink(`i/${fragment.slice(2)}`).ok).toBe(false)
+    expect(decodeInviteLink(`a/${fragment.slice(2)}`).ok).toBe(false)
     const withPass = encodeInviteLinkFragment({ ...(await linkFor()), lighthouse: loft }).replace(
       'name%3DLoft',
       'name%3DLoft%26pass%3Dsecret',
@@ -138,6 +181,14 @@ describe('invite cards', () => {
       ok: false,
       error: 'not-theirs',
     })
+  })
+
+  it('refuses a card for a link whose fingerprint is empty or short', async () => {
+    const sealed = await card()
+    for (const fingerprint of ['', (await linkFor()).fingerprint.slice(0, 4)])
+      expect(
+        await openInviteCard(fakeCrypto, seal, { ...(await linkFor()), fingerprint }, sealed),
+      ).toEqual({ ok: false, error: 'not-theirs' })
   })
 
   it('refuses a card moved from another of the inviter’s links', async () => {

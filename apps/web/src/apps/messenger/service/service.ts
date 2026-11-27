@@ -217,8 +217,6 @@ export async function createMessenger(deps: MessengerDeps) {
   let removalsSeen: Set<PeerId> | undefined
   /** Acting on removals, one run at a time. */
   let acting: Promise<unknown> = Promise.resolve()
-  /** Changes to the links still to close, one at a time. */
-  let closingLinks: Promise<unknown> = Promise.resolve()
   const devices = await loadDevices({ crypto, signer, store, clock })
   /** The identity you are: your first device's key, on every device. */
   const self = devices.self
@@ -638,8 +636,6 @@ export async function createMessenger(deps: MessengerDeps) {
     // Old secrets with no replacement under way yet, now that any proposal waiting for this
     // device has been taken.
     await replaceOldSecrets()
-    // Invite links still to close after a removal, where a Lighthouse didn't take the card.
-    void closeLinksAfterRemoval().catch(() => undefined)
     // What waits to be mailed to friends who are away: written before a close, or held back.
     for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
     // A farewell every device of theirs has a receipt for was heard: nothing more to say.
@@ -1958,37 +1954,12 @@ export async function createMessenger(deps: MessengerDeps) {
   if (!Array.isArray(storedRemovals)) await store.set(KEYS.removalsSeen, [...firstSeen])
   removalsSeen = firstSeen
 
-  /** One change to the links still to close at a time, so none is lost between a read and a write. */
-  function oneClose<T>(run: () => Promise<T>): Promise<T> {
-    const next = closingLinks.then(run, run)
-    closingLinks = next.catch(() => undefined)
-    return next
-  }
-  const linksToClose = async (): Promise<readonly string[]> => {
-    const stored = await store.get(KEYS.closeLinks)
-    return Array.isArray(stored) ? stored.filter((one) => typeof one === 'string') : []
-  }
-
   /**
-   * Closes the invite links a device taken off your list may know, keeping those a Lighthouse
-   * didn't take the closed card for, to try again at the next mail check or start.
-   */
-  function closeLinksAfterRemoval() {
-    return oneClose(async () => {
-      if (inviteLinks === undefined || devices.status() !== 'active') return
-      const list = await linksToClose()
-      if (list.length === 0) return
-      const left = await inviteLinks.closeLinks(list)
-      if (left.length === 0) await store.delete(KEYS.closeLinks)
-      else await store.set(KEYS.closeLinks, [...left])
-    })
-  }
-
-  /**
-   * Acts on any device taken off your list since the last time: every invite link open now is to
-   * be closed, and on the device that writes your list, every secret is marked to renew. The
-   * marks are kept before the removal is noted as acted on, so a tab that closes between keeping
-   * the log and this does it when it next starts.
+   * Acts on any device taken off your list since the last time: on the device that writes your
+   * list, every secret is marked to renew. The marks are kept before the removal is noted as
+   * acted on, so a tab that closes between keeping the log and this does it when it next starts.
+   * Invite links are left as they are: whoever opens one takes only its maker's cards and answers,
+   * so a removed device can do nothing through another's links, and its own end within a week.
    */
   function actOnRemovals(): Promise<void> {
     // Nothing new: nothing to wait for.
@@ -2009,15 +1980,9 @@ export async function createMessenger(deps: MessengerDeps) {
     if (removed.every((device) => seen.has(device))) return
     // Noted as acted on, here and in storage, only once the marks are kept: one that fails is
     // tried again at the next change or start.
-    await oneClose(async () => {
-      const open = inviteLinks?.openNow() ?? []
-      const list = [...new Set([...(await linksToClose()), ...open])]
-      if (list.length > 0) await store.set(KEYS.closeLinks, list)
-    })
     if (devices.isFirst()) await renewSecrets()
     await store.set(KEYS.removalsSeen, removed)
     removalsSeen = new Set(removed)
-    void closeLinksAfterRemoval().catch(() => undefined)
   }
 
   /** Tells everyone about a change to your device log, and acts on what it means here. */
@@ -2053,9 +2018,8 @@ export async function createMessenger(deps: MessengerDeps) {
   await connect()
   if (unsharedLighthouses) tellOwnDevices()
   void inviteLinks?.resume().catch(() => undefined)
-  // A removal kept in the log before a tab closed, but not acted on; and links still to close.
+  // A removal kept in the log before a tab closed, but not acted on.
   await actOnRemovals()
-  void closeLinksAfterRemoval().catch(() => undefined)
 
   async function disconnect() {
     // A hosting still being joined sees this and stops itself.

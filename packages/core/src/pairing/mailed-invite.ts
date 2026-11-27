@@ -1,7 +1,10 @@
-// Invite links that work through Lighthouses. A link carries a random secret and the inviter's
-// long fingerprint. The secret names where the invite's card waits and seals it, so only people
-// holding the link can find and read it; the fingerprint lets them check the card is the
-// inviter's, since anyone holding the link could put a card of their own. Asking to be friends,
+// Invite links that work through Lighthouses. A link carries a random secret, the inviter's long
+// fingerprint, the device that made it and when it ends. The secret names where the invite's card
+// waits and seals it, so only people holding the link can find and read it; the fingerprint lets
+// them check the card is the inviter's, since anyone holding the link could put a card of their
+// own; the maker and the end let them refuse a card from any other device of the inviter's, or one
+// that outlasts the link, since every device on the inviter's list, and one taken off it, holds
+// the secret too. Asking to be friends,
 // and the answer, are ordinary mail (`mail:invite`, `mail:invite-answer`) under tags from the
 // secret and from a reply secret only the asker and the inviter know.
 import { type DeviceLog, deviceState, isDeviceLog, speakerIdentity } from '../devices/device-log.ts'
@@ -11,6 +14,8 @@ import {
   base32Encode,
   base64Decode,
   base64Encode,
+  bytesEqual,
+  hexDecode,
   hexEncode,
   utf8Decode,
   utf8Encode,
@@ -24,7 +29,7 @@ import {
   type LighthouseAddress,
   parseLighthouseAddress,
 } from '../lighthouse/address.ts'
-import { MAX_BLOB_BYTES, MAX_MAIL_MS } from '../lighthouse/protocol.ts'
+import { MAX_BLOB_BYTES } from '../lighthouse/protocol.ts'
 import { isSealingKey, type SealingKey, verifySealingKey } from '../mail/mail.ts'
 import type { SealCrypto } from '../mail/seal-crypto.ts'
 import { cleanHandle, MAX_HANDLE_LENGTH, MAX_LIGHTHOUSES } from '../messages/envelope.ts'
@@ -38,20 +43,25 @@ export const INVITE_SECRET_BYTES = 16
 const SECRET_LENGTH = 26
 /** A link's fingerprint: the first 16 bytes of the identity's SHA-256, 26 base32 characters. */
 export const LINK_FINGERPRINT_BYTES = 16
+/** A link's maker: the first 16 bytes of the device's SHA-256, 26 base32 characters. */
+const MAKER_BYTES = 16
+/** What a link names an identity or a device by: its fingerprint and its maker are this long. */
+const LINK_NAME_BYTES = 16
+/** A link's end: its seconds since 1970, five bytes big-endian, 8 base32 characters. */
+const END_BYTES = 5
+const END_LENGTH = 8
 
 /** How long an invite link can last, chosen when it's made. */
-export const INVITE_LINK_LIFETIMES: readonly [number, number, number, number] = [
-  HOUR,
-  DAY,
-  7 * DAY,
-  30 * DAY,
-]
+export const INVITE_LINK_LIFETIMES: readonly [number, number, number] = [HOUR, DAY, 7 * DAY]
 export const DEFAULT_INVITE_LINK_LIFETIME: number = 7 * DAY
 /** How many people an invite link can bring in, chosen when it's made. */
 export const INVITE_LINK_USES = [1, 5, 10, 25] as const
 export const DEFAULT_INVITE_LINK_USES = 1
-/** Nothing lasts longer than a Lighthouse keeps mail. */
-export const MAX_INVITE_LINK_LIFETIME: number = MAX_MAIL_MS
+/**
+ * The longest a link lasts. A device taken off your list can still answer through the links it
+ * made, until each one ends, so this is also how long that can go on after a removal.
+ */
+export const MAX_INVITE_LINK_LIFETIME: number = 7 * DAY
 
 /** The largest request an inviter fetches; bigger blobs under the tag are skipped unread. */
 export const MAX_INVITE_REQUEST_BYTES: number = 16 * 1024
@@ -61,48 +71,112 @@ export const MAX_INVITE_REQUESTS_PER_DAY = 200
 const CARD_CONTEXT = 'pigeon/invite-card/v1'
 const KEY_INFO = 'pigeon/invite/key'
 
-/** What a link names: the invite's secret, the inviter, and a Lighthouse if not the official ones. */
+/**
+ * What a link names: the invite's secret, the inviter, the device that made it, when it ends, and
+ * a Lighthouse if not the official ones.
+ */
 export interface InviteLink {
   /** base32, 26 characters. */
   readonly secret: string
   /** The first 16 bytes of SHA-256 of the inviter's identity, hex. */
   readonly fingerprint: string
+  /** The first 16 bytes of SHA-256 of the device that made it, hex: only its cards count. */
+  readonly maker: string
+  /** When it ends, in whole seconds as milliseconds since 1970: nothing counts through it after. */
+  readonly end: number
   readonly lighthouse?: LighthouseAddress | undefined
 }
 
-/** The long fingerprint a link carries, in hex. */
-export async function linkFingerprint(crypto: Crypto, id: PeerId): Promise<string> {
-  const hash = await crypto.sha256(utf8Encode(id))
-  return hexEncode(hash.subarray(0, LINK_FINGERPRINT_BYTES))
+/** The first `length` bytes of the SHA-256 of `id`: what a link carries to name it. */
+async function idHash(crypto: Crypto, id: PeerId, length: number): Promise<Uint8Array> {
+  return (await crypto.sha256(utf8Encode(id))).subarray(0, length)
 }
 
-const hexBytes = (hex: string): Uint8Array =>
-  new Uint8Array((hex.match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16)))
+/** The long fingerprint a link carries, in hex. */
+export const linkFingerprint = async (crypto: Crypto, id: PeerId): Promise<string> =>
+  hexEncode(await idHash(crypto, id, LINK_FINGERPRINT_BYTES))
 
-/** The part after `#`: `a/<secret><fingerprint>`, then `?l=<address>` if it names a Lighthouse. */
+/** The device a link names as its maker, as the link carries it, in hex. */
+export const linkMaker = async (crypto: Crypto, device: PeerId): Promise<string> =>
+  hexEncode(await idHash(crypto, device, MAKER_BYTES))
+
+/**
+ * Whether `hex`, a link's fingerprint or maker, names `id`: compared as bytes, decoded, and only
+ * at its full 16 bytes, so an empty or cut-short one names nobody.
+ */
+export async function linkNames(crypto: Crypto, hex: string, id: PeerId): Promise<boolean> {
+  const named = hexDecode(hex)
+  return (
+    named.ok &&
+    named.value.length === LINK_NAME_BYTES &&
+    bytesEqual(named.value, await idHash(crypto, id, LINK_NAME_BYTES))
+  )
+}
+
+/** A link's end as a link carries it: whole seconds, rounded down. */
+export const inviteLinkEnd = (expires: number): number => Math.floor(expires / 1000) * 1000
+
+function hexBytes(hex: string): Uint8Array {
+  const bytes = hexDecode(hex)
+  if (!bytes.ok) throw new Error('not hex')
+  return bytes.value
+}
+
+function encodeEnd(end: number): string {
+  const bytes = new Uint8Array(END_BYTES)
+  let seconds = Math.floor(end / 1000)
+  for (let i = END_BYTES - 1; i >= 0; i--) {
+    bytes[i] = seconds % 256
+    seconds = Math.floor(seconds / 256)
+  }
+  return base32Encode(bytes)
+}
+
+function decodeEnd(text: string): number | undefined {
+  // 8 characters are exactly 5 bytes, with no bits left over, so each end has one spelling.
+  const bytes = base32DecodeExact(text)
+  if (!bytes.ok || bytes.value.length !== END_BYTES) return undefined
+  const seconds = bytes.value.reduce((value, byte) => value * 256 + byte, 0)
+  return seconds > 0 ? seconds * 1000 : undefined
+}
+
+/**
+ * The part after `#`: `b/<secret><fingerprint><maker><end>`, then `?l=<address>` if it names a
+ * Lighthouse.
+ */
 export function encodeInviteLinkFragment(link: InviteLink): string {
-  const base = `a/${link.secret}${base32Encode(hexBytes(link.fingerprint))}`
+  const print = base32Encode(hexBytes(link.fingerprint))
+  const base = `b/${link.secret}${print}${base32Encode(hexBytes(link.maker))}${encodeEnd(link.end)}`
   if (link.lighthouse === undefined) return base
   return `${base}?l=${encodeURIComponent(formatLighthouseAddress(link.lighthouse))}`
 }
 
-/** Reads a whole link or the part after `#`. */
-export function decodeInviteLink(text: string): Result<InviteLink, 'malformed'> {
+/**
+ * Reads a whole link or the part after `#`. `old`: a link from before links named their maker and
+ * end (`#a/`), which nothing can tell a removed device's from, so it no longer opens.
+ */
+export function decodeInviteLink(text: string): Result<InviteLink, 'malformed' | 'old'> {
   const trimmed = text.trim()
   // The last '#': a link pasted with a message before it ("Toms invites you…") opens too, even
   // when the message has a '#' of its own.
   const hash = trimmed.lastIndexOf('#')
   const fragment = hash < 0 ? trimmed : trimmed.slice(hash + 1)
-  if (!fragment.startsWith('a/')) return err('malformed')
+  if (fragment.startsWith('a/')) return err('old')
+  if (!fragment.startsWith('b/')) return err('malformed')
   const rest = fragment.slice(2)
   const mark = rest.indexOf('?')
-  const body = (mark < 0 ? rest : rest.slice(0, mark)).toLowerCase()
-  if (body.length !== 2 * SECRET_LENGTH) return err('malformed')
+  // One spelling: lowercase, as Pigeon writes it. Nothing is lowercased first, so neither capitals
+  // nor a look-alike such as the Kelvin sign, which lowercases to `k`, read as the same link.
+  const body = mark < 0 ? rest : rest.slice(0, mark)
+  if (body.length !== 3 * SECRET_LENGTH + END_LENGTH) return err('malformed')
   const secret = body.slice(0, SECRET_LENGTH)
-  const secretBytes = base32Decode(secret)
-  const print = base32Decode(body.slice(SECRET_LENGTH))
+  const secretBytes = base32DecodeExact(secret)
+  const print = base32DecodeExact(body.slice(SECRET_LENGTH, 2 * SECRET_LENGTH))
+  const maker = base32DecodeExact(body.slice(2 * SECRET_LENGTH, 3 * SECRET_LENGTH))
+  const end = decodeEnd(body.slice(3 * SECRET_LENGTH))
   if (!secretBytes.ok || secretBytes.value.length !== INVITE_SECRET_BYTES) return err('malformed')
   if (!print.ok || print.value.length !== LINK_FINGERPRINT_BYTES) return err('malformed')
+  if (!maker.ok || maker.value.length !== MAKER_BYTES || end === undefined) return err('malformed')
   let lighthouse: LighthouseAddress | undefined
   if (mark >= 0) {
     const query = rest.slice(mark + 1)
@@ -118,7 +192,13 @@ export function decodeInviteLink(text: string): Result<InviteLink, 'malformed'> 
     if (!parsed.ok || parsed.value.pass !== undefined) return err('malformed')
     lighthouse = parsed.value
   }
-  return ok({ secret, fingerprint: hexEncode(print.value), lighthouse })
+  return ok({
+    secret,
+    fingerprint: hexEncode(print.value),
+    maker: hexEncode(maker.value),
+    end,
+    lighthouse,
+  })
 }
 
 const secretOf = (secret: string): Uint8Array => {
@@ -170,7 +250,7 @@ export interface InviteCard {
   /** Where requests go: the inviter's Lighthouses without passes. */
   readonly lighthouses: readonly LighthouseAddress[]
   readonly expires: number
-  /** False once the invite is used up, cancelled, or closed by your other devices. */
+  /** False once the invite is used up or cancelled. */
   readonly open: boolean
   /** The device that signed it, active on `deviceLog`. */
   readonly from: PeerId
@@ -276,7 +356,7 @@ export async function openInviteCard(
   }
   const card = readCard(parsed)
   if (card === undefined) return err('malformed')
-  if ((await linkFingerprint(crypto, card.identity)) !== link.fingerprint) return err('not-theirs')
+  if (!(await linkNames(crypto, link.fingerprint, card.identity))) return err('not-theirs')
   // Signed for this link, not moved here from another of theirs.
   if (card.tag !== (await inviteCardTag(crypto, link.secret))) return err('not-theirs')
   const { sig, ...fields } = card

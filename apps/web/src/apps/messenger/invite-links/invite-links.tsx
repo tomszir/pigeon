@@ -20,7 +20,6 @@ export const LIFETIMES = [
   { value: String(HOUR), label: '1 hour' },
   { value: String(DAY), label: '1 day' },
   { value: String(7 * DAY), label: '7 days' },
-  { value: String(30 * DAY), label: '30 days' },
 ] as const
 
 export const USES = [
@@ -38,13 +37,13 @@ export function timeLeft(ms: number): string {
   return plural(Math.max(1, Math.floor(ms / MINUTE)), 'minute')
 }
 
-/** "pigeon.tomszir.com/#a/zbyd…5v4vju": enough to tell links apart, short enough for one line. */
+/** "pigeon.tomszir.com/#b/zbyd…5v4vju": enough to tell links apart, short enough for one line. */
 export function shortLink(url: string): string {
   const bare = url.replace(/^https?:\/\//, '')
-  const hash = bare.indexOf('#a/')
+  const hash = bare.search(/#[ab]\//)
   if (hash < 0) return bare
   const body = bare.slice(hash + 3).split('?')[0] ?? ''
-  return `${bare.slice(0, hash)}#a/${body.slice(0, 4)}…${body.slice(-6)}`
+  return `${bare.slice(0, hash + 3)}${body.slice(0, 4)}…${body.slice(-6)}`
 }
 
 /**

@@ -2,7 +2,7 @@
 
 An invite link's cards are put claimed, so only the inviter's devices can add to the claimed blobs under its card tag, and whoever opens the link reads those first.
 
-- Status: accepted
+- Status: accepted; superseded in part by [0060](0060-invite-links-bound-to-their-maker-for-a-week.md): the claim key no longer goes to your other devices, and they no longer put closed cards for, or answer `closed` through, a removed device's links
 - Date: 2026-11-26
 
 ## Context

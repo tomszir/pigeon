@@ -26,7 +26,7 @@
 
 It's 2003, peer-to-peer won and the cloud never happened. Pigeon is the messenger from that world: your browser talks straight to your friends' browsers, with no account, no server keeping your chats and no one reading over your shoulder.
 
-- **Add friends with a link or a code:** send an invite link that waits up to 30 days, for one friend or several, and approve each one who asks; or show a quick code to someone next to you. Pigeon checks it's really them by their fingerprint.
+- **Add friends with a link or a code:** send an invite link that waits up to a week, for one friend or several, and approve each one who asks; or show a quick code to someone next to you. Pigeon checks it's really them by their fingerprint.
 - **Messages that wait:** chat browser to browser, buzz, see who's writing. Write to a friend who's offline and it's left, sealed, at their Lighthouses until they're back, and each message says where it is.
 - **All your devices:** link your phone to your laptop and it's you there too, with your friends, your name and your chats. A recovery key brings your Pigeon back if you lose them.
 - **A whole desktop:** windows, a taskbar, a CRT monitor and Pigeon Explorer for `pigeon://` pages; on a phone, the Kestrel Pocket, a 2003 handheld with a home screen and soft keys.

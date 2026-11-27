@@ -56,7 +56,7 @@ test('two people who are never online together become friends through a link', a
     timeout: 60_000,
   })
   const copied = String(await rook.evaluate('navigator.clipboard.readText()'))
-  expect(copied).toMatch(/^Rook invites you to Pigeon!\nhttp\S+#a\/[a-z2-7]{52}$/)
+  expect(copied).toMatch(/^Rook invites you to Pigeon!\nhttp\S+#b\/[a-z2-7]{86}$/)
   const link = copied.slice(copied.indexOf('\n') + 1)
   await rook.close()
 

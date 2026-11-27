@@ -1,0 +1,17 @@
+defect: an opener takes an open card that lasts longer than the end its link carries
+test: apps/web src/apps/messenger/service/link-makers.test.ts
+expect: lasts longer than the link
+
+diff --git a/packages/core/src/pairing/invite-link-rules.ts b/packages/core/src/pairing/invite-link-rules.ts
+index 6d226cb..2b97529 100644
+--- a/packages/core/src/pairing/invite-link-rules.ts
++++ b/packages/core/src/pairing/invite-link-rules.ts
+@@ -36,7 +36,7 @@ export async function cardFitsLink(
+   card: InviteCard,
+ ): Promise<boolean> {
+   if (!(await linkNames(crypto, link.maker, card.from))) return false
+-  return !card.open || card.expires <= link.end
++  return true
+ }
+ 
+ /** Of the cards that hold and fit `link`, the newest, as `newestCard` chooses. */

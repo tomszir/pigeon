@@ -131,6 +131,11 @@ export const YOUR_DEVICES = (
       says it was removed. What it sent before it was removed still counts, so a device linked later
       can catch up with no gaps; nothing it sends afterwards is taken.
     </p>
+    <p>
+      Your other devices' invite links go on working, since only the device that made a link can add
+      anyone through it. The removed device's own links go quiet, but someone who has it could still
+      add people as you through them until each runs out, at most a week after it was made.
+    </p>
     <Aside title="Keep it safe" color="#fde8e4">
       Only the device that manages your list can link or remove devices, so a stolen phone can do
       nothing to your list. If the managing device itself is lost, your other devices go on working,

@@ -34,6 +34,14 @@ LIGHTHOUSES
   it does see your address when you
   connect. Network shows yours: Loft,
   Dovecote and Perch unless you add more.
+  An invite link leaves a card at your
+  Lighthouses, sealed under the link, until
+  the link runs out: a week at most. A
+  Lighthouse sees when that is and how many
+  requests come, never the link itself,
+  the device that made it, or who asked.
+  A link made by an older Pigeon no longer
+  opens: make a new one and share that.
 
 KNOWN LIMITS
   Some networks block direct connections;

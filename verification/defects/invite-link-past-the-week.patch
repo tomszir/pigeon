@@ -1,0 +1,16 @@
+defect: an opener takes a link that says it ends further off than any link lasts
+test: apps/web src/apps/messenger/service/link-makers.test.ts
+expect: ends more than a week and a day
+
+diff --git a/apps/web/src/apps/messenger/service/invite-links.ts b/apps/web/src/apps/messenger/service/invite-links.ts
+index 1306aa7..6b4d541 100644
+--- a/apps/web/src/apps/messenger/service/invite-links.ts
++++ b/apps/web/src/apps/messenger/service/invite-links.ts
+@@ -998,7 +998,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
+       if (!decoded.ok)
+         return { ok: false, error: decoded.error === 'old' ? 'retired' : 'malformed' }
+       const link = decoded.value
+-      if (inviteLinkTooLong(link, now())) return { ok: false, error: 'too-long' }
+       if (inviteLinkEnded(link, now())) return { ok: false, error: 'expired' }
+       const card = await linkCard(deps, link)
+       if (card === undefined) return { ok: false, error: 'not-found' }

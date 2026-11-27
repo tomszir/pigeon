@@ -32,7 +32,7 @@ export interface SelfNews {
   readonly keys: readonly SealingKey[]
   readonly profile?: ProfileChange | undefined
   readonly lighthouses?: LighthousesChange | undefined
-  /** Invite links the sending device made, so your other devices can show and close them. */
+  /** Invite links the sending device made, so your other devices can say how many are open. */
   readonly invites?: readonly OtherLink[] | undefined
 }
 

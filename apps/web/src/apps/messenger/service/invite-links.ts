@@ -5,11 +5,14 @@
 // `mail:invite` under the link's ask tags, and wait here until you add or decline each one; the
 // answer goes back as `mail:invite-answer` under the asker's reply secret. Only the device that
 // made a link answers through it, and only it can take its cards down: the drop value never
-// leaves it. Your other devices hear of your links in the self mailbox, and close those of a
-// device taken off your list with a closed card signed on the newer list, which wins.
+// leaves it. The link names that device and its end, and whoever opens it takes cards and answers
+// of every kind from that device alone, and asks through it only before the end. So a device taken off
+// your list can do nothing through your other devices' links, and its own stop at their end,
+// within a week; nothing is closed when a device is removed. Your other devices hear of your
+// links in the self mailbox, only to say how many are open elsewhere.
 //
 // Anyone holding a link can put blobs under its card tag, enough to bury the card among them. So
-// your devices put its cards claimed, with a claim key each link has and your devices share, and
+// its cards are put claimed, with a claim key each link has, which never leaves this device, and
 // whoever opens it reads the tag's claimed cards first, which nobody else can add to.
 import {
   base32Decode,
@@ -30,6 +33,9 @@ import {
   inviteAnswerBody,
   inviteCardClaim,
   inviteCardTag,
+  inviteLinkEnd,
+  inviteLinkEnded,
+  inviteLinkTooLong,
   inviteRequestBody,
   isDeviceLog,
   isInviteClaimKey,
@@ -43,12 +49,11 @@ import {
   type LighthouseAddress,
   type LighthouseClient,
   linkFingerprint,
+  linkMaker,
   MAX_INVITE_REQUEST_BYTES,
   MAX_INVITE_REQUESTS_PER_DAY,
   MAX_MAIL_MS,
   mergeDeviceLogs,
-  newestCard,
-  openInviteCard,
   type PeerId,
   readInviteAnswer,
   readInviteRequest,
@@ -61,6 +66,7 @@ import {
 } from '@pigeon/core'
 import { createSignal } from 'solid-js'
 import type { Store } from '../../../platform/storage/storage.ts'
+import { linkCard } from './invite-cards.ts'
 import type { Mailbox, Recipient, Source } from './mailbox.ts'
 
 const HOUR = 60 * 60 * 1000
@@ -68,17 +74,6 @@ const HOUR = 60 * 60 * 1000
 const CARD_EXPIRES_SLACK = HOUR
 /** How long a link or a sent request is remembered after it expired, for late mail. */
 const KEEP_AFTER_EXPIRY = 2 * 24 * HOUR
-/** Items under a card tag read when a link is opened, and cards got of them, newest first. */
-const MAX_CARD_ITEMS = 500
-const MAX_CARD_GETS = 100
-/**
- * The same for the tag's claimed cards, which only the inviter's devices can put: the card as it
- * is now, the one it replaces until that's dropped, and closed ones from the other devices.
- */
-const MAX_CLAIMED_ITEMS = 256
-const MAX_CLAIMED_GETS = 16
-/** A card bigger than this is junk: a real one is a few kilobytes. */
-const MAX_CARD_BYTES = 32 * 1024
 /** Requests waiting on one link at most: more are left unread until some are answered. */
 export const MAX_WAITING_REQUESTS = 50
 /** "Closed" answers one link sends at most, to requests that came after it closed. */
@@ -92,28 +87,7 @@ const KEYS = {
   links: 'invite-links',
   others: 'invite-links-elsewhere',
   asks: 'invite-asks',
-  /**
-   * Closed cards this device put for your other devices' links, by link: the drop that takes
-   * them down and each Lighthouse's id for the one it holds, so a close tried again puts only
-   * where none is up yet.
-   */
-  closedElsewhere: 'invite-links-closed-elsewhere',
 } as const
-
-/** Closed cards this device put for another device's link. */
-interface ClosedElsewhere {
-  readonly drop: string
-  readonly cards: Readonly<Record<string, string>>
-  readonly expires: number
-}
-
-const isClosedElsewhere = (value: unknown): value is ClosedElsewhere =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as ClosedElsewhere).drop === 'string' &&
-  typeof (value as ClosedElsewhere).cards === 'object' &&
-  (value as ClosedElsewhere).cards !== null &&
-  typeof (value as ClosedElsewhere).expires === 'number'
 
 /** Where one of an asker's devices waits for the answer. */
 export interface Reply {
@@ -144,9 +118,8 @@ export interface OwnLink {
   /** 32 random bytes, base32: what takes its cards down. It never leaves this device. */
   readonly drop: string
   /**
-   * 32 random bytes, base32: what its cards are claimed with, shared with your other devices so
-   * the closed cards they put count too. Missing on a link made before cards were claimed,
-   * until its card is put again.
+   * 32 random bytes, base32: what its cards are claimed with. It never leaves this device.
+   * Missing on a link made before cards were claimed, until its card is put again.
    */
   readonly claim?: string | undefined
   /** Each Lighthouse's id for the card it holds now. */
@@ -181,13 +154,6 @@ export interface OtherLink {
   readonly uses: number
   readonly used: number
   readonly open: boolean
-  /** What its cards are claimed with; missing from a device that doesn't claim them. */
-  readonly claim?: string | undefined
-  /**
-   * Kept only here: "closed" answers this device sent to requests through it, once the device
-   * that made it was taken off your list.
-   */
-  readonly answered?: number | undefined
 }
 
 /** A request this device sent through someone's link, waiting for their answer. */
@@ -200,14 +166,24 @@ export interface SentAsk {
   readonly lighthouses: readonly LighthouseAddress[]
   readonly reply: string
   readonly expires: number
+  /**
+   * The device that made the link, which the link names: only its answers are taken. Missing
+   * from a request sent through a link from before links named their maker, which adds nobody now.
+   */
+  readonly maker?: PeerId | undefined
   readonly at: number
   /**
    * `added` once they added you: kept, and its answers still looked for, until a while after
-   * the link expires, in case another of their devices says the one that added you was removed.
-   * Not shown.
+   * the link expires, so the maker's `added`, put again until this device's receipt reaches it,
+   * is answered with a receipt again if the first was lost. Only the maker's answers are read: a
+   * `closed` from it whose log holds merges that log into the friend's. Not shown. `retired`:
+   * sent through a link from before links named their maker, which adds nobody now.
    */
-  readonly state: 'waiting' | 'declined' | 'closed' | 'busy' | 'added'
-  /** Their device log, the newest an answer carried, merged with what you knew. */
+  readonly state: 'waiting' | 'declined' | 'closed' | 'busy' | 'added' | 'retired'
+  /**
+   * Their device log: the card's when the request was sent, merged with the newest an answer
+   * carried and what you knew. Missing from a request sent before cards' logs were kept.
+   */
   readonly log?: DeviceLog | undefined
 }
 
@@ -221,7 +197,19 @@ export type OpenedLink =
     }
   | {
       readonly ok: false
-      readonly error: 'malformed' | 'not-found' | 'closed' | 'expired' | 'own' | 'friend'
+      /**
+       * `retired`: a link from before links named their maker and end, which no longer opens.
+       * `too-long`: one that says it ends further off than any link lasts.
+       */
+      readonly error:
+        | 'malformed'
+        | 'not-found'
+        | 'closed'
+        | 'expired'
+        | 'own'
+        | 'friend'
+        | 'retired'
+        | 'too-long'
     }
 
 /**
@@ -235,7 +223,11 @@ export type MakeLinkError =
   | 'named-not-stored'
   | 'no-name'
   | 'removed'
-export type AskResult = 'sent' | 'no-lighthouse' | 'not-sent'
+/**
+ * `expired`: the link or its card has ended since it was opened, and nobody asks through it after.
+ * `too-long`: the link says it ends further off than any link lasts.
+ */
+export type AskResult = 'sent' | 'no-lighthouse' | 'not-sent' | 'expired' | 'too-long'
 
 /** Someone new to be friends with, through a link, either way round. */
 export interface LinkFriend {
@@ -339,9 +331,7 @@ export function isOtherLink(value: unknown): value is OtherLink {
     Number.isSafeInteger(l.expires) &&
     Number.isSafeInteger(l.uses) &&
     Number.isSafeInteger(l.used) &&
-    typeof l.open === 'boolean' &&
-    (l.claim === undefined || isInviteClaimKey(l.claim)) &&
-    (l.answered === undefined || Number.isSafeInteger(l.answered))
+    typeof l.open === 'boolean'
   )
 }
 
@@ -357,13 +347,14 @@ const isAsk = (value: unknown): value is SentAsk => {
     Array.isArray(a.lighthouses) &&
     a.lighthouses.every(isLighthouseAddress) &&
     typeof a.expires === 'number' &&
-    ['waiting', 'declined', 'closed', 'busy', 'added'].includes(a.state) &&
+    (a.maker === undefined || (typeof a.maker === 'string' && isPeerId(a.maker))) &&
+    ['waiting', 'declined', 'closed', 'busy', 'added', 'retired'].includes(a.state) &&
     (a.log === undefined || (isDeviceLog(a.log) && a.log.identity === a.identity))
   )
 }
 
-const unique = (list: readonly LighthouseAddress[]) =>
-  list.filter((address, i) => list.findIndex((other) => other.id === address.id) === i)
+/** A link made before links named their maker and end (`#a/`), which no longer opens. */
+const isOldLink = (link: OwnLink) => link.url.includes('#a/')
 
 /** One of the presets, so a link is only ever one of them. */
 function preset(value: number, presets: readonly number[], fallback: number): number {
@@ -382,7 +373,17 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     : []
   const storedAsks = await store.get(KEYS.asks)
   const [asks, setAsksSignal] = createSignal<readonly SentAsk[]>(
-    Array.isArray(storedAsks) ? storedAsks.filter(isAsk) : [],
+    // A request still waiting that names no maker went through a link from before links named
+    // theirs, which adds nobody now: it stops waiting, and says the link has retired.
+    Array.isArray(storedAsks)
+      ? storedAsks
+          .filter(isAsk)
+          .map((ask) =>
+            ask.state === 'waiting' && ask.maker === undefined
+              ? { ...ask, state: 'retired' as const }
+              : ask,
+          )
+      : [],
   )
 
   // One change to the lists at a time, so a request arriving never undoes an approval. Nothing
@@ -508,9 +509,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     return { cards, missed }
   }
 
-  /** `putCardAt`, saying only where the card now is. */
-  const putCard = async (...args: Parameters<typeof putCardAt>) => (await putCardAt(...args)).cards
-
   /**
    * Puts an own link's card, as `putCardAt` does, and says where it now is and where it still
    * has to go, so `catchUp` tries those again. Cards held before are closed ones only if the
@@ -535,17 +533,8 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     )
   }
 
-  /**
-   * "Closed", with your device log: someone who asked through a card a device since taken off
-   * your list put learns it's off, and stops taking what it says.
-   */
+  /** "Closed", with your device log as this device has it. */
   const closedAnswer = () => inviteAnswerBody({ answer: 'closed', deviceLog: deps.deviceLog() })
-
-  /** Another device's link, whose maker has since been taken off your list. */
-  function orphanOf(secret: string): OtherLink | undefined {
-    const active = deviceState(deps.deviceLog()).active
-    return others.find((link) => link.secret === secret && !active.has(link.owner))
-  }
 
   /** Where whoever opens a new link looks: your official Lighthouses, or the one it names. */
   function readLighthouses(): LighthouseAddress[] {
@@ -555,12 +544,21 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     return yours.length > 0 ? yours : where.slice(0, 1)
   }
 
-  /** What the link names: your official Lighthouses, or one of yours when you've none of them. */
-  function linkUrl(secret: string, print: string): string {
+  /**
+   * What the link names: this device as its maker, its end, and your official Lighthouses, or one
+   * of yours when you've none of them.
+   */
+  async function linkUrl(secret: string, end: number): Promise<string> {
     const where = cardLighthouses()
     const official = new Set(deps.official.map((address) => address.id))
     const named = where.some((address) => official.has(address.id)) ? undefined : where[0]
-    const fragment = encodeInviteLinkFragment({ secret, fingerprint: print, lighthouse: named })
+    const fragment = encodeInviteLinkFragment({
+      secret,
+      fingerprint: await linkFingerprint(crypto, deps.self),
+      maker: await linkMaker(crypto, deps.signer.id),
+      end,
+      lighthouse: named,
+    })
     return `${deps.inviteBase}#${fragment}`
   }
 
@@ -670,8 +668,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   async function takeRequest(source: Source, letter: Letter): Promise<boolean> {
     if (!deps.active()) return false
     const link = linkOf(source.secret)
-    const orphan = link === undefined ? orphanOf(source.secret) : undefined
-    if (link === undefined && orphan === undefined) return true
+    if (link === undefined) return true
     const sender = letter.sender
     if (sender === deps.self || deps.isBlocked(sender)) return true
     const request = readInviteRequest(sender, letter.body)
@@ -702,23 +699,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       replies: [reply],
       at: letter.at,
       state: 'waiting',
-    }
-    if (link === undefined) {
-      // Through a card its removed maker put, or one from before: told it's closed, with your
-      // list as it is now, a few times a link at most.
-      const told = await serial(async () => {
-        const current = orphanOf(source.secret)
-        if (current === undefined || (current.answered ?? 0) >= MAX_CLOSED_ANSWERS) return false
-        others = others.map((other) =>
-          other.secret === current.secret
-            ? { ...other, answered: (other.answered ?? 0) + 1 }
-            : other,
-        )
-        if (!deps.stopped()) await store.set(KEYS.others, others)
-        return true
-      })
-      if (told) void answer(view, closedAnswer(), false).catch(() => undefined)
-      return true
     }
     const addedAnswer = (pairSecret: string) =>
       inviteAnswerBody({
@@ -804,7 +784,13 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         ? (ask.log ?? kept)
         : await mergeDeviceLogs(crypto, kept, ask.log)
     if (body.answer !== 'added') {
-      // Only from one of the devices their card named, or with a list it's on.
+      // Only the device the link names answers through it. Any other device's answer, a removed
+      // one's included, is dropped as it is, so the request goes on waiting for the maker. Even a
+      // `closed` whose log takes the maker off their list: a device a recovery took off can sign
+      // one on its old epoch, which nothing here can tell from a real one before the recovery is
+      // heard of.
+      if (letter.from !== ask.maker) return true
+      // From one of the devices their card named, or with a list it's on.
       const log = body.answer === 'closed' ? body.deviceLog : undefined
       const merged =
         log === undefined ||
@@ -839,6 +825,9 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     }
     // Answered already, or closed by another of their devices: nothing more is taken.
     if (ask.state !== 'waiting') return true
+    // Only the device the link names adds anyone through it: another device of theirs, one taken
+    // off their list included, holds the link's secret and may have read the request too.
+    if (ask.maker === undefined || letter.from !== ask.maker) return true
     if (!isPairSecret(body.secret)) return true
     const speaks = await speakerIdentity(
       crypto,
@@ -849,11 +838,17 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     // From a device not on their list as this one knows it: left, to be looked at again, unless
     // an answer already said it was taken off.
     if (speaks !== ask.identity) return ask.log !== undefined
+    // Their list as everything heard here says it: the card's, what answers carried, what this
+    // device keeps for them, and the answer's own. So an older or stripped log in the answer can't
+    // bring back a device they took off, or drop a recovery key they committed to.
+    const merged =
+      known === undefined ? body.deviceLog : await mergeDeviceLogs(crypto, known, body.deviceLog)
+    if (!deviceState(merged).active.has(letter.from)) return true
     await deps.befriend({
       id: ask.identity,
       handle: body.name,
       secret: body.secret,
-      deviceLog: body.deviceLog,
+      deviceLog: merged,
       keys: ask.keys,
       lighthouses: ask.lighthouses,
     })
@@ -868,10 +863,13 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   }
 
   // Adds Pigeon closed in the middle of: finished once it's running.
+  // Not on a link made before links named their maker and end: nobody is added through one.
   const unfinished = links().flatMap((link) =>
-    link.requests
-      .filter((request) => request.state === 'adding')
-      .map((request) => [link.secret, request.identity] as const),
+    isOldLink(link)
+      ? []
+      : link.requests
+          .filter((request) => request.state === 'adding')
+          .map((request) => [link.secret, request.identity] as const),
   )
 
   const api = {
@@ -884,9 +882,25 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       if (!deps.active()) return
       for (const [secret, identity] of unfinished)
         await finishAdding(secret, identity).catch(() => undefined)
-      // A link whose last place was taken just before Pigeon closed: closed now.
+      // A link made before links named their maker and end, which nobody can ask through any
+      // more: an add Pigeon closed in the middle of is left unfinished, and the link closed, so
+      // whoever asked hears so and nobody is added on this side alone.
       for (const link of links())
-        if (link.open && link.used >= link.uses) await api.cancel(link.secret)
+        if (isOldLink(link) && link.requests.some((request) => request.state === 'adding'))
+          await serial(() =>
+            updateLink(link.secret, (other) => ({
+              ...other,
+              requests: other.requests.map((request) =>
+                request.state === 'adding'
+                  ? { ...request, state: 'waiting' as const, pairSecret: undefined }
+                  : request,
+              ),
+            })),
+          )
+      // A link whose last place was taken just before Pigeon closed: closed now. So is one made
+      // before links named their maker and end.
+      for (const link of links())
+        if (link.open && (link.used >= link.uses || isOldLink(link))) await api.cancel(link.secret)
       await api.catchUp()
     },
 
@@ -940,7 +954,8 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       // Claimed before the link is shown to anyone, so nobody holding it can claim it first.
       const claim = base32Encode(deps.random(32))
       const lifetime = preset(options.lifetime, INVITE_LINK_LIFETIMES, DEFAULT_INVITE_LINK_LIFETIME)
-      const expires = at + lifetime
+      // To the second, as the link carries it, so the card ends exactly when the link says.
+      const expires = inviteLinkEnd(at + lifetime)
       const { cards, missed } = await putCardAt({ secret, expires, claim }, true, drop)
       // Shown only once a Lighthouse that everyone opening it reads holds its card, claimed:
       // where the first put missed, someone holding the link could claim the tag before it's
@@ -967,7 +982,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         uses: preset(options.uses, INVITE_LINK_USES, DEFAULT_INVITE_LINK_USES),
         used: 0,
         open: true,
-        url: linkUrl(secret, await linkFingerprint(crypto, deps.self)),
+        url: await linkUrl(secret, expires),
         requests: [],
         closedAnswers: 0,
       }
@@ -992,6 +1007,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         const request = link?.requests.find((other) => other.identity === identity)
         if (link === undefined || request?.state !== 'waiting') return undefined
         if (!link.open || link.expires <= now() || link.used >= link.uses) return undefined
+        if (isOldLink(link)) return undefined
         const used = link.used + 1
         // Kept before anything else, so a tab that closes now finishes it when it opens.
         await updateLink(secret, (other) => ({
@@ -1032,53 +1048,12 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     /** Looks up someone's link: their card, checked, or why there's nothing to ask. */
     async open(text: string): Promise<OpenedLink> {
       const decoded = decodeInviteLink(text)
-      if (!decoded.ok) return { ok: false, error: 'malformed' }
+      if (!decoded.ok)
+        return { ok: false, error: decoded.error === 'old' ? 'retired' : 'malformed' }
       const link = decoded.value
-      const where = unique([
-        ...deps.official,
-        ...(link.lighthouse === undefined ? [] : [link.lighthouse]),
-      ])
-      const tag = await inviteCardTag(crypto, link.secret)
-      const cards: InviteCard[] = []
-      for (const lighthouse of where) {
-        const client = deps.client(lighthouse)
-        const seen = new Set<string>()
-        // The claimed cards first, which only the inviter's devices can put. Then everything
-        // under the tag, as far as the limits go: a Lighthouse from before claims, a card put
-        // before its link was claimed, or a closed one from a device that doesn't claim them.
-        for (const [type, maxItems, maxGets] of [
-          ['list-claimed', MAX_CLAIMED_ITEMS, MAX_CLAIMED_GETS],
-          ['list', MAX_CARD_ITEMS, MAX_CARD_GETS],
-        ] as const) {
-          const items: { id: string; size: number }[] = []
-          for (let cursor = 0, more = true; more && items.length < maxItems; ) {
-            const listed = await client.request({ type, tags: [tag], cursor })
-            if (!listed.ok || listed.value.type !== 'listed') break
-            items.push(...listed.value.items)
-            cursor = listed.value.cursor
-            more = listed.value.more
-          }
-          // Newest first: a card put again, or closed, comes after anything put to hide it.
-          const worth = items
-            .filter((item) => item.size <= MAX_CARD_BYTES && !seen.has(item.id))
-            .reverse()
-          for (const item of worth.slice(0, maxGets)) {
-            seen.add(item.id)
-            const got = await client.request({ type: 'get', id: item.id })
-            if (!got.ok || got.value.type !== 'blob') continue
-            const opened = await openInviteCard(crypto, deps.seal, link, got.value.blob)
-            if (!opened.ok) continue
-            // Checked again against the log you keep for them, if you know them.
-            const known = await deps.knownLog(opened.value.identity)
-            const checked =
-              known === undefined
-                ? opened
-                : await openInviteCard(crypto, deps.seal, link, got.value.blob, known)
-            if (checked.ok) cards.push(checked.value)
-          }
-        }
-      }
-      const card = newestCard(cards)
+      if (inviteLinkTooLong(link, now())) return { ok: false, error: 'too-long' }
+      if (inviteLinkEnded(link, now())) return { ok: false, error: 'expired' }
+      const card = await linkCard(deps, link)
       if (card === undefined) return { ok: false, error: 'not-found' }
       if (card.identity === deps.self) return { ok: false, error: 'own' }
       if (card.expires <= now()) return { ok: false, error: 'expired' }
@@ -1096,13 +1071,16 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     async ask(opened: Extract<OpenedLink, { ok: true }>): Promise<AskResult> {
       if (!deps.active() || deps.name() === '') return 'not-sent'
       const { link, card } = opened
+      if (inviteLinkEnded(link, now()) || card.expires <= now()) return 'expired'
+      if (inviteLinkTooLong(link, now())) return 'too-long'
       // The answer comes where you fetch mail, and a pass can't go in a request.
       const mine = deps.lighthouses().filter((address) => address.pass === undefined)
       if (mine.length === 0) return 'no-lighthouse'
-      // Asking again through the same link keeps the reply secret, so an answer already on its
-      // way still finds this device.
-      const reply =
-        asks().find((other) => other.secret === link.secret)?.reply ?? base32Encode(deps.random(16))
+      // A request still waiting keeps its reply secret, so an answer already on its way still finds
+      // this device. One already answered gets a new one: whoever read the request before can't
+      // answer this one.
+      const before = asks().find((other) => other.secret === link.secret)
+      const reply = before?.state === 'waiting' ? before.reply : base32Encode(deps.random(16))
       const to: Recipient = {
         identity: card.identity,
         secret: link.secret,
@@ -1119,6 +1097,11 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         link: await inviteCardTag(crypto, link.secret),
       })
       if (!(await deps.mailbox.send('invite', to, body, { once: true }))) return 'not-sent'
+      // The card's log, checked when the link was opened, merged with what the request before kept
+      // (a newer log a `closed` answer carried), so asking again loses nothing heard of their list.
+      const kept = before?.identity === card.identity ? before.log : undefined
+      const log =
+        kept === undefined ? card.deviceLog : await mergeDeviceLogs(crypto, kept, card.deviceLog)
       const sent: SentAsk = {
         secret: link.secret,
         identity: card.identity,
@@ -1128,6 +1111,8 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         lighthouses: card.lighthouses,
         reply,
         expires: card.expires,
+        maker: card.from,
+        log,
         at: now(),
         state: 'waiting',
       }
@@ -1156,21 +1141,10 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             maxBytes: MAX_INVITE_REQUEST_BYTES,
             maxItems: MAX_INVITE_REQUESTS_PER_DAY,
           })
-      // Links of a device since taken off your list: whoever asks through a card it put is
-      // told they're closed, until a while after they end.
-      const active = deviceState(deps.deviceLog()).active
-      for (const link of others)
-        if (!active.has(link.owner) && link.expires + KEEP_AFTER_EXPIRY > at)
-          out.push({
-            sender: undefined,
-            secret: link.secret,
-            tags: 'invite-ask',
-            kinds: ['invite'],
-            maxBytes: MAX_INVITE_REQUEST_BYTES,
-            maxItems: MAX_INVITE_REQUESTS_PER_DAY,
-          })
-      // Until a while after the link ends: an answer put just before it may come late, and
-      // after being added, another device of theirs may say the one that added you was removed.
+      // Until a while after the link ends: an answer put just before it may come late, and after
+      // being added, the maker puts its `added` again until this device's receipt reaches it, so
+      // one fetched again is answered with a receipt again, in case the first was lost; only the
+      // maker's answers are read there.
       for (const ask of asks())
         if (
           (ask.state === 'waiting' || ask.state === 'added') &&
@@ -1206,9 +1180,9 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
 
     /**
      * Your device log, name or Lighthouses changed: each open link's card is put again as you
-     * are now, and a link another device made is closed if that device is no longer on the list.
-     * With `closedToo`, closed cards that may still be out are put again as well: one put before
-     * Pigeon took only low-S signatures may be refused, and the open card before it would win.
+     * are now. With `closedToo`, closed cards that may still be out are put again as well: one put
+     * before Pigeon took only low-S signatures may be refused, and the open card before it would
+     * win.
      */
     refresh: ({ closedToo = false } = {}) =>
       serial(async () => {
@@ -1219,96 +1193,12 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
           const put = await putOwnCard(link, link.open)
           await updateLink(link.secret, (other) => ({ ...other, ...put }))
         }
-        const active = deviceState(deps.deviceLog()).active
-        const gone = others.filter(
-          (link) => (link.open || closedToo) && link.expires > at && !active.has(link.owner),
-        )
-        // Closed with a drop of this device's own: the owner's cards stay, but lose to this one.
-        // Tried again at the next change if no Lighthouse took it.
-        const closed: OtherLink[] = []
-        for (const link of gone) {
-          const cards = await putCard(link, false, base32Encode(deps.random(32)))
-          if (Object.keys(cards).length > 0) closed.push(link)
-        }
-        if (closed.length > 0) {
-          others = others.map((link) => (closed.includes(link) ? { ...link, open: false } : link))
-          if (!deps.stopped()) await store.set(KEYS.others, others)
-        }
       }),
 
     /**
-     * The links a device taken off your list now may know: every one still open, this device's
-     * own and those your other devices said, and this device's own still closing.
+     * Your links, for your other devices to say how many are open elsewhere: what they are, never
+     * what takes their cards down or claims them.
      */
-    openNow(): readonly string[] {
-      const at = now()
-      return [
-        ...links().filter((link) => (link.open || link.closing === true) && link.expires > at),
-        ...others.filter((link) => link.open && link.expires > at),
-      ].map((link) => link.secret)
-    },
-
-    /**
-     * Closes the links `secrets` names, after a device that may know them was taken off your
-     * list: this device's own as Cancel closes them, telling whoever is still waiting, and the
-     * others with a closed card of this device's own, signed on the newer list, which wins over
-     * any card on the list from before. Says which are still to close, because a Lighthouse
-     * didn't take the closed card: they're tried again.
-     */
-    async closeLinks(secrets: readonly string[]): Promise<readonly string[]> {
-      if (!deps.active()) return secrets
-      const at = now()
-      const left: string[] = []
-      for (const secret of secrets) {
-        const own = linkOf(secret)
-        if (own !== undefined) {
-          if (own.expires <= at || !(own.open || own.closing === true)) continue
-          const wasOpen = own.open
-          const closed = await closeLink(secret).catch(() => undefined)
-          if (closed === undefined || closed.closing === true) left.push(secret)
-          if (closed !== undefined && wasOpen) {
-            deps.changed()
-            // Not waited on: this can run while a fetch holds the mailbox, which a send waits
-            // for, and a removal learned in that fetch waits for this.
-            void answerWaiting(closed).catch(() => undefined)
-          }
-          continue
-        }
-        const other = others.find((link) => link.secret === secret)
-        if (other === undefined || other.expires <= at) continue
-        // Closed by a card of this device's own at each of its Lighthouses: the owner's own
-        // cards stay, but lose to it. Put only where none of this device's is up yet, so trying
-        // again puts nothing twice.
-        const done = await serial(async () => {
-          const stored = await store.get(KEYS.closedElsewhere)
-          const all: Record<string, ClosedElsewhere> = {}
-          if (typeof stored === 'object' && stored !== null)
-            for (const [key, value] of Object.entries(stored))
-              if (isClosedElsewhere(value) && value.expires > at) all[key] = value
-          const before = all[secret] ?? {
-            drop: base32Encode(deps.random(32)),
-            cards: {},
-            expires: other.expires,
-          }
-          const where = cardLighthouses()
-          const missing = where.filter((address) => before.cards[address.id] === undefined)
-          const put =
-            missing.length === 0 ? {} : await putCard(other, false, before.drop, {}, false, missing)
-          const cards = { ...before.cards, ...put }
-          all[secret] = { ...before, cards }
-          if (!deps.stopped()) await store.set(KEYS.closedElsewhere, all)
-          if (where.length === 0 || where.some((address) => cards[address.id] === undefined))
-            return false
-          others = others.map((link) => (link.secret === secret ? { ...link, open: false } : link))
-          if (!deps.stopped()) await store.set(KEYS.others, others)
-          return true
-        })
-        if (!done) left.push(secret)
-      }
-      return left
-    },
-
-    /** Your links, for your other devices: what they are, never what takes their cards down. */
     shared(): readonly OtherLink[] {
       return links().map((link) => ({
         secret: link.secret,
@@ -1317,7 +1207,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         uses: link.uses,
         used: link.used,
         open: link.open,
-        ...(link.claim === undefined ? {} : { claim: link.claim }),
       }))
     },
 

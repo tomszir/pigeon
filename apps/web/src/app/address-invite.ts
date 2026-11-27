@@ -8,10 +8,13 @@ export interface OldCode {
   readonly old: true
 }
 
-/** A live invite's link (`#i/`), or a link through Lighthouses (`#a/`), kept whole. */
+/**
+ * A live invite's link (`#i/`), or a link through Lighthouses (`#b/`, or `#a/` from an older
+ * Pigeon, which is then said to no longer open), kept whole.
+ */
 export function takeInviteFromAddress(): IncomingInvite | undefined {
   const hash = location.hash.slice(1)
-  if (hash.startsWith('a/')) {
+  if (hash.startsWith('a/') || hash.startsWith('b/')) {
     history.replaceState(history.state, '', `${location.pathname}${location.search}`)
     return { link: hash }
   }

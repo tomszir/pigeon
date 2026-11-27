@@ -39,7 +39,7 @@ describe('self mail', () => {
     })
   })
 
-  it("carries each invite link's claim key, and leaves out a link whose key is off", () => {
+  it('carries each invite link, and leaves out one that is not whole', () => {
     const link = {
       secret: base32Encode(new Uint8Array(16).fill(1)),
       owner: rook,
@@ -48,14 +48,9 @@ describe('self mail', () => {
       used: 0,
       open: true,
     }
-    const claim = base32Encode(new Uint8Array(32).fill(2))
-    const news = {
-      log: emptyDeviceLog(rook),
-      keys: [],
-      invites: [{ ...link, claim }, link],
-    }
-    expect(readSelfNews(rook, selfNewsBody(news))?.invites).toEqual(news.invites)
-    const off = { ...news, invites: [{ ...link, claim: claim.slice(1) }, link] }
-    expect(readSelfNews(rook, selfNewsBody(off))?.invites).toEqual([link])
+    const news = { log: emptyDeviceLog(rook), keys: [], invites: [link] }
+    expect(readSelfNews(rook, selfNewsBody(news))?.invites).toEqual([link])
+    const off = { ...news, invites: [{ ...link, uses: 'five' }, link] }
+    expect(readSelfNews(rook, selfNewsBody(off as never))?.invites).toEqual([link])
   })
 })

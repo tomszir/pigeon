@@ -1,8 +1,6 @@
 import {
   base32Decode,
   base32Encode,
-  bindSealingKey,
-  createLighthouseClient,
   createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
@@ -13,7 +11,6 @@ import {
   encodeRequest,
   err,
   fakeCrypto,
-  fakePake,
   fakeSealCrypto,
   fakeSigner,
   flush,
@@ -23,7 +20,6 @@ import {
   inviteCardTag,
   LIGHTHOUSE_PROTOCOL,
   type LighthouseAddress,
-  type LighthouseClient,
   type LighthouseReply,
   type LighthouseRequest,
   MAX_WRONG_TRIES,
@@ -40,13 +36,6 @@ import {
   selfRoomsAt,
   startPairSession,
 } from '@pigeon/core'
-import {
-  createLighthouse,
-  createMemoryStore as createMailStore,
-  type LighthouseConnection,
-  type MailStore,
-} from '@pigeon/lighthouse'
-import { createRoot } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
 
 // A device that rewrites who made its proposals, and when: set only while one runs.
@@ -71,216 +60,28 @@ import type { Clock } from '../../../platform/clock/clock.ts'
 import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
+import {
+  apart,
+  asks,
+  away,
+  fakeClock,
+  laptopAndPhone,
+  linkDevice,
+  made,
+  messenger,
+  type Network,
+  NOON,
+  never,
+  only,
+  pair,
+  pairWith,
+  type TestLighthouse,
+  testLighthouse,
+} from '../testing/messengers.ts'
 import { loadDevices } from './devices.ts'
 import { MUTED_FOREVER } from './friends.ts'
 import { MAIL_AFTER_SEND_MS, MAIL_EVERY_MS, MAIL_MIN_GAP_MS } from './mail-schedule.ts'
-import type { FriendView, MessengerEvents } from './messenger.ts'
-import { createMessenger } from './service.ts'
-
-const never = new Promise<void>(() => undefined)
-/** Every test Pigeon's random draws so far, so no two draws are the same. */
-let draws = 0
-
-function fakeClock(start = 1_000_000): Clock & { tick(ms: number): Promise<void> } {
-  let time = start
-  let timers: { at: number; resolve: () => void }[] = []
-  return {
-    now: () => time,
-    sleep: (ms) => new Promise((resolve) => timers.push({ at: time + ms, resolve })),
-    async tick(ms) {
-      time += ms
-      const due = timers.filter((timer) => timer.at <= time)
-      timers = timers.filter((timer) => timer.at > time)
-      for (const timer of due) timer.resolve()
-      await flush()
-    },
-  }
-}
-
-type Network = ReturnType<typeof createMemoryNetwork>
-
-function messenger(
-  network: Network,
-  name: string,
-  options: {
-    store?: Store
-    clock?: Clock
-    wake?: Wake
-    events?: MessengerEvents
-    seed?: number
-    lighthouses?: readonly LighthouseAddress[]
-    lighthouse?: TestLighthouse
-    /** More Lighthouses after `lighthouse`, each reached through its own client. */
-    more?: readonly TestLighthouse[]
-  } = {},
-) {
-  const transport = network.transport()
-  const store = options.store ?? createMemoryStore()
-  return createRoot(async () => ({
-    store,
-    transport,
-    messenger: await createMessenger({
-      crypto: fakeCrypto,
-      signer: fakeSigner(name),
-      store,
-      transport,
-      clock: options.clock ?? fakeClock(),
-      ...(options.wake === undefined ? {} : { wake: options.wake }),
-      // Known bytes, but a new draw each time, even after a restart, as ids taken once need.
-      random: (length) => {
-        const bytes = new Uint8Array(length).fill(options.seed ?? name.length)
-        draws += 1
-        bytes[0] = draws % 256
-        bytes[1] = Math.floor(draws / 256) % 256
-        return bytes
-      },
-      inviteBase: 'https://pigeon.test/',
-      pake: fakePake(),
-      // Each device's own sealing key, the same across its restarts, as a stored one would be.
-      seal: { crypto: fakeSealCrypto(), sealer: fakeSealCrypto().sealer(name) },
-      ...(options.lighthouses === undefined ? {} : { lighthouses: options.lighthouses }),
-      ...(options.lighthouse === undefined
-        ? {}
-        : (() => {
-            const all = [options.lighthouse, ...(options.more ?? [])]
-            return {
-              lighthouses: all.map((one) => one.address),
-              lighthouseClient: (address: LighthouseAddress) =>
-                (all.find((one) => one.address.id === address.id) ?? all[0])?.client(
-                  address,
-                ) as LighthouseClient,
-            }
-          })()),
-      ...(options.events === undefined ? {} : { events: options.events }),
-    }),
-  }))
-}
-
-interface TestLighthouse {
-  readonly address: LighthouseAddress
-  readonly client: (address: LighthouseAddress) => LighthouseClient
-  /** While down, it closes every connection and takes no new one. */
-  down(value: boolean): void
-  /** While set, it keeps what's put unclaimed, as a Lighthouse from before claims does. */
-  unclaimed(value: boolean): void
-  /** A connection of someone else's, from `address`, frames in and replies out. */
-  connect(address: string): LighthouseConnection
-  /** The `seq` of the last blob it stored: a cursor past everything it holds now. */
-  lastSeq(): number
-}
-
-/** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
-function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse {
-  const signer = fakeSigner(name)
-  const url = name === 'test-lighthouse' ? 'wss://lighthouse.test/' : `wss://${name}.test/`
-  const inner = createMailStore()
-  let unclaimed = false
-  let stored = 0
-  const store: MailStore = {
-    ...inner,
-    put: async (blob, now) => {
-      const outcome = await inner.put(unclaimed ? { ...blob, owner: undefined } : blob, now)
-      if (outcome === 'stored') stored += 1
-      return outcome
-    },
-  }
-  const lighthouse = createLighthouse({
-    signer,
-    crypto: fakeCrypto,
-    store,
-    now: clock.now,
-    name: 'Test Lighthouse',
-    software: { name: 'pigeon-lighthouse', version: '0.0.0' },
-  })
-  let n = 0
-  let isDown = false
-  const open = new Set<() => void>()
-  return {
-    down(value) {
-      isDown = value
-      if (value) for (const close of [...open]) close()
-    },
-    unclaimed(value) {
-      unclaimed = value
-    },
-    connect: (address) => lighthouse.connect(address),
-    lastSeq: () => stored,
-    address: { id: signer.id, name: 'Test Lighthouse', url },
-    client: () =>
-      createLighthouseClient({
-        address: { id: signer.id, name: 'Test Lighthouse', url },
-        crypto: fakeCrypto,
-        random: (length) => new Uint8Array(length).fill(++n % 250),
-        sleep: () => new Promise(() => undefined),
-        open: (_url, events) => {
-          if (isDown) {
-            void Promise.resolve().then(events.onClose)
-            return { send: () => undefined, close: () => undefined }
-          }
-          const connection = lighthouse.connect('203.0.113.7')
-          const close = () => {
-            if (open.delete(close)) events.onClose()
-          }
-          open.add(close)
-          void Promise.resolve().then(events.onOpen)
-          return {
-            send: (text) =>
-              void connection
-                .receive(text)
-                .then((reply) => (reply === undefined ? close() : events.onMessage(reply))),
-            close,
-          }
-        },
-      }),
-  }
-}
-
-async function pair(
-  network: Network,
-  events: { a?: MessengerEvents; b?: MessengerEvents } = {},
-  by: 'link' | 'code' = 'link',
-  clock = fakeClock(),
-) {
-  const a = await messenger(network, 'rook', { clock, ...(events.a ? { events: events.a } : {}) })
-  const b = await messenger(network, 'mika', { clock, ...(events.b ? { events: events.b } : {}) })
-  await pairWith(a, b, by)
-  return { a, b, clock }
-}
-
-/** Rook (`a`) invites Mika (`b`), who agrees: friends, through the invite handshake. */
-async function pairWith(
-  a: Awaited<ReturnType<typeof messenger>>,
-  b: Awaited<ReturnType<typeof messenger>>,
-  by: 'link' | 'code' = 'link',
-) {
-  await a.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-  await b.messenger.setProfile({ handle: 'Mika', status: 'away', message: 'brb' })
-  await a.messenger.newInvite()
-  const link = a.messenger.inviteLink() ?? ''
-  expect(link).toMatch(/^https:\/\/pigeon\.test\/#i\/[a-z2-7]{39}$/)
-  expect(a.messenger.inviteCode()).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{3}-[A-Z2-7]{3}$/)
-  const invite = decodeInvite(by === 'link' ? link : (a.messenger.inviteCode() ?? ''))
-  if (!invite.ok) throw new Error('bad invite')
-  const opened = await b.messenger.open(invite.value, never)
-  if (!opened.ok) throw new Error(opened.error)
-  expect(opened.offer.friend.handle).toBe('Rook')
-  expect(opened.offer.checked).toBe(by === 'link')
-  // Nobody is a friend until Mika asks and Rook adds her.
-  expect(a.messenger.friends()).toEqual([])
-  const confirmed = opened.offer.confirm(never)
-  await flush()
-  const ask = only(a.messenger.codeAsks())
-  expect(ask).toMatchObject({ id: b.messenger.self, handle: 'Mika' })
-  expect(a.messenger.friends()).toEqual([])
-  expect(await a.messenger.approveAsk(ask.key)).toBe(true)
-  expect(await confirmed).toBe(true)
-  await flush()
-}
-
-const only = <T = FriendView>(list: readonly T[]): T => {
-  expect(list).toHaveLength(1)
-  return list[0] as T
-}
+import type { FriendView } from './messenger.ts'
 
 describe('the Messenger service', () => {
   it('shows a friend’s new name while they are online, and keeps it', async () => {
@@ -630,7 +431,6 @@ describe('the Messenger service', () => {
   })
 })
 
-const NOON = Date.parse('2026-11-24T12:00:00Z')
 const rookId = fakeSigner('rook').id
 const mikaId = fakeSigner('mika').id
 const legacy = () => pairRoom(fakeCrypto, rookId, mikaId)
@@ -1068,59 +868,6 @@ describe('relay-only for your own devices', () => {
     expect(await confirmed).toBe(true)
   })
 })
-
-/** Links a fresh device called `name` to `from`'s identity, and starts it as that identity. */
-async function linkDevice(
-  network: Network,
-  from: Awaited<ReturnType<typeof messenger>>,
-  name: string,
-  clock: Clock,
-  lighthouse?: TestLighthouse,
-  device?: Awaited<ReturnType<typeof messenger>>,
-) {
-  const options = { clock, ...(lighthouse === undefined ? {} : { lighthouse }) }
-  const fresh = device ?? (await messenger(network, name, options))
-  const linking = await from.messenger.startLink()
-  if (linking === undefined) throw new Error('could not start linking')
-  const target = decodeDeviceLink(linking.link)
-  if (!target.ok) throw new Error('bad link')
-  const joined = await fresh.messenger.joinIdentity(target.value, never)
-  if (!joined.ok) throw new Error(joined.error)
-  expect(joined.offer.checked).toBe(true)
-  expect(joined.offer.identityFingerprint).toBe(from.messenger.selfFingerprint)
-  const confirmed = joined.offer.confirmed(never)
-  await flush()
-  const request = from.messenger.linking()?.request
-  expect(request?.fingerprint).toBe(joined.offer.fingerprint)
-  expect(request?.device).toBe(fresh.messenger.device)
-  const status = await from.messenger.confirmLink(name)
-  expect(await confirmed).toBe(true)
-  await fresh.messenger.close()
-  await flush()
-  // Started again, this browser is the identity it was linked to.
-  const started = await messenger(network, name, { ...options, store: fresh.store })
-  await flush()
-  return { device: started, status }
-}
-
-/** Rook's laptop and phone, linked, both leaving and fetching mail at one Lighthouse. */
-async function laptopAndPhone() {
-  const network = createMemoryNetwork()
-  const clock = fakeClock(NOON)
-  const lighthouse = testLighthouse(clock)
-  const laptop = await messenger(network, 'rook', { clock, lighthouse })
-  await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-  const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
-  await flush()
-  return { network, clock, lighthouse, laptop, phone }
-}
-
-/** The phone's Pigeon closes and its network goes: it meets nobody until it opens again. */
-async function away(device: Awaited<ReturnType<typeof messenger>>) {
-  await device.messenger.close()
-  device.transport.disconnect()
-  await flush()
-}
 
 describe('your devices through the self mailbox', () => {
   it('catches a phone that was offline up on your name and Lighthouses', async () => {
@@ -2098,27 +1845,6 @@ describe('the recovery key', () => {
 describe('invite links through Lighthouses', () => {
   const DAY = 24 * 60 * 60 * 1000
 
-  /** Rook and Mika on networks of their own: they never meet, and share only a Lighthouse. */
-  async function apart() {
-    const clock = fakeClock(NOON)
-    const lighthouse = testLighthouse(clock)
-    const rook = await messenger(createMemoryNetwork(), 'rook', { clock, lighthouse })
-    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
-    await rook.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
-    return { clock, lighthouse, rook, mika }
-  }
-
-  async function made(
-    who: Awaited<ReturnType<typeof messenger>>,
-    options = { lifetime: 7 * DAY, uses: 5 },
-  ) {
-    const result = await who.messenger.makeInviteLink(options)
-    if (!result.ok) throw new Error(result.error)
-    expect(result.link.url).toMatch(/^https:\/\/pigeon\.test\/#a\/[a-z2-7]{52}$/)
-    return result.link
-  }
-
   /**
    * Someone holding `url` fills its card tag from `ranges` address ranges, as much as each may
    * in a day: cards of their own, which open under the link's secret but aren't the inviter's,
@@ -2192,13 +1918,6 @@ describe('invite links through Lighthouses', () => {
       }
     }
     return kept
-  }
-
-  async function asks(who: Awaited<ReturnType<typeof messenger>>, url: string) {
-    const opened = await who.messenger.openInviteLink(url)
-    if (!opened.ok) throw new Error(opened.error)
-    expect(await who.messenger.askThroughLink(opened)).toBe('sent')
-    return opened
   }
 
   it('makes friends of two people who are never online together', async () => {
@@ -2470,153 +2189,6 @@ describe('invite links through Lighthouses', () => {
     await flush(400)
     expect(only(mika.messenger.sentAsks()).state).toBe('closed')
     expect(only(rook.messenger.inviteLinks()).requests).toEqual([])
-  })
-
-  it('closes the links of a device you remove, from your other devices', async () => {
-    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
-    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
-    if (!result.ok) throw new Error(result.error)
-    await flush(400)
-    await laptop.messenger.checkMail()
-    expect(laptop.messenger.inviteLinksElsewhere()).toHaveLength(1)
-    // The phone is stolen: the laptop removes it, and its link closes.
-    await away(phone)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(400)
-    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
-    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
-    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
-      ok: false,
-      error: 'closed',
-    })
-  })
-
-  it('closes the links of a device you remove with a card nobody else can bury', async () => {
-    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
-    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
-    if (!result.ok) throw new Error(result.error)
-    await flush(400)
-    await laptop.messenger.checkMail()
-    expect(only(laptop.messenger.inviteLinksElsewhere()).claim).toBe(result.link.claim)
-    await away(phone)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(400)
-    // The laptop's closed card is claimed like the phone's open one, so junk put after it
-    // can't leave the open card the only one found.
-    expect(await bury(lighthouse, clock, result.link.url)).toBe(400)
-    await clock.tick(60_000)
-    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
-    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
-    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
-      ok: false,
-      error: 'closed',
-    })
-  })
-
-  it('leaves a stolen phone unable to open again a link it made', async () => {
-    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
-    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
-    if (!result.ok) throw new Error(result.error)
-    await flush(400)
-    await laptop.messenger.checkMail()
-    await away(phone)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(400)
-    // The thief's Pigeon never fetches, so it never hears, and puts the open card again.
-    await phone.store.set('mail-fetched', {
-      [lighthouse.address.id]: { cursor: Number.MAX_SAFE_INTEGER, at: clock.now() },
-    })
-    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
-      clock,
-      lighthouse,
-      store: phone.store,
-    })
-    await flush(400)
-    await thief.messenger.setLighthouses([lighthouse.address])
-    await flush(400)
-    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
-    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
-    expect(await mika.messenger.openInviteLink(result.link.url)).toEqual({
-      ok: false,
-      error: 'closed',
-    })
-  })
-
-  /**
-   * A phone that made a link is stolen and taken off the list; the laptop closes its link. The
-   * thief's Pigeon, which heard nothing of it, buries the closed card under claimed blobs (it
-   * kept the claim key) and puts its open card again, signed on the list from before. Mika opens
-   * the link and sees that card.
-   */
-  async function reopenedByThief() {
-    const { clock, lighthouse, laptop, phone } = await laptopAndPhone()
-    const result = await phone.messenger.makeInviteLink({ lifetime: 7 * DAY, uses: 5 })
-    if (!result.ok) throw new Error(result.error)
-    await flush(400)
-    await laptop.messenger.checkMail()
-    const claim = only(laptop.messenger.inviteLinksElsewhere()).claim ?? ''
-    await away(phone)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(400)
-    // Past everything put so far, so the thief hears nothing of the removal.
-    await phone.store.set('mail-fetched', {
-      [lighthouse.address.id]: { cursor: lighthouse.lastSeq(), at: clock.now() },
-    })
-    expect(await bury(lighthouse, clock, result.link.url, 1, claim, 20)).toBe(20)
-    const thief = await messenger(createMemoryNetwork(), 'rook-phone', {
-      clock,
-      lighthouse,
-      store: phone.store,
-    })
-    await flush(400)
-    await thief.messenger.setLighthouses([lighthouse.address])
-    await flush(400)
-    expect(await bury(lighthouse, clock, result.link.url)).toBe(400)
-    const mika = await messenger(createMemoryNetwork(), 'mika', { clock, lighthouse })
-    await mika.messenger.setProfile({ handle: 'Mika', status: 'online', message: '' })
-    await clock.tick(60_000)
-    const opened = await mika.messenger.openInviteLink(result.link.url)
-    if (!opened.ok) throw new Error(opened.error)
-    expect(await mika.messenger.askThroughLink(opened)).toBe('sent')
-    /** The thief's Pigeon looks for requests, and adds Mika. */
-    const thiefAdds = async () => {
-      await thief.messenger.checkMail()
-      const request = only(only(thief.messenger.inviteLinks()).requests)
-      expect(await thief.messenger.approveRequest(result.link.secret, request.identity)).toBe(true)
-      await flush(400)
-    }
-    return { laptop, phone, thief, mika, thiefAdds }
-  }
-
-  it('tells someone who asked through a removed device’s card that the link closed', async () => {
-    const { laptop, mika, thiefAdds } = await reopenedByThief()
-    // The laptop looks under the removed phone's links too, and answers with the list as it is.
-    await laptop.messenger.checkMail()
-    await flush(400)
-    await mika.messenger.checkMail()
-    expect(only(mika.messenger.sentAsks()).state).toBe('closed')
-    // The thief adds her after: it isn't taken.
-    await thiefAdds()
-    await mika.messenger.checkMail()
-    await flush(400)
-    expect(mika.messenger.friends()).toEqual([])
-  })
-
-  it('stops counting a removed device that added someone first, once they hear', async () => {
-    const { laptop, phone, mika, thiefAdds } = await reopenedByThief()
-    await thiefAdds()
-    await mika.messenger.checkMail()
-    await flush(400)
-    // Added by the phone, with the list from before: Rook has two devices, as far as she knows.
-    expect(only(mika.messenger.friends()).devices).toBe(2)
-    expect(mika.messenger.sentAsks()).toEqual([])
-    await laptop.messenger.checkMail()
-    await flush(400)
-    await mika.messenger.checkMail()
-    await flush(400)
-    // The laptop's answer carries the list without the phone: it no longer counts as Rook.
-    expect(only(mika.messenger.friends()).devices).toBe(1)
-    expect(phone.messenger.device).not.toBe(laptop.messenger.device)
   })
 
   it('says nothing to someone blocked, and refuses your own link', async () => {
@@ -3827,187 +3399,6 @@ describe('replacing secrets after a removal', () => {
     expect(shared.occupants(await today(end))).toBe(2)
   })
 
-  it('closes the invite links a removed device knows, and its own card loses', async () => {
-    const network = createMemoryNetwork()
-    const clock = fakeClock(NOON)
-    const lighthouse = testLighthouse(clock)
-    const laptop = await messenger(network, 'rook', { clock, lighthouse })
-    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
-    await flush(400)
-    const made = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
-    if (!made.ok) throw new Error(made.error)
-    await flush(400)
-    await checkAll([laptop, phone], 1)
-    // The phone heard of the link, and kept the list from before its removal.
-    expect(phone.messenger.inviteLinksElsewhere().map((link) => link.secret)).toEqual([
-      made.link.secret,
-    ])
-    const stale = await phone.store.get('deviceLog')
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(800)
-    expect(only(laptop.messenger.inviteLinks()).open).toBe(false)
-
-    // The removed phone puts an open card of its own on the list from before.
-    const phoneSigner = fakeSigner('rook-phone')
-    const sealing = await bindSealingKey(phoneSigner, fakeSealCrypto().sealer('rook-phone'))
-    const sealed = await sealInviteCard(
-      fakeCrypto,
-      fakeSealCrypto(),
-      phoneSigner,
-      made.link.secret,
-      {
-        identity: laptop.messenger.self,
-        deviceLog: stale as never,
-        keys: [sealing],
-        name: 'Rook',
-        lighthouses: [lighthouse.address],
-        expires: made.link.expires,
-        open: true,
-      },
-    )
-    if (!sealed.ok) throw new Error('no card')
-    const put = await lighthouse.client(lighthouse.address).request({
-      type: 'put',
-      tag: await inviteCardTag(fakeCrypto, made.link.secret),
-      blob: sealed.value,
-      expires: made.link.expires,
-      drops: [base32Encode(new Uint8Array(32).fill(7))],
-    })
-    expect(put.ok && put.value.type).toBe('stored')
-    // Someone opening the link now finds it closed.
-    const stranger = await messenger(network, 'stranger', { clock, lighthouse })
-    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
-    const opened = await stranger.messenger.openInviteLink(made.link.url)
-    expect(opened).toEqual({ ok: false, error: 'closed' })
-  })
-
-  it('closes the links once the Lighthouse is back, after a close it didn’t take', async () => {
-    const network = createMemoryNetwork()
-    const clock = fakeClock(NOON)
-    const lighthouse = testLighthouse(clock)
-    const laptop = await messenger(network, 'rook', { clock, lighthouse })
-    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, lighthouse)
-    const { device: tablet } = await linkDevice(network, laptop, 'rook-tablet', clock, lighthouse)
-    await flush(400)
-    const mine = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
-    const theirs = await tablet.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
-    if (!mine.ok || !theirs.ok) throw new Error('no link')
-    await flush(400)
-    await checkAll([laptop, tablet, phone], 1)
-    expect(laptop.messenger.inviteLinksElsewhere().map((link) => link.secret)).toEqual([
-      theirs.link.secret,
-    ])
-    // The tablet is away; the Lighthouse is down when the laptop removes the phone.
-    await away(tablet)
-    lighthouse.down(true)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(800)
-    expect(only(laptop.messenger.inviteLinks())).toMatchObject({ open: false, closing: true })
-    // Back up, after a restart: the next mail check closes both.
-    lighthouse.down(false)
-    await laptop.messenger.close()
-    await flush()
-    const again = await messenger(network, 'rook', { clock, lighthouse, store: laptop.store })
-    await flush(400)
-    await again.messenger.checkMail()
-    await flush(800)
-    expect(only(again.messenger.inviteLinks()).closing).toBeUndefined()
-    expect(await laptop.store.get('closeLinksAfterRemoval')).toBeUndefined()
-    const stranger = await messenger(network, 'stranger', { clock, lighthouse })
-    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
-    for (const link of [mine.link, theirs.link])
-      expect(await stranger.messenger.openInviteLink(link.url)).toEqual({
-        ok: false,
-        error: 'closed',
-      })
-  })
-
-  it('keeps closing a link until every Lighthouse that held its card holds a closed one', async () => {
-    const network = createMemoryNetwork()
-    const clock = fakeClock(NOON)
-    const first = testLighthouse(clock)
-    const second = testLighthouse(clock, 'second-lighthouse')
-    const both = { clock, lighthouse: first, more: [second] }
-    const laptop = await messenger(network, 'rook', both)
-    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    const phone0 = await messenger(network, 'rook-phone', both)
-    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, first, phone0)
-    await flush(400)
-    const made = await laptop.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
-    if (!made.ok) throw new Error(made.error)
-    expect(Object.keys(made.link.cards)).toHaveLength(2)
-    await flush(400)
-    // The second Lighthouse is down when the phone is removed.
-    second.down(true)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(800)
-    const closing = only(laptop.messenger.inviteLinks())
-    expect(closing).toMatchObject({ open: false, closing: true })
-    // The second Lighthouse's card is still known, to replace once it's back.
-    expect(closing.cards[second.address.id]).toBe(made.link.cards[second.address.id])
-    expect(await laptop.store.get('closeLinksAfterRemoval')).toEqual([made.link.secret])
-    second.down(false)
-    await laptop.messenger.checkMail()
-    await flush(800)
-    expect(only(laptop.messenger.inviteLinks()).closing).toBeUndefined()
-    // Someone who reads only the second Lighthouse finds it closed.
-    const stranger = await messenger(network, 'stranger', { clock, lighthouse: second })
-    await stranger.messenger.setProfile({ handle: 'Stranger', status: 'online', message: '' })
-    expect(await stranger.messenger.openInviteLink(made.link.url)).toEqual({
-      ok: false,
-      error: 'closed',
-    })
-  })
-
-  it('puts one closed card for another device’s link, however often it tries again', async () => {
-    const network = createMemoryNetwork()
-    const clock = fakeClock(NOON)
-    const first = testLighthouse(clock)
-    const second = testLighthouse(clock, 'second-lighthouse')
-    const both = { clock, lighthouse: first, more: [second] }
-    const laptop = await messenger(network, 'rook', both)
-    await laptop.messenger.setProfile({ handle: 'Rook', status: 'online', message: '' })
-    const tablet0 = await messenger(network, 'rook-tablet', both)
-    const linked = await linkDevice(network, laptop, 'rook-tablet', clock, first, tablet0)
-    const phone0 = await messenger(network, 'rook-phone', both)
-    const { device: phone } = await linkDevice(network, laptop, 'rook-phone', clock, first, phone0)
-    await flush(400)
-    const made = await linked.device.messenger.makeInviteLink({ lifetime: 24 * HOUR, uses: 1 })
-    if (!made.ok) throw new Error(made.error)
-    await flush(400)
-    await checkAll([linked.device, laptop, phone], 1)
-    expect(laptop.messenger.inviteLinksElsewhere()).toHaveLength(1)
-    // The tablet is away, and the second Lighthouse down, when the phone is removed.
-    await away(linked.device)
-    second.down(true)
-    await laptop.messenger.removeDevice(phone.messenger.device)
-    await flush(800)
-    const tag = await inviteCardTag(fakeCrypto, made.link.secret)
-    const cardsAt = async (where: TestLighthouse) => {
-      const listed = await where
-        .client(where.address)
-        .request({ type: 'list', tags: [tag], cursor: 0 })
-      return listed.ok && listed.value.type === 'listed' ? listed.value.items.length : -1
-    }
-    const before = await cardsAt(first)
-    for (let i = 0; i < 10; i++) {
-      await clock.tick(30_000)
-      await laptop.messenger.checkMail()
-      await flush(200)
-    }
-    // Still to close at the second, but nothing more put at the first.
-    expect(await cardsAt(first)).toBe(before)
-    expect(await laptop.store.get('closeLinksAfterRemoval')).toEqual([made.link.secret])
-    second.down(false)
-    await laptop.messenger.checkMail()
-    await flush(400)
-    expect(await laptop.store.get('closeLinksAfterRemoval')).toBeUndefined()
-    expect(await cardsAt(first)).toBe(before)
-    expect(await cardsAt(second)).toBeGreaterThan(0)
-  })
-
   it('still finishes a fetch that brings two removals, with a request waiting', async () => {
     const network = createMemoryNetwork()
     const clock = fakeClock(NOON)
@@ -4048,8 +3439,9 @@ describe('replacing secrets after a removal', () => {
     for (let i = 0; i < 20; i++) await flush(200)
     expect(await Promise.race([done, timeout])).toBe('done')
     await flush(800)
-    expect(only(back.messenger.inviteLinks())).toMatchObject({ open: false })
-    expect(only(only(back.messenger.inviteLinks()).requests).state).toBe('closed')
+    // Nothing is closed on a removal: the tablet's own link still waits for it.
+    expect(only(back.messenger.inviteLinks())).toMatchObject({ open: true })
+    expect(only(only(back.messenger.inviteLinks()).requests).state).toBe('waiting')
   })
 
   it('acts on a removal kept in the log before the tab closed', async () => {
@@ -4072,7 +3464,8 @@ describe('replacing secrets after a removal', () => {
     await checkAll([back, mika])
     expect(only(back.messenger.friends()).secret).not.toBe(pair)
     expect(only(mika.messenger.friends()).secret).toBe(only(back.messenger.friends()).secret)
-    expect(only(back.messenger.inviteLinks()).open).toBe(false)
+    // Its own link stays open: a removal closes no link.
+    expect(only(back.messenger.inviteLinks()).open).toBe(true)
   })
 
   it('replaces them after a recovery leaves the other devices off', async () => {

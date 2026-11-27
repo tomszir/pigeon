@@ -1,0 +1,17 @@
+defect: an asker saves a friend added through a link with the answer's device log alone, not merged with the card's and what it keeps
+test: apps/web src/apps/messenger/service/invite-answers.test.ts
+expect: keeps the card's newer log
+
+diff --git a/apps/web/src/apps/messenger/service/invite-links.ts b/apps/web/src/apps/messenger/service/invite-links.ts
+index 2e3ce42..47c08d3 100644
+--- a/apps/web/src/apps/messenger/service/invite-links.ts
++++ b/apps/web/src/apps/messenger/service/invite-links.ts
+@@ -850,7 +850,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
+       id: ask.identity,
+       handle: body.name,
+       secret: body.secret,
+-      deviceLog: merged,
++      deviceLog: body.deviceLog,
+       keys: ask.keys,
+       lighthouses: ask.lighthouses,
+     })

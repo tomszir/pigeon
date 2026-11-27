@@ -195,6 +195,13 @@ export {
   roomFor,
   roomsFor,
 } from './pairing/invite.ts'
+export {
+  cardFitsLink,
+  chooseLinkCard,
+  INVITE_LINK_CLOCK_SLACK,
+  inviteLinkEnded,
+  inviteLinkTooLong,
+} from './pairing/invite-link-rules.ts'
 export type {
   HostLinkOptions,
   LinkOffer,
@@ -224,11 +231,13 @@ export {
   inviteCardClaim,
   inviteCardTag,
   inviteExpiry,
+  inviteLinkEnd,
   inviteRequestBody,
   isInviteClaimKey,
   isInviteSecret,
   LINK_FINGERPRINT_BYTES,
   linkFingerprint,
+  linkMaker,
   logProgress,
   MAX_INVITE_LINK_LIFETIME,
   MAX_INVITE_REQUEST_BYTES,

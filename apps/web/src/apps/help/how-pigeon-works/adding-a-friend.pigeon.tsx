@@ -23,8 +23,8 @@ export const ADDING_A_FRIEND = (
 
     <h2>Invite links</h2>
     <p>
-      Choose how long the link <b>lasts</b> (1 hour, 1 day, 7 days or 30 days) and how many people
-      it's <b>for</b> (1, 5, 10 or 25), then <b>Make Link</b>. Pigeon copies it for you, with a line
+      Choose how long the link <b>lasts</b> (1 hour, 1 day or 7 days) and how many people it's{' '}
+      <b>for</b> (1, 5, 10 or 25), then <b>Make Link</b>. Pigeon copies it for you, with a line
       above it saying it's from you ("Toms invites you to Pigeon!"). Send it however you like. The
       link itself never says who made it, so a chat's preview of it shows only Pigeon.
     </p>
@@ -42,6 +42,12 @@ export const ADDING_A_FRIEND = (
       A link closes when its places are used up, when it runs out, or when you choose <b>Delete</b>.
       Everyone who has the link can see your name, your list of devices and your Lighthouses, and
       how many requests came, but never who sent them.
+    </p>
+    <p>
+      A link belongs to the device you made it on: only that device can add anyone through it, and
+      the link itself says which device that is and when it runs out, so nobody can stretch it. A
+      link lasts a week at most, so one you keep somewhere for anyone to find needs making again
+      each week. Links made by an older Pigeon no longer open: make a new one and share that.
     </p>
 
     <h2>Quick codes</h2>

@@ -135,13 +135,8 @@ export const KEYS = {
   /** The self secret was replaced: My Devices asks you to check your list, until you have. */
   checkDevices: 'checkDevices',
   /**
-   * The invite links a device taken off your list may know, still to be closed: kept until a
-   * closed card for each is up, so a close that failed, or a tab that closed first, tries again.
-   */
-  closeLinks: 'closeLinksAfterRemoval',
-  /**
-   * The devices taken off your list that what a removal calls for (links closed, secrets
-   * marked to renew) was last worked out for. A removal not in it, whenever this device first
+   * The devices taken off your list that what a removal calls for (secrets marked to renew) was
+   * last worked out for. A removal not in it, whenever this device first
    * sees it, is acted on, even after a tab closed between keeping the log and acting.
    */
   removalsSeen: 'removalsSeen',

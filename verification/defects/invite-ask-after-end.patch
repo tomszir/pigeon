@@ -1,0 +1,16 @@
+defect: an asker asks through a card it was shown before the link's end, after the end
+test: apps/web src/apps/messenger/service/link-makers.test.ts
+expect: refuses to ask through a card shown before the end
+
+diff --git a/apps/web/src/apps/messenger/service/invite-links.ts b/apps/web/src/apps/messenger/service/invite-links.ts
+index ace1db1..1d9ecd3 100644
+--- a/apps/web/src/apps/messenger/service/invite-links.ts
++++ b/apps/web/src/apps/messenger/service/invite-links.ts
+@@ -1047,7 +1047,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
+     async ask(opened: Extract<OpenedLink, { ok: true }>): Promise<AskResult> {
+       if (!deps.active() || deps.name() === '') return 'not-sent'
+       const { link, card } = opened
+-      if (inviteLinkEnded(link, now()) || card.expires <= now()) return 'expired'
+       if (inviteLinkTooLong(link, now())) return 'too-long'
+       // The answer comes where you fetch mail, and a pass can't go in a request.
+       const mine = deps.lighthouses().filter((address) => address.pass === undefined)

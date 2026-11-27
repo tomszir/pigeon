@@ -140,7 +140,7 @@
             "noExcessiveLinesPerFile": {
               "level": "error",
               "options": {
-                "maxLines": 1300
+                "maxLines": 1200
               }
             }
           }
@@ -170,7 +170,7 @@
             "noExcessiveLinesPerFile": {
               "level": "error",
               "options": {
-                "maxLines": 4500
+                "maxLines": 3900
               }
             }
           }
@@ -335,7 +335,7 @@
       }
     },
     {
-      "includes": ["apps/web/src/apps/**", "!**/*.test.ts", "!**/*.test.tsx"],
+      "includes": ["apps/web/src/apps/**", "!**/*.test.ts", "!**/*.test.tsx", "!**/testing/**"],
       "linter": {
         "rules": {
           "style": {
@@ -369,7 +369,11 @@
       }
     },
     {
-      "includes": ["apps/web/src/apps/**/*.test.ts", "apps/web/src/apps/**/*.test.tsx"],
+      "includes": [
+        "apps/web/src/apps/**/*.test.ts",
+        "apps/web/src/apps/**/*.test.tsx",
+        "apps/web/src/apps/**/testing/**"
+      ],
       "linter": {
         "rules": {
           "style": {

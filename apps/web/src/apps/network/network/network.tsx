@@ -193,7 +193,7 @@ function RightNow(props: { messenger: NetworkMessenger; checks: Checks }) {
 }
 
 const ABOUT_LIGHTHOUSES =
-  'It can’t open your mail, or tell whose it is from its tags. It does see your IP address, when you connect, and which tags you ask for. While it watches, it can tell which addresses exchange mail, though not who they are.'
+  'It can’t open your mail, or tell whose it is from its tags. It does see your IP address, when you connect, and which tags you ask for. While it watches, it can tell which addresses exchange mail, though not who they are. For an invite link, it holds a sealed card until the link runs out, a week at most, and sees when that is and how many requests come, never the link itself, the device that made it, or who asked.'
 
 function Lighthouses(props: {
   messenger: NetworkMessenger

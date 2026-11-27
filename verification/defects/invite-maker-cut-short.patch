@@ -1,0 +1,19 @@
+defect: a link's maker or fingerprint names a device by fewer than its 16 bytes, so an empty one names every device
+test: packages/core src/pairing/invite-link-rules.test.ts
+expect: refuses a maker that is empty or shorter
+
+diff --git a/packages/core/src/pairing/mailed-invite.ts b/packages/core/src/pairing/mailed-invite.ts
+index 1b5c79a..624d696 100644
+--- a/packages/core/src/pairing/mailed-invite.ts
++++ b/packages/core/src/pairing/mailed-invite.ts
+@@ -107,9 +107,7 @@ export const linkMaker = async (crypto: Crypto, device: PeerId): Promise<string>
+ export async function linkNames(crypto: Crypto, hex: string, id: PeerId): Promise<boolean> {
+   const named = hexDecode(hex)
+   return (
+-    named.ok &&
+-    named.value.length === LINK_NAME_BYTES &&
+-    bytesEqual(named.value, await idHash(crypto, id, LINK_NAME_BYTES))
++    named.ok && bytesEqual(named.value, await idHash(crypto, id, named.value.length))
+   )
+ }
+ 
