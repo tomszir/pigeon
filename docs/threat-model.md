@@ -12,6 +12,20 @@ This page describes what the code in `@pigeon/core` and the Messenger does. [pro
 - **Who you are.** Which devices speak for you changes only by the device that writes your device log, or by your recovery key.
 - **Where you are, as far as you choose.** A friend's Pigeon learns your IP address unless you turn on Always Go Through the Relay; a Lighthouse you didn't choose is never reached at a private address, and never while that's on.
 
+## Scope
+
+Pigeon is a messenger for friends and small groups, and what it defends against is scoped to match, in two tiers.
+
+**Defended in full**, designed against, modelled and reviewed:
+
+- Confidentiality of messages and of every key and secret, including against removed devices once their removal is known.
+- Forgery and impersonation: no one can speak as you or as a friend.
+- Anything that breaks normal use with no attacker involved: lost or stalled mail, sync that stops, crashes.
+
+**Accepted**, with the residual stated under [Accepted residuals](#accepted-residuals) and no mechanism added for it: resource exhaustion by an attacker with many networks, metadata others on your network can infer from limits and wakes, consistency games by one of your own devices before it is gone from your list, and a hostile Lighthouse making a client fetch a lot.
+
+An attack that reads a message, a key or a secret, or lets someone speak as you or a friend, belongs to the first tier whatever it costs the attacker.
+
 ## Who it defends against
 
 Each heading is the name the message table uses for that attacker.
@@ -39,7 +53,7 @@ The always-on peers that hold sealed mail, yours and any a friend's Pigeon leave
 - They can't open mail: it's sealed to each recipient device's key. They can't tell whose it is: a tag is a keyed hash of a secret only the two ends hold, the recipient and the day. An invite link's card is sealed under the link's secret, which a Lighthouse never sees.
 - They see the IP address of whoever puts and fetches, when, how much, and under which tags, so they can tell that whoever put mail under a tag and whoever fetched it are talking, and that the same address comes back.
 - They can withhold or lose mail. Senders put it at every Lighthouse on the recipient's list and again every 3 days until each device's receipt comes.
-- They can make a client spend work: a Lighthouse can list as many blobs under your tags as it likes, and your client gets and tries each one meant for you or your friends, at most 64 KB and 64 wraps a blob, each wrap one ECDH and a few HKDFs ([lighthouse.md](lighthouse.md#what-a-lighthouse-stores-sees-and-can-do)). Until it's taken off your list, a hostile one can keep your client busy for as long as it answers.
+- They can make a client spend work: a Lighthouse can list as many blobs under your tags as it likes, and your client gets and tries each one meant for you or your friends, at most 64 KB and 64 wraps a blob, each wrap one ECDH and a few HKDFs ([lighthouse.md](lighthouse.md#what-a-lighthouse-stores-sees-and-can-do)). Until it's taken off your list, a hostile one can keep your client busy for as long as it answers. Pigeon doesn't limit this; use Lighthouses you trust ([Accepted residuals](#accepted-residuals)).
 - They can't pass off a reply as another Lighthouse's, or replay one: each reply is signed with the Lighthouse's key over the client's nonce for the connection and the hash of the exact request.
 - A Lighthouse you didn't choose (named in a friend's `hello`, an invite link or a card) would learn your IP address if you connected, so Pigeon reaches one only at a `wss://` address on a public host, and never while Always Go Through the Relay is on ([protocol.md](protocol.md#lighthouses-you-didnt-choose)).
 
@@ -87,7 +101,7 @@ A device of yours that someone else holds while it's still on your list: one lef
 A device taken off your list, by the device that writes it or by a recovery.
 
 - Friends and your other devices that have the newer log take nothing more from it: its `hello` doesn't count, so nothing else it sends in a pair or self room does; its mail is left; and no mail is sealed to it.
-- What it signed before it was removed still counts, by its own time, so chats catch up with no gaps. That time is the device's own word, so it can date an entry before its removal.
+- What it signed before it was removed still counts, by its own time, so chats catch up with no gaps. That time is the device's own word, so it can date an entry before its removal; see [Accepted residuals](#accepted-residuals).
 - Anyone who hasn't seen the newer log yet still takes it as yours. The log goes to every pair room and the self room, in self mail and on invite cards, and the removed device is sent it too, so it stops talking.
 - A removal is for good within its epoch: its key can't be added back, and entries it writes in an epoch a recovery has ended change nothing.
 - It keeps what it already had: your chats so far, your friends, and their pair secrets and the self secret as they were. Removing it stops anything new from counting as you; it doesn't take back what it holds. But those secrets are replaced: the device that removed it begins a new round for each at once, sealed to the devices still on the lists ([Replacing a secret](protocol.md#replacing-a-secret)), so it can't find the new rooms or mail tags. Until a friend's Pigeon has taken the new pair secret (one that doesn't replace secrets after a removal takes it once it updates), your devices meet that friend in the old rooms too, where it can still see you both online, and mail to that friend goes under the old tags, sealed only to devices still on the lists.
@@ -120,11 +134,20 @@ Someone who gets a copy of a file sealed with a passphrase: an export from Expor
 - **Whoever serves Pigeon's code.** Pigeon is a web page. Whoever controls the site, its hosting or its build can serve a page that reads everything. The Content Security Policy limits what the page may load, not what it's served.
 - **The browser and the computer it runs on.** Extensions, malware, or someone at the unlocked browser have what the page has; the last is a [stolen device](#stolen-devices).
 - **Watching the whole network.** Timing and sizes can still say who talks to whom, to someone who sees enough of the internet.
-- **Denial of service.** Relays and Lighthouses can withhold, and anyone can fill a room or a Lighthouse up to its limits.
+- **Denial of service.** Relays and Lighthouses can withhold, and anyone can fill a room or a Lighthouse up to its limits. What an attacker with many networks can do to those limits is under [Accepted residuals](#accepted-residuals).
 - **Forward secrecy for mail.** Letters are sealed to each device's long-term sealing key, with no one-time prekeys, so whoever holds a device can open mail sealed to it that someone kept. A data channel's keys are fresh each connection, but chats are kept on both ends.
 - **Deniability.** Every entry is signed by its device, as the [friends](#friends) section says.
 - **Matching a fingerprint by brute force.** A live code's fingerprint is 8 bytes, so making an identity with someone else's takes about 2^64 tries; an invite link through Lighthouses carries 16 bytes.
 - **What isn't built.** Files, pages, guestbooks, the lobby and letters carried by friends are specified in [protocol.md](protocol.md) but not built, so nothing here covers them.
+
+### Accepted residuals
+
+These are risks Pigeon knows about and doesn't build anything against, because it is a messenger for friends and small groups and each costs more to close than it protects. None of them reveals a message, a key or a secret, or lets anyone speak as you or a friend.
+
+1. **Many networks.** An attacker with many networks, such as tens of IPv6 /48 ranges or hundreds of IPv4 addresses, can fill the budgets a Lighthouse keeps (its connections, its waited tags, its stored blobs) or make Lighthouses and clients do more work. The limits on one address or range stay, and they hold one network to its share; nothing holds the total against many. Whoever is shut out gets a refusal, and Pigeon falls back to looking for mail every 10 minutes, so mail still arrives.
+2. **What your network and tag holders can infer.** Someone behind the same address as you, or anyone who knows a tag, can learn from where limits bite and from wakes: roughly how many tags you wait on, when your Pigeon is open, and, by aiming a tag prefix, a false wake. Pigeon pads nothing to hide it.
+3. **A device of yours playing games while it is on your list.** The same goes for the window before your other devices hear it was removed. It can stamp an entry far ahead or at the cap, fork or leave gaps in its entry numbers, or backdate an entry. Your devices can then disagree, or its entries can count for longer. It can't reveal your messages or write as someone else. Removing the device and pairing again repairs it.
+4. **A hostile Lighthouse making a client fetch a lot.** A Lighthouse on your list can list as much as it likes under your tags, and your client fetches it. Use Lighthouses you trust, and take one off your list if it misbehaves.
 
 ## Messages and their checks
 
