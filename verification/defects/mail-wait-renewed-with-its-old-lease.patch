@@ -1,0 +1,16 @@
+defect: a wait sent again after a lease cut to a moment keeps that moment's lease, so it ends at once and nothing waits until the next look
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: after a lease cut to a moment
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index 4968680..632e212 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -167,7 +167,6 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+         // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
+         // or worked out as a timer's look began): it's sent again, to last until that look.
+         else if (deps.nextLook() > RENEW_AFTER_MS && !deps.closed() && deps.on()) {
+-          state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
+           await send(state)
+         }
+       } else if (reply.type === 'error' && reply.error === 'malformed')

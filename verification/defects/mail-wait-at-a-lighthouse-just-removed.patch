@@ -1,0 +1,26 @@
+defect: a look under way when a Lighthouse is taken off your list still leaves a wait there
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: waits at no Lighthouse a look read after it was taken off your list
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index 4968680..b760afd 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -143,7 +143,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+ 
+   async function send(state: Waiting): Promise<void> {
+     const client = deps.client(state.address)
+-    if (client === undefined || deps.closed() || !deps.on() || !deps.listed(state.address)) return
++    if (client === undefined || deps.closed() || !deps.on()) return
+     const now = clock.now()
+     state.gen += 1
+     const gen = state.gen
+@@ -191,7 +191,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+ 
+   return {
+     looked(address, looked) {
+-      if (deps.closed() || !deps.on() || !deps.listed(address)) return
++      if (deps.closed() || !deps.on()) return
+       const key = keyOf(address)
+       const state: Waiting = waiting.get(key) ?? {
+         address,

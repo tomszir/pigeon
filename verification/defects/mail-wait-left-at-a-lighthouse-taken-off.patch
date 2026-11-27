@@ -1,0 +1,16 @@
+defect: taking a Lighthouse off your list leaves the wait standing there until its lease ends
+test: apps/web src/apps/messenger/service/hear-at-once.test.ts
+expect: when its Lighthouse is taken off the list
+
+diff --git i/apps/web/src/apps/messenger/service/service.ts w/apps/web/src/apps/messenger/service/service.ts
+index cda8cd5..537dbfc 100644
+--- i/apps/web/src/apps/messenger/service/service.ts
++++ w/apps/web/src/apps/messenger/service/service.ts
+@@ -610,7 +610,6 @@ export async function createMessenger(deps: MessengerDeps) {
+     )
+     lighthousesChangedAt = changedAt
+     setLighthousesSignal(unique)
+-    mailWaits.retain(unique)
+     await store.set(KEYS.lighthouses, unique)
+     await store.set(KEYS.lighthousesChangedAt, changedAt)
+     for (const session of sessions.values()) session.announce()

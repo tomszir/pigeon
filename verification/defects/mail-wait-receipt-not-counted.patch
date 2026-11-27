@@ -1,0 +1,18 @@
+defect: a receipt for a letter that waited for it counts as nothing taken, so a reply after it is held back a minute
+test: apps/web src/apps/messenger/service/mailbox.test.ts
+expect: leaves a letter for an offline friend
+
+diff --git i/apps/web/src/apps/messenger/service/mailbox.ts w/apps/web/src/apps/messenger/service/mailbox.ts
+index a50a1f1..8eda153 100644
+--- i/apps/web/src/apps/messenger/service/mailbox.ts
++++ w/apps/web/src/apps/messenger/service/mailbox.ts
+@@ -613,8 +613,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
+             const heard = fresh ? await received(letter.sender, letter.from, `${body.for}`) : 'none'
+             if (heard === 'all') completed.push(letter.sender)
+             // A receipt for mail that waited for it is news, as a letter is; one for nothing isn't.
+-            if (heard !== 'none') answered?.()
+-            if (taken[key] === undefined && typeof body?.for === 'string')
++                  if (taken[key] === undefined && typeof body?.for === 'string')
+               deps.onReceipt?.(letter.sender, body.for, letter.from)
+             taken[key] = at
+           } else {
