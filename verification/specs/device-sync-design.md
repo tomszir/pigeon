@@ -7,9 +7,9 @@ The design for sharing friends, petnames, blocks, chat history, invite links and
 - **One shared log of your own changes.** Each device keeps a signed, append-only log of the changes a person makes on it: friend added, friend ended, petname, mute, block, setting. Your devices pass each other the entries the other lacks, the way a chat catches up, both in the self room and through the self mailbox. What a device shows is worked out from all the entries it holds, so the same entries give the same result on every device, whatever order they came in.
 - **Conflicts.**
   - A friendship is a set entry that only a tombstone ends, and nothing undoes a tombstone.
-  - A petname, mute, block or setting goes to the entry with the newest stamp (newest-wins per field, with your name's clock rule).
+  - A petname, mute, block or setting goes to the entry with the newest stamp (newest-wins per field). A stamp is later than the device's own clock and than every entry it holds about the same friend or setting, and no stamp is ever refused.
   - Entries a removed device stamped from its removal on don't count.
-- **Pair secrets move beside the log, never in it.** Each friend's secret, and any replacement under way, is carried as the sender's current state. It is sealed only to devices on the sender's list, in letters that also carry the sender's device log. A device takes a secret only if it is a later replacement round than its own, or if its own was never confirmed.
+- **Pair secrets move beside the log, never in it.** Each friendship (not each friend) carries its own signed proposal chain: the secret made when pairing, and every replacement proposal, each naming the secret it replaces. A device is on the secret replacement rounds' own rules settle on, counting only proposals from devices on their side's list. The chain is sealed only to devices on the sender's list, in letters that also carry the sender's device log; a device whose secret changes sends it to the friend's devices too; and a friendship's chain stays, unused, after its tombstone lands.
 - **Chat history by page.** A device sends your other devices the chat entries they aren't known to hold, at most 50 entries and 40 KB a letter. The most recent 200 messages per chat go by mail; deeper history catches up live, as today.
 - **Invite links: option (b).** Every device shows your links and the requests on them. Any device can approve, which records "add them" in the shared log. The device that made the link carries it out the next time it runs, as the only device whoever asked takes an answer from. If that device is gone, the requests show it, as in option (a).
 - **First, four fixes:** #150, #157 and #203 before any of this, and #158 with the pair-secret part (§8).
@@ -20,37 +20,40 @@ The model holds every invariant under this design and catches each planted defec
 
 Today a link bundle copies your friends once. Afterwards only the device log, your name and personal message, your Lighthouse list and a count of each device's invite links are kept in step. A friend added on one device is never seen by the others, and copies of what you write to that friend are dropped there, because a device takes a copy only into a chat it already has.
 
-| Data                                   | Carried as                                                                                                 | Conflict rule                                                                                      |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| A friendship                           | `add` entry: friend id, incarnation id, when added                                                         | live until a `tomb` names its incarnation; a tomb is never undone                                  |
-| Ending it (unfriend)                   | `tomb` entry naming the incarnation                                                                        | permanent; pairing again makes a new incarnation                                                   |
-| Blocking                               | `tomb` for each live incarnation, and `block: true`                                                        | newest stamp wins; a block hides friendships added before it                                       |
-| Unblocking                             | `block: false`                                                                                             | newest stamp wins                                                                                  |
-| Petname, mute                          | `pet` and `mute` entries per friend                                                                        | newest stamp wins                                                                                  |
-| Settings                               | `setting` entries, one per key (Always Go Through the Relay)                                               | newest stamp wins                                                                                  |
-| The friend's card                      | state, not log: name, device log, sealing keys, Lighthouses, as the friend signed them                     | the friend's device log rules; keys only signed by their own device                                |
-| The pair secret                        | state, not log: current secret, replacement round under way and before, sealed only to devices on the list | a later round wins; an unconfirmed secret gives way to a confirmed one                             |
-| Chat history                           | chat entries as they are, in pages                                                                         | sorted union, as `log-sync`                                                                        |
-| Invite links, requests                 | entries from the maker: link made, request waiting, request answered; `approve` entries from any device    | the maker's entries are the truth; an approval counts only while its device is on the maker's list |
-| Name, message, Lighthouses, device log | unchanged                                                                                                  | unchanged                                                                                          |
+| Data                                   | Carried as                                                                                                                                                 | Conflict rule                                                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A friendship                           | `add` entry: friend id, incarnation id, when added                                                                                                         | live until a `tomb` names its incarnation; a tomb is never undone                                                                                       |
+| Ending it (unfriend)                   | `tomb` entry naming the incarnation                                                                                                                        | permanent; pairing again makes a new incarnation                                                                                                        |
+| Blocking                               | `tomb` for each live incarnation, and `block: true`                                                                                                        | newest stamp wins; a block hides friendships added at or before it                                                                                      |
+| Unblocking                             | `block: false`                                                                                                                                             | newest stamp wins                                                                                                                                       |
+| Petname, mute                          | `pet` and `mute` entries per friend                                                                                                                        | newest stamp wins                                                                                                                                       |
+| Settings                               | `setting` entries, one per key (Always Go Through the Relay)                                                                                               | newest stamp wins                                                                                                                                       |
+| The friend's card                      | state, not log: name, device log, sealing keys, Lighthouses, as the friend signed them                                                                     | the friend's device log rules; keys only signed by their own device                                                                                     |
+| The pair secret                        | state, not log: per friendship, the signed proposals known, sealed only to devices on the list                                                             | replacement rounds' rules: from the first secret, the earliest counting proposal for the one held                                                       |
+| Chat history                           | chat entries as they are, in pages                                                                                                                         | sorted union, as `log-sync`                                                                                                                             |
+| Invite links, requests                 | entries from the maker: link made, request waiting, request answered; `approve` and `decline` from any device, each naming its link, request and asker key | only the maker's link, request and answer entries count; a decision counts once, only for its request, and only while its device is on the maker's list |
+| Name, message, Lighthouses, device log | unchanged                                                                                                                                                  | unchanged                                                                                                                                               |
 
 **Why a log of changes, not snapshots.** The self mailbox's snapshot (`mail:self`) works because it has one value per field and a time. Friends are a set, and a set can't be merged from snapshots: a friend missing from a snapshot may have been removed, or may never have been heard of. That gap is how a device that was away brings back a friend you removed. A log of signed changes, passed on until every device holds every entry, is what Pigeon already does for chats (signed append-only logs, one per author). It needs no new library, and every entry says who made it, which is what lets a removal discount a removed device's entries.
 
-**Why per-field newest-wins, not a richer CRDT.** Everything except the friend set is a single value a person sets, and the friend set is an observed-remove set, which the tombstones give. The stamp is your name's rule: later than anything the device has seen, and refused when more than a day ahead of the receiving clock. So a change made after seeing another beats it, whatever the clocks say, and a device back from days away can't bring an older value back.
+**Why per-field newest-wins, not a richer CRDT.** Everything except the friend set is a single value a person sets, and the friend set is an observed-remove set, which the tombstones give. A device stamps a change later than its own clock and later than every entry it holds about the same friend or setting. So a change made after seeing another beats it, whatever the clocks say, and a device back from days away can't bring an older value back. A stamp is only for ordering: it is never refused for being ahead, so a device whose clock once ran a month ahead doesn't have its later unfriends refused until real time catches up, and nobody's clock follows it. A stamp must be a safe integer below 2^53 − 2^32, so none can block the ones after it.
 
-**An entry** is `{ v: "pigeon/your-data/v1", identity, device, n, stamp, kind, ... }`, signed by the device. `n` counts that device's entries from 1. The kind (`add`, `tomb`, `pet`, `mute`, `block`, `setting`, `approve`, `link`, `request`, `answer`) is in the signed bytes, so an entry can't pass as anything else Pigeon signs. Two different entries from one device with the same `n` can only come from that device. Every device keeps the one with the lower signature bytes, so they still converge.
+**An entry** is `{ v: "pigeon/your-data/v1", identity, device, n, stamp, kind, ... }`, signed by the device. `n` counts that device's entries from 1. The kind (`add`, `tomb`, `pet`, `mute`, `block`, `setting`, `approve`, `link`, `request`, `answer`) is in the signed bytes, so an entry can't pass as anything else Pigeon signs. Two different entries from one device with the same `n` can only come from that device. Every device keeps the one with the lower signature bytes, and a summary carries, per author, the highest `n` held and a digest of those entries, so a device whose digest differs is sent that author's entries and both end on the same one. An entry counts only from a device that is or was on your device log, in any epoch; one from any other key is refused and never passed on. Each author's entries are capped at 10,000, of at most 1 KB each.
 
-**An incarnation id** is 16 random bytes made when a friendship begins (pairing, an invite link, an `added`). A friend from before this update gets one derived from the friend's id and `addedAt`, so every device holding a copy from the same link bundle derives the same id.
+**An incarnation id** is 16 random bytes made when a friendship begins (pairing, an invite link, an `added`). A friend from before this update gets one derived from the friend's id alone, so every device derives the same id whatever `addedAt` it holds. Of two live incarnations of one friend (paired again on two devices at once), the newer add shows everywhere.
 
-**The letter.** One new kind, `mail:sync`, under the self secret's tags, sealed to your other devices on the sender's list that said they read it (§7). Its body is the sender's device log, a page of entries the recipient isn't known to have, the friend cards and secret states that changed, and chat pages, up to one sealed letter (44 KB). One kind for everything, rather than one per kind of data: every kind needs the same sealing, the same device-log-first rule and the same recipients. A Lighthouse can't tell kinds apart anyway, and fewer kinds means fewer ways for a check to differ. In the self room the same content goes as `sync-summary` (how far this device holds each device's log, as `log-sync` does) and `sync-entries`, on a connection proven by a device on the list.
+**The letter.** One new kind, `mail:sync`, under the self secret's tags, sealed to your other devices on the sender's list that said they read it (§7). Its body is the sender's device log, a page of entries the recipient isn't known to have, the friend cards and secret states that changed, and chat pages, up to one sealed letter (44 KB). One kind for everything, rather than one per kind of data: every kind needs the same sealing, the same device-log-first rule and the same recipients. A Lighthouse can't tell kinds apart anyway, and fewer kinds means fewer ways for a check to differ. In the self room the same content goes as `sync-summary` (per author, the highest number held and a digest) and `sync-entries`, on a connection proven by a device on the list.
 
 **When a letter goes.** 5 seconds after the last change, so a burst goes as one letter, as letters to friends do. Also at every mail check that took something its other devices may lack, and through the outbox, put again every 3 days until each recipient's receipt comes. A newer letter replaces an older one still waiting on the same devices. A put again is sealed again to the list as it is then.
 
 ## 3. Pair secrets and removed devices
 
-- A pair secret is never an entry, because an entry is kept for good and passed to every device linked later. It travels as each device's current state for that friend: the secret, and the replacement round under way and the one before, which is what a link bundle already carries.
-- Every letter that carries one carries the sender's device log, and every mail check merges every log it fetched before acting on anything. So a device holding a secret made after a removal has heard of that removal, and never seals the secret to the removed device (P4, P2).
-- A device adopts another's secret for a friend only when it is a later replacement round, or when its own was never confirmed by the friend (§8, #158). A replacement still happens only through the existing replacement rounds; your-data sync only carries their outcome to devices that missed it.
+- A pair secret is never an entry, because an entry is kept for good and passed to every device linked later. It travels as each friendship's proposal chain: the first secret, made when pairing, and each replacement proposal, signed by its device, naming the secret it replaces. A link bundle already carries the same.
+- The chain belongs to the friendship, not the friend. Unfriending and pairing again makes a new friendship with a new first secret and a chain of its own, so no device stays on the dead friendship's secret. The old chain stays, unused, after its tombstone lands.
+- Every letter that carries a chain carries the sender's device log, and every mail check merges every log it fetched before acting on anything. So a device holding a secret made after a removal has heard of that removal, and never seals the secret to the removed device (P4, P2).
+- A device is on the secret replacement rounds settle on: from the first secret, the earliest proposal (time, device, secret) for the secret held, counting only proposals from devices on their side's list. A claimed round number counts for nothing, so a removed device can't install a secret nobody can replace; once its removal is heard, its proposal stops counting and the device falls back, to the writer's new round. Rival proposals settle the same way on every device. #158's confirmed secret is a friendship's first secret, and an unconfirmed one is never in the chain, so a device whose own wasn't taken adopts the confirmed one.
+- A chain is never dropped when a tombstone lands. A removed device's tombstone, stamped after its removal, can end a friendship on every device that hasn't heard yet; when they hear, it stops counting and the friendship shows again, on the secret it was on. Had they dropped the chain, none would hold the secret. The model found this.
+- A device whose secret for a friendship changes, through sync or the self room, sends the chain to the friend's devices too, as replacement rounds do. Otherwise a device still on the list that proposes and writes only to your devices would move them to a secret the friend never heard of. The model found this too.
 - A removed device's entries stamped from its removal on count for nothing. Its letters are refused by a device that knows of the removal, and its entries stamped before the removal are its own word (R2, R3).
 - A device that hasn't yet heard of a removal still treats the removed device as yours, and can seal it a secret made in that window. That stops when it merges the log. It is the window threat-model.md already describes for friends who haven't seen the newer list.
 
@@ -59,8 +62,8 @@ Today a link bundle copies your friends once. Afterwards only the device log, yo
 - **A device that learns of a friend** gets the chat from your other devices: they send the entries it isn't known to hold, a page a letter, newest first. "Known to hold" is what its receipts and its own letters said, kept per device as for letters to friends. An expired page's entries are sent again.
 - **A copy for a chat a device doesn't have yet** is left, not receipted, and taken once the friendship arrives, as letters from friends already are.
 - **History depth.** The most recent 200 messages per chat by mail, because a chat can be large. A message is at most 4000 characters, so a 40 KB page holds 9 messages at worst and 50 (the cap) usually; 200 messages is 4 to 23 letters. Older history catches up live, in the pair room, the first time both devices are online with the friend there (`log-sync`, as today), or from an export file.
-- **Pacing.** A Lighthouse lets one address put 200 blobs a day under one tag, and all your self mail on a day shares one tag. So history goes at most 100 letters a day from one device, the newest chats first, and the rest the next day. A new device with 50 long chats has their recent messages within a day, and deeper history as it meets your other devices.
-- **Deletions.** Pigeon has no message deletion: an entry holds text. Unfriending deletes the chat on every device. Pairing again brings back what the friend's devices send in their catch-up, as on one device today.
+- **Pacing.** A Lighthouse lets one address put 200 blobs a day under one tag, and all your self mail on a day shares one tag, which several of your devices behind one address also share. So each check puts your-data and secret letters before history pages, history goes at most 50 letters a day from one device, the newest chats first, and stops for the day at the first refusal. A refused letter waits in the outbox. A new device with 50 long chats has their recent messages within a few days, and sooner when it meets your other devices online.
+- **Deletions.** Pigeon has no message deletion: an entry holds text. Unfriending deletes the chat on every device. History pages and copies name the friendship they belong to, inside the seal, and a device drops those for a friendship it has ended, so a page a device that was away left at a Lighthouse can't bring the chat back after pairing again. Pairing again still brings back what the friend's own devices send in their catch-up, as on one device today.
 - **Attachments.** Files aren't built. When they are, history carries the chat entry that names a file, not the file.
 
 ## 5. Invite links on your other devices
@@ -74,12 +77,14 @@ Only a link's maker answers through it, and whoever opens or asks through it tak
 | **(c)** share the approval                | yes; your side shows the friend at once | your side shows a friend who never hears they were added                | as away, for good                                | as away, for good                            | breaks: a removed device's friend record, stamped before its removal, has the maker send the removed device's own secret (K2), and two records can disagree (K3, K5) | on the asker's side, but the secret isn't the maker's |
 | (d) any device answers, its own signature | yes                                     | works                                                                   | works, and so does the removed device            | works                                        | adds people as you through any link it heard of                                                                                                                      | no: it is what binding a link to its maker replaced   |
 
-What the model found (`links.test.ts`, every history explored):
+**What a decision is.** An `approve` or `decline` entry names the link (its card tag), the request (a hash of the request as the maker received it) and the asker's key. The maker carries out, for each request it fetched itself, the first decision that counts: one naming that request, from a device on the maker's list when it acts. It answers once and spends the decision, and a later decision for the same request does nothing, so an approval can't be applied to another asker through the same link, or applied again. Only the maker writes a link's `link`, `request` and `answer` entries, and only those count. A request entry carries the asker's name, fingerprint and key, never the reply secret, and a link's own secret travels beside the log like a pair secret, never in an entry.
 
-- (a) and (b) hold K1–K5 under every condition, and (b) against a hostile removed device too.
-- (c) holds with the maker running. With the maker away, removed or replaced, it ends with your devices showing a friend who was never added. Against a hostile removed device it breaks K2, K3 and K5.
+What the model found (`links.test.ts`, `links-model.ts`):
+
+- (a) and (b) hold K1–K9 under every condition. (b) also holds with two askers (one approved, one declined), with the second answered `busy`, with two approvals and a decline made at once, with the approving device removed before the maker acts (the approval lapses), and against a hostile removed device that forges an approval, a request from someone it made up, and a `declined`, and answers an asker itself.
+- (c) holds with the maker running. With the maker away, removed or replaced, it ends with your devices showing a friend who was never added. Against a hostile removed device it breaks K2 and K5: the friend ends on the removed device's own secret.
 - Under every option, a maker removed just after approving, before its letter reached another device, leaves the person added and your devices not knowing. That is the "last changes of a removed device" residual (spec §5), which the model reaches as "one side only" in (a) and (b) too.
-- Planted defects: answers taken from any device (K1); approvals counted by stamp rather than by the list when the maker acts (K3).
+- Planted defects: answers taken from any device (K1); approvals counted by stamp rather than by the list when the maker acts (K3); approvals that name no request (K8); decisions not spent (K7); request and answer entries from anyone (K9).
 
 **Pick: (b).** It is the only option that lets you approve anywhere and changes nothing the asker relies on. What it costs: an approval made on the desktop takes effect when the phone next runs. Every device shows that, says which device made the link, and offers a new link when that device is gone.
 
@@ -93,7 +98,7 @@ What the model found (`links.test.ts`, every history explored):
 ## 7. Older Pigeons on some devices
 
 - **A device on an older Pigeon** can't open `mail:sync`: its kind isn't one it knows, so it would leave the letter, and the sender would put it again every 3 days for 30 days. So each device says in its own `mail:self` snapshot, and in its self-room hello, which kinds it reads. `mail:sync` is sealed only to devices that said so. An older device stays as it is today: it gets your name and Lighthouses, keeps its own friends, and its changes don't reach the others.
-- **The upgrade.** On its first start with this, a device writes entries for what it already holds: an `add` per friend (with the derived incarnation id), a block per blocked person and its petnames, all at the lowest stamp. So any change made since on another device wins.
+- **The upgrade.** On its first start with this, a device writes entries for what it already holds: an `add` per friend (with the incarnation id derived from the friend's id), its petnames at the lowest stamp, and a block per blocked person one stamp after, so a blocked friend stays hidden. Any change made since on another device wins.
 - **Diverged before the update.** A friend that one device has and another doesn't, from before the update, is the one thing no device can settle alone: the friend may have been removed on one, or added on the other. So those adds come in marked "from before", and a device that lacks the friend shows them in a list, "On your other devices only", with Add here and Remove everywhere, rather than adding or dropping them silently.
 - **Mixed versions.** Entries of a kind a device can't read are kept, counted for catching up, and skipped, so a newer device's entries never stop an older one taking the rest (C2, and #157 for link bundles).
 
@@ -104,7 +109,7 @@ What the model found (`links.test.ts`, every history explored):
 | #158 two devices on the lower-id side split a pair           | covered, by the pair-secret part  | `pair-secret-ok` names the secret it confirms, and only the device whose secret it is moves. A device whose own wasn't taken stays put, and takes the confirmed secret from your other device through the sealed sync. It can't learn it from the old room, which anyone who knows both ids can enter. Modelled (`legacy.ts`, P3): today's unnamed ok splits, and a named ok without sync leaves the device stuck. | with step 2 (pair secrets in sync); the named ok alone would leave the device unmoved | small: one field in `pair-secret-ok`, one adoption rule; only pairs from before pair secrets that never moved are affected |
 | #157 a link bundle refuses every friend over one bad record  | prerequisite, and covered in sync | The bundle's friends are read one by one, as imports are, with the same name checks and unknown keys dropped. Sync entries are read the same way: an unreadable one is kept and skipped (C2). Modelled: "one unreadable entry refuses the letter" breaks C1.                                                                                                                                                       | step 0, before sync: a new device's starting state is its bundle                      | small; a test with a bad record                                                                                            |
 | #203 mail put again isn't sealed to a friend's new devices   | prerequisite, and covered in sync | Mail put again is sealed again to the recipient's list as it is then, adding devices linked since and leaving out devices removed since. Modelled (P1): "same sealed letter put again" leaves out a device linked since and keeps a removed one.                                                                                                                                                                   | step 0, before your-data letters carry pair secrets                                   | one more seal per re-put, a new blob id, and the old blob left until it expires or is dropped                              |
-| #150 a changed replacement winner is sent outside the outbox | prerequisite                      | Every letter goes into the outbox before it's put, replacement winners included, and is put at the next start if the tab closed. Modelled (P3, O1): "replacement outside the outbox" leaves a friend on the old secret.                                                                                                                                                                                            | step 0: sync sends secret states that must survive a closed tab                       | small; a test that closes the service between the change and the put                                                       |
+| #150 a changed replacement winner is sent outside the outbox | prerequisite                      | Every letter goes into the outbox before it's put, replacement winners included, and is put at the next start if the tab closed. Modelled (P3, O1): "letters outside the outbox" leaves a friend on the old secret, and a change unsent; under the design, tabs close mid-check and nothing is lost.                                                                                                               | step 0: sync sends secret states that must survive a closed tab                       | small; a test that closes the service between the change and the put                                                       |
 
 **Build order.**
 
@@ -119,51 +124,62 @@ Each step is checked against this model first, as the repo asks for anything tha
 ## 9. What the model shows
 
 - **Under the design,** every scenario holds every invariant, explored breadth first to the end or to a bound, and with seeded random walks deeper.
-  - Your data: friends, blocks, settings, removal, the removed device in the self room, a link after a removal, a tab closed before the put, and an unreadable entry.
+  - Your data: friends; a friend unfriended and paired with again; blocks; settings; a clock a month ahead; removal, with a forged entry and a forged pair-secret proposal; the removed device in the self room, signing two entries under one number; a link after a removal; tabs closed mid-check; and an unreadable entry.
   - Chat history.
-  - Invite links (a) and (b), under every condition.
+  - Invite links (a) and (b), under every condition, and (b) in the harder cases of §5.
   - Moving to pair secrets.
 - **Each planted defect is caught by its invariant:**
   - missing tombstone (T1);
+  - secret per friend, not per friendship (P3);
   - last writer by arrival (W1);
+  - stamps refused when ahead (C1);
   - sealed to every device ever known (P2);
   - secret without the log (P4);
+  - secret by the highest round (P5);
+  - secret state dropped at a tombstone (P3);
+  - the friend not told (P3);
   - removed device not discounted (R2);
   - letters from a removed device taken (R1);
+  - summaries without a digest (C1);
   - same sealed letter put again (P1);
-  - replacement outside the outbox (P3);
+  - letters outside the outbox (P3);
   - one unreadable entry refuses the letter (C1);
   - no history between your devices (H1);
   - an entry taken twice (H2);
   - shown in arrival order (H3);
   - answers taken from any device (K1);
   - approvals counted by stamp (K3);
+  - approvals that name no request (K8);
+  - decisions not spent (K7);
+  - request and answer entries from anyone (K9);
   - an unnamed `pair-secret-ok` (P3);
   - a named one without sync (P3).
-- The model's README has the numbers.
+- The model's README has the numbers, and the spec's §7 the gaps it records rather than models.
 
 ## 10. Costs
 
 - **To people.**
   - The shared log is small: a few hundred bytes an entry, and a person makes few changes. A thousand unfriends is about 200 KB, kept for good so a device away for long can't bring a friend back.
   - Each device stores every chat, which is the point.
-  - A new device fetches a few MB of recent history in its first day.
+  - A new device fetches a few MB of recent history over its first days.
   - Mail checks don't get more frequent.
 - **To Lighthouses.**
   - One blob per change (batched), sealed to your other devices, gone once each has taken it.
-  - History pages when a device learns of a friend or is linked: at most 100 blobs, about 4 MB, a day per device.
-  - A small official Lighthouse (1 GiB) holds a few hundred new devices' first day at once.
+  - History pages when a device learns of a friend or is linked: at most 50 blobs, about 2 MB, a day per device.
+  - A small official Lighthouse (1 GiB) holds about five hundred new devices' first day at once.
 
 ## 11. Residuals this accepts
 
 - Until a device hears of a removal, the removed device is yours to it: it may be sealed a secret made then, and its entries taken. That ends when the log is merged, and nothing it makes after every device has heard counts.
 - A removed device can stamp entries before its removal. Such an entry counts only if a device that hadn't heard took it. A value set that way loses to any change made after its stamp; a friendship it ends stays ended until you pair again.
 - What an honest device changed just before its removal, and hadn't sent, is lost with it. That includes a link's `added` it sent just before: the person is added, and your other devices don't know them until they meet.
-- A device whose clock runs fast wins close races (within a day), as your name does today.
+- A device whose clock runs fast wins races between changes made without seeing each other, as your name does today.
 - Friends that diverged before the update need a person to settle them.
 - Lighthouses see how often you change your data, and bursts of history.
 - History by mail stops at 200 messages a chat; the rest needs the devices online with the friend, or a file.
-- An approval made on another device waits for the link's maker to run, and lapses if the maker is removed or replaced.
+- An approval made on another device waits for the link's maker to run, and lapses if the maker is removed or replaced, or if the approving device is removed first.
+- Two of your devices pairing again with one friend at the same time can leave your side on one pairing and the friend on the other, until you pair again.
+- An older Pigeon on the list doesn't hear an unfriend or block made elsewhere until it updates; the confirmation names it.
 
 ## 12. Questions settled
 
@@ -175,6 +191,6 @@ Each was settled as recommended below.
 4. **Option (b) for links?** Recommended: yes, with the "waiting for the phone" state, and a "make a new link" offer when the maker is gone.
 5. **Diverged friends at the update:** recommended: list them and ask, rather than adding (which would bring back friends removed before the update) or dropping (which would lose friends added on one device).
 6. **An approval made on a device that's removed before the maker acts on it:** recommended: it lapses. Approvals are instructions, not state, and the person approves again on a device still on the list.
-7. **Unfriending reaches every device:** recommended: yes, with the confirm saying "on all your devices".
+7. **Unfriending reaches every device:** recommended: yes, with the confirm saying "on all your devices", or naming any device on an older Pigeon that won't hear it until it updates.
 8. **Tombstones kept for good?** Recommended: yes. They're small, and dropping them lets a device that was away long bring a friend back. Compacting can come when someone has thousands.
 9. **One `mail:sync` kind, or one per kind of data?** Recommended: one (§2).
