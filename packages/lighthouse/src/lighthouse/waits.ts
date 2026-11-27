@@ -1,6 +1,9 @@
 // The waits standing at a Lighthouse: at most one per connection, found by tag when a put comes,
 // by lease end when time passes, and counted by their tags against the budgets of their address
-// range, their IPv6 /48 and everyone together. It lives in memory only: a wait's tags are never
+// range, their IPv6 /48 and everyone together. Each tag is kept as its first 12 characters, a
+// 60-bit print: enough that a put under another tag wakes nobody (finding one that matches by
+// chance takes 2^60 tries), and small enough that a wait of 128 tags fits beside the rest of what a
+// hibernating socket keeps (2,048 bytes on Cloudflare). It lives in memory only: a wait's tags are never
 // written to storage, and the Worker rebuilds this from its sockets' attachments when it wakes.
 
 /** One standing wait: what it asked for, and what its answer must be signed over. */
@@ -8,6 +11,7 @@ export interface Wait {
   readonly req: number
   /** The hash of the wait's frame, which its answer signs. */
   readonly hash: string
+  /** Each tag's print (`printOf`), one per distinct tag. */
   readonly tags: readonly string[]
   readonly cursor: number
   /** When its lease ends, in ms. */
@@ -20,6 +24,12 @@ export interface Wait {
    */
   readonly order: number
 }
+
+/** Characters of a tag (base32, 52 in all) a wait keeps: 60 bits. */
+export const PRINT = 12
+
+/** What a wait keeps of a tag, and what a put's tag is looked up by. */
+export const printOf = (tag: string): string => tag.slice(0, PRINT)
 
 /** A connection, as the index knows it. */
 export interface Waiter {

@@ -117,7 +117,8 @@ export class LighthouseObject {
    * socket's connection, waits and all, from what it kept, and the wakes a reset may have lost.
    */
   private open(): Promise<Opened> {
-    this.lighthouse ??= (async () => {
+    if (this.lighthouse !== undefined) return this.lighthouse
+    const opening = (async () => {
       const signer = await signerFromKey(this.env.LIGHTHOUSE_KEY)
       const build = this.env.PIGEON_BUILD
       const address = formatLighthouseAddress({
@@ -147,7 +148,9 @@ export class LighthouseObject {
       for (const socket of this.state.getWebSockets()) {
         if (this.closed.has(socket)) continue
         const saved = (socket as HibernatingSocket).deserializeAttachment()
-        if (isAttachment(saved)) this.connect(lighthouse, socket as HibernatingSocket, saved)
+        if (!isAttachment(saved)) continue
+        this.seen.set(socket, saved.seen)
+        this.connect(lighthouse, socket as HibernatingSocket, saved)
       }
       const kept = sql.exec("SELECT value FROM lighthouse_state WHERE name = 'woke'").toArray()[0]
       if (kept === undefined) {
@@ -161,7 +164,12 @@ export class LighthouseObject {
       }
       return { lighthouse, store, address }
     })()
-    return this.lighthouse
+    this.lighthouse = opening
+    // A failure (the key, the store, catching up) isn't kept: the next event tries again.
+    opening.catch(() => {
+      if (this.lighthouse === opening) this.lighthouse = undefined
+    })
+    return opening
   }
 
   /** What every event does first: wake up whole, and answer the leases that have ended. */
@@ -173,7 +181,7 @@ export class LighthouseObject {
 
   private wokeThrough(seq: number) {
     this.state.storage.sql.exec(
-      "INSERT INTO lighthouse_state (name, value) VALUES ('woke', ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+      "INSERT INTO lighthouse_state (name, value) VALUES ('woke', ?) ON CONFLICT(name) DO UPDATE SET value = MAX(value, excluded.value)",
       seq,
     )
   }
@@ -200,22 +208,32 @@ export class LighthouseObject {
   private keep(socket: WebSocket) {
     const kept = (socket as HibernatingSocket).deserializeAttachment()
     const connection = this.connections.get(socket)
-    if (!isAttachment(kept) || connection === undefined) return
+    if (!isAttachment(kept) || connection === undefined || this.closed.has(socket)) return
+    // Made afresh, never spread over what was kept: a wait that ended mustn't come back with it.
+    const next: Attachment = {
+      address: kept.address,
+      seen: this.seen.get(socket) ?? kept.seen,
+      ...connection.saved(),
+    }
     try {
-      ;(socket as HibernatingSocket).serializeAttachment({
-        ...kept,
-        ...connection.saved(),
-        seen: this.seen.get(socket) ?? kept.seen,
-      })
+      ;(socket as HibernatingSocket).serializeAttachment(next)
     } catch {
-      // Closed meanwhile.
+      // Not kept (too big for the runtime, say): what's in memory would be lost at the next sleep,
+      // so the connection is closed now rather than left waiting on nothing.
+      this.close(socket, 1011, 'not kept')
     }
   }
 
   /** When a socket was last heard from: its last frame, or the runtime's last keepalive answer. */
   private heard(socket: WebSocket): number {
-    const kept = (socket as HibernatingSocket).deserializeAttachment()
-    const frame = this.seen.get(socket) ?? (isAttachment(kept) ? kept.seen : 0)
+    // Read from memory, filled for every socket as the object wakes: a scan for room or for quiet
+    // waits doesn't decode thousands of attachments.
+    let frame = this.seen.get(socket)
+    if (frame === undefined) {
+      const kept = (socket as HibernatingSocket).deserializeAttachment()
+      frame = isAttachment(kept) ? kept.seen : 0
+      this.seen.set(socket, frame)
+    }
     const keepalive = this.state.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? 0
     return Math.max(frame, keepalive)
   }

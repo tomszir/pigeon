@@ -20,34 +20,40 @@ import type {
   Body,
   Output,
   Request,
+  WaitLimits,
 } from '../../../../verification/models/lighthouse-wait/model/lighthouse.ts'
 import { DEFAULT_LIMITS, type Limits } from '../limits/limits.ts'
 
 const MANY = 1_000_000
 
 /**
- * The traces' limits as a Lighthouse's own. What the model leaves out (frames, puts, the /48's
+ * A trace's limits as a Lighthouse's own. What the model leaves out (frames, puts, the /48's
  * reads and connections) is set out of reach.
  */
-export const TRACE_LIGHTHOUSE_LIMITS: Limits = {
-  ...DEFAULT_LIMITS,
-  framesPerMinute: MANY,
-  framesPerMinutePer48: MANY,
-  putsPerHour: MANY,
-  putsPerHourPer48: MANY,
-  totalPutsPerHour: MANY,
-  bytesPerHour: MANY,
-  blobsPerTagPerDay: MANY,
-  readsPerMinute: TRACE_LIMITS.readsPerMinute,
-  readsPerMinutePer48: MANY,
-  waitedTagsPerRange: TRACE_LIMITS.tagsPerRange,
-  waitedTagsPer48: TRACE_LIMITS.tagsPer48,
-  maxWaitedTags: TRACE_LIMITS.maxWaitedTags,
-  idleSeconds: TRACE_LIMITS.idleSeconds,
-  maxConnections: TRACE_LIMITS.maxConnections,
-  connectionsPerRange: TRACE_LIMITS.connectionsPerRange,
-  connectionsPer48: MANY,
+export function lighthouseLimitsFor(limits: WaitLimits): Limits {
+  return {
+    ...DEFAULT_LIMITS,
+    framesPerMinute: MANY,
+    framesPerMinutePer48: MANY,
+    putsPerHour: MANY,
+    putsPerHourPer48: MANY,
+    totalPutsPerHour: MANY,
+    bytesPerHour: MANY,
+    blobsPerTagPerDay: MANY,
+    readsPerMinute: limits.readsPerMinute,
+    readsPerMinutePer48: MANY,
+    waitedTagsPerRange: limits.tagsPerRange,
+    waitedTagsPer48: limits.tagsPer48,
+    maxWaitedTags: limits.maxWaitedTags,
+    idleSeconds: limits.idleSeconds,
+    maxConnections: limits.maxConnections,
+    connectionsPerRange: limits.connectionsPerRange,
+    connectionsPer48: MANY,
+  }
 }
+
+/** The usual traces' limits as a Lighthouse's own. */
+export const TRACE_LIGHTHOUSE_LIMITS: Limits = lighthouseLimitsFor(TRACE_LIMITS)
 
 export interface Translator {
   /** An address in the trace's range: one IPv4 address, or two /64s in one /48. */

@@ -4,9 +4,15 @@
 // object, with nothing in memory) or resets between a put and its wakes, and answers keepalives
 // itself. It must send every connection what the model's reference sends for the Worker.
 import { DatabaseSync } from 'node:sqlite'
-import { createTranslator, TRACE_LIGHTHOUSE_LIMITS } from '@pigeon/lighthouse/wait-traces'
+import type { Limits } from '@pigeon/lighthouse'
+import {
+  createTranslator,
+  lighthouseLimitsFor,
+  TRACE_LIGHTHOUSE_LIMITS,
+} from '@pigeon/lighthouse/wait-traces'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  BIG_TRACE_LIMITS,
   conform,
   type Subject,
   TRACE_CONNS,
@@ -38,7 +44,10 @@ interface Held {
   pinged: number | null
 }
 
-async function workerSubject(): Promise<Subject> {
+/** What Cloudflare keeps with a hibernating socket at most. */
+const ATTACHMENT_BYTES = 2048
+
+async function workerSubject(limits: Limits = TRACE_LIGHTHOUSE_LIMITS): Promise<Subject> {
   let now = 0
   let tasks: (() => void)[] = []
   const db = new DatabaseSync(':memory:')
@@ -79,7 +88,7 @@ async function workerSubject(): Promise<Subject> {
     LIGHTHOUSE_URL: 'wss://lighthouse.example/',
   } as unknown as Env
   const wake = () =>
-    new LighthouseObject(state, env, TRACE_LIGHTHOUSE_LIMITS, {
+    new LighthouseObject(state, env, limits, {
       now: () => now,
       defer: (run) => void tasks.push(run),
     })
@@ -117,9 +126,13 @@ async function workerSubject(): Promise<Subject> {
       close: (_code: number, reason: string) => {
         const entry = held.find((one) => one.socket === socket)
         if (entry !== undefined) entry.open = false
-        if (reason === 'room' || reason === 'idle') out.push({ kind: 'close', conn, why: reason })
+        // Every close the Lighthouse makes is said, but the echo of the client's own.
+        if (reason !== 'closing') out.push({ kind: 'close', conn, why: reason as 'idle' })
       },
       serializeAttachment: (value: unknown) => {
+        // The runtime keeps at most 2,048 bytes with a socket, and throws past it.
+        if (new TextEncoder().encode(JSON.stringify(value)).length > ATTACHMENT_BYTES)
+          throw new Error('attachment too big')
         attachment = structuredClone(value)
       },
       deserializeAttachment: () => attachment,
@@ -188,6 +201,22 @@ describe('the Worker Lighthouse against the waiting model', () => {
       conns: TRACE_CONNS,
       tags: TRACE_TAGS,
       length: 80,
+      count: Number(process.env['PIGEON_TRACES'] ?? 200),
+    })
+    expect(
+      mismatch,
+      mismatch === undefined ? '' : JSON.stringify(mismatch, null, 1),
+    ).toBeUndefined()
+  }, 300_000)
+
+  it('keeps waits of 128 tags across sleeps, within what a socket may keep', async () => {
+    const mismatch = await conform(() => workerSubject(lighthouseLimitsFor(BIG_TRACE_LIMITS)), {
+      variant: 'worker',
+      limits: BIG_TRACE_LIMITS,
+      conns: TRACE_CONNS,
+      tags: TRACE_TAGS,
+      length: 80,
+      bigWaits: true,
       count: Number(process.env['PIGEON_TRACES'] ?? 200),
     })
     expect(

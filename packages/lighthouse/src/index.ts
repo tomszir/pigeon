@@ -4,6 +4,7 @@ export type {
   LighthouseConnection,
   LighthouseOptions,
   SavedConnection,
+  SavedWait,
   Scope,
 } from './lighthouse/lighthouse.ts'
 export { createLighthouse, MAX_PENDING } from './lighthouse/lighthouse.ts'

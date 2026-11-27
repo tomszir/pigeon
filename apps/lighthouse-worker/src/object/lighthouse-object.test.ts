@@ -76,6 +76,9 @@ function fakeSocket(attachment: unknown) {
     send: (text: string) => sent.push(text),
     close: (code: number) => void closed.push(code),
     serializeAttachment: (value: unknown) => {
+      // The runtime keeps at most 2,048 bytes with a socket, and throws past it.
+      if (new TextEncoder().encode(JSON.stringify(value)).length > 2048)
+        throw new Error('attachment too big')
       kept = value
     },
     deserializeAttachment: () => kept,

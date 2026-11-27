@@ -3,10 +3,15 @@
 // the connections the server keeps, driven by a clock, must send every connection what the
 // model's reference sends, in the same order, for every event.
 import { fakeCrypto, fakeSigner } from '@pigeon/core'
-import { createLighthouse } from '@pigeon/lighthouse'
-import { createTranslator, TRACE_LIGHTHOUSE_LIMITS } from '@pigeon/lighthouse/wait-traces'
+import { createLighthouse, type Limits } from '@pigeon/lighthouse'
+import {
+  createTranslator,
+  lighthouseLimitsFor,
+  TRACE_LIGHTHOUSE_LIMITS,
+} from '@pigeon/lighthouse/wait-traces'
 import { describe, expect, it } from 'vitest'
 import {
+  BIG_TRACE_LIMITS,
   conform,
   type Subject,
   TRACE_CONNS,
@@ -17,7 +22,7 @@ import type { Output } from '../../../../verification/models/lighthouse-wait/mod
 import { createSqliteStore } from '../store/sqlite-store.ts'
 import { type Connection, createConnections } from './connections.ts'
 
-async function nodeSubject(): Promise<Subject> {
+async function nodeSubject(limits: Limits = TRACE_LIGHTHOUSE_LIMITS): Promise<Subject> {
   let now = 0
   const tasks: (() => void)[] = []
   const lighthouse = createLighthouse({
@@ -27,14 +32,10 @@ async function nodeSubject(): Promise<Subject> {
     now: () => now,
     name: 'Trace',
     software: { name: 'pigeon-lighthouse', version: '0.0.0' },
-    limits: TRACE_LIGHTHOUSE_LIMITS,
+    limits,
     defer: (run) => void tasks.push(run),
   })
-  const connections = createConnections({
-    lighthouse,
-    limits: TRACE_LIGHTHOUSE_LIMITS,
-    now: () => now,
-  })
+  const connections = createConnections({ lighthouse, limits, now: () => now })
   const translator = createTranslator(fakeCrypto)
   const open = new Map<string, Connection>()
   let out: Output[] = []
@@ -93,6 +94,22 @@ describe('the Node Lighthouse against the waiting model', () => {
       conns: TRACE_CONNS,
       tags: TRACE_TAGS,
       length: 80,
+      count: Number(process.env['PIGEON_TRACES'] ?? 200),
+    })
+    expect(
+      mismatch,
+      mismatch === undefined ? '' : JSON.stringify(mismatch, null, 1),
+    ).toBeUndefined()
+  }, 120_000)
+
+  it('takes waits of 128 tags', async () => {
+    const mismatch = await conform(() => nodeSubject(lighthouseLimitsFor(BIG_TRACE_LIMITS)), {
+      variant: 'node',
+      limits: BIG_TRACE_LIMITS,
+      conns: TRACE_CONNS,
+      tags: TRACE_TAGS,
+      length: 80,
+      bigWaits: true,
       count: Number(process.env['PIGEON_TRACES'] ?? 200),
     })
     expect(

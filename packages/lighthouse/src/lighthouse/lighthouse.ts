@@ -32,7 +32,7 @@ import {
   wideRange,
 } from '../limits/limits.ts'
 import type { MailStore } from '../store/store.ts'
-import { createWaitIndex, type Scope, type Wait, type Waiter } from './waits.ts'
+import { createWaitIndex, PRINT, printOf, type Scope, type Wait, type Waiter } from './waits.ts'
 
 export type { Scope } from './waits.ts'
 
@@ -57,7 +57,10 @@ export interface LighthouseOptions {
    * of no delay unless a test says otherwise.
    */
   readonly defer?: ((run: () => void) => void) | undefined
-  /** Every wait a put of `seq` woke has been answered: the Worker writes it down. */
+  /**
+   * Every wait the puts up to `seq` woke has been answered: the Worker writes it down. It only goes
+   * up, and never past a put whose wakes are still being sent.
+   */
   readonly onWoken?: ((seq: number) => void) | undefined
 }
 
@@ -93,7 +96,19 @@ export interface LighthouseConnection {
 export interface SavedConnection {
   readonly greeted: boolean
   readonly nonce: string
-  readonly wait?: Wait | undefined
+  readonly wait?: SavedWait | undefined
+}
+
+/** A standing wait as a socket keeps it: its tags' prints in one string, to stay small. */
+export interface SavedWait extends Omit<Wait, 'tags'> {
+  readonly prints: string
+}
+
+const toSaved = ({ tags, ...rest }: Wait): SavedWait => ({ ...rest, prints: tags.join('') })
+const fromSaved = ({ prints, ...rest }: SavedWait): Wait => {
+  const tags: string[] = []
+  for (let at = 0; at + PRINT <= prints.length; at += PRINT) tags.push(prints.slice(at, at + PRINT))
+  return { ...rest, tags }
 }
 
 export interface Lighthouse {
@@ -163,6 +178,22 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     idleMs: limits.idleSeconds * 1000,
   })
   const defer = options.defer ?? soon
+  /** Puts between storing a blob and knowing its seq, and the seqs whose wakes are being sent. */
+  let storing = 0
+  const waking = new Set<number>()
+  let wokenTo = 0
+  let said = 0
+  /**
+   * Says how far every put's wakes have gone: below the least still waking, or as far as any has
+   * gone when none is. Not while a put's seq isn't known yet, since it may be the least.
+   */
+  const sayWoken = () => {
+    if (storing > 0) return
+    const through = waking.size > 0 ? Math.min(...waking) - 1 : wokenTo
+    if (through <= said) return
+    said = through
+    options.onWoken?.(through)
+  }
   /** What puts still have to do after their replies: their wakes. */
   const later = new Set<Promise<void>>()
   const afterwards = (run: () => Promise<void>) => {
@@ -188,7 +219,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     fresh = putter !== undefined,
   ) {
     const at = now()
-    for (const waiter of waits.on(tag)) {
+    for (const waiter of waits.on(printOf(tag))) {
       const standing = waits.get(waiter)
       if (standing === undefined || seq <= standing.cursor || waiter === putter) continue
       if (fresh && standing.until <= at) continue
@@ -245,6 +276,27 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
       return error('malformed')
     }
     const id = await mailBlobId(crypto, request.tag, request.blob, request.drops, owner)
+    storing += 1
+    try {
+      return await stored(request, putter, id, owner, size, cost, expires, at, refund)
+    } finally {
+      storing -= 1
+      sayWoken()
+    }
+  }
+
+  /** The rest of a put, from looking for the blob held: while it runs, no `onWoken` is said. */
+  async function stored(
+    request: Extract<LighthouseRequest, { type: 'put' }>,
+    putter: Speaker,
+    id: string,
+    owner: string | undefined,
+    size: number,
+    cost: number,
+    expires: number,
+    at: number,
+    refund: () => void,
+  ): Promise<LighthouseReply> {
     // A sender's retry finds it held: the same id, and the expiry it was first put with. It
     // stores nothing, so it isn't counted.
     const held = await store.get(id, at)
@@ -272,11 +324,18 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
     if (outcome === 'stored') {
       // The waits it's news to hear once its reply has gone, so signing theirs can't hold it up.
       const seq = (await store.get(id, at))?.seq
-      if (seq !== undefined)
+      if (seq !== undefined) {
+        waking.add(seq)
         afterwards(async () => {
-          await wake(request.tag, seq, putter)
-          options.onWoken?.(seq)
+          try {
+            await wake(request.tag, seq, putter)
+          } finally {
+            waking.delete(seq)
+            wokenTo = Math.max(wokenTo, seq)
+            sayWoken()
+          }
         })
+      }
     }
     if (outcome === 'exists') {
       // Put by someone else a moment ago: say what's actually held.
@@ -365,7 +424,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
         },
       }
       // Woken with a wait standing: it's indexed again, as it was.
-      if (saved?.wait !== undefined && hooks !== undefined) waits.add(waiter, saved.wait)
+      if (saved?.wait !== undefined && hooks !== undefined) waits.add(waiter, fromSaved(saved.wait))
 
       /** A `wait`: ends the one standing, then stands, or is answered at once, or refused. */
       async function wait(
@@ -383,7 +442,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
         const standingNow: Wait = {
           req,
           hash: await frameHash(crypto, frame),
-          tags: [...request.tags],
+          tags: [...new Set(request.tags.map(printOf))],
           cursor: request.cursor,
           until: at + request.seconds * 1000,
           since: at,
@@ -432,7 +491,10 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
             pending -= 1
           })
         },
-        saved: () => ({ greeted, nonce, wait: waits.get(waiter) }),
+        saved: () => {
+          const standing = waits.get(waiter)
+          return { greeted, nonce, ...(standing === undefined ? {} : { wait: toSaved(standing) }) }
+        },
         gone: () => {
           waits.take(waiter)
         },

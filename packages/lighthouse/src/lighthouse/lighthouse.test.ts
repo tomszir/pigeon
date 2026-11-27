@@ -554,3 +554,46 @@ describe('a wait', () => {
     expect(reply.ok && reply.value.reply).toEqual({ type: 'error', error: 'limit' })
   })
 })
+
+describe('how far wakes have gone', () => {
+  it('only goes up, and never past a put whose wakes are still being sent', async () => {
+    const tasks: (() => void)[] = []
+    const said: number[] = []
+    const lighthouse = createLighthouse({
+      signer,
+      crypto: fakeCrypto,
+      store: createMemoryStore(),
+      now: () => NOW,
+      name: 'Test Lighthouse',
+      software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+      defer: (run) => void tasks.push(run),
+      onWoken: (seq) => said.push(seq),
+    })
+    const connection = lighthouse.connect('203.0.113.7', undefined, {
+      push: () => undefined,
+      close: () => undefined,
+      heard: () => NOW,
+    })
+    let req = 0
+    const send = (request: LighthouseRequest) =>
+      connection.receive(encodeRequest({ req: ++req, request }))
+    await send({ type: 'hello', protocol: LIGHTHOUSE_PROTOCOL, nonce: NONCE })
+    for (const n of [1, 2, 3])
+      await send({
+        type: 'put',
+        tag: key(n),
+        blob: base64Encode(new Uint8Array([n])),
+        expires: NOW + HOUR,
+        drops: [await hashOf(n)],
+      })
+    // The second and third puts' wakes finish first: the first's are still being sent.
+    const [first, second, third] = tasks.splice(0)
+    second?.()
+    third?.()
+    for (let i = 0; i < 100; i++) await Promise.resolve()
+    expect(said).toEqual([])
+    first?.()
+    await lighthouse.settled()
+    expect(said).toEqual([3])
+  })
+})
