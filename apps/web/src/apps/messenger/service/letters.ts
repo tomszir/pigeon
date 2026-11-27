@@ -190,6 +190,11 @@ export function createLetters(deps: LettersDeps) {
   const failed = new Set<PeerId>()
   /** Friends a letter is being sealed and put for right now. */
   const mailing = new Set<PeerId>()
+  /**
+   * Friends a mail check asked to resume while their run was under way. A run decides what to
+   * mail when it starts, so what the check found missing is mailed by one more run once it ends.
+   */
+  const asked = new Set<PeerId>()
 
   // One change at a time, so a receipt landing during a load or a mail isn't lost. Nothing
   // under it is awaited from inside a mailbox fetch: what a fetch hands over is queued.
@@ -355,6 +360,9 @@ export function createLetters(deps: LettersDeps) {
         await mail(friend).catch(() => undefined)
         mailing.delete(friend)
         bump((n) => n + 1)
+        // Once, and only if something asked: a friend who can't be mailed gets no run every
+        // few seconds, since a run that mails nothing asks for nothing.
+        if (asked.delete(friend)) void this.resume(friend)
       })
     },
 
@@ -534,11 +542,17 @@ export function createLetters(deps: LettersDeps) {
     /**
      * After a mail check, and when Pigeon starts: anything of yours a friend who isn't connected
      * lacks, and no letter carries, is mailed (written just before Pigeon closed, say, or held
-     * back by the cap until receipts came).
+     * back by the cap until receipts came). Asked while a run is under way, it runs once that
+     * run ends.
      */
     async resume(friend: PeerId) {
       if (deps.stopped() || forgotten.has(friend) || deps.connected(friend)) return
-      if (waiting.has(friend) || mailing.has(friend)) return
+      if (mailing.has(friend)) {
+        asked.add(friend)
+        return
+      }
+      // A run about to start decides then what to mail, so it covers this ask too.
+      if (waiting.has(friend)) return
       const letters = await load(friend)
       const last = ownEntries(friend).at(-1)
       if (last !== undefined && last.seq > Math.max(letters.delivered, stillOut(letters)))
@@ -548,6 +562,7 @@ export function createLetters(deps: LettersDeps) {
     /** Forgets a friend's letters, when they're removed. */
     async forget(friend: PeerId) {
       forgotten.add(friend)
+      asked.delete(friend)
       known.delete(friend)
       trying.delete(friend)
       failed.delete(friend)
