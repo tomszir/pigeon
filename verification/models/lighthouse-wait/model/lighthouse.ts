@@ -562,9 +562,11 @@ export function step(
       break
     }
     case 'hibernate': {
+      // The Worker's memory goes, its counts of reads with it: they're kept nowhere else.
       if (worker) {
         s.awake = false
         s.indexed = []
+        s.reads = {}
       }
       break
     }

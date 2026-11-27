@@ -55,7 +55,7 @@ Conventions. `P` is docs/protocol.md, `TM` docs/threat-model.md, `LH` docs/light
              └──waiting turned off──▶ connection closed
 ```
 
-- It waits only at Lighthouses on its own list, only with waiting on and relay-only off, and only after a look that read that Lighthouse to its end: nothing refused, nothing failed, nothing held back by a cap or a source's limit. Its cursor is the one that look saved.
+- It waits only at Lighthouses on its own list, only with waiting on and relay-only off, and only after a look whose chunks all reached their end there: nothing refused, nothing failed, no cap reached before they finished. A tag still read on its own and not finished is left out of the wait. Its cursor is the one that look saved.
 - Its tags are taken from that look's own: today's, yesterday's in the first two hours of the UTC day and tomorrow's in the last two, by the look's clock. So they are always a subset of what that look listed. Past 128 it keeps its own and its invites' tags and those of the friends it heard from most recently. Sent again after a drop, it names the same tags, with the lease that's left.
 - Its lease runs to its next scheduled look, at most 600 seconds.
 - A `waited` only asks for a look; it never moves the cursor, takes, opens or drops anything.
@@ -64,9 +64,17 @@ Conventions. `P` is docs/protocol.md, `TM` docs/threat-model.md, `LH` docs/light
 
 ## 5. One look, capped
 
-- At each Lighthouse, a look reads its chunks of tags (512 a list) a page each in turn: a round is one page from every chunk not yet finished.
-- It starts no new round once it has got 512 blobs or 8 MB there, or made 64 lists. A round started is finished, so every chunk moves on in every look.
-- The cursor it saves: the furthest any chunk reached, if it finished every chunk; otherwise the least among the chunks it didn't finish, so nothing in a chunk that fell behind is skipped. What's left waits for the next look.
+- **Lists.** At each Lighthouse a look reads its tags in lists: the tags in chunks of 512, all from the cursor it saved there, and each tag that fell behind in a list of its own, from that tag's own cursor. At most 16 tags are read on their own.
+- **Rounds.** A round is one page from every list not yet finished. A look starts no new round once, at that Lighthouse, it has got 512 blobs or 8 MB, made 64 lists, or got as many blobs under one source as that source takes in a look (an invite link's 200 requests). A round started is finished. A blob that isn't got (under a tag the look didn't ask for, too big to ask for, or gone since it was listed) costs no get. The 64 lists, of 256 blobs at most, bound those.
+- **The cursor saved** is the least over the chunks, each counted as far as it's known to have left nothing unlisted:
+  - a chunk not finished: as far as it was answered;
+  - a finished one: the furthest any list had been answered before its last page was asked for, since a blob put after that has a later seq.
+  - A chunk that finished before the others got as far is asked once more at the end, so an empty one doesn't hold the cursor back.
+  - This holds with mail put while the look reads.
+- **A tag that floods a look.** A look that stopped at a cap with a chunk unfinished moves the tag that filled most of it into a list of its own, from the cursor saved. So junk under one tag, which never opens and can't be dropped, holds back nothing but that tag. A tag read on its own joins the rest again once its list finishes as far as the cursor.
+- **Its day window stays.** A look that stopped at a cap keeps the last look's days, so the next lists the same days again from where this one stopped.
+- **A wait** follows a look whose chunks all reached their end; a tag still behind is left out of it.
+- What's left waits for the next look.
 
 ## 6. Letter runs
 
@@ -104,7 +112,7 @@ Each has the id the model's checks use (`model/checks.ts`, `model/wait-model.ts`
 - **W6. Reveals nothing.** `waited` says `mail` or `lease` and nothing else; `mail` only when a list of the wait's tags from its cursor would name a blob.
 - **L1. One wait per connection.** A new well-formed wait ends the standing one first, with `lease`, before anything is said about the new one.
 - **L2. Shape.** A wait the wrong shape is `malformed`; one the right shape never is.
-- **L3. Waits are reads.** Past the range's reads in a minute, a wait is refused like a list.
+- **L3. Waits are reads.** Past the range's reads in a minute, a wait is refused like a list, and so is a connection's `hello`. The Worker counts in memory, so it holds a range to its reads since it last woke, never across a sleep.
 - **L4. Tag limits.** Live waits that are heard from never hold more tags than the range's, the /48's and the total budget, nor more than 128 tags or 600 seconds each.
 - **L5. No self or stale wake.** A put's own wake never goes to its own connection, or to a wait whose lease has passed. (The Worker's catch-up after a reset is the exception §3 names.)
 - **L6. The same on both.** On the same events, Node and the Worker give every frame the same reply, hear of mail for the same waits, and close or refuse the same connections for room. The Worker may answer a lease later, or not at all if the connection closes first.
@@ -125,8 +133,10 @@ Each has the id the model's checks use (`model/checks.ts`, `model/wait-model.ts`
 ### One look
 
 - **F1. Bounded.** A look at one Lighthouse makes at most 64 lists and gets at most 512 blobs and 8 MB there, plus the one round that crossed the cap, however the Lighthouse answers, an endless one included.
-- **F2. No lost mail.** Looks one after another take every blob meant for the device, however the store is laid out: junk, blobs shared with other devices that stay listed after a drop, chunks of any size.
-- **F3. Progress.** A look that didn't finish saves a cursor further on, or takes something new.
+- **F2. No lost mail.** Looks one after another take every blob meant for the device, however the store is laid out and whatever is put between and during looks: junk, blobs shared with other devices that stay listed after a drop, chunks of any size.
+- **F3. Progress.** A look that didn't finish moves on somewhere (a cursor, or a tag to a list of its own), or takes something new.
+- **F4. One tag holds back only itself.** Someone who floods tags with junk, more than a look takes, before every look and while it reads, holds back mail under another tag by at most one look for each tag flooded, a source's own limit included.
+- **F5. A finished look saves what it read.** A look that finished every list, with nothing put meanwhile, saves a cursor as far as anything its chunks listed.
 
 ### Letter runs
 
@@ -142,4 +152,6 @@ Unchanged from the first design: no tag it doesn't already see, since a wait nam
 - One Lighthouse, one to three Pigeons, one sender; up to two puts, three looks, four ticks of time, one or two of each fault (a drop, a silence, a sleep, a reset, a failing Lighthouse, the day turning).
 - Limits scaled: a wait takes up to 3 tags and 3 seconds, the idle time is 2 or 3, tag budgets a few tags.
 - Frames per minute, puts per hour and their /48 caps, store size, claims and `get` are left out: waiting changes none of them.
+- The capped look: every store of up to four blobs over three tags in two chunks; every schedule of up to two puts while a look reads, over stores of up to two; one and two tags flooded, a source's limit among them, with a letter put at each of the first five looks; and a Lighthouse that lists without end. Pages of 2, caps of 2 blobs and 6 lists, 2 tags on their own at most.
+- The Worker's read counts are forgotten when it sleeps; Node's aren't. Parity traces leave sleeps and resets out.
 - The conformance traces use the protocol's own shape limits (128 tags, 600 seconds, pages of 256) with small budgets, five connections in three ranges, and run 200 traces of 80 events (2,000 with `PIGEON_HEAVY=1`).

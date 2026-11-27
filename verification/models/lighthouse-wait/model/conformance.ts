@@ -41,6 +41,8 @@ export interface TraceOptions {
   readonly keepAlive?: boolean
   /** On the Worker, whether puts may reset it before their wakes go (yes unless said). */
   readonly resets?: boolean
+  /** On the Worker, whether it may sleep (yes unless said). */
+  readonly sleeps?: boolean
 }
 
 /** The tag names a trace may use: a few, so waits and puts often meet. */
@@ -191,7 +193,7 @@ export function randomTrace(options: TraceOptions, rules: Rules = RULES): readon
       // Shorter than the idle time, as a keepalive every 50 seconds is inside 120.
       run({ kind: 'tick', seconds: 1 + Math.floor(next() * 2) })
     } else if (options.variant === 'worker')
-      run(next() < 0.6 ? { kind: 'hibernate' } : { kind: 'alarm' })
+      run(next() < 0.6 && options.sleeps !== false ? { kind: 'hibernate' } : { kind: 'alarm' })
   }
   return traced
 }
@@ -299,15 +301,16 @@ export function referenceSubject(
  * of mail for the same waits, and the same connections are refused or closed for room. The Worker
  * may answer a lease later, or not at all if the connection closes first, since it notices only
  * when something wakes it; and idle connections close at different times, so a trace for this
- * keeps every connection heard from, and leaves out the Worker's resets, which Node has no
- * counterpart for: after one, the Worker can't tell a blob's putter from anyone else.
+ * keeps every connection heard from, and leaves out the Worker's resets and sleeps, which Node has
+ * no counterpart for: after a reset the Worker can't tell a blob's putter from anyone else, and
+ * after a sleep it has forgotten how much each range has read.
  */
 export function parity(
   traceOptions: Omit<TraceOptions, 'variant'>,
   rules: Rules = RULES,
 ): string | undefined {
   const events = randomTrace(
-    { ...traceOptions, variant: 'worker', keepAlive: true, resets: false },
+    { ...traceOptions, variant: 'worker', keepAlive: true, resets: false, sleeps: false },
     rules,
   ).map((t) => t.event)
   let node = emptyLighthouse('node')
