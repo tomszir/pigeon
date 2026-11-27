@@ -144,7 +144,10 @@ export function checkEvent(
   }
   // The Worker counts reads in memory, which it loses when it sleeps: it holds a range to its
   // reads since it last woke, never across a sleep.
-  if (event.kind === 'hibernate' && before.variant === 'worker') reads = {}
+  const forgets =
+    event.kind === 'hibernate' ||
+    (event.kind === 'frame' && event.crash === true && after.awake === false)
+  if (forgets && before.variant === 'worker') reads = {}
   // A connection's hello, as it opens, is a read too.
   if (event.kind === 'connect' && before.conns[event.conn] === undefined) {
     const opened = after.conns[event.conn]

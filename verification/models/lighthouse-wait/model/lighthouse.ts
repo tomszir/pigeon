@@ -495,11 +495,8 @@ export function step(
         s.blobs = [...s.blobs.filter((other) => other.id !== request.id), blob]
         const replyAt = out.length
         reply({ type: 'stored' })
-        if (worker && event.crash === true) {
-          s.awake = false
-          s.indexed = []
-          break
-        }
+        // Reset before its wakes went: see the end of the frame.
+        if (worker && event.crash === true) break
         wake(blob, false)
         s.wokeThrough = s.seq
         if (!rules.replyBeforeWakes) {
@@ -576,6 +573,18 @@ export function step(
       for (const [id, conn] of conns()) if (idle(conn)) close(id, 'idle')
       break
     }
+  }
+  // A reset after a frame's reply, whatever the frame was: the Worker loses its memory (the index,
+  // its counts of reads) and whatever a put still had to send.
+  if (
+    worker &&
+    event.kind === 'frame' &&
+    event.crash === true &&
+    s.conns[event.conn] !== undefined
+  ) {
+    s.awake = false
+    s.indexed = []
+    s.reads = {}
   }
   return { state: s as LighthouseState, out }
 }

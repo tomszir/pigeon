@@ -112,7 +112,7 @@ Each has the id the model's checks use (`model/checks.ts`, `model/wait-model.ts`
 - **W6. Reveals nothing.** `waited` says `mail` or `lease` and nothing else; `mail` only when a list of the wait's tags from its cursor would name a blob.
 - **L1. One wait per connection.** A new well-formed wait ends the standing one first, with `lease`, before anything is said about the new one.
 - **L2. Shape.** A wait the wrong shape is `malformed`; one the right shape never is.
-- **L3. Waits are reads.** Past the range's reads in a minute, a wait is refused like a list, and so is a connection's `hello`. The Worker counts in memory, so it holds a range to its reads since it last woke, never across a sleep.
+- **L3. Waits are reads.** Past the range's reads in a minute, a wait is refused like a list, and so is a connection's `hello`. The Worker counts in memory, so it holds a range to its reads since it last woke, never across a sleep or a reset.
 - **L4. Tag limits.** Live waits that are heard from never hold more tags than the range's, the /48's and the total budget, nor more than 128 tags or 600 seconds each.
 - **L5. No self or stale wake.** A put's own wake never goes to its own connection, or to a wait whose lease has passed. (The Worker's catch-up after a reset is the exception §3 names.)
 - **L6. The same on both.** On the same events, Node and the Worker give every frame the same reply, hear of mail for the same waits, and close or refuse the same connections for room. The Worker may answer a lease later, or not at all if the connection closes first.

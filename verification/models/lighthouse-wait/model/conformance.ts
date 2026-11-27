@@ -115,6 +115,7 @@ export function randomTrace(options: TraceOptions, rules: Rules = RULES): readon
   const generation: Record<string, number> = {}
   const names = Object.keys(options.conns)
   const ids: string[] = []
+  const tagOf = new Map<string, string>()
   const run = (event: Event) => {
     const { state: after, out } = step(state, event, limits, rules)
     state = after
@@ -170,11 +171,14 @@ export function randomTrace(options: TraceOptions, rules: Rules = RULES): readon
         shape > 0.96 ? limits.maxSeconds + 1 : shape > 0.93 ? 0 : 1 + Math.floor(next() * 10)
       frame(name, { type: 'wait', tags, cursor: cursor(), seconds })
     } else if (roll < 0.42) {
+      // Put again, a blob keeps its tag: under another tag it would be another blob.
       const again = ids.length > 0 && next() < 0.15
       const id = again ? pick(ids) : `m${ids.length + 1}`
+      const tag = tagOf.get(id) ?? pick(options.tags)
       if (!again) ids.push(id)
+      tagOf.set(id, tag)
       const crash = options.variant === 'worker' && options.resets !== false && next() < 0.08
-      frame(name, { type: 'put', tag: pick(options.tags), id, expires: FAR }, crash)
+      frame(name, { type: 'put', tag, id, expires: FAR }, crash)
     } else if (roll < 0.5) frame(name, { type: 'list', tags: someTags(), cursor: cursor() })
     else if (roll < 0.55 && ids.length > 0) frame(name, { type: 'drop', id: pick(ids) })
     else if (roll < 0.61) run({ kind: 'ping', conn: socket(name) })
