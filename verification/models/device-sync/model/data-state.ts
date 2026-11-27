@@ -74,12 +74,13 @@ export interface Device {
   learned: string[]
 }
 
-export type LetterKind = 'sync' | 'rekey' | 'rekey-friend'
+/** `friend-rekey` is a friend's own replacement proposal, sealed to your devices it knows of. */
+export type LetterKind = 'sync' | 'rekey' | 'rekey-friend' | 'friend-rekey'
 
 export interface Letter {
   id: number
   kind: LetterKind
-  from: Dev
+  from: Dev | FriendId
   /** The devices it was sealed to. */
   to: string[]
   /** Those that haven't taken it yet. */
@@ -126,6 +127,7 @@ export type Budget =
   | 'fork'
   | 'future'
   | 'skew'
+  | 'friendRound'
 
 export interface FriendDevice {
   inc: string
@@ -153,6 +155,8 @@ export interface DataState {
   tombs: string[]
   left: Partial<Record<Budget, number>>
   nextLetter: number
+  /** Ghost: the entries of X the writer held when it removed X, which must keep counting. */
+  heldAtRemoval: string[]
   /** What a hostile removed device last sent each device, so it doesn't send the same again. */
   xSent: Partial<Record<Dev, string>>
 }
@@ -195,6 +199,21 @@ export interface DataRules {
   readonly keepEndedSecrets: boolean
   /** A device whose secret for a friendship changes sends the proposals to the friend too. */
   readonly tellFriend: boolean
+  /**
+   * A first secret counts like an entry: from a device on the list, or from a removed one if it
+   * stamped it before its removal; of several, the earliest (time, device, secret). Off: any
+   * first secret counts, and the one a device holds first is kept.
+   */
+  readonly rootRules: boolean
+  /**
+   * After a removal the writer renews every live friendship whose secret it didn't itself propose
+   * after the removal, whenever it finds one. Off: only those live when it removed, once.
+   */
+  readonly renewWindow: boolean
+  /** Two live friendships with one friend: the one the friend is seen in stays, the other ends. */
+  readonly settleRepairs: boolean
+  /** A removal's stamp is later than every entry the writer holds from that device. */
+  readonly removalAfterHeld: boolean
 }
 
 export const DESIGN: DataRules = {
@@ -214,6 +233,10 @@ export const DESIGN: DataRules = {
   acceptAhead: true,
   keepEndedSecrets: true,
   tellFriend: true,
+  rootRules: true,
+  renewWindow: true,
+  settleRepairs: true,
+  removalAfterHeld: true,
 }
 
 export interface DataConfig {
@@ -232,6 +255,7 @@ export interface DataConfig {
   readonly forges?: readonly (
     | { readonly op: Op; readonly stamp: 'early' | 'current' }
     | { readonly proposal: true }
+    | { readonly root: FriendId }
   )[]
   /** Which friends a person may pair with (again, after an unfriend); G when left out. */
   readonly adds?: readonly FriendId[]
@@ -286,6 +310,7 @@ export function initialState(cfg: DataConfig): DataState {
     left: { ...cfg.budgets },
     nextLetter: 1,
     xSent: {},
+    heldAtRemoval: [],
   }
 }
 

@@ -70,6 +70,9 @@ export function toSend(
     const them = theirs[e.by]
     if (!them || e.n > them.n) return true
     if (!cfg.rules.forkDigest) return false
+    // A device ahead of this one checks the shorter prefix itself, so nothing is resent to it.
+    const ours = summaryOf(cfg, held)[e.by]
+    if (ours && them.n > ours.n) return false
     const mine = held.filter((h) => h.by === e.by)
     return digestOf(mine, them.n) !== them.digest
   })
@@ -155,6 +158,12 @@ export function deliver(cfg: DataConfig, state: DataState, index: number, r: str
   const d = r as Dev
   const dev = state.devs[d]
   if (!dev) return
+  if (letter.kind === 'friend-rekey' && !(d === REMOVED && cfg.hostile)) {
+    // A friend's proposal: counted by the proposal rules, whatever your list says of the sender.
+    dev.log = uniq([...dev.log, ...letter.log])
+    if (takeProps(state, d, letter.props)) dev.dirty = true
+    return
+  }
   if (d === REMOVED && cfg.hostile) {
     // A hostile removed device reads whatever was sealed to it, and keeps it.
     dev.learned = uniq([...dev.learned, ...propIds(letter.props)])
@@ -164,7 +173,7 @@ export function deliver(cfg: DataConfig, state: DataState, index: number, r: str
   const before = dev.log.length
   dev.log = uniq([...dev.log, ...letter.log])
   let changed = dev.log.length !== before
-  if (cfg.rules.senderOnList && !listOf(state, d).includes(letter.from)) {
+  if (cfg.rules.senderOnList && !listOf(state, d).includes(letter.from as Dev)) {
     if (changed) dev.dirty = true
     return
   }
@@ -172,7 +181,7 @@ export function deliver(cfg: DataConfig, state: DataState, index: number, r: str
     if (changed) dev.dirty = true
     return
   }
-  dev.known[letter.from] = letter.summary
+  dev.known[letter.from as Dev] = letter.summary
   const entries = takeEntries(cfg, dev.entries, letter.entries)
   // A sender that lacks something this device holds is sent it at this device's next letter.
   if (toSend(cfg, entries.entries, letter.summary).length > 0) changed = true

@@ -28,12 +28,22 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
   if (!dev) return []
   if ('proposal' in forge) {
     const key = propKey(cfg.rules, 'F', 'F1')
-    const held = winner(cfg.rules, dev.props[key] ?? [], countsOn(next, REMOVED))
+    const held = winner(cfg.rules, dev.props[key] ?? [], countsOn(cfg.rules, next, REMOVED))
     if (!held) return []
     const p = { id: 'F1x', inc: 'F1', replaces: held.id, at: 1, by: REMOVED, round: 50 }
     dev.props[key] = [...(dev.props[key] ?? []), p]
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
     return [['X forges a pair-secret proposal of its own for F, claiming round 50', next]]
+  }
+  if ('root' in forge) {
+    // A second first secret for a friendship it has read the first of, stamped as early as can be.
+    const inc = `${forge.root}1`
+    if (!dev.learned.includes(`${inc}r0`)) return []
+    const key = propKey(cfg.rules, forge.root, inc)
+    const p = { id: `${inc}x0`, inc, replaces: null, at: 0, by: REMOVED, round: 0 }
+    dev.props[key] = [...(dev.props[key] ?? []), p]
+    next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
+    return [[`X forges a second first secret for ${forge.root}, stamped as early as it can`, next]]
   }
   const top =
     Math.max(

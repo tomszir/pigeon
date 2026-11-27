@@ -12,6 +12,22 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   friends: ['settled:G live on A', 'settled:G live on C', 'settled:unfriended', 'letter lost'],
   repair: ['settled:F paired again', 'settled:F2 live on B', 'settled:F2 live on C', 'letter lost'],
   blocks: ['settled:blocked', 'letter lost'],
+  roots: [
+    'settled:forged proposal taken',
+    'settled:G live on B',
+    'settled:every device knew of the removal',
+  ],
+  friendround: [
+    'settled:secret replaced after removal',
+    'settled:every device knew of the removal',
+  ],
+  race: ['settled:F paired twice at once', 'settled:unfriended'],
+  skewremoval: [
+    'settled:a clock ran ahead',
+    'settled:removed',
+    'settled:unfriended',
+    'settled:petname set',
+  ],
   skew: ['settled:a clock ran ahead', 'settled:unfriended', 'settled:petname set'],
   settings: ['settled:relay on', 'settled:petname set'],
   removal: [
@@ -45,7 +61,7 @@ describe('your data, under the design', () => {
         assert.ok(result.reached.includes(flag), `never reached ${flag}`)
     })
 
-  for (const key of ['repair', 'removal', 'room', 'link'])
+  for (const key of ['repair', 'removal', 'roots', 'room', 'link'])
     it(`${key}: random walks deeper than the search`, () => {
       const cfg = SCENARIOS[key]
       assert.ok(cfg)

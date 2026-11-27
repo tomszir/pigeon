@@ -24,8 +24,13 @@ const sealedToList = (cfg: DataConfig): Check => ({
   id: 'P1 sealed to the list',
   check: (s) => {
     for (const l of s.mail) {
-      if (l.kind === 'rekey-friend' || (l.from === REMOVED && cfg.hostile)) continue
-      const want = listFor(s, l.sealedWith, l.from)
+      if (
+        l.kind === 'rekey-friend' ||
+        l.kind === 'friend-rekey' ||
+        (l.from === REMOVED && cfg.hostile)
+      )
+        continue
+      const want = listFor(s, l.sealedWith, l.from as Dev)
       if (canon(l.to) !== canon(want))
         return `#${l.id} from ${l.from} is sealed to ${l.to.join(',')}, its list is ${want.join(',')}`
     }
@@ -92,7 +97,10 @@ const discounted = (cfg: DataConfig): Check => ({
   },
 })
 
-/** T2: once a device holds a tombstone written by a device on the list, that friendship stays ended there. */
+/**
+ * T2: once a device holds a tombstone, that friendship stays ended there; the only exception is a
+ * removed device's tombstone stamped at or after its removal, which stops counting by R2.
+ */
 const tombsHold = (cfg: DataConfig): StepInvariant<DataState> => ({
   id: 'T2 a tombstone held is never undone',
   check: (before, label, after) => {
@@ -100,7 +108,11 @@ const tombsHold = (cfg: DataConfig): StepInvariant<DataState> => ({
       const was = before.devs[d]
       if (!was) continue
       const ended = was.entries
-        .filter((e) => e.op.k === 'tomb' && e.by !== REMOVED)
+        .filter(
+          (e) =>
+            e.op.k === 'tomb' &&
+            !(e.by === REMOVED && after.removalSt > 0 && e.st >= after.removalSt),
+        )
         .map((e) => (e.op.k === 'tomb' ? e.op.inc : ''))
       const live = Object.keys(viewOf(after, cfg.rules, d).live)
       const back = ended.find((inc) => live.includes(inc))
@@ -123,13 +135,26 @@ const converge = (cfg: DataConfig): Check => ({
   },
 })
 
-/** T1: once mail settles, no friendship a device on the list ended is live anywhere. */
+/**
+ * T1: once mail settles, no friendship a device on the list ended is live anywhere, except one
+ * whose only tombstones are the removed device's, stamped at or after its removal and never held
+ * by the writer when it removed it (a removed device's last changes, which the spec accepts).
+ */
 const unfriendStays = (cfg: DataConfig): Check => ({
   id: 'T1 an ended friendship stays ended',
   check: (s) => {
+    const tombsOf = (inc: string) =>
+      honestDevs(cfg, s).flatMap((d) =>
+        (s.devs[d]?.entries ?? []).filter((e) => e.op.k === 'tomb' && e.op.inc === inc),
+      )
+    const lapsed = (inc: string) =>
+      s.removalSt > 0 &&
+      tombsOf(inc).every(
+        (e) => e.by === REMOVED && e.st >= s.removalSt && !s.heldAtRemoval.includes(e.sig),
+      )
     for (const d of honestDevs(cfg, s)) {
       const live = Object.keys(viewOf(s, cfg.rules, d).live)
-      const back = s.tombs.find((inc) => live.includes(inc))
+      const back = s.tombs.find((inc) => live.includes(inc) && !lapsed(inc))
       if (back) return `${d} shows ${back}, which was ended`
     }
     return undefined
@@ -147,7 +172,10 @@ export function oracle(cfg: DataConfig, s: DataState): Map<string, string> {
   const add = (field: string, c: Candidate) =>
     candidates.set(field, [...(candidates.get(field) ?? []), c])
   const before = (by: Dev, st: number) => s.removalSt === 0 || by !== REMOVED || st < s.removalSt
-  for (const a of s.actions) if (before(a.by, a.st)) add(a.field, a)
+  // What a device on the list did counts; what the removed device did before its removal counts
+  // whenever the writer held it then, however its stamp compares with the removal's.
+  const held = (a: { by: Dev; n: number }) => s.heldAtRemoval.includes(`${a.by}${a.n}a`)
+  for (const a of s.actions) if (before(a.by, a.st) || held(a)) add(a.field, a)
   if (cfg.hostile) {
     const seen = new Map<string, Entry>()
     for (const d of honestDevs(cfg, s))
@@ -212,9 +240,48 @@ const sameSecret = (cfg: DataConfig): Check => ({
       for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
         const mine = secretOf(cfg.rules, s, d, fr, inc)?.id
         const friend = s.friends[fr]
-        const theirs = friend ? `${friendSecret(cfg.rules, friend)?.id} in ${friend.inc}` : 'none'
+        const theirs = friend
+          ? `${friendSecret(cfg.rules, s, friend)?.id} in ${friend.inc}`
+          : 'none'
         if (`${mine} in ${inc}` !== theirs)
           return `${d} is on ${mine ?? 'nothing'} for ${fr} in ${inc}, ${fr} is on ${theirs}`
+      }
+    return undefined
+  },
+})
+
+/** P6: a device that knows of a removal is never on a replacement the removed device proposed. */
+const neverOnRemoved = (cfg: DataConfig): Check => ({
+  id: 'P6 a removed device\u2019s proposal never wins once heard',
+  check: (s) => {
+    for (const d of honestDevs(cfg, s)) {
+      const dev = s.devs[d]
+      if (!dev || !knowsRemoval(dev)) continue
+      for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
+        const mine = secretOf(cfg.rules, s, d, fr, inc)
+        if (mine?.by === REMOVED && mine.replaces !== null)
+          return `${d} is on ${mine.id}, by ${REMOVED}`
+      }
+    }
+    return undefined
+  },
+})
+
+/** P2b: once mail settles after a removal, no live friendship is on a secret the removed device read. */
+const notOnRead = (cfg: DataConfig): Check => ({
+  id: 'P2b no friendship on a secret a removed device read',
+  check: (s) => {
+    const read = s.devs[REMOVED]?.learned ?? []
+    if (s.removalSt === 0) return undefined
+    for (const d of honestDevs(cfg, s))
+      for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
+        const mine = secretOf(cfg.rules, s, d, fr, inc)
+        if (mine && read.includes(mine.id))
+          return `${d} is on ${mine.id} for ${fr}, which ${REMOVED} read`
+        const friend = s.friends[fr]
+        const theirs = friend?.inc === inc ? friendSecret(cfg.rules, s, friend) : undefined
+        if (theirs && read.includes(theirs.id))
+          return `${fr} is on ${theirs.id}, which ${REMOVED} read`
       }
     return undefined
   },
@@ -228,8 +295,7 @@ const notOnRemoved = (cfg: DataConfig): Check => ({
     for (const d of honestDevs(cfg, s))
       for (const [inc, fr] of Object.entries(viewOf(s, cfg.rules, d).live)) {
         const mine = secretOf(cfg.rules, s, d, fr, inc)
-        if (mine?.by === REMOVED && mine.replaces !== null)
-          return `${d} is on ${mine.id}, by ${REMOVED}`
+        if (mine?.by === REMOVED) return `${d} is on ${mine.id}, by ${REMOVED}`
       }
     const live = new Set(
       honestDevs(cfg, s).flatMap((d) => Object.keys(viewOf(s, cfg.rules, d).live)),
@@ -237,9 +303,8 @@ const notOnRemoved = (cfg: DataConfig): Check => ({
     for (const [fr, friend] of Object.entries(s.friends)) {
       // A friendship your devices ended is the friend's to drop; only a live one is checked.
       if (!friend || !live.has(friend.inc)) continue
-      const theirs = friendSecret(cfg.rules, friend)
-      if (theirs?.by === REMOVED && theirs.replaces !== null)
-        return `${fr} is on ${theirs.id}, by ${REMOVED}`
+      const theirs = friendSecret(cfg.rules, s, friend)
+      if (theirs?.by === REMOVED) return `${fr} is on ${theirs.id}, by ${REMOVED}`
     }
     return undefined
   },
@@ -253,6 +318,7 @@ export function dataChecks(cfg: DataConfig) {
       holdersKnowRemoval(cfg),
       nothingLate(cfg),
       discounted(cfg),
+      neverOnRemoved(cfg),
     ],
     stepChecks: [tombsHold(cfg)],
     settled: [
@@ -261,6 +327,7 @@ export function dataChecks(cfg: DataConfig) {
       newestWins(cfg),
       sameSecret(cfg),
       notOnRemoved(cfg),
+      notOnRead(cfg),
     ],
   }
 }
@@ -298,6 +365,10 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
     if (entries.some((e) => e.by === REMOVED && cfg.hostile)) flags.push('forged entry taken')
     if (entries.some((e) => e.op.k === 'future')) flags.push('unreadable entry held')
     if (Object.keys(view.live).includes('F2')) flags.push(`F2 live on ${d}`)
+    const incsF = (s.devs[d]?.entries ?? []).filter(
+      (e) => e.op.k === 'add' && e.op.fr === 'F',
+    ).length
+    if (incsF > 2) flags.push('F paired twice at once')
     const props = Object.values(s.devs[d]?.props ?? {}).flat()
     if (props.some((p) => p.by === REMOVED)) flags.push('forged proposal taken')
     if ((s.devs[d]?.clock ?? 0) > 9) flags.push('a clock ran ahead')

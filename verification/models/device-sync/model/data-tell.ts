@@ -15,7 +15,7 @@ export function winners(
   const out: Record<string, string | undefined> = {}
   for (const [inc, fr] of Object.entries(viewOf(state, cfg.rules, d).live)) {
     const key = propKey(cfg.rules, fr, inc)
-    out[inc] = winner(cfg.rules, state.devs[d]?.props[key] ?? [], countsOn(state, d))?.id
+    out[inc] = winner(cfg.rules, state.devs[d]?.props[key] ?? [], countsOn(cfg.rules, state, d))?.id
   }
   return out
 }

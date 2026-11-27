@@ -6,7 +6,7 @@ import { counts, fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
 import { hostileSteps } from './data-hostile.ts'
 import { deliver, meet, newLetter, sealTo, takeEntries, toSend } from './data-mail.ts'
 import { finish, type Step, spend, sweep } from './data-run.ts'
-import { countsOn, dropEnded, knew, winner } from './data-secrets.ts'
+import { countsOn, dropEnded, friendSecret, knew, winner } from './data-secrets.ts'
 import {
   type Budget,
   type DataConfig,
@@ -157,19 +157,44 @@ export function send(cfg: DataConfig, state: DataState, d: Dev): void {
   newLetter(cfg, state, 'sync', d, to, pick, dev.props, false)
 }
 
-/** The writer replaces the pair secret of every friendship live there, after a removal. */
+/**
+ * The friendships the writer must renew after a removal. Under the design: every one live on it
+ * whose secret it didn't itself propose after the removal, whenever it finds one, so a friendship
+ * paired or replaced in the window before every device heard (whose secret the removed device may
+ * have read) is renewed too, and a rival that beat its proposal is renewed from. Off: those live
+ * when it removed, once.
+ */
+export function toRenew(cfg: DataConfig, state: DataState): [string, FriendId][] {
+  const dev = state.devs[WRITER]
+  if (!dev || !knowsRemoval(dev)) return []
+  if (!cfg.rules.renewWindow && !state.renew) return []
+  return Object.entries(viewOf(state, cfg.rules, WRITER).live).filter(([inc, fr]) => {
+    if (!cfg.rules.renewWindow) return true
+    const held = winner(
+      cfg.rules,
+      dev.props[propKey(cfg.rules, fr, inc)] ?? [],
+      countsOn(cfg.rules, state, WRITER),
+    )
+    return held !== undefined && !(held.by === WRITER && held.at > state.removalSt)
+  })
+}
+
+/** The writer replaces the pair secret of each friendship it must renew. */
 export function rekey(cfg: DataConfig, state: DataState): void {
   const dev = state.devs[WRITER]
-  if (!state.renew || !dev || !knowsRemoval(dev)) return
+  const renew = toRenew(cfg, state)
   state.renew = false
-  for (const [inc, fr] of Object.entries(viewOf(state, cfg.rules, WRITER).live)) {
+  if (!dev) return
+  for (const [inc, fr] of renew) {
     const key = propKey(cfg.rules, fr, inc)
     const props = dev.props[key] ?? []
-    const held = winner(cfg.rules, props, countsOn(state, WRITER))
+    const held = winner(cfg.rules, props, countsOn(cfg.rules, state, WRITER))
     if (!held) continue
-    dev.clock += 1
+    dev.clock = Math.max(dev.clock, state.removalSt) + 1
+    let id = `${inc}r${held.round + 1}`
+    while (state.secrets[id]) id = `${id}'`
     const p: Proposal = {
-      id: `${inc}r${held.round + 1}`,
+      id,
       inc,
       replaces: held.id,
       at: dev.clock,
@@ -195,15 +220,21 @@ function writerSteps(cfg: DataConfig, state: DataState): Step[] {
     spend(next, 'remove')
     const writer = next.devs[WRITER]
     if (writer) {
+      // The removal is stamped later than everything the writer holds from X, so what X had
+      // already delivered keeps counting however fast its clock ran.
+      const held = writer.entries.filter((e) => e.by === REMOVED)
       writer.clock += 1
+      if (cfg.rules.removalAfterHeld)
+        writer.clock = Math.max(writer.clock, ...held.map((e) => e.st + 1))
       writer.log = uniq([...writer.log, 'rmX'])
       writer.dirty = true
       next.removalSt = writer.clock
+      next.heldAtRemoval = held.map((e) => e.sig)
     }
     next.renew = true
     out.push([`${WRITER} removes ${REMOVED}`, finish(cfg, next)])
   }
-  if (state.renew && knowsRemoval(dev)) {
+  if (toRenew(cfg, state).length > 0) {
     const next = copy(state)
     rekey(cfg, next)
     out.push([`${WRITER} replaces the pair secrets`, finish(cfg, next)])
@@ -263,6 +294,7 @@ export function check(cfg: DataConfig, state: DataState, r: string, closes = fal
   }
   const before = own ? winners(cfg, state, own) : {}
   for (const i of waiting) deliver(cfg, state, i, r)
+  if (own) settleRepairs(cfg, state, own)
   if (own) tellFriends(cfg, state, own, before)
   if (own) send(cfg, state, own)
   // What the check sent is put before it ends, unless the tab closes first.
@@ -272,13 +304,32 @@ export function check(cfg: DataConfig, state: DataState, r: string, closes = fal
   sweep(state)
 }
 
+/**
+ * Two live friendships with one friend (paired again on two devices at once): the friend keeps
+ * the pairing that reached it last. Once a device sees the friend in one (a bound hello in its
+ * rooms, or a letter under its tags), it ends the other with a tombstone, so every device ends on
+ * the friendship the friend is in. Until then the chat says it's still connecting.
+ */
+function settleRepairs(cfg: DataConfig, state: DataState, d: Dev): void {
+  if (!cfg.rules.settleRepairs) return
+  for (const fr of ['F', 'G'] as const) {
+    const incs = heldIncs(cfg, state, d, fr)
+    const seen = state.friends[fr]?.inc
+    if (incs.length < 2 || !seen || !incs.includes(seen)) continue
+    const others = incs.filter((inc) => inc !== seen)
+    state.tombs = uniq([...state.tombs, ...others])
+    for (const inc of others) write(cfg, state, d, { k: 'tomb', fr, inc })
+  }
+}
+
 /** Puts again what was lost: sealed again to the list as it is now, or the same letter. */
 export function putAgain(cfg: DataConfig, state: DataState, i: number): void {
   const letter = state.mail[i]
-  const dev = letter ? state.devs[letter.from] : undefined
+  const from = letter?.from as Dev
+  const dev = letter ? state.devs[from] : undefined
   if (!letter || !dev || letter.lost.length === 0) return
   if (cfg.rules.resealOnReput && letter.kind !== 'rekey-friend') {
-    const to = sealTo(cfg, state, letter.from)
+    const to = sealTo(cfg, state, from)
     letter.pending = uniq([...letter.lost.filter((p) => to.includes(p as Dev)), ...letter.pending])
     letter.pending = uniq([...letter.pending, ...to.filter((p) => !letter.to.includes(p))])
     letter.to = to
@@ -345,6 +396,51 @@ function deviceSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
   return out
 }
 
+/**
+ * F proposes a replacement of its own, as a friend that removed one of its devices would: sealed
+ * to your devices on its copy of your list, which still names X until it hears of the removal.
+ */
+function friendSteps(cfg: DataConfig, state: DataState): Step[] {
+  const friend = state.friends.F
+  if ((state.left.friendRound ?? 0) <= 0 || !friend) return []
+  const held = friendSecret(cfg.rules, state, friend)
+  if (!held) return []
+  const next = copy(state)
+  spend(next, 'friendRound')
+  const f = next.friends.F
+  if (!f) return []
+  const at = Math.max(...Object.values(next.devs).map((d) => d?.clock ?? 0)) + 1
+  const p: Proposal = {
+    id: `${f.inc}f${held.round + 1}`,
+    inc: f.inc,
+    replaces: held.id,
+    at,
+    by: 'F',
+    round: held.round + 1,
+  }
+  f.props = [...f.props, p]
+  f.learned = uniq([...f.learned, p.id])
+  next.secrets[p.id] = { by: 'F', knew: f.knowsR }
+  const to = (Object.keys(next.devs) as Dev[]).filter((d) => d !== REMOVED || !f.knowsR)
+  const key = propKey(cfg.rules, 'F', f.inc)
+  next.mail.push({
+    id: next.nextLetter++,
+    kind: 'friend-rekey',
+    from: 'F',
+    to,
+    pending: to,
+    lost: [],
+    put: true,
+    knew: f.knowsR,
+    sealedWith: [],
+    log: f.knowsR ? ['rmX'] : [],
+    entries: [],
+    props: { [key]: f.props },
+    summary: {},
+  })
+  return [['F proposes a replacement of its own', finish(cfg, next)]]
+}
+
 export function steps(cfg: DataConfig, state: DataState): Step[] {
   const devices = honest(state, cfg)
   return [
@@ -353,5 +449,6 @@ export function steps(cfg: DataConfig, state: DataState): Step[] {
     ...devices.flatMap((d) => deviceSteps(cfg, state, d)),
     ...mailSteps(cfg, state),
     ...hostileSteps(cfg, state),
+    ...friendSteps(cfg, state),
   ]
 }

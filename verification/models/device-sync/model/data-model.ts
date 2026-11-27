@@ -61,6 +61,7 @@ const config = (
 const unfriendF = { op: { k: 'tomb', fr: 'F', inc: 'F1' }, stamp: 'current' } as const
 const renameF = { op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'early' } as const
 const proposeF = { proposal: true } as const
+const rootG = { root: 'G' } as const
 
 /** The scenarios, each small enough to explore every history of. */
 export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
@@ -129,6 +130,41 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     { remove: 1, fork: 1, meet: 2 },
     { forges: [renameF] },
   ),
+  // The writer pairs with G, and X reads G's first secret while still on the list; then X is
+  // removed and forges a second first secret for G, stamped as early as it can, and sends it to B
+  // before the writer's own reaches it.
+  roots: config(
+    'roots: a removed device forges a second first secret',
+    ['A', 'B', 'X'],
+    true,
+    { add: 1, remove: 1 },
+    { who: { add: ['A'] }, adds: ['G'], forges: [rootG] },
+  ),
+  // The friend proposes a replacement of its own around the removal, sealed to X while the friend
+  // hasn't heard, and its proposal is earlier than the writer's renewal.
+  friendround: config(
+    'friendround: the friend replaces a secret in the window',
+    ['A', 'B', 'X'],
+    true,
+    { remove: 1, friendRound: 1 },
+  ),
+  // Two devices pair again with one friend at once, after an unfriend.
+  race: config(
+    'race: two devices pair again with one friend at once',
+    ['A', 'B'],
+    false,
+    { unfriend: 1, add: 2 },
+    { who: { unfriend: ['A'], add: ['A', 'B'] }, targets: ['F'], adds: ['F'] },
+  ),
+  // An honest device whose clock runs ahead renames and unfriends, then is removed: what the
+  // writer held from it must keep counting.
+  skewremoval: config(
+    'skewremoval: a device with a fast clock removed after its changes',
+    ['A', 'B', 'X'],
+    false,
+    { skew: 1, pet: 1, unfriend: 1, remove: 1 },
+    { who: { skew: ['X'], pet: ['X'], unfriend: ['X'] }, targets: ['F'] },
+  ),
   // A device is linked after a removal, and a letter sealed before it is lost and put again.
   link: config(
     'link: a device linked after a removal',
@@ -158,6 +194,8 @@ export interface Defect {
   readonly what: string
   readonly scenario: string
   readonly rule: keyof DataRules
+  /** A second rule turned off with it, where another rule would otherwise cover for this one. */
+  readonly also?: keyof DataRules
   /** The invariant that must catch it. */
   readonly caughtBy: string
 }
@@ -211,13 +249,14 @@ export const DEFECTS: readonly Defect[] = [
     what: 'a device takes whichever proposal claims the highest round, counted or not',
     scenario: 'removal',
     rule: 'chainRules',
-    caughtBy: 'P5 no friendship on a removed device\u2019s secret',
+    caughtBy: 'P6 a removed device\u2019s proposal never wins once heard',
   },
   {
     name: 'secret state dropped at a tombstone',
-    what: 'a tombstone drops its friendship\u2019s secret state, lost for good if the tombstone stops counting',
+    what: 'a tombstone drops its friendship\u2019s secret state, lost for good if the tombstone stops counting (with the removal stamped by the writer\u2019s clock alone, so it can)',
     scenario: 'removal',
     rule: 'keepEndedSecrets',
+    also: 'removalAfterHeld',
     caughtBy: 'P3 one pair secret per friend',
   },
   {
@@ -226,6 +265,41 @@ export const DEFECTS: readonly Defect[] = [
     scenario: 'removal',
     rule: 'tellFriend',
     caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'any first secret counts, the first held kept',
+    what: 'a removed device\u2019s second first secret, taken before the writer\u2019s own, is kept for good',
+    scenario: 'roots',
+    rule: 'rootRules',
+    caughtBy: 'P5 no friendship on a removed device\u2019s secret',
+  },
+  {
+    name: 'only friendships live at the removal renewed',
+    what: 'a friendship paired in the window before every device heard keeps a secret the removed device read',
+    scenario: 'removal',
+    rule: 'renewWindow',
+    caughtBy: 'P2b no friendship on a secret a removed device read',
+  },
+  {
+    name: 'the friend\u2019s earlier proposal kept',
+    what: 'the friend\u2019s proposal made in the window beats the writer\u2019s renewal, and nothing renews from it',
+    scenario: 'friendround',
+    rule: 'renewWindow',
+    caughtBy: 'P2b no friendship on a secret a removed device read',
+  },
+  {
+    name: 'two re-pairings left as they are',
+    what: 'two friendships with one friend stay live, and devices end on the one the friend isn\u2019t in',
+    scenario: 'race',
+    rule: 'settleRepairs',
+    caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'removal stamped by the writer\u2019s clock alone',
+    what: 'what a fast-clocked device delivered before its removal stops counting',
+    scenario: 'skewremoval',
+    rule: 'removalAfterHeld',
+    caughtBy: 'W1 the newest change wins',
   },
   {
     name: 'removed device not discounted',
@@ -277,6 +351,10 @@ export function withDefect(defect: Defect): DataConfig {
   return {
     ...base,
     name: `${base.name} [defect: ${defect.name}]`,
-    rules: { ...base.rules, [defect.rule]: false },
+    rules: {
+      ...base.rules,
+      [defect.rule]: false,
+      ...(defect.also ? { [defect.also]: false } : {}),
+    },
   }
 }

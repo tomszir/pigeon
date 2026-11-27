@@ -6,7 +6,10 @@
 // - rival proposals for one secret settle on the same one everywhere;
 // - a proposal from a device later removed stops counting once the removal is heard, and the
 //   device falls back to the secret before it, or a rival that counts;
-// - nobody can jump ahead by claiming a high round: a proposal counts only as a link in the chain.
+// - nobody can jump ahead by claiming a high round: a proposal counts only as a link in the chain;
+// - a first secret counts as an entry does (from a device on the list, or from a removed one that
+//   stamped it before its removal), and of several, the earliest wins, so arrival order never
+//   decides. A removed device can still backdate one; the writer's renewal replaces it.
 import { uniq } from './canon.ts'
 import { counts as entryCounts } from './data-fold.ts'
 import {
@@ -38,7 +41,15 @@ export function winner(
       undefined,
     )
   }
-  let current = props.find((p) => p.replaces === null)
+  // The defect: whichever first secret the device happens to hold first.
+  let current = rules.rootRules
+    ? props
+        .filter((p) => p.replaces === null && counts(p))
+        .reduce<Proposal | undefined>(
+          (best, p) => (!best || earlier(p, best) ? p : best),
+          undefined,
+        )
+    : props.find((p) => p.replaces === null)
   while (current) {
     const from: Proposal = current
     const next = props
@@ -50,17 +61,27 @@ export function winner(
   return current
 }
 
-/** Whether a proposal counts on your device `d`: by a friend's device, or one on `d`'s list. */
+/**
+ * Whether a proposal counts on your device `d`: by a friend's device, or by one on `d`'s list. A
+ * first secret by a device `d` knows was removed counts if stamped before the removal, as an
+ * entry would; a replacement by it never does.
+ */
 export const countsOn =
-  (state: DataState, d: Dev) =>
-  (p: Proposal): boolean =>
-    p.replaces === null || p.by === 'F' || p.by === 'G' || listOf(state, d).includes(p.by as Dev)
+  (rules: DataRules, state: DataState, d: Dev) =>
+  (p: Proposal): boolean => {
+    if (p.by === 'F' || p.by === 'G' || listOf(state, d).includes(p.by as Dev)) return true
+    if (p.replaces !== null) return false
+    return !rules.rootRules || p.at < state.removalSt
+  }
 
-/** Whether a proposal counts on a friend's device: unless it's by a device it knows you removed. */
+/** The same on a friend's device, which knows of a removal once a letter carrying it arrives. */
 export const countsOnFriend =
-  (friend: FriendDevice) =>
-  (p: Proposal): boolean =>
-    p.replaces === null || !(friend.knowsR && p.by === REMOVED)
+  (rules: DataRules, state: DataState, friend: FriendDevice) =>
+  (p: Proposal): boolean => {
+    if (!(friend.knowsR && p.by === REMOVED)) return true
+    if (p.replaces !== null) return false
+    return !rules.rootRules || p.at < state.removalSt
+  }
 
 /** The secret device `d` is on for friendship `inc` of `fr`. */
 export function secretOf(
@@ -71,11 +92,14 @@ export function secretOf(
   inc: string,
 ): Proposal | undefined {
   const props = state.devs[d]?.props[propKey(rules, fr, inc)] ?? []
-  return winner(rules, props, countsOn(state, d))
+  return winner(rules, props, countsOn(rules, state, d))
 }
 
-export const friendSecret = (rules: DataRules, friend: FriendDevice): Proposal | undefined =>
-  winner(rules, friend.props, countsOnFriend(friend))
+export const friendSecret = (
+  rules: DataRules,
+  state: DataState,
+  friend: FriendDevice,
+): Proposal | undefined => winner(rules, friend.props, countsOnFriend(rules, state, friend))
 
 /**
  * Adds proposals to those a device knows. A friendship's proposals stay, unused, after its
