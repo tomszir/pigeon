@@ -105,8 +105,12 @@ export interface Wait {
   readonly cursor: number
   /** When its lease ends. */
   readonly until: number
-  /** When it began, for choosing whom to close when there's no room. */
   readonly since: number
+  /**
+   * The order waits began in, for choosing whom to close when there's no room: the longest
+   * standing, which is the first to begin, even of two that began in the same moment.
+   */
+  readonly order: number
 }
 
 export interface Conn {
@@ -136,6 +140,8 @@ export interface LighthouseState {
   readonly indexed: readonly string[]
   /** The highest seq whose wakes have all been sent: the Worker keeps it in its storage. */
   readonly wokeThrough: number
+  /** Waits begun so far, for each wait's `order`. */
+  readonly begun: number
 }
 
 export type Request =
@@ -206,6 +212,7 @@ export const emptyLighthouse = (variant: Variant): LighthouseState => ({
   awake: true,
   indexed: [],
   wokeThrough: 0,
+  begun: 0,
 })
 
 /** When a connection was last heard from: its last frame, or its last keepalive. */
@@ -341,11 +348,7 @@ export function step(
     s.reads[range] = made + 1
     return true
   }
-  /**
-   * Tags in live waits, other than `except`'s, from everyone, from `range` and from `wide`. A
-   * waiting connection gone quiet past the idle time is closed here, not just left out, so it
-   * can't come back with a keepalive and push the count past a limit after another took its room.
-   */
+  /** Tags in live waits, other than `except`'s, from everyone, from `range` and from `wide`. */
   const waited = (except: string, range: string, wide: string | null) => {
     let total = 0
     let fromRange = 0
@@ -353,10 +356,6 @@ export function step(
     let waitsFromRange = 0
     for (const [id, conn] of conns()) {
       if (id === except || conn.wait === null) continue
-      if (rules.skipsDeadWaits && idle(conn)) {
-        close(id, 'idle')
-        continue
-      }
       total += conn.wait.tags.length
       if (conn.range === range) {
         fromRange += conn.wait.tags.length
@@ -388,9 +387,7 @@ export function step(
           limits.connectionsPerRange
         const longest = conns()
           .filter(([, conn]) => conn.wait !== null && (!rangeFull || conn.range === event.range))
-          .sort(
-            ([a, x], [b, y]) => (x.wait?.since ?? 0) - (y.wait?.since ?? 0) || (a < b ? -1 : 1),
-          )[0]
+          .sort(([, x], [, y]) => (x.wait?.order ?? 0) - (y.wait?.order ?? 0))[0]
         if (longest !== undefined) close(longest[0], 'room')
       }
       if (!room(event.range)) {
@@ -426,16 +423,25 @@ export function step(
           reply({ type: 'error', error: 'limit' })
           break
         }
-        const count = waited(event.conn, conn.range, conn.wide)
         const adding = request.tags.length
-        const overRange = rules.countsTagsPerRange
-          ? count.fromRange + adding > limits.tagsPerRange
-          : count.waitsFromRange + 1 > WAITS_PER_RANGE_BY_COUNT
-        if (
-          overRange ||
-          (conn.wide !== null && count.fromWide + adding > limits.tagsPer48) ||
-          count.total + adding > limits.maxWaitedTags
-        ) {
+        const over = () => {
+          const count = waited(event.conn, conn.range, conn.wide)
+          const overRange = rules.countsTagsPerRange
+            ? count.fromRange + adding > limits.tagsPerRange
+            : count.waitsFromRange + 1 > WAITS_PER_RANGE_BY_COUNT
+          return (
+            overRange ||
+            (conn.wide !== null && count.fromWide + adding > limits.tagsPer48) ||
+            count.total + adding > limits.maxWaitedTags
+          )
+        }
+        // Only when it doesn't fit are waits gone quiet past the idle time looked for: they count
+        // for nothing, and are closed, not just left out, so they can't come back with a
+        // keepalive and push the count past a limit after another has taken their room.
+        if (over() && rules.skipsDeadWaits)
+          for (const [id, other] of conns())
+            if (id !== event.conn && other.wait !== null && idle(other)) close(id, 'idle')
+        if (over()) {
           reply({ type: 'error', error: 'limit' })
           break
         }
@@ -450,8 +456,10 @@ export function step(
             cursor: request.cursor,
             until: s.now + request.seconds,
             since: s.now,
+            order: s.begun,
           },
         })
+        s.begun += 1
         if (!s.indexed.includes(event.conn)) s.indexed = [...s.indexed, event.conn].sort()
         break
       }

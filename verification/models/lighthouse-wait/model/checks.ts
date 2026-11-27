@@ -362,7 +362,7 @@ export function checkEvent(
           !answered.has(id) &&
           (!rangeFull || conn.range === event.range),
       )
-      .sort(([a, x], [b, y]) => (x.wait?.since ?? 0) - (y.wait?.since ?? 0) || (a < b ? -1 : 1))
+      .sort(([, x], [, y]) => (x.wait?.order ?? 0) - (y.wait?.order ?? 0))
     const evicted = out.filter((o) => o.kind === 'close' && o.why === 'room')
     const refused = out.some((o) => o.kind === 'refuse')
     if (
