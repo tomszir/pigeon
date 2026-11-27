@@ -2,7 +2,7 @@
 
 A connected Pigeon can ask a Lighthouse to answer one held request as soon as something is put under tags it names, so mail between people who are both connected arrives in seconds, while the mail check stays the only way mail is fetched.
 
-- Status: accepted. Planned: not built yet. It is modelled before any code is written, and docs/lighthouse.md, docs/protocol.md and docs/threat-model.md change with the code
+- Status: accepted; amended by [0063](0063-waiting-for-mail-as-modelled.md), which settles what modelling it found: waits count against their range by tags rather than by connections, waits heard from alone count, the Worker catches up on wakes a reset lost, and a Pigeon waits only after a look that read its Lighthouse to the end. Not built yet; docs/lighthouse.md, docs/protocol.md and docs/threat-model.md change with the code
 - Date: 2026-11-26
 
 ## Context
