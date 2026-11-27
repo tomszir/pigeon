@@ -2,7 +2,7 @@
 
 Removing a device replaces the self secret and every pair secret, each by a new round of the sealed `mail:rekey` replacement, begun for the secret held now and carrying the round before's winner so devices still in that round can follow, and closes every invite link open then.
 
-- Status: accepted; the invite links part (closing every link open at a removal, and the links to close kept until a closed card for each is up) is superseded by [0060](0060-invite-links-bound-to-their-maker-for-a-week.md): a removal closes no link, since only a link's maker counts and a link ends within 7 days
+- Status: accepted; the invite links part (closing every link open at a removal, and the links to close kept until a closed card for each is up) is superseded by [0060](0060-invite-links-bound-to-their-maker-for-a-week.md): a removal closes no link, since only a link's maker counts and a link ends within 7 days; and by [0062](0062-your-devices-in-step-through-a-shared-log.md) in part: the `begun` rule gives way to the marker each proposal carries of the removals its maker had merged, and keeping only the round before (with `prior`) gives way to keeping each friendship's whole chain
 - Date: 2026-11-26
 
 ## Context
