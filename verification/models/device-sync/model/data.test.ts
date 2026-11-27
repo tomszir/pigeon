@@ -13,6 +13,7 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   repair: ['settled:F paired again', 'settled:F2 live on B', 'settled:F2 live on C', 'letter lost'],
   blocks: ['settled:blocked', 'letter lost'],
   roots: [
+    'a friend took a forged proposal',
     'settled:forged proposal taken',
     'settled:G live on B',
     'settled:every device knew of the removal',
@@ -22,6 +23,11 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
     'settled:every device knew of the removal',
   ],
   race: ['settled:F paired twice at once', 'settled:unfriended'],
+  mutual: [
+    'settled:the friend removed a device',
+    'settled:every device knew of the removal',
+    'settled:renewed more than once',
+  ],
   skewremoval: [
     'settled:a clock ran ahead',
     'settled:removed',
@@ -34,9 +40,14 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
     'removed',
     'settled:every device knew of the removal',
     'settled:secret replaced after removal',
-    'settled:G live on A',
     'forged entry taken',
     'forged proposal taken',
+    'a friend took a forged proposal',
+  ],
+  window: [
+    'settled:G live on A',
+    'settled:every device knew of the removal',
+    'settled:secret replaced after removal',
   ],
   room: [
     'forged entry taken',
@@ -61,7 +72,7 @@ describe('your data, under the design', () => {
         assert.ok(result.reached.includes(flag), `never reached ${flag}`)
     })
 
-  for (const key of ['repair', 'removal', 'roots', 'room', 'link'])
+  for (const key of ['repair', 'removal', 'window', 'roots', 'room', 'link'])
     it(`${key}: random walks deeper than the search`, () => {
       const cfg = SCENARIOS[key]
       assert.ok(cfg)

@@ -18,12 +18,12 @@ A plain run keeps at most 40,000 states per exploration (`model/limits.ts`), so 
 
 ## What's in it
 
-- `explore.ts`: a breadth-first explorer over a model's steps, deduplicating states by a hash of their one spelling, so the first violation of each invariant comes with a shortest history. Each state is also settled (every letter delivered, every device run until nothing changes) and checked against the invariants that hold once mail settles. Seeded random walks go deeper than the search.
+- `explore.ts`: a breadth-first explorer over a model's steps, deduplicating states by a hash of their one spelling, so the first violation of each invariant comes with a shortest history. Each state is also settled (every letter delivered, every device run until nothing changes) and checked against the invariants that hold once mail settles; settling that runs out of rounds fails S0, and S1 bounds the renewals. Seeded random walks go deeper than the search.
 - `data-*.ts`: your data, which is friends, tombstones, petnames, blocks, settings and pair secrets.
   - Your devices are A (writes the device log), B, and C or X; the friends are F and G.
   - Each device keeps a log of signed entries. Devices swap them by summary (per author, the highest number held and a digest) and fold them into what they show (`data-fold.ts`).
-  - Pair secrets are signed proposal chains per friendship, settled as replacement rounds settle them, first secrets included (`data-secrets.ts`). A device whose secret changes tells the friend (`data-tell.ts`). After a removal the writer renews every friendship whose secret it didn't propose after the removal, and the friend may propose a round of its own.
-  - X may be removed and hostile (`data-hostile.ts`). It forges entries at early or current stamps, a pair-secret proposal claiming a high round, and a second first secret stamped as early as it can; signs two entries with one number; sends them; meets your devices in the self room; and reads every letter sealed to it.
+  - Pair secrets are signed proposal chains per friendship, settled as replacement rounds settle them, first secrets included (`data-secrets.ts`). A device whose secret changes tells the friend (`data-tell.ts`). The friend runs the same rules (`data-friend.ts`): it forwards its proposals when its secret changes, refuses letters from a device it knows you removed, may propose a round of its own, and may remove one of its own devices, after which its writer renews. After a removal each side's writer renews every friendship whose secret was signed without knowing that removal.
+  - X may be removed and hostile (`data-hostile.ts`). It forges entries at early or current stamps, a pair-secret proposal claiming a high round, and a second first secret stamped as early as it can; signs two entries with one number; sends them to your devices and to friends; meets your devices in the self room; and reads every letter sealed to it.
   - A device's clock can run a month ahead, and be removed after its changes. Two devices can pair again with one friend at once. Lighthouses lose letters, tabs close mid-check, and devices take mail in any order, or not at all for as long as the explorer likes.
 - `chat.ts`: chat history on a device that learns of a friend through your data, with messages written on every side, letters held back or expired, and the friend met live.
 - `links.ts` and `links-model.ts`: invite links on your other devices, options (a), (b) and (c) side by side.
@@ -36,34 +36,36 @@ A plain run keeps at most 40,000 states per exploration (`model/limits.ts`), so 
 
 Every exploration below finished, unbounded by the cap.
 
-| Model and scenario                                                   | States      | Depth   | Invariants                                                            |
-| -------------------------------------------------------------------- | ----------- | ------- | --------------------------------------------------------------------- |
-| Your data: friends added, renamed, unfriended                        | 52,738      | 21      | all hold                                                              |
-| Your data: unfriended and paired with again                          | 10,976      | 17      | all hold                                                              |
-| Your data: blocks                                                    | 9,811       | 17      | all hold                                                              |
-| Your data: settings and petnames, a device away                      | 161,688     | 18      | all hold                                                              |
-| Your data: a clock a month ahead                                     | 7,219       | 15      | all hold                                                              |
-| Your data: a hostile removed device, with a forged proposal          | 433,611     | 22      | all hold                                                              |
-| Your data: a removed device in the self room, two entries one number | 297,794     | 18      | all hold                                                              |
-| Your data: a removed device forges a second first secret             | 3,073       | 16      | all hold                                                              |
-| Your data: the friend replaces a secret in the window                | 338         | 13      | all hold                                                              |
-| Your data: two devices pair again with one friend at once            | 46          | 9       | all hold                                                              |
-| Your data: a fast-clocked device removed after its changes           | 4,556       | 16      | all hold                                                              |
-| Your data: a device linked after a removal                           | 69,310      | 19      | all hold                                                              |
-| Your data: tabs closed mid-check                                     | 8,150       | 14      | all hold                                                              |
-| Your data: an entry only a newer Pigeon reads                        | 252         | 10      | all hold                                                              |
-| Chat history                                                         | 8,210       | 14      | all hold                                                              |
-| Chat history, the friend also met live                               | 6,422       | 12      | all hold                                                              |
-| Moving to pair secrets, two devices                                  | 13          | 4       | all hold                                                              |
-| Links (a), (b), (c): maker runs, away, removed, replaced             | 8 to 24,973 | 4 to 20 | all hold; (c) leaves one-sided friendships when the maker doesn't run |
-| Links (b): two askers, one approved, one declined                    | 204,708     | 21      | all hold                                                              |
-| Links (b): the second asker busy                                     | 1,692       | 14      | all hold                                                              |
-| Links (b): approved twice and declined at once                       | 51,004      | 18      | all hold                                                              |
-| Links (b): the approving device removed                              | 4,498       | 17      | all hold                                                              |
-| Links (b), hostile removed device                                    | 18,305      | 17      | all hold                                                              |
-| Links (c), hostile removed device                                    | 23,322      | 17      | K2, K5 broken                                                         |
+| Model and scenario                                                              | States      | Depth   | Invariants                                                            |
+| ------------------------------------------------------------------------------- | ----------- | ------- | --------------------------------------------------------------------- |
+| Your data: friends added, renamed, unfriended                                   | 52,738      | 21      | all hold                                                              |
+| Your data: unfriended and paired with again                                     | 10,976      | 17      | all hold                                                              |
+| Your data: blocks                                                               | 9,811       | 17      | all hold                                                              |
+| Your data: settings and petnames, a device away                                 | 161,688     | 18      | all hold                                                              |
+| Your data: a clock a month ahead                                                | 7,219       | 15      | all hold                                                              |
+| Your data: a hostile removed device, with a forged proposal, mailing the friend | 383,706     | 17      | all hold                                                              |
+| Your data: a friendship paired before the removal is heard                      | 238         | 11      | all hold                                                              |
+| Your data: a removed device in the self room, two entries one number            | 422,677     | 18      | all hold                                                              |
+| Your data: a removed device forges a second first secret, mailed to the friend  | 239,899     | 20      | all hold                                                              |
+| Your data: both sides remove a device of their own                              | 2,089       | 13      | all hold                                                              |
+| Your data: the friend replaces a secret in the window                           | 373         | 10      | all hold                                                              |
+| Your data: two devices pair again with one friend at once                       | 46          | 9       | all hold                                                              |
+| Your data: a fast-clocked device removed after its changes                      | 5,719       | 16      | all hold                                                              |
+| Your data: a device linked after a removal                                      | 117,909     | 19      | all hold                                                              |
+| Your data: tabs closed mid-check                                                | 10,500      | 14      | all hold                                                              |
+| Your data: an entry only a newer Pigeon reads                                   | 252         | 10      | all hold                                                              |
+| Chat history                                                                    | 8,210       | 14      | all hold                                                              |
+| Chat history, the friend also met live                                          | 6,422       | 12      | all hold                                                              |
+| Moving to pair secrets, two devices                                             | 13          | 4       | all hold                                                              |
+| Links (a), (b), (c): maker runs, away, removed, replaced                        | 8 to 24,973 | 4 to 20 | all hold; (c) leaves one-sided friendships when the maker doesn't run |
+| Links (b): two askers, one approved, one declined                               | 204,708     | 21      | all hold                                                              |
+| Links (b): the second asker busy                                                | 1,692       | 14      | all hold                                                              |
+| Links (b): approved twice and declined at once                                  | 51,004      | 18      | all hold                                                              |
+| Links (b): the approving device removed                                         | 4,498       | 17      | all hold                                                              |
+| Links (b), hostile removed device                                               | 18,305      | 17      | all hold                                                              |
+| Links (c), hostile removed device                                               | 23,322      | 17      | K2, K5 broken                                                         |
 
-Random walks (3,000 a scenario, up to 60 steps) over the repair, removal, roots, self-room and link scenarios found nothing either.
+Random walks (3,000 a scenario, up to 60 steps) over the repair, removal, window, roots, self-room and link scenarios found nothing either.
 
 Every planted defect is caught by the invariant it names, with a shortest history:
 
@@ -79,6 +81,9 @@ Every planted defect is caught by the invariant it names, with a shortest histor
 | any first secret counts, the first held kept                                               | P5        | A pairs with G; X reads its first secret, forges a second stamped as early as it can and sends it to A and B; A removes X; B checks mail; settle      |
 | only friendships live at the removal renewed                                               | P2b       | B pairs with G, A removes X, B checks mail, settle: everyone on the secret X read                                                                     |
 | the friend's earlier proposal kept                                                         | P2b       | F proposes a replacement, sealed to X too; A removes X; settle                                                                                        |
+| renewal by time, never ending                                                              | S0        | A removes X, F removes one of its own devices, settle: the two writers renew each other for ever                                                      |
+| renewal by time, with a fast clock                                                         | S1        | X's clock runs a month ahead; X names F; X and A check mail; A removes X; settle: 12 renewals                                                         |
+| the friend not forwarding                                                                  | P3        | A pairs with G, A checks mail, X forges a second first secret for G and mails it to G, settle                                                         |
 | two re-pairings left as they are                                                           | P3        | A unfriends F; A and B check mail; B and A pair with F; settle                                                                                        |
 | removal stamped by the writer's clock alone                                                | W1        | X names F; X and A check mail; A removes X; settle: X's rename, which A held, stops counting                                                          |
 | secret state dropped at a tombstone (with the removal stamped by the writer's clock alone) | P3        | X, still on the list, forges a proposal and an unfriend stamped past its removal and sends them to A; A checks mail, removes X; B checks mail; settle |
@@ -106,5 +111,5 @@ Every planted defect is caught by the invariant it names, with a shortest histor
 - A device's clock moves with its own actions and can jump ahead once; clocks don't move while mail settles. A hostile device stamps as early as it can, or at the newest time it has seen.
 - A history page carries one entry, and letters have no size.
 - The writer proposes after a removal and a hostile removed device proposes one of its own; rounds from the friend's side, and rounds two deep, aren't explored.
-- The friend has one device, which may propose one round.
+- The friend has one device, which may propose one round and remove one device of its own; what that removed device reads isn't tracked.
 - Older Pigeons, the update, recovery epochs, entries from keys never on the device log, size caps, and link and reply secrets aren't modelled; the spec's §7 says how each is handled.

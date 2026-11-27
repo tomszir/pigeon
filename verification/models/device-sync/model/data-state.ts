@@ -50,13 +50,22 @@ export interface Proposal {
   readonly at: number
   readonly by: string
   readonly round: number
+  /**
+   * The removals its maker had merged when it signed it (`rmX` on your side, `rmF` on the
+   * friend's): a kept marker, signed with the proposal, that says whether a removed device could
+   * have been sealed it.
+   */
+  readonly knew: readonly LogEvent[]
 }
 
 /** Per author: the highest entry number held with none missing, and a digest of those entries. */
 export type Summary = Partial<Record<Dev, { readonly n: number; readonly digest: string }>>
 
-/** The device log events a device has merged: X's removal, C's adding. */
-export type LogEvent = 'rmX' | 'addC'
+/**
+ * The device log events a device has merged: X's removal and C's adding on your log, and `rmF`,
+ * the friend's removal of one of its own devices, from the friend's log.
+ */
+export type LogEvent = 'rmX' | 'addC' | 'rmF'
 
 export interface Device {
   /** This device's own clock, which only its own actions move (and a clock gone wrong). */
@@ -128,6 +137,7 @@ export type Budget =
   | 'future'
   | 'skew'
   | 'friendRound'
+  | 'friendRemove'
 
 export interface FriendDevice {
   inc: string
@@ -135,6 +145,9 @@ export interface FriendDevice {
   learned: string[]
   /** Has merged the device log that removed X, from a letter carrying it. */
   knowsR: boolean
+  /** The friend's own writer removed one of the friend's devices, and when by its clock. */
+  ownRemoved: boolean
+  ownRemovedAt: number
 }
 
 export interface DataState {
@@ -158,7 +171,15 @@ export interface DataState {
   /** Ghost: the entries of X the writer held when it removed X, which must keep counting. */
   heldAtRemoval: string[]
   /** What a hostile removed device last sent each device, so it doesn't send the same again. */
-  xSent: Partial<Record<Dev, string>>
+  xSent: Record<string, string>
+  /** Ghost: the friendships live on the writer when it removed X. */
+  liveAtRemoval: string[]
+  /** Ghost: the friendships the writer has renewed after the removal. */
+  renewed: string[]
+  /** Ghost: renewals each side's writer has made of each friendship (`A:F1`, `F:F1`). */
+  renewals: Record<string, number>
+  /** Settling ran out of rounds without reaching a fixed point. */
+  unsettled?: true
 }
 
 /** Design rules, each a switch; a planted defect turns one off. */
@@ -206,10 +227,19 @@ export interface DataRules {
    */
   readonly rootRules: boolean
   /**
-   * After a removal the writer renews every live friendship whose secret it didn't itself propose
-   * after the removal, whenever it finds one. Off: only those live when it removed, once.
+   * After a removal, each side's writer renews every live friendship whose secret a removed device
+   * could have been sealed: one whose maker hadn't merged the removal when it signed it, or the
+   * removed device's own. Its renewal is made knowing the removal, so it never renews it again,
+   * and the other side renews it at most once. Off: renew unless the writer proposed it after the
+   * removal by time, which the other side's writer does too, for ever.
    */
-  readonly renewWindow: boolean
+  readonly renewByKnowledge: boolean
+  /** The writer considers friendships it learns of after the removal. Off: those live then. */
+  readonly renewLearned: boolean
+  /** The writer renews again from a rival that beat its renewal. Off: once per friendship. */
+  readonly renewRivals: boolean
+  /** A friend whose secret changes sends the proposals to your devices too, first secrets included. */
+  readonly friendForwards: boolean
   /** Two live friendships with one friend: the one the friend is seen in stays, the other ends. */
   readonly settleRepairs: boolean
   /** A removal's stamp is later than every entry the writer holds from that device. */
@@ -234,7 +264,10 @@ export const DESIGN: DataRules = {
   keepEndedSecrets: true,
   tellFriend: true,
   rootRules: true,
-  renewWindow: true,
+  renewByKnowledge: true,
+  renewLearned: true,
+  renewRivals: true,
+  friendForwards: true,
   settleRepairs: true,
   removalAfterHeld: true,
 }
@@ -284,7 +317,15 @@ export const propKey = (rules: DataRules, fr: FriendId, inc: string): string =>
 /** F is already a friend on every device, on secret F1r0, with an `add` entry the writer made. */
 export function initialState(cfg: DataConfig): DataState {
   const add: Entry = { by: WRITER, n: 1, st: 1, op: { k: 'add', fr: 'F', inc: 'F1' }, sig: 'A1a' }
-  const first: Proposal = { id: 'F1r0', inc: 'F1', replaces: null, at: 1, by: WRITER, round: 0 }
+  const first: Proposal = {
+    id: 'F1r0',
+    inc: 'F1',
+    replaces: null,
+    at: 1,
+    by: WRITER,
+    round: 0,
+    knew: [],
+  }
   const key = propKey(cfg.rules, 'F', 'F1')
   const devs: Partial<Record<Dev, Device>> = {}
   for (const d of cfg.devices) {
@@ -302,7 +343,16 @@ export function initialState(cfg: DataConfig): DataState {
     removalSt: 0,
     allKnew: false,
     renew: false,
-    friends: { F: { inc: 'F1', props: [first], learned: [first.id], knowsR: false } },
+    friends: {
+      F: {
+        inc: 'F1',
+        props: [first],
+        learned: [first.id],
+        knowsR: false,
+        ownRemoved: false,
+        ownRemovedAt: 0,
+      },
+    },
     mail: [],
     secrets: { [first.id]: { by: WRITER, knew: false, root: 'F' } },
     actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add' }],
@@ -311,6 +361,9 @@ export function initialState(cfg: DataConfig): DataState {
     nextLetter: 1,
     xSent: {},
     heldAtRemoval: [],
+    liveAtRemoval: [],
+    renewed: [],
+    renewals: {},
   }
 }
 

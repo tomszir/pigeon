@@ -19,6 +19,7 @@ import {
   type FriendDevice,
   type FriendId,
   knowsRemoval,
+  type LogEvent,
   listOf,
   type Proposal,
   propKey,
@@ -147,4 +148,9 @@ export function dropEnded(rules: DataRules, state: DataState, d: Dev): void {
   if (!dev || rules.keepEndedSecrets) return
   for (const e of dev.entries)
     if (e.op.k === 'tomb' && entryCounts(state, rules, d, e)) delete dev.props[e.op.inc]
+}
+
+/** The removals device `d` has merged, signed into what it proposes as `knew`. */
+export function knowledge(state: DataState, d: Dev): LogEvent[] {
+  return (state.devs[d]?.log ?? []).filter((e): e is LogEvent => e === 'rmX' || e === 'rmF')
 }

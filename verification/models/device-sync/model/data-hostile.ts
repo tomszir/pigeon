@@ -6,7 +6,15 @@ import { canon, copy } from './canon.ts'
 import { meet, newLetter } from './data-mail.ts'
 import { finish, type Step, spend } from './data-run.ts'
 import { countsOn, winner } from './data-secrets.ts'
-import { type DataConfig, type DataState, honest, propKey, REMOVED, WRITER } from './data-state.ts'
+import {
+  type DataConfig,
+  type DataState,
+  honest,
+  type LogEvent,
+  propKey,
+  REMOVED,
+  WRITER,
+} from './data-state.ts'
 import { tellFriends, winners } from './data-tell.ts'
 
 /** How many of the configured forgeries X has made so far. */
@@ -20,6 +28,8 @@ function forgedSoFar(state: DataState): number {
   return entries + proposals
 }
 
+const ALL: readonly LogEvent[] = ['rmX', 'rmF']
+
 function forgeStep(cfg: DataConfig, state: DataState): Step[] {
   const forge = cfg.forges?.[forgedSoFar(state)]
   if (!forge) return []
@@ -30,7 +40,8 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     const key = propKey(cfg.rules, 'F', 'F1')
     const held = winner(cfg.rules, dev.props[key] ?? [], countsOn(cfg.rules, next, REMOVED))
     if (!held) return []
-    const p = { id: 'F1x', inc: 'F1', replaces: held.id, at: 1, by: REMOVED, round: 50 }
+    // It claims to have known every removal, the worst case for a rule that trusts the marker.
+    const p = { id: 'F1x', inc: 'F1', replaces: held.id, at: 1, by: REMOVED, round: 50, knew: ALL }
     dev.props[key] = [...(dev.props[key] ?? []), p]
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
     return [['X forges a pair-secret proposal of its own for F, claiming round 50', next]]
@@ -40,7 +51,7 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     const inc = `${forge.root}1`
     if (!dev.learned.includes(`${inc}r0`)) return []
     const key = propKey(cfg.rules, forge.root, inc)
-    const p = { id: `${inc}x0`, inc, replaces: null, at: 0, by: REMOVED, round: 0 }
+    const p = { id: `${inc}x0`, inc, replaces: null, at: 0, by: REMOVED, round: 0, knew: ALL }
     dev.props[key] = [...(dev.props[key] ?? []), p]
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
     return [[`X forges a second first secret for ${forge.root}, stamped as early as it can`, next]]
@@ -93,6 +104,16 @@ export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
       const letter = newLetter(cfg, next, 'sync', REMOVED, [r], pick, forged, true)
       letter.log = letter.log.filter((e) => e !== 'rmX')
       out.push([`X sends what it forged to ${r}`, finish(cfg, next)])
+    }
+  // It holds the pair secrets, the tags and the friends' sealing keys, so it mails them too.
+  if (Object.keys(forged).length > 0)
+    for (const fr of ['F', 'G'] as const) {
+      if (!state.friends[fr] || state.xSent[fr] === canon(forged)) continue
+      const next = copy(state)
+      next.xSent[fr] = canon(forged)
+      const letter = newLetter(cfg, next, 'rekey-friend', REMOVED, [fr], [], forged, true)
+      letter.log = []
+      out.push([`X sends what it forged to ${fr}`, finish(cfg, next)])
     }
   for (const r of honest(state, cfg))
     if ((state.left.meet ?? 0) > 0) {

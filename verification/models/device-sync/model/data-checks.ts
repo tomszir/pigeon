@@ -250,6 +250,21 @@ const sameSecret = (cfg: DataConfig): Check => ({
   },
 })
 
+/**
+ * S1: each side's writer renews a friendship at most three times for one removal on each side:
+ * once for its own removal, and once for each rival signed without knowing it (the friend's
+ * renewal or round, a first secret the removed device forged).
+ */
+const renewalsBounded = (): Check => ({
+  id: 'S1 renewals are bounded',
+  check: (s) => {
+    const over = Object.entries(s.renewals).find(([, n]) => n > MAX_RENEWALS)
+    return over ? `${over[0]} renewed ${over[1]} times` : undefined
+  },
+})
+
+export const MAX_RENEWALS = 3
+
 /** P6: a device that knows of a removal is never on a replacement the removed device proposed. */
 const neverOnRemoved = (cfg: DataConfig): Check => ({
   id: 'P6 a removed device\u2019s proposal never wins once heard',
@@ -319,9 +334,15 @@ export function dataChecks(cfg: DataConfig) {
       nothingLate(cfg),
       discounted(cfg),
       neverOnRemoved(cfg),
+      renewalsBounded(),
     ],
     stepChecks: [tombsHold(cfg)],
     settled: [
+      {
+        id: 'S0 settling ends',
+        check: (s: DataState) =>
+          s.unsettled ? 'settling ran out of rounds without reaching a fixed point' : undefined,
+      },
       converge(cfg),
       unfriendStays(cfg),
       newestWins(cfg),
@@ -350,6 +371,10 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
     flags.push('X forged a proposal')
   if (s.tombs.length) flags.push('unfriended')
   if (s.left.link === 0) flags.push('C linked')
+  if (s.friends.F?.ownRemoved) flags.push('the friend removed a device')
+  if (Object.values(s.friends).some((f) => f?.props.some((p) => p.by === REMOVED)))
+    flags.push('a friend took a forged proposal')
+  if (Object.values(s.renewals).some((n) => n > 1)) flags.push('renewed more than once')
   if ((cfg.budgets.crash ?? 0) > (s.left.crash ?? 0)) flags.push('a tab closed')
   if (s.mail.some((l) => l.lost.length)) flags.push('letter lost')
   const sigs = honestDevs(cfg, s).flatMap((d) => (s.devs[d]?.entries ?? []).map((e) => e.sig))

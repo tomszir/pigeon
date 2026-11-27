@@ -1,6 +1,7 @@
 // The your-data model put together: how it settles, its scenarios, and its planted defects.
 import { canon, copy } from './canon.ts'
 import { dataChecks, dataFlags } from './data-checks.ts'
+import { friendPropose, friendToRenew } from './data-friend.ts'
 import { finish, sweep } from './data-run.ts'
 import {
   type DataConfig,
@@ -22,9 +23,19 @@ import type { Model } from './explore.ts'
  */
 export function settle(cfg: DataConfig, state: DataState): DataState {
   const s = copy(state)
-  for (let round = 0; round < 40; round++) {
+  for (let round = 0; ; round++) {
+    // Settling must reach a fixed point: running out of rounds is a failure (S0), never a stop.
+    if (round === SETTLE_ROUNDS) {
+      s.unsettled = true
+      break
+    }
     const before = canon(s)
     rekey(cfg, s)
+    if (friendToRenew(cfg, s, 'F')) {
+      const inc = s.friends.F?.inc ?? ''
+      s.renewals[`F:${inc}`] = (s.renewals[`F:${inc}`] ?? 0) + 1
+      friendPropose(cfg, s, 'F')
+    }
     for (const d of honest(s, cfg)) check(cfg, s, d)
     for (const r of ['F', 'G', ...(cfg.hostile ? [REMOVED] : [])]) check(cfg, s, r)
     const alive = new Set<string>([...honest(s, cfg), 'F', 'G', ...(cfg.hostile ? [REMOVED] : [])])
@@ -35,6 +46,9 @@ export function settle(cfg: DataConfig, state: DataState): DataState {
   }
   return s
 }
+
+/** More rounds than any settling the design allows needs; reaching it means it never ends. */
+export const SETTLE_ROUNDS = 40
 
 export function dataModel(cfg: DataConfig): Model<DataState> {
   const checks = dataChecks(cfg)
@@ -111,14 +125,23 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     { who: { skew: ['C'], unfriend: ['C'], pet: ['A', 'C'] }, targets: ['F'] },
   ),
   // A hostile device is removed: it proposes a pair secret of its own for F claiming a high round
-  // and unfriends F at a current stamp, sends them, and reads whatever is sealed to it, while the
-  // writer replaces the secrets and B adds a friend. (The early stamp is the room scenario's.)
+  // and unfriends F at a current stamp, sends them to your devices and to F, and reads whatever is
+  // sealed to it, while the writer replaces the secrets. (The early stamp is the room scenario's.)
   removal: config(
     'removal: a hostile removed device',
     ['A', 'B', 'X'],
     true,
+    { remove: 1 },
+    { forges: [proposeF, unfriendF] },
+  ),
+  // B pairs with G while it still takes X for yours, so X reads G's first secret; then the
+  // writer removes X, and must renew G's friendship too.
+  window: config(
+    'window: a friendship paired before the removal is heard',
+    ['A', 'B', 'X'],
+    true,
     { remove: 1, add: 1 },
-    { who: { add: ['B'] }, forges: [proposeF, unfriendF] },
+    { who: { add: ['B'] } },
   ),
   // The removed device meets a device that hasn't heard yet in the self room, and signs two
   // entries with one number, one for the writer and one for the others; your devices swap
@@ -148,6 +171,12 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     true,
     { remove: 1, friendRound: 1 },
   ),
+  // Both sides remove a device of their own: the friend first, then the writer. Each side's
+  // writer renews by the same rule, and settling must still end.
+  mutual: config('mutual: both sides remove a device of their own', ['A', 'B', 'X'], false, {
+    remove: 1,
+    friendRemove: 1,
+  }),
   // Two devices pair again with one friend at once, after an unfriend.
   race: config(
     'race: two devices pair again with one friend at once',
@@ -276,16 +305,37 @@ export const DEFECTS: readonly Defect[] = [
   {
     name: 'only friendships live at the removal renewed',
     what: 'a friendship paired in the window before every device heard keeps a secret the removed device read',
-    scenario: 'removal',
-    rule: 'renewWindow',
+    scenario: 'window',
+    rule: 'renewLearned',
     caughtBy: 'P2b no friendship on a secret a removed device read',
   },
   {
     name: 'the friend\u2019s earlier proposal kept',
     what: 'the friend\u2019s proposal made in the window beats the writer\u2019s renewal, and nothing renews from it',
     scenario: 'friendround',
-    rule: 'renewWindow',
+    rule: 'renewRivals',
     caughtBy: 'P2b no friendship on a secret a removed device read',
+  },
+  {
+    name: 'renewal by time, never ending',
+    what: 'each writer renews unless it proposed the secret after its removal, by time; both sides do',
+    scenario: 'mutual',
+    rule: 'renewByKnowledge',
+    caughtBy: 'S0 settling ends',
+  },
+  {
+    name: 'renewal by time, with a fast clock',
+    what: 'the writer renews until its own clock passes the removal\u2019s stamp, once per check',
+    scenario: 'skewremoval',
+    rule: 'renewByKnowledge',
+    caughtBy: 'S1 renewals are bounded',
+  },
+  {
+    name: 'the friend not forwarding',
+    what: 'a friend whose secret changes keeps it to itself, so a removed device mailing it splits the friendship',
+    scenario: 'roots',
+    rule: 'friendForwards',
+    caughtBy: 'P3 one pair secret per friend',
   },
   {
     name: 'two re-pairings left as they are',

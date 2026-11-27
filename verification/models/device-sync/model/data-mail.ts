@@ -3,6 +3,7 @@
 // proposals, and the sender's summary. Whoever opens it merges the log first, and counts the rest
 // only from a device on the list that results.
 import { uniq } from './canon.ts'
+import { friendTakes } from './data-friend.ts'
 import { dropEnded, propIds, takeProps } from './data-secrets.ts'
 import {
   byEntry,
@@ -134,25 +135,13 @@ export function takeEntries(
   return { entries: cfg.rules.stampOrder ? out.sort(byEntry) : out, changed }
 }
 
-/** A friend's device takes a replacement letter for the friendship it's in. */
-function friendTakes(state: DataState, letter: Letter, fr: 'F' | 'G'): void {
-  const friend = state.friends[fr]
-  if (!friend) return
-  if (letter.log.includes('rmX')) friend.knowsR = true
-  const props = Object.values(letter.props)
-    .flat()
-    .filter((p) => p.inc === friend.inc)
-  friend.learned = uniq([...friend.learned, ...props.map((p) => p.id)])
-  friend.props = [...friend.props, ...props.filter((p) => !friend.props.some((h) => h.id === p.id))]
-}
-
 /** Device `r` takes letter `index` of the mail. */
 export function deliver(cfg: DataConfig, state: DataState, index: number, r: string): void {
   const letter = state.mail[index]
   if (!letter) return
   letter.pending = letter.pending.filter((p) => p !== r)
   if (r === 'F' || r === 'G') {
-    friendTakes(state, letter, r)
+    friendTakes(cfg, state, letter, r)
     return
   }
   const d = r as Dev
