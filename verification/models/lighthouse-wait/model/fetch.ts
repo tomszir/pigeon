@@ -310,6 +310,22 @@ export function* stores(count: number, tags: readonly string[], size: number): G
   }
 }
 
+/** A look to check: the model's own, or an implementation's through an adapter. */
+export type LookWith = (
+  lighthouse: Lister,
+  tags: readonly string[],
+  place: Place,
+  taken: readonly string[],
+  limits: FetchLimits,
+  options: { readonly between?: () => void; readonly source?: SourceLimit },
+) => Look | Promise<Look>
+
+/** The model's look under `rules`, as a `LookWith`. */
+export const modelLook =
+  (rules: FetchRules = FETCH_RULES): LookWith =>
+  (lighthouse, tags, place, taken, limits, options) =>
+    look(lighthouse, tags, place, taken, limits, rules, options)
+
 export interface FetchFinding {
   readonly id: string
   readonly message: string
@@ -325,12 +341,12 @@ const listsFor = (tags: readonly string[], place: Place, limits: FetchLimits) =>
  * F3: a look that didn't finish moves on somewhere, or takes something new; F5: one that finished,
  * with nothing put meanwhile, saves a cursor as far as anything it listed.
  */
-export function checkStore(
+export async function checkStore(
   store: readonly Item[],
   tags: readonly string[],
   limits: FetchLimits,
-  rules: FetchRules = FETCH_RULES,
-): FetchFinding | undefined {
+  lookWith: LookWith = modelLook(),
+): Promise<FetchFinding | undefined> {
   const lighthouse = honest(store, limits.pageSize)
   let place = START
   let taken: readonly string[] = []
@@ -338,7 +354,7 @@ export function checkStore(
   const biggest = Math.max(0, ...store.map((item) => item.size))
   for (let round = 0; round <= store.length + 3; round++) {
     const bounds = lookBounds(limits, biggest, listsFor(tags, place, limits))
-    const result = look(lighthouse, tags, place, taken, limits, rules)
+    const result = await lookWith(lighthouse, tags, place, taken, limits, {})
     if (result.lists > bounds.lists || result.gets > bounds.gets || result.bytes > bounds.bytes)
       return {
         id: 'F1 bounded',
@@ -399,13 +415,13 @@ export function* schedules(
 }
 
 /** F2 when mail is put while a look is reading: every blob put is taken by a later look. */
-export function checkPutsDuring(
+export async function checkPutsDuring(
   store: readonly Item[],
   puts: readonly Put[],
   tags: readonly string[],
   limits: FetchLimits,
-  rules: FetchRules = FETCH_RULES,
-): FetchFinding | undefined {
+  lookWith: LookWith = modelLook(),
+): Promise<FetchFinding | undefined> {
   const lighthouse = honest(store, limits.pageSize)
   const mine = store.filter((item) => item.mine).map((item) => item.id)
   let calls = 0
@@ -416,13 +432,12 @@ export function checkPutsDuring(
   let place = START
   let taken: readonly string[] = []
   for (let round = 0; round <= store.length + puts.length + 3; round++) {
-    const result = look(
+    const result = await lookWith(
       lighthouse,
       tags,
       place,
       taken,
       limits,
-      rules,
       round === 0 ? { between } : {},
     )
     place = result.place
@@ -440,14 +455,14 @@ export function checkPutsDuring(
  * F4: a sender who floods tags with junk, more than a look takes, before every look and between
  * its lists, holds back mail under another tag by at most a look per flooded tag.
  */
-export function checkFlood(
+export async function checkFlood(
   tags: readonly string[],
   flooded: readonly string[],
   letterAt: number,
   limits: FetchLimits,
-  rules: FetchRules = FETCH_RULES,
+  lookWith: LookWith = modelLook(),
   source?: SourceLimit,
-): FetchFinding | undefined {
+): Promise<FetchFinding | undefined> {
   const lighthouse = honest([], limits.pageSize)
   const victim = tags.find((tag) => !flooded.includes(tag)) ?? ''
   const flood = () => {
@@ -460,7 +475,7 @@ export function checkFlood(
   for (let n = 0; n <= bound; n++) {
     flood()
     if (n === letterAt) lighthouse.put(victim, { mine: true, shared: false }, 'letter')
-    const result = look(lighthouse, tags, place, taken, limits, rules, {
+    const result = await lookWith(lighthouse, tags, place, taken, limits, {
       between: flood,
       ...(source === undefined ? {} : { source }),
     })
@@ -475,16 +490,16 @@ export function checkFlood(
 }
 
 /** F1 against a Lighthouse that lists without end. */
-export function checkEndless(
+export async function checkEndless(
   tags: readonly string[],
   limits: FetchLimits,
-  rules: FetchRules = FETCH_RULES,
-): FetchFinding | undefined {
+  lookWith: LookWith = modelLook(),
+): Promise<FetchFinding | undefined> {
   let place = START
   const lighthouse = endless(limits.pageSize, 1)
   for (let n = 0; n < 4; n++) {
     const bounds = lookBounds(limits, 1, listsFor(tags, place, limits))
-    const result = look(lighthouse, tags, place, [], limits, rules)
+    const result = await lookWith(lighthouse, tags, place, [], limits, {})
     if (result.lists > bounds.lists || result.gets > bounds.gets || result.bytes > bounds.bytes)
       return {
         id: 'F1 bounded',
@@ -493,4 +508,52 @@ export function checkEndless(
     place = result.place
   }
   return undefined
+}
+
+/** The cap model's limits, scaled down: pages of 2, two gets, six lists, two tags on their own. */
+export const FETCH_LIMITS: FetchLimits = {
+  tagsPerList: 2,
+  pageSize: 2,
+  maxGets: 2,
+  maxBytes: 3,
+  maxLists: 6,
+  maxBehind: 2,
+}
+const TAGS = ['a', 'b', 'c']
+const FLOOD_TAGS = ['f', 'x', 'y']
+
+/**
+ * Every case the cap model checks, run through `lookWith`: the first thing wrong, if any, and how
+ * many cases it took.
+ */
+export async function checkLooks(
+  lookWith: LookWith,
+): Promise<{ readonly found?: FetchFinding; readonly cases: number }> {
+  let cases = 0
+  for (const store of stores(4, TAGS, 1)) {
+    cases += 1
+    const finding = await checkStore(store, TAGS, FETCH_LIMITS, lookWith)
+    if (finding !== undefined) return { found: finding, cases }
+  }
+  for (const store of stores(2, TAGS, 1))
+    for (const puts of schedules(2, 4, TAGS)) {
+      cases += 1
+      const finding = await checkPutsDuring(store, puts, TAGS, FETCH_LIMITS, lookWith)
+      if (finding !== undefined) return { found: finding, cases }
+    }
+  const floodLimits = { ...FETCH_LIMITS, tagsPerList: 3 }
+  for (const flooded of [['x'], ['x', 'y']])
+    for (let at = 0; at < 5; at++) {
+      cases += 1
+      const finding =
+        (await checkFlood(FLOOD_TAGS, flooded, at, floodLimits, lookWith)) ??
+        (await checkFlood(FLOOD_TAGS, flooded, at, floodLimits, lookWith, { tag: 'x', max: 1 }))
+      if (finding !== undefined) return { found: finding, cases }
+    }
+  for (const tags of [TAGS, ['a', 'b', 'c', 'd', 'e']]) {
+    cases += 1
+    const finding = await checkEndless(tags, FETCH_LIMITS, lookWith)
+    if (finding !== undefined) return { found: finding, cases }
+  }
+  return { cases }
 }
