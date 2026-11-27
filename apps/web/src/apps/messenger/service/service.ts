@@ -48,6 +48,7 @@ import {
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   MAX_WRONG_TRIES,
+  type MailKind,
   type NewFriend,
   newCode,
   type OpenStep,
@@ -97,7 +98,13 @@ import {
 } from './invite-links.ts'
 import { createLetters, type Letters } from './letters.ts'
 import { createMailSchedule, MAIL_AFTER_SEND_MS } from './mail-schedule.ts'
-import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
+import {
+  createMailbox,
+  type Mailbox,
+  type Recipient,
+  type RecipientList,
+  type Source,
+} from './mailbox.ts'
 import type {
   CodeAsk,
   FriendView,
@@ -124,7 +131,7 @@ import {
   settle,
   winner,
 } from './rekeys.ts'
-import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
+import { isRemovalNotice, type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
   bundleFriends,
   type FarewellRecord,
@@ -403,11 +410,41 @@ export async function createMessenger(deps: MessengerDeps) {
             friend(id) === undefined
               ? []
               : ((await recipient(id, friendMailSecret(id)))?.lighthouses ?? []),
+          listOf: (letter) => listNow(letter),
           onReceipt: (sender, id) => void letters?.receipted(sender, id).catch(() => undefined),
           onStored: (to, id, where) => void letters?.stored(to, id, where).catch(() => undefined),
         })
   /** Messages left at friends' Lighthouses while they're away, once friends are loaded. */
   let letters: Letters | undefined
+
+  /**
+   * A letter's recipient's devices as their list stands now, and the keys known for them: your
+   * other devices on your list, or a friend's on theirs. Nothing for any other (an invite's
+   * answer, a farewell to someone no longer a friend), nor for a notice to devices just taken
+   * off your list kept from before such notices were marked: those go as they were sealed.
+   */
+  async function listNow(letter: {
+    readonly kind: MailKind
+    readonly to: Recipient
+    readonly body: Json
+  }): Promise<RecipientList | undefined> {
+    const { to } = letter
+    if (to.tags !== undefined) return undefined
+    if (to.identity === self) {
+      if (letter.kind === 'self' && isRemovalNotice(letter.body)) return undefined
+      const book = await mailBook(self)
+      const keys = Object.values(book.keys).filter((key) => devices.isOwnOther(key.device))
+      return { devices: theirDevices(self), keys }
+    }
+    if (friend(to.identity) === undefined) return undefined
+    // Their list as kept, never the empty one of a friend whose log isn't loaded yet.
+    await devices.loadFriend(to.identity)
+    const book = await mailBook(to.identity)
+    const keys = Object.values(book.keys).filter(
+      (key) => devices.classify(to.identity, key.device) === 'friend',
+    )
+    return { devices: theirDevices(to.identity), keys }
+  }
   /** Invite links through Lighthouses, once friends are loaded. */
   let inviteLinks: InviteLinks | undefined
 
@@ -514,7 +551,9 @@ export async function createMessenger(deps: MessengerDeps) {
       }
       const off = removed.filter((device) => !devices.isOwnOther(device))
       const gone = off.length === 0 ? undefined : await selfRecipient(off)
-      if (gone !== undefined) await mailbox.send('self', gone, selfNewsBody({ log, keys: [] }))
+      // To them alone, however the list changes, until they've heard.
+      if (gone !== undefined)
+        await mailbox.send('self', gone, selfNewsBody({ log, keys: [] }), { fixed: true })
     })().catch(() => undefined)
   }
 
@@ -921,8 +960,11 @@ export async function createMessenger(deps: MessengerDeps) {
   // Secrets from before this Pigeon sealed every secret it handed over are replaced: a new one
   // goes sealed to the devices that hold the old, as `mail:rekey`, and both sides move to its
   // rooms. The decisions are in rekeys.ts. One at a time, so two letters about the same secret
-  // never both read it before either writes it. Nothing in here waits on a send: a letter is
-  // taken while the mailbox is still fetching, and a send waits for the fetch.
+  // never both read it before either writes it. Nothing in here waits on a put: a letter is
+  // taken while the mailbox is still fetching, and a put waits for the fetch. A new winner's
+  // letters go into the outbox before the winner is kept, so a tab that closes between the two
+  // puts them at its next start, and one that closes before either takes again there the letter
+  // that brought it, which no receipt answered yet, or proposes again.
   let rekeying: Promise<unknown> = Promise.resolve()
   function oneRekey<T>(run: () => Promise<T>): Promise<T> {
     const next = rekeying.then(run, run)
@@ -930,10 +972,14 @@ export async function createMessenger(deps: MessengerDeps) {
     return next
   }
 
-  /** A send in the background, as all rekey mail is. */
-  function mailRekey(to: Recipient | undefined, body: Json) {
-    if (mailbox === undefined || to === undefined) return
-    void mailbox.send('rekey', to, body).catch(() => undefined)
+  /**
+   * Into the outbox, to be put in the background, as all rekey mail is. False when it couldn't
+   * be kept there (the Messenger closed, or the store refused it); true once it is, or when
+   * there's nobody to seal it to.
+   */
+  async function mailRekey(to: Recipient | undefined, body: Json): Promise<boolean> {
+    if (mailbox === undefined || to === undefined) return true
+    return mailbox.queue('rekey', to, body).catch(() => false)
   }
 
   /** A proposing device still on its side's list, as this device knows the lists. */
@@ -995,68 +1041,86 @@ export async function createMessenger(deps: MessengerDeps) {
   }
 
   /**
-   * Sends the winning proposal for a friend's secret, with the round before's winner when a
-   * removal began it, to the friend's devices under `winnerTags`, and to your own other devices;
-   * or only to `side`.
+   * Sends the winning proposal for a friend's secret as `kept` holds it, with the round before's
+   * winner when a removal began it, to the friend's devices under `winnerTags`, and to your own
+   * other devices; or only to `side`. True once every letter is in the outbox.
    */
   async function tellFriendWinner(
     id: PeerId,
+    kept: SecretState | undefined,
     side?: 'friend' | 'own',
     more: readonly (string | undefined)[] = [],
-  ) {
-    const view = friend(id)
-    const kept = view === undefined ? undefined : secretState(view)
+  ): Promise<boolean> {
     const rekey = kept === undefined ? undefined : await winner(crypto, kept)
-    if (kept?.replacing === undefined || rekey === undefined) return
+    if (kept?.replacing === undefined || rekey === undefined) return true
     const prior = await priorWinner(crypto, kept)
     const logs = [devices.own(), devices.friendLog(id)]
+    let queued = true
     if (side !== 'own')
       for (const under of winnerTags(kept, more))
-        mailRekey(await recipient(id, under), rekeyBody(rekey, { logs, prior }))
-    if (side !== 'friend')
-      mailRekey(await selfRecipient(), rekeyBody(rekey, { friend: id, logs, prior }))
+        if (!(await mailRekey(await recipient(id, under), rekeyBody(rekey, { logs, prior }))))
+          queued = false
+    if (side !== 'friend') {
+      const own = rekeyBody(rekey, { friend: id, logs, prior })
+      if (!(await mailRekey(await selfRecipient(), own))) queued = false
+    }
+    return queued
   }
 
   /**
-   * Sends the winning proposal for the self secret, with the round before's winner when a
-   * removal began it, to your other devices under `winnerTags`.
+   * Sends the winning proposal for the self secret as `kept` holds it, with the round before's
+   * winner when a removal began it, to your other devices under `winnerTags`. True once every
+   * letter is in the outbox.
    */
-  async function tellSelfWinner(more: readonly (string | undefined)[] = []) {
-    const kept = devices.selfSecretState()
+  async function tellSelfWinner(
+    kept: SecretState | undefined,
+    more: readonly (string | undefined)[] = [],
+  ): Promise<boolean> {
     const rekey = kept === undefined ? undefined : await winner(crypto, kept)
-    if (kept?.replacing === undefined || rekey === undefined) return
+    if (kept?.replacing === undefined || rekey === undefined) return true
     const prior = await priorWinner(crypto, kept)
+    const body = rekeyBody(rekey, { logs: [devices.own()], prior })
+    let queued = true
     for (const under of winnerTags(kept, more))
-      mailRekey(
-        await selfRecipient(undefined, under),
-        rekeyBody(rekey, { logs: [devices.own()], prior }),
-      )
+      if (!(await mailRekey(await selfRecipient(undefined, under), body))) queued = false
+    return queued
   }
 
   /**
    * A proposal for a friend's secret, from them or, as a copy, from your own other device, with
-   * `prior`, the winner of the round it began from, when it came with one.
+   * `prior`, the winner of the round it began from, when it came with one. False when a new
+   * winner's letters couldn't be kept in the outbox: then neither is the winner, and the letter
+   * that brought it doesn't count, so it's looked at again.
    */
   function takeFriendRekey(id: PeerId, rekey: Rekey, sender: Sender, prior?: Rekey) {
     return oneRekey(async () => {
       const view = friend(id)
       const kept = view === undefined ? undefined : secretState(view)
-      if (kept === undefined || view?.removedYouAt !== undefined) return
+      if (kept === undefined || view?.removedYouAt !== undefined) return true
       const step = await consider(crypto, kept, rekey, sender, clock.now(), countsFor(id), prior)
+      const next = step.next ?? kept
+      const more = [heldBefore(kept), kept.secret]
+      if (step.changed && !(await tellFriendWinner(id, next, undefined, more))) return false
       if (step.next !== undefined) await keepFriendSecret(id, step.next)
-      if (step.changed) await tellFriendWinner(id, undefined, [heldBefore(kept), kept.secret])
-      else if (step.answer)
-        await tellFriendWinner(id, sender.other ? 'friend' : 'own', step.under ?? [])
+      if (!step.changed && step.answer)
+        await tellFriendWinner(id, next, sender.other ? 'friend' : 'own', step.under ?? [])
+      return true
     })
   }
 
-  /** A proposal for the self secret, from another of your devices. */
+  /**
+   * A proposal for the self secret, from another of your devices. False, as for a friend's,
+   * when a new winner's letters couldn't be kept in the outbox.
+   */
   function takeSelfRekey(rekey: Rekey, device: PeerId, prior?: Rekey) {
     return oneRekey(async () => {
       const kept = devices.selfSecretState()
-      if (kept === undefined || devices.status() !== 'active') return
+      if (kept === undefined || devices.status() !== 'active') return true
       const sender = { other: true, device }
       const step = await consider(crypto, kept, rekey, sender, clock.now(), countsForSelf, prior)
+      const next = step.next ?? kept
+      if (step.changed && !(await tellSelfWinner(next, [heldBefore(kept), kept.secret])))
+        return false
       if (step.next !== undefined) {
         await devices.setSelfSecretState(step.next)
         // A self secret from before may have been seen while a device was linked; one replaced
@@ -1064,8 +1128,8 @@ export async function createMessenger(deps: MessengerDeps) {
         if (step.changed && kept.sealed !== true) await askToCheckDevices()
         if (selfSession !== undefined) await syncRooms(selfSession)
       }
-      if (step.changed) await tellSelfWinner([heldBefore(kept), kept.secret])
-      else if (step.answer) await tellSelfWinner(step.under ?? [])
+      if (!step.changed && step.answer) await tellSelfWinner(next, step.under ?? [])
+      return true
     })
   }
 
@@ -1080,25 +1144,15 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed) return false
     if (letter.sender === self) {
       if (!devices.isOwnOther(letter.from)) return false
-      if (read.friend === undefined) await takeSelfRekey(read.rekey, letter.from, read.prior)
-      else if (friend(read.friend) !== undefined)
-        await takeFriendRekey(
-          read.friend,
-          read.rekey,
-          { other: false, device: letter.from },
-          read.prior,
-        )
-      return true
+      if (read.friend === undefined) return takeSelfRekey(read.rekey, letter.from, read.prior)
+      if (friend(read.friend) === undefined) return true
+      const copy = { other: false, device: letter.from }
+      return takeFriendRekey(read.friend, read.rekey, copy, read.prior)
     }
     if (read.friend !== undefined || friend(letter.sender) === undefined) return true
     if (devices.classify(letter.sender, letter.from) !== 'friend') return false
-    await takeFriendRekey(
-      letter.sender,
-      read.rekey,
-      { other: true, device: letter.from },
-      read.prior,
-    )
-    return true
+    const from = { other: true, device: letter.from }
+    return takeFriendRekey(letter.sender, read.rekey, from, read.prior)
   }
 
   /** The rooms a secret is met in around `now`, the days either side included. */
@@ -1157,7 +1211,9 @@ export async function createMessenger(deps: MessengerDeps) {
               )
         if (to === undefined || to.keys.length === 0) continue
         const logs = whose === self ? [devices.own()] : [devices.own(), devices.friendLog(whose)]
-        if (await box.send('rekey', to, rekeyBody(rekey, { logs, prior }))) stored = true
+        // To that device alone, however their list grows, while it's on it.
+        const body = rekeyBody(rekey, { logs, prior })
+        if (await box.send('rekey', to, body, { pinned: true })) stored = true
       }
       if (!stored) return
       await oneRekey(async () => {
@@ -1252,8 +1308,9 @@ export async function createMessenger(deps: MessengerDeps) {
           // on, which the removed device may know but can't open what's sealed there.
           if ((await recipient(view.id, mailSecret(kept))) === undefined) continue
           const { next } = await begin(crypto, signer, kept, newSecret(), clock.now())
-          await keepFriendSecret(view.id, next)
-          await tellFriendWinner(view.id, undefined, [kept.secret])
+          // Kept only once its letters are in the outbox; otherwise begun again next check.
+          if (await tellFriendWinner(view.id, next, undefined, [kept.secret]))
+            await keepFriendSecret(view.id, next)
           continue
         }
         const gone = proposerGone(kept, countsFor(view.id))
@@ -1263,8 +1320,8 @@ export async function createMessenger(deps: MessengerDeps) {
         const old = kept.replacing?.old ?? kept.secret
         if ((await recipient(view.id, old)) === undefined) continue
         const { next } = await propose(crypto, signer, kept, newSecret(), clock.now())
-        await keepFriendSecret(view.id, next)
-        await tellFriendWinner(view.id, undefined, [heldBefore(kept)])
+        if (await tellFriendWinner(view.id, next, undefined, [heldBefore(kept)]))
+          await keepFriendSecret(view.id, next)
       }
       await replaceSelfSecret()
     })
@@ -1282,9 +1339,9 @@ export async function createMessenger(deps: MessengerDeps) {
       }
       if ((await selfRecipient(undefined, mailSecret(kept))) === undefined) return
       const { next } = await begin(crypto, signer, kept, newSecret(), clock.now())
+      if (!(await tellSelfWinner(next, [kept.secret]))) return
       await devices.setSelfSecretState(next)
       if (selfSession !== undefined) await syncRooms(selfSession)
-      await tellSelfWinner([kept.secret])
       return
     }
     const gone = proposerGone(kept, countsForSelf)
@@ -1304,10 +1361,10 @@ export async function createMessenger(deps: MessengerDeps) {
     const old = kept.replacing?.old ?? kept.secret
     if ((await selfRecipient(undefined, old)) === undefined) return
     const { next } = await propose(crypto, signer, kept, newSecret(), clock.now())
+    if (!(await tellSelfWinner(next, [heldBefore(kept)]))) return
     await devices.setSelfSecretState(next)
     await askToCheckDevices()
     if (selfSession !== undefined) await syncRooms(selfSession)
-    await tellSelfWinner([heldBefore(kept)])
   }
 
   /**

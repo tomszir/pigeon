@@ -51,6 +51,22 @@ export const selfNewsBody = (news: SelfNews): Json =>
     ...(news.invites === undefined ? {} : { invites: news.invites }),
   }) as unknown as Json
 
+/**
+ * Whether a body is the news left for devices just taken off your list: the device log alone,
+ * with no keys and nothing else. Any other news carries at least the sending device's own key.
+ */
+export function isRemovalNotice(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false
+  const { keys, profile, lighthouses, invites } = body as Record<string, unknown>
+  return (
+    Array.isArray(keys) &&
+    keys.length === 0 &&
+    profile === undefined &&
+    lighthouses === undefined &&
+    invites === undefined
+  )
+}
+
 const isTime = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 

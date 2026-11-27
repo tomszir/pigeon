@@ -14,7 +14,14 @@ import {
 import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
 import { describe, expect, it, vi } from 'vitest'
 import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
-import { createMailbox, RESEND_AFTER_MS, type Recipient, type Source } from './mailbox.ts'
+import type { Store } from '../../../platform/storage/storage.ts'
+import {
+  createMailbox,
+  RESEND_AFTER_MS,
+  type Recipient,
+  type RecipientList,
+  type Source,
+} from './mailbox.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 const NOON = Date.UTC(2026, 10, 25, 12)
@@ -94,7 +101,16 @@ function setup(
     })
   const seal = fakeSealCrypto()
   let r = 0
-  const device = (name: string, identity: string) => {
+  const device = (
+    name: string,
+    identity: string,
+    kept: {
+      store?: Store
+      stopped?: () => boolean
+      listOf?: () => Promise<RecipientList | undefined>
+      lighthousesOf?: () => Promise<readonly LighthouseAddress[]>
+    } = {},
+  ) => {
     const signer = fakeSigner(name)
     const sealer = seal.sealer(name)
     const clients = new Map<string, LighthouseClient>()
@@ -107,7 +123,7 @@ function setup(
         sealer,
         signer,
         self: fakeSigner(identity).id,
-        store: createMemoryStore(),
+        store: kept.store ?? createMemoryStore(),
         // A device's clock, which may run ahead of the Lighthouse's.
         now: () => now + (options.skew ?? 0),
         random: (length) => new Uint8Array(length).fill(++r % 250),
@@ -120,7 +136,9 @@ function setup(
           return c
         },
         head: () => ({ epoch: 0, seq: 0 }),
-        stopped: () => false,
+        stopped: kept.stopped ?? (() => false),
+        ...(kept.listOf === undefined ? {} : { listOf: kept.listOf }),
+        ...(kept.lighthousesOf === undefined ? {} : { lighthousesOf: kept.lighthousesOf }),
       }),
     }
   }
@@ -173,6 +191,183 @@ describe('the mailbox', () => {
     const fromMika: Source = { sender: toMika.identity, secret, kinds: ['receipt'] }
     await rook.mailbox.fetch([address], [fromMika], async () => true)
     expect(await rook.mailbox.waitingOn()).toEqual([])
+  })
+
+  it('keeps a letter sent during a fetch before it’s put, and puts it at the next start', async () => {
+    const { address, device, recipient } = setup()
+    const store = createMemoryStore()
+    let closed = false
+    const rook = device('rook-laptop', 'rook', { store, stopped: () => closed })
+    const mika = device('mika-phone', 'mika')
+    const toMika = await recipient(mika, 'mika')
+    const toRook = await recipient(rook, 'rook')
+    await mika.mailbox.send('farewell', toRook, {})
+    const fromMika: Source = { sender: toMika.identity, secret, kinds: ['farewell'] }
+    // Rook's answer is sent while his fetch is still taking Mika's letter, and his tab closes
+    // before the fetch ends, so before the put the fetch holds up.
+    await rook.mailbox.fetch([address], [fromMika], async () => {
+      await rook.mailbox.queue('rekey', toMika, { answer: 1 })
+      const outbox = (await store.get('mail-outbox')) as { kind: string; putAt: number }[]
+      expect(outbox).toMatchObject([{ kind: 'rekey', putAt: 0 }])
+      closed = true
+      return true
+    })
+    const fromRook: Source = { sender: toRook.identity, secret, kinds: ['rekey'] }
+    const take = vi.fn(async (_source: Source, _letter: Letter) => true)
+    await mika.mailbox.fetch([address], [fromRook], take)
+    expect(take).not.toHaveBeenCalled()
+
+    // Started again on what the tab kept: the letter goes.
+    const again = device('rook-laptop', 'rook', { store })
+    await again.mailbox.resend()
+    await mika.mailbox.fetch([address], [fromRook], take)
+    expect(take).toHaveBeenCalledOnce()
+    expect(take.mock.calls[0]?.[1]).toMatchObject({ kind: 'rekey', body: { answer: 1 } })
+  })
+
+  it('seals a letter’s first put to the list as it is then, across a restart', async () => {
+    const { address, device, recipient } = setup()
+    const store = createMemoryStore()
+    let closed = false
+    const laptop = device('mika-laptop', 'mika')
+    const phone = device('mika-phone', 'mika')
+    const tablet = device('mika-tablet', 'mika')
+    const keyOf = (d: ReturnType<typeof device>) => bindSealingKey(d.signer, d.sealer)
+    const listOf =
+      (...ds: ReturnType<typeof device>[]) =>
+      async () => ({
+        devices: ds.map((d) => d.signer.id),
+        keys: await Promise.all(ds.map(keyOf)),
+      })
+    const rook = device('rook-laptop', 'rook', { store, stopped: () => closed })
+    const toRook = await recipient(rook, 'rook')
+    const toMika: Recipient = { ...toRook, identity: fakeSigner('mika').id, keys: [] }
+    await laptop.mailbox.send('farewell', toRook, {})
+    // Queued for her laptop and phone while a fetch runs, and the tab closes before the put.
+    await rook.mailbox.fetch(
+      [address],
+      [{ sender: toMika.identity, secret, kinds: ['farewell'] }],
+      async () => {
+        await rook.mailbox.queue(
+          'rekey',
+          { ...toMika, keys: (await listOf(laptop, phone)()).keys },
+          {},
+        )
+        closed = true
+        return true
+      },
+    )
+    // Before it starts again, Mika takes her phone off her list and links a tablet.
+    const again = device('rook-laptop', 'rook', { store, listOf: listOf(laptop, tablet) })
+    await again.mailbox.resend()
+    const fromRook: Source = { sender: toRook.identity, secret, kinds: ['rekey'], replyTo: toRook }
+    const opens = async (d: ReturnType<typeof device>) => {
+      let seen = 0
+      await d.mailbox.fetch(
+        [address],
+        [fromRook],
+        async () => true,
+        async (letters) => {
+          seen += letters.length
+        },
+      )
+      return seen
+    }
+    expect(await opens(phone)).toBe(0)
+    expect(await opens(tablet)).toBe(1)
+    expect(await opens(laptop)).toBe(1)
+    await again.mailbox.fetch(
+      [address],
+      [{ sender: toMika.identity, secret, kinds: ['receipt'] }],
+      async () => true,
+    )
+    expect(await again.mailbox.waitingOn()).toEqual([])
+  })
+
+  it('holds a letter for a list with no key it knows, and drops one with nobody left', async () => {
+    const { address, device, recipient } = setup()
+    const store = createMemoryStore()
+    let closed = false
+    const laptop = device('mika-laptop', 'mika')
+    const rook = device('rook-laptop', 'rook', { store, stopped: () => closed })
+    const toRook = await recipient(rook, 'rook')
+    const toMika = await recipient(laptop, 'mika')
+    await laptop.mailbox.send('farewell', toRook, {})
+    await rook.mailbox.fetch(
+      [address],
+      [{ sender: toMika.identity, secret, kinds: ['farewell'] }],
+      async () => {
+        await rook.mailbox.queue('rekey', toMika, {})
+        closed = true
+        return true
+      },
+    )
+    // Her laptop is on her list, with a key this Pigeon no longer has: nothing is put to the
+    // key from before, and the letter waits.
+    let list: RecipientList = { devices: [laptop.signer.id], keys: [] }
+    const again = device('rook-laptop', 'rook', { store, listOf: async () => list })
+    await again.mailbox.resend()
+    const take = vi.fn(async () => true)
+    await laptop.mailbox.fetch(
+      [address],
+      [{ sender: toRook.identity, secret, kinds: ['rekey'] }],
+      take,
+    )
+    expect(take).not.toHaveBeenCalled()
+    expect((await again.mailbox.waitingOn()).map((to) => to.identity)).toEqual([toMika.identity])
+    // Taken off her list: nobody is left to hear it.
+    list = { devices: [], keys: [] }
+    await again.mailbox.resend()
+    expect(await again.mailbox.waitingOn()).toEqual([])
+  })
+
+  it('keeps a fixed letter to its devices, and a pinned one to those still listed', async () => {
+    const { address, device, recipient } = setup()
+    const laptop = device('rook-laptop', 'rook')
+    const phone = device('rook-phone', 'rook')
+    const tablet = device('rook-tablet', 'rook')
+    const keyOf = (d: ReturnType<typeof device>) => bindSealingKey(d.signer, d.sealer)
+    // The phone was just taken off the list; the tablet is on it.
+    const listOf = async () => ({ devices: [tablet.signer.id], keys: [await keyOf(tablet)] })
+    const store = createMemoryStore()
+    const desk = device('rook-desk', 'rook', { store, listOf })
+    const toPhone = await recipient(phone, 'rook')
+    const toTablet = await recipient(tablet, 'rook')
+    await desk.mailbox.send('self', toPhone, { gone: 1 }, { fixed: true })
+    await desk.mailbox.send('rekey', toTablet, { again: 1 }, { pinned: true })
+    await desk.mailbox.send('rekey', toPhone, { again: 2 }, { pinned: true })
+    const fromDesk: Source = { sender: toPhone.identity, secret, kinds: ['self', 'rekey'] }
+    const bodies = async (d: ReturnType<typeof device>) => {
+      const got: unknown[] = []
+      await d.mailbox.fetch([address], [fromDesk], async (_source, letter) => {
+        got.push(letter.body)
+        return true
+      })
+      return got
+    }
+    expect(await bodies(phone)).toEqual([{ gone: 1 }])
+    expect(await bodies(tablet)).toEqual([{ again: 1 }])
+    expect(await bodies(laptop)).toEqual([])
+    // The pinned letter to the phone, off the list, waits on nobody and is gone.
+    const outbox = (await store.get('mail-outbox')) as { body: unknown }[]
+    expect(outbox.map((letter) => letter.body)).toEqual([{ gone: 1 }, { again: 1 }])
+  })
+
+  it('puts a letter about a secret again at the friend’s Lighthouses as they are now', async () => {
+    const { address, device, recipient, tick } = setup()
+    const mika = device('mika-phone', 'mika')
+    const rook = device('rook-laptop', 'rook', { lighthousesOf: async () => [address] })
+    // Sent when no Lighthouse of hers was known; she has said one since.
+    await rook.mailbox.send('rekey', await recipient(mika, 'mika', []), {})
+    tick(RESEND_AFTER_MS + DAY)
+    await rook.mailbox.resend()
+    const take = vi.fn(async () => true)
+    await mika.mailbox.fetch(
+      [address],
+      [{ sender: fakeSigner('rook').id, secret, kinds: ['rekey'] }],
+      take,
+    )
+    expect(take).toHaveBeenCalledOnce()
   })
 
   it('measures each blob it gets, whatever size the Lighthouse listed', async () => {
