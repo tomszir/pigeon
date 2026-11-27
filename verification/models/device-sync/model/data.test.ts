@@ -23,6 +23,7 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
     'settled:every device knew of the removal',
   ],
   race: ['settled:F paired twice at once', 'settled:unfriended'],
+  relay: ['settled:secret replaced after removal', 'settled:every device knew of the removal'],
   mutual: [
     'settled:the friend removed a device',
     'settled:every device knew of the removal',

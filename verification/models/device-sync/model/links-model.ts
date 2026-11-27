@@ -75,7 +75,10 @@ function removeSteps(cfg: LinksConfig, s: LinksState): Step[] {
     writer.log = [...writer.log, ...events]
     writer.clock += 1
     writer.dirty = true
-    if (events.includes('rmX')) next.removalSt = writer.clock
+    // As in your data: X's threshold is later than everything the writer holds from X, and the
+    // writer's own clock doesn't follow it.
+    const held = writer.entries.filter((e) => e.by === 'X').map((e) => e.st + 1)
+    if (events.includes('rmX')) next.removalSt = Math.max(writer.clock, ...held)
     extra?.(next)
     out.push([label, xReads(cfg, next)])
   }

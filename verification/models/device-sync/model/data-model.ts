@@ -177,6 +177,18 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     remove: 1,
     friendRemove: 1,
   }),
+  // The friend has a second device. The first passes it your writer's renewed chain, and the
+  // second sends it back to your devices, sealed to its own copy of your list.
+  relay: config(
+    'relay: the friend\u2019s second device passes the chain on',
+    ['A', 'B', 'X'],
+    true,
+    {
+      remove: 1,
+      friendSync: 1,
+      friendRelay: 1,
+    },
+  ),
   // Two devices pair again with one friend at once, after an unfriend.
   race: config(
     'race: two devices pair again with one friend at once',
@@ -336,6 +348,34 @@ export const DEFECTS: readonly Defect[] = [
     scenario: 'roots',
     rule: 'friendForwards',
     caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'a relay without the other side\u2019s log',
+    what: 'the friend\u2019s devices pass a chain between themselves without your log, so a stale copy of your list seals it to X',
+    scenario: 'relay',
+    rule: 'relayCarriesLogs',
+    caughtBy: 'P2 no new secret to a removed device',
+  },
+  {
+    name: 'the friend taking a removed device\u2019s letters',
+    what: 'a friend that knows of the removal still takes a forged first secret from the removed device',
+    scenario: 'roots',
+    rule: 'friendRefuses',
+    caughtBy: 'R5 a friend takes nothing from a removed device once it knows',
+  },
+  {
+    name: 'the friend counting a removed device\u2019s replacement',
+    what: 'a friend that knows of the removal still counts the removed device\u2019s proposal',
+    scenario: 'removal',
+    rule: 'friendDiscounts',
+    caughtBy: 'P5 no friendship on a removed device\u2019s secret',
+  },
+  {
+    name: 'a removed device\u2019s first secret trusted by its marker',
+    what: 'the writer renews a removed device\u2019s backdated first secret only if its marker lacks the removal, and the marker says it knew',
+    scenario: 'roots',
+    rule: 'renewRemovedOwn',
+    caughtBy: 'P5 no friendship on a removed device\u2019s secret',
   },
   {
     name: 'two re-pairings left as they are',

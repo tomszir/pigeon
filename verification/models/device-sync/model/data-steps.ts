@@ -3,7 +3,7 @@
 // none changes the one it was given. What a hostile removed device does is in data-hostile.ts.
 import { copy, uniq } from './canon.ts'
 import { counts, fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
-import { friendPropose, friendToRenew } from './data-friend.ts'
+import { friendPropose, friendRelay, friendSync, friendToRenew } from './data-friend.ts'
 import { hostileSteps } from './data-hostile.ts'
 import { deliver, meet, newLetter, sealTo, takeEntries, toSend } from './data-mail.ts'
 import { finish, type Step, spend, sweep } from './data-run.ts'
@@ -196,7 +196,7 @@ export function toRenew(cfg: DataConfig, state: DataState): [string, FriendId][]
     )
     if (!held) return false
     if (!cfg.rules.renewByKnowledge) return !(held.by === WRITER && held.at > state.removalSt)
-    return held.by === REMOVED || !held.knew.includes('rmX')
+    return (cfg.rules.renewRemovedOwn && held.by === REMOVED) || !held.knew.includes('rmX')
   })
 }
 
@@ -447,6 +447,18 @@ function friendSteps(cfg: DataConfig, state: DataState): Step[] {
         ) + 1
     }
     out.push(['F removes one of its own devices', finish(cfg, next)])
+  }
+  if ((state.left.friendSync ?? 0) > 0) {
+    const next = copy(state)
+    spend(next, 'friendSync')
+    friendSync(cfg, next, 'F')
+    out.push(["F's first device passes the chain to its second", finish(cfg, next)])
+  }
+  if ((state.left.friendRelay ?? 0) > 0 && state.friends.F?.second) {
+    const next = copy(state)
+    spend(next, 'friendRelay')
+    friendRelay(cfg, next, 'F')
+    out.push(["F's second device sends the chain to your devices", finish(cfg, next)])
   }
   if (friendToRenew(cfg, state, 'F')) {
     const next = copy(state)

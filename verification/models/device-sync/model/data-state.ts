@@ -138,6 +138,8 @@ export type Budget =
   | 'skew'
   | 'friendRound'
   | 'friendRemove'
+  | 'friendSync'
+  | 'friendRelay'
 
 export interface FriendDevice {
   inc: string
@@ -148,6 +150,13 @@ export interface FriendDevice {
   /** The friend's own writer removed one of the friend's devices, and when by its clock. */
   ownRemoved: boolean
   ownRemovedAt: number
+  /**
+   * The friend's second device, in the relay scenario only: the chain it holds from the first,
+   * and whether its copy of your list has your removal of X.
+   */
+  second?: { props: Proposal[]; knowsR: boolean }
+  /** Ghost: it took a removed device's letter after it knew of the removal. */
+  tookFromRemoved?: true
 }
 
 export interface DataState {
@@ -240,6 +249,18 @@ export interface DataRules {
   readonly renewRivals: boolean
   /** A friend whose secret changes sends the proposals to your devices too, first secrets included. */
   readonly friendForwards: boolean
+  /** A friend refuses a letter from a device it knows you removed. */
+  readonly friendRefuses: boolean
+  /** A friend's device doesn't count a replacement by a device it knows you removed. */
+  readonly friendDiscounts: boolean
+  /** The writer renews a secret the removed device made, whatever its marker claims. */
+  readonly renewRemovedOwn: boolean
+  /**
+   * A letter carrying a chain carries both sides' newest device logs, merged before sealing, also
+   * between one side's own devices. Off: the friend's devices pass a chain between themselves
+   * without your log, so a second device seals it on a stale copy of your list.
+   */
+  readonly relayCarriesLogs: boolean
   /** Two live friendships with one friend: the one the friend is seen in stays, the other ends. */
   readonly settleRepairs: boolean
   /** A removal's stamp is later than every entry the writer holds from that device. */
@@ -268,6 +289,10 @@ export const DESIGN: DataRules = {
   renewLearned: true,
   renewRivals: true,
   friendForwards: true,
+  friendRefuses: true,
+  friendDiscounts: true,
+  renewRemovedOwn: true,
+  relayCarriesLogs: true,
   settleRepairs: true,
   removalAfterHeld: true,
 }

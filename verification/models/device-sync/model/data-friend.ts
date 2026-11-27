@@ -18,6 +18,9 @@ import {
   REMOVED,
 } from './data-state.ts'
 
+/** The friend's own removed device, which the model never has propose. */
+const FRIEND_REMOVED = 'Fz'
+
 /** The removals a friend's device has merged: yours of X, and its own. */
 export const friendKnows = (f: FriendDevice): LogEvent[] => [
   ...(f.knowsR ? (['rmX'] as const) : []),
@@ -85,6 +88,9 @@ export function friendToRenew(cfg: DataConfig, state: DataState, fr: FriendId): 
   if (!f?.ownRemoved) return false
   const held = friendSecret(cfg.rules, state, f)
   if (!held) return false
+  // A secret its own removed device made is renewed whatever its marker claims; the model's
+  // friend has no removed device of its own that proposes, so only the marker is exercised.
+  if (held.by === FRIEND_REMOVED) return true
   if (cfg.rules.renewByKnowledge) return !held.knew.includes('rmF')
   return !(held.by === fr && held.at > f.ownRemovedAt)
 }
@@ -95,7 +101,10 @@ export function friendTakes(cfg: DataConfig, state: DataState, letter: Letter, f
   if (!friend) return
   if (letter.log.includes('rmX')) friend.knowsR = true
   // A letter from a device it knows you removed counts for nothing.
-  if (letter.from === REMOVED && friend.knowsR) return
+  if (letter.from === REMOVED && friend.knowsR) {
+    if (cfg.rules.friendRefuses) return
+    friend.tookFromRemoved = true
+  }
   const before = friendSecret(cfg.rules, state, friend)?.id
   const props = Object.values(letter.props)
     .flat()
@@ -104,4 +113,38 @@ export function friendTakes(cfg: DataConfig, state: DataState, letter: Letter, f
   friend.props = [...friend.props, ...props.filter((p) => !friend.props.some((h) => h.id === p.id))]
   const after = friendSecret(cfg.rules, state, friend)?.id
   if (cfg.rules.friendForwards && after !== before) friendSend(cfg, state, fr)
+}
+
+/**
+ * The relay scenario: the friend's first device passes its chain to its second device, with its
+ * copy of your device log too under the design, or without it under the planted defect.
+ */
+export function friendSync(cfg: DataConfig, state: DataState, fr: FriendId): void {
+  const f = state.friends[fr]
+  if (!f) return
+  const knew = f.second?.knowsR ?? false
+  f.second = { props: [...f.props], knowsR: knew || (cfg.rules.relayCarriesLogs && f.knowsR) }
+}
+
+/** The friend's second device sends your devices the chain, sealed to its copy of your list. */
+export function friendRelay(cfg: DataConfig, state: DataState, fr: FriendId): void {
+  const f = state.friends[fr]
+  const second = f?.second
+  if (!f || !second) return
+  const to = (Object.keys(state.devs) as Dev[]).filter((d) => d !== REMOVED || !second.knowsR)
+  state.mail.push({
+    id: state.nextLetter++,
+    kind: 'friend-rekey',
+    from: fr,
+    to,
+    pending: to,
+    lost: [],
+    put: true,
+    knew: second.knowsR,
+    sealedWith: [],
+    log: second.knowsR ? ['rmX'] : [],
+    entries: [],
+    props: { [propKey(cfg.rules, fr, f.inc)]: second.props },
+    summary: {},
+  })
 }

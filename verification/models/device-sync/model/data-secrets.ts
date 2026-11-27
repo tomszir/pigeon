@@ -79,7 +79,7 @@ export const countsOn =
 export const countsOnFriend =
   (rules: DataRules, state: DataState, friend: FriendDevice) =>
   (p: Proposal): boolean => {
-    if (!(friend.knowsR && p.by === REMOVED)) return true
+    if (!rules.friendDiscounts || !(friend.knowsR && p.by === REMOVED)) return true
     if (p.replaces !== null) return false
     return !rules.rootRules || p.at < state.removalSt
   }

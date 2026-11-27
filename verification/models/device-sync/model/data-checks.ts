@@ -265,6 +265,15 @@ const renewalsBounded = (): Check => ({
 
 export const MAX_RENEWALS = 3
 
+/** R5: a friend takes nothing from a device it knows you removed. */
+const friendTakesNothingLate = (): Check => ({
+  id: 'R5 a friend takes nothing from a removed device once it knows',
+  check: (s) => {
+    const fr = Object.entries(s.friends).find(([, f]) => f?.tookFromRemoved)
+    return fr ? `${fr[0]} took a letter from ${REMOVED} after it knew of the removal` : undefined
+  },
+})
+
 /** P6: a device that knows of a removal is never on a replacement the removed device proposed. */
 const neverOnRemoved = (cfg: DataConfig): Check => ({
   id: 'P6 a removed device\u2019s proposal never wins once heard',
@@ -335,6 +344,7 @@ export function dataChecks(cfg: DataConfig) {
       discounted(cfg),
       neverOnRemoved(cfg),
       renewalsBounded(),
+      friendTakesNothingLate(),
     ],
     stepChecks: [tombsHold(cfg)],
     settled: [
