@@ -1,13 +1,13 @@
-// A conversation with a real friend: the chat log as a transcript, buzzes in between, the
-// typing line, and a status bar that says plainly how the words travel.
-import { formatFingerprint, type LogEntry, type PeerId } from '@pigeon/core'
+// A conversation with a real friend: the chat log as panels, buzzes in between, the typing
+// line, and a status bar that says plainly how the words travel.
+import { formatFingerprint, type PeerId } from '@pigeon/core'
 import { createEffect, Show } from 'solid-js'
 import type { MenuEntry } from '../../../ui/menu/menu.tsx'
-import type { TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
 import { Conversation } from '../conversation/conversation.tsx'
 import { FriendAvatar } from '../friend-avatar/friend-avatar.tsx'
-import type { MessageRoute } from '../service/letters.ts'
-import type { FriendView, Messenger, Note } from '../service/messenger.ts'
+import type { FriendView, Messenger } from '../service/messenger.ts'
+import { clockTime, dayName } from './clock-text.ts'
+import { letterSections, readAtOpen, transcriptFor } from './panels.ts'
 
 export interface LiveConversationProps {
   messenger: Messenger
@@ -24,236 +24,6 @@ export interface LiveConversationProps {
   saveText?: ((name: string, text: string) => void) | undefined
   /** Now, for the line saying when it was saved. */
   now?: (() => number) | undefined
-}
-
-/** "6:38 PM", in the visitor's own time zone, like the taskbar clock. */
-export function clockTime(at: number): string {
-  const date = new Date(at)
-  const hours = date.getHours()
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${hours % 12 === 0 ? 12 : hours % 12}:${minutes} ${hours < 12 ? 'AM' : 'PM'}`
-}
-
-/** "November 24", the day without the year, as the era's chat windows wrote it. */
-export function dayName(at: number): string {
-  return new Date(at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
-}
-
-type NoteKind = Note['kind']
-const NOTES: Record<
-  NoteKind,
-  { kind: 'buzz' | 'system'; text: (name: string, at: number) => string }
-> = {
-  'buzz-in': { kind: 'buzz', text: (name) => `${name} has just sent you a buzz!` },
-  'buzz-out': { kind: 'buzz', text: () => 'You have just sent a buzz!' },
-  online: { kind: 'system', text: (name, at) => `${name} came online at ${clockTime(at)}.` },
-  offline: { kind: 'system', text: (name, at) => `${name} went offline at ${clockTime(at)}.` },
-}
-
-const listOf = (names: readonly string[]) =>
-  names.length <= 1
-    ? (names[0] ?? '')
-    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-
-/** What a chat says under a message that came by letter, from the Messenger's word for it. */
-export function routeText(
-  route: MessageRoute | undefined,
-): Extract<TranscriptEntry, { kind: 'message' }>['route'] {
-  if (route?.kind !== 'arrived') return undefined
-  return {
-    kind: 'letter',
-    text: `Came by letter, through ${route.through}`,
-    through: route.through,
-  }
-}
-
-type Way = NonNullable<Extract<TranscriptEntry, { kind: 'message' }>['way']>
-
-/**
- * How a message of yours is getting there, as the icon after it and its words. Which of them is
- * spelled out in words under the message is left to the caller. With `tryAgain`, one that no
- * Lighthouse took yet offers Try Again, which calls it.
- */
-export function wayText(
-  route: MessageRoute | undefined,
-  friend: string,
-  tryAgain?: () => void,
-): Pick<Way, 'state' | 'text' | 'action'> | undefined {
-  switch (route?.kind) {
-    case 'sealing':
-      return { state: 'sealing', text: 'Sealing...' }
-    case 'left':
-      return {
-        state: 'left',
-        text: `Left at ${listOf(route.where)} for when ${friend}'s back`,
-      }
-    case 'waiting':
-      return { state: 'waiting', text: `Waits until ${friend} is online` }
-    case 'retrying':
-      // While a try runs there is nothing to press: the words say it is under way.
-      if (route.attempt === 'trying')
-        return { state: 'retrying', text: 'Trying to leave it at a Lighthouse...' }
-      return {
-        state: 'retrying',
-        text:
-          route.attempt === 'failed'
-            ? 'Still not left at a Lighthouse: none answered. Pigeon tries again at the next mail check.'
-            : 'Not left at a Lighthouse yet: Pigeon tries again at the next mail check.',
-        ...(tryAgain === undefined ? {} : { action: { label: 'Try Again', run: tryAgain } }),
-      }
-    case 'has':
-      return { state: 'has', text: `${friend} has it` }
-    default:
-      return undefined
-  }
-}
-
-type MessageEntry = Extract<TranscriptEntry, { kind: 'message' }>
-
-const cameByLetter = (entry: TranscriptEntry): entry is MessageEntry =>
-  entry.kind === 'message' && entry.route?.kind === 'letter'
-
-/** "3 messages by letter", "1 message by letter". */
-const countText = (count: number) => `${count} ${count === 1 ? 'message' : 'messages'} by letter`
-
-/** The Lighthouse names in a run of letter messages, once each, in the order they came. */
-const throughOf = (run: readonly MessageEntry[]): string[] => [
-  ...new Set(run.flatMap((entry) => entry.route?.through ?? [])),
-]
-
-/**
- * Gathers the messages that came by letter and weren't read yet into sections: "While you were
- * away · 3 messages by letter, through Dovecote".
- *
- * Messages arrived together when nothing else lies between them in the chat: a run of a friend's
- * messages that all came by letter, with none of yours, none that came straight, no buzz and no
- * coming or going in between. Unread is the other half: a message you had already read when the
- * chat opened (`settled`, by entry id) is shown like any other message, with nothing to say it
- * came by letter, so a section ends when you've read it and the chat is opened again. Every Lighthouse the run came through
- * is named; mail is only ever fetched from your own list, so each one is yours.
- *
- * The chat doesn't keep when a letter was taken, only where it sits in the log, so the run
- * itself is what says "together": a few letters taken hours apart, with nothing from either of
- * you between, were all waiting when you came back.
- */
-export function letterSections(
-  entries: readonly TranscriptEntry[],
-  settled: ReadonlySet<string>,
-): TranscriptEntry[] {
-  const out: TranscriptEntry[] = []
-  let run: MessageEntry[] = []
-  const end = () => {
-    if (run.length > 0)
-      out.push({
-        kind: 'section',
-        id: `letters-${run[0]?.id ?? ''}`,
-        heading: `While you were away · ${countText(run.length)}, through ${listOf(throughOf(run))}`,
-        entries: run,
-      })
-    run = []
-  }
-  for (const entry of entries) {
-    if (cameByLetter(entry) && !entry.own && !settled.has(entry.id)) {
-      run.push(entry)
-      continue
-    }
-    end()
-    // Read before the chat opened: a message like any other, with no mark of how it came.
-    if (cameByLetter(entry)) {
-      const { route: _route, ...plain } = entry
-      out.push(plain)
-      continue
-    }
-    out.push(entry)
-  }
-  end()
-  return out
-}
-
-/**
- * Which entries had been read when a chat opened: all but the friend's last `unread`, since
- * `unread` counts what arrived since you last looked. Entries that come later aren't in it.
- */
-export function readAtOpen(view: FriendView, mine: (author: PeerId) => boolean): Set<string> {
-  const read = new Set<string>()
-  let unread = view.unread
-  for (const entry of view.log.entries.toReversed()) {
-    if (!mine(entry.author) && unread > 0) unread -= 1
-    else read.add(entry.sig)
-  }
-  return read
-}
-
-/** A way that needs a look: nothing has the message yet, and nothing is on its way to them. */
-const needsAttention = (state: Way['state']) => state === 'waiting' || state === 'retrying'
-
-/** `mine` says which entries are yours: written on any of your devices. `routeOf` says each one's way. */
-export function transcriptFor(
-  view: FriendView,
-  mine: PeerId | ((author: PeerId) => boolean),
-  selfName: string,
-  routeOf: (entry: LogEntry) => MessageRoute | undefined = () => undefined,
-  /** Puts what no Lighthouse took yet at once: offered under such a message as Try Again. */
-  tryAgain?: () => void,
-) {
-  const isMine = typeof mine === 'string' ? (author: PeerId) => author === mine : mine
-  const entries: TranscriptEntry[] = []
-  // Where the chat began: kept with the friend (addedAt), so it's there on every visit.
-  if (view.addedAt > 0)
-    entries.push({
-      kind: 'system',
-      id: 'became-friends',
-      text: `${selfName} and ${view.name} became friends on ${dayName(view.addedAt)} at ${clockTime(view.addedAt)}.`,
-    })
-  const notes = [...view.notes]
-  // The newest message of yours spells its way out in words, the others only show the icon.
-  const newestOwn = view.log.entries.findLastIndex((entry) => isMine(entry.author))
-  const flush = (upTo: number) => {
-    while (notes[0] !== undefined && notes[0].after <= upTo) {
-      const note = notes.shift()
-      if (note === undefined) continue
-      const shown = NOTES[note.kind]
-      entries.push({
-        kind: shown.kind,
-        id: `note-${note.id}`,
-        text: shown.text(view.name, note.at),
-      })
-    }
-  }
-  view.log.entries.forEach((entry, index) => {
-    flush(index)
-    const own = isMine(entry.author)
-    const route = routeText(routeOf(entry))
-    const found = wayText(routeOf(entry), view.name, tryAgain)
-    const way: Way | undefined =
-      found === undefined
-        ? undefined
-        : { ...found, spelled: index === newestOwn || needsAttention(found.state) }
-    entries.push({
-      kind: 'message',
-      id: entry.sig,
-      from: own ? selfName : view.name,
-      own,
-      text: entry.text,
-      ...(route === undefined ? {} : { route }),
-      ...(way === undefined ? {} : { way }),
-    })
-  })
-  flush(Number.POSITIVE_INFINITY)
-  if (view.removedYouAt !== undefined)
-    entries.push({
-      kind: 'system',
-      id: 'removed-you',
-      text: `${view.name} removed you as a friend on ${dayName(view.removedYouAt)} at ${clockTime(view.removedYouAt)}.`,
-    })
-  // Their Pigeon is from before device logs: it only takes messages from your first device.
-  if (view.seesThisDevice === false)
-    entries.push({
-      kind: 'system',
-      id: 'needs-update',
-      text: `${view.name}'s Pigeon needs an update to get messages from this device. Your first device still reaches them, and reloading Pigeon updates it.`,
-    })
-  return entries
 }
 
 /** "Conversation with Mika.txt", without characters file systems refuse. */
@@ -424,6 +194,15 @@ export function LiveConversation(props: LiveConversationProps) {
               size={32}
             />
           }
+          bird={() => (
+            <FriendAvatar
+              messenger={props.messenger}
+              id={props.friend}
+              name={current().name}
+              size={32}
+              decorative
+            />
+          )}
           route={current().online ? 'direct, encrypted' : 'offline'}
           connected={current().online}
           entries={letterSections(
@@ -433,6 +212,7 @@ export function LiveConversation(props: LiveConversationProps) {
               props.messenger.profile().handle,
               (entry) => props.messenger.messageRoute(props.friend, entry),
               () => void props.messenger.tryAgain(props.friend),
+              props.now?.() ?? Date.now(),
             ),
             readBefore(current()),
           )}

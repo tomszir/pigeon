@@ -2,7 +2,7 @@
 
 Unread messages that came by letter are gathered under one heading in the chat, with the details of each behind a small envelope, instead of a line above every message.
 
-- Status: accepted
+- Status: superseded by 0061
 - Date: 2026-11-26
 
 ## Context

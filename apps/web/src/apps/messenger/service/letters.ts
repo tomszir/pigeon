@@ -12,10 +12,12 @@ import {
   type ChatLog,
   entryKey,
   isLogEntry,
+  isPeerId,
   type Json,
   type Letter,
   type LighthouseAddress,
   type LogEntry,
+  type LogSummary,
   lowSEntry,
   MAX_MAIL_MS,
   type PeerId,
@@ -37,6 +39,8 @@ export const MAX_LETTERS_WAITING = 50
 /** Letters remembered per friend, and messages remembered as having come by letter. */
 const MAX_SENT_KEPT = 200
 const MAX_ARRIVED_KEPT = 500
+/** Authors remembered per friend as having been said to be held: their devices and yours. */
+const MAX_HELD_KEPT = 32
 
 const key = (friend: PeerId) => `letters:${friend}`
 
@@ -64,6 +68,20 @@ interface FriendLetters {
    * and the Lighthouse that brought them.
    */
   readonly arrived: Readonly<Record<string, string>>
+  /**
+   * What the friend's devices have said they hold, by author: the highest sequence of that
+   * author's entries (the friend's `log-sync`, which says how far each author's entries go
+   * unbroken). It only grows. Kept apart from `delivered`, which also counts what a sync was
+   * answered with: this is only what a device of theirs said it had.
+   */
+  readonly held?: Readonly<Record<string, number>>
+}
+
+/** A stored record with its `held` cleaned; one from before it was kept has none. */
+const withKeptHeld = (stored: FriendLetters): FriendLetters => {
+  const { held: _held, ...rest } = stored
+  const held = cleanHeld(stored.held)
+  return held === undefined ? rest : { ...rest, held }
 }
 
 const EMPTY: FriendLetters = { delivered: 0, mailed: 0, sent: [], arrived: {} }
@@ -78,6 +96,42 @@ const isFriendLetters = (value: unknown): value is FriendLetters => {
     typeof f.arrived === 'object' &&
     f.arrived !== null
   )
+}
+
+/**
+ * What was kept of `held`, read as untrusted: only real authors (valid ids) with whole numbers
+ * above zero, from the object's own keys, and no more than `MAX_HELD_KEPT` of them.
+ */
+function cleanHeld(held: unknown): Record<string, number> | undefined {
+  if (typeof held !== 'object' || held === null || Array.isArray(held)) return undefined
+  const kept = Object.entries(held)
+    .filter(([author, seq]) => isPeerId(author) && Number.isSafeInteger(seq) && seq > 0)
+    .slice(-MAX_HELD_KEPT)
+  return kept.length === 0 ? undefined : Object.fromEntries(kept)
+}
+
+/**
+ * `letters` with what a friend's sync said they hold folded in. It only ever goes higher, is
+ * kept for real authors alone and no higher than the chat held of that author when the sync
+ * came (`known`, the highest sequence of each author), so a claim of more than there was can't
+ * cover what is written afterwards.
+ */
+function withHeld(
+  letters: FriendLetters,
+  have: LogSummary,
+  known: ReadonlyMap<string, number>,
+): FriendLetters {
+  const held: Record<string, number> = { ...cleanHeld(letters.held) }
+  let changed = false
+  for (const [author, claimed] of Object.entries(have)) {
+    const top = known.get(author)
+    if (top === undefined || !isPeerId(author) || !Number.isSafeInteger(claimed)) continue
+    const seq = Math.min(claimed, top)
+    if (seq <= (held[author] ?? 0)) continue
+    held[author] = seq
+    changed = true
+  }
+  return changed ? { ...letters, held: cleanHeld(held) as Record<string, number> } : letters
 }
 
 /** What a chat says under one message about its way. */
@@ -105,6 +159,8 @@ export interface LettersDeps {
   readonly stopped: () => boolean
   /** The friend's chat as this device has it now. */
   readonly chat: (friend: PeerId) => ChatLog | undefined
+  /** Which authors are you: this device and your other ones. Defaults to this device alone. */
+  readonly isMine?: (author: PeerId) => boolean
   /** Whether any of the friend's devices is connected now. */
   readonly connected: (friend: PeerId) => boolean
   /** Who they are to mail, under their pair secret; undefined when they can't be mailed. */
@@ -150,7 +206,8 @@ export function createLetters(deps: LettersDeps) {
     let pending = loading.get(friend)
     if (pending === undefined) {
       pending = store.get(key(friend)).then((stored) => {
-        const letters = known.get(friend) ?? (isFriendLetters(stored) ? stored : EMPTY)
+        const letters =
+          known.get(friend) ?? (isFriendLetters(stored) ? withKeptHeld(stored) : EMPTY)
         known.set(friend, letters)
         loading.delete(friend)
         return letters
@@ -164,7 +221,7 @@ export function createLetters(deps: LettersDeps) {
     // Old letters and arrivals go first: only the recent ones are worth saying.
     const sent = next.sent.slice(-MAX_SENT_KEPT)
     const arrived = Object.fromEntries(Object.entries(next.arrived).slice(-MAX_ARRIVED_KEPT))
-    const kept = { ...next, sent, arrived }
+    const kept = withKeptHeld({ ...next, sent, arrived })
     known.set(friend, kept)
     bump((n) => n + 1)
     if (!deps.stopped()) await store.set(key(friend), kept)
@@ -314,11 +371,18 @@ export function createLetters(deps: LettersDeps) {
 
     /**
      * One of their devices synced: it has what it said, and gets the rest of this device's
-     * entries in answer, so it has them all.
+     * entries in answer, so it has them all. What it said is kept as proof that it has them.
      */
-    synced(friend: PeerId) {
+    synced(friend: PeerId, have?: LogSummary) {
       const last = ownEntries(friend).at(-1)
       if (last !== undefined) void this.delivered(friend, last.seq)
+      if (have !== undefined) {
+        // What the chat held when they said it: what they claim past that can't be anything of ours.
+        const top = new Map<string, number>()
+        for (const entry of deps.chat(friend)?.entries ?? [])
+          top.set(entry.author, Math.max(top.get(entry.author) ?? 0, entry.seq))
+        void update(friend, (letters) => withHeld(letters, have, top))
+      }
     },
 
     /** A receipt for letter `id` came from one of the friend's devices. */
@@ -394,21 +458,33 @@ export function createLetters(deps: LettersDeps) {
     /** Loads what's kept for a friend, so `route` can say it. */
     load: (friend: PeerId) => load(friend).then(() => bump((n) => n + 1)),
 
-    /** Where one message is, for the chat to say under it; nothing for one that went live. */
+    /**
+     * Where one message is, for the chat to say: nothing for a message of yours that went
+     * straight and that they haven't been seen to hold, and `has` only on their word.
+     */
     route(friend: PeerId, entry: LogEntry): MessageRoute | undefined {
       version()
       const letters = known.get(friend) ?? EMPTY
       // Kept by author and number; a record from before that is kept by the entry's signature.
       const through = letters.arrived[entryKey(entry)] ?? letters.arrived[entry.sig]
       if (through !== undefined) return { kind: 'arrived', through }
-      if (entry.author !== deps.device) return undefined
+      const here = entry.author === deps.device
+      if (!here && deps.isMine?.(entry.author) !== true) return undefined
+      // They have it when one of their devices said so in a sync, or a receipt came for the
+      // letter that carried it. That holds for a message that went straight to them too.
+      if ((letters.held?.[entry.author] ?? 0) >= entry.seq) return { kind: 'has' }
+      if (!here) return undefined
       // The latest letter that carried it: an expired one's entries go again in a newer one.
       const letter = letters.sent.findLast(
         (other) => entry.seq >= other.from && entry.seq <= other.upTo,
       )
-      // Went by letter and they have it: worth saying; went live: nothing to say.
       if (letter?.received === true) return { kind: 'has' }
-      if (entry.seq <= letters.delivered) return letter === undefined ? undefined : { kind: 'has' }
+      // Seen to stay connected, or answered in a sync, but nothing says they have it: it isn't
+      // claimed. Where a letter left it is still said; a message that went straight says nothing.
+      if (entry.seq <= letters.delivered)
+        return letter !== undefined && letter.where.length > 0
+          ? { kind: 'left', where: letter.where }
+          : undefined
       if (waiting.has(friend) || mailing.has(friend)) return { kind: 'sealing' }
       if (letter !== undefined && good(letter))
         return letter.where.length > 0

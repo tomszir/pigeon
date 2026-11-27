@@ -802,7 +802,7 @@ export async function createMessenger(deps: MessengerDeps) {
       void saveFriends()
     },
     // Their device said what it has, and the session answers with the rest: it has it all.
-    has: (id) => letters?.synced(id),
+    has: (id, event) => letters?.synced(id, event.have),
     offline: (id) => {
       void Promise.resolve().then(() => letters?.left(id))
       setState('friends', id, { online: false, typing: false })
@@ -1680,6 +1680,7 @@ export async function createMessenger(deps: MessengerDeps) {
       store,
       mailbox,
       device: signer.id,
+      isMine: devices.isMine,
       random: deps.random,
       now: clock.now,
       sleep: clock.sleep,
@@ -2436,7 +2437,9 @@ export async function createMessenger(deps: MessengerDeps) {
     selfFingerprint,
     /**
      * Where one of the chat's messages is: sealing, left at Lighthouses, received, or come by
-     * letter; nothing for one that went straight to them. Call `loadLetters` when the chat opens.
+     * letter. Received only on their word (a sync of theirs that holds it, or a receipt), so
+     * nothing for one that went straight to them that they haven't said they hold. Call
+     * `loadLetters` when the chat opens.
      */
     messageRoute: (id: PeerId, entry: LogEntry) => letters?.route(id, entry),
     loadLetters: (id: PeerId) => letters?.load(id) ?? Promise.resolve(),

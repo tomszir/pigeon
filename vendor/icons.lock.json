@@ -353,6 +353,30 @@
       "icon": "buzz-22"
     },
     {
+      "source": "brand",
+      "icon": "letter-16"
+    },
+    {
+      "source": "brand",
+      "icon": "letter-22"
+    },
+    {
+      "source": "brand",
+      "icon": "letter-32"
+    },
+    {
+      "source": "brand",
+      "icon": "letter-opening-32"
+    },
+    {
+      "source": "brand",
+      "icon": "tick-mailed"
+    },
+    {
+      "source": "brand",
+      "icon": "tick-received"
+    },
+    {
       "source": "tango",
       "icon": "network-workgroup",
       "context": "places",

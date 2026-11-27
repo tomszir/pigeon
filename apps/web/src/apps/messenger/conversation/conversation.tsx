@@ -10,7 +10,8 @@ import { MenuBar } from '../../../ui/menu-bar/menu-bar.tsx'
 import { StatusBar } from '../../../ui/status-bar/status-bar.tsx'
 import { TextField } from '../../../ui/text-field/text-field.tsx'
 import { Toolbar, ToolbarButton, ToolbarSeparator } from '../../../ui/toolbar/toolbar.tsx'
-import { Transcript, type TranscriptEntry } from '../../../ui/transcript/transcript.tsx'
+import type { TranscriptEntry } from '../../../ui/transcript/entries.ts'
+import { Transcript } from '../../../ui/transcript/transcript.tsx'
 import styles from './conversation.module.css'
 
 export interface ConversationProps {
@@ -19,6 +20,8 @@ export interface ConversationProps {
   fingerprint: string
   /** The friend's pixel pigeon, before the "To:" line. */
   avatar?: JSX.Element
+  /** The friend's bird beside the last panel of each run of theirs. */
+  bird?: (() => JSX.Element) | undefined
   /** How the friend is reached: "direct, encrypted", "offline". */
   route: string
   /** Whether the route is up, which colours it. */
@@ -126,7 +129,11 @@ export function Conversation(props: ConversationProps) {
         </div>
       </div>
       <div class={styles.transcript}>
-        <Transcript label={`Conversation with ${props.name}`} entries={withTyping()} />
+        <Transcript
+          label={`Conversation with ${props.name}`}
+          entries={withTyping()}
+          bird={props.bird}
+        />
       </div>
       <div class={styles.compose}>
         <TextField

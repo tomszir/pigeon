@@ -38,6 +38,10 @@ export const TANGO_ICONS = [
 export const BRAND_ICONS = [
   'bell-16',
   'buzz-22',
+  'letter-16',
+  'letter-22',
+  'letter-32',
+  'letter-opening-32',
   'messenger-16',
   'messenger-22',
   'messenger-32',
@@ -52,6 +56,8 @@ export const BRAND_ICONS = [
   'presence-16-away',
   'presence-16-offline',
   'presence-16-online',
+  'tick-mailed',
+  'tick-received',
 ] as const
 
 export type TangoIcon = (typeof TANGO_ICONS)[number]

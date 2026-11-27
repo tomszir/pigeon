@@ -1,6 +1,6 @@
 // A message to a friend who's offline, over the real internet and the official Lighthouses:
 // Mika closes Pigeon, Rook writes to her and closes his, and when Mika opens Pigeon again the
-// message is there, though Rook isn't online to send it, in a section of what came by letter.
+// message is there, though Rook isn't online to send it, in an envelope of what came by letter.
 // The same as farewells take.
 import { expect, type Page, test } from '@playwright/test'
 
@@ -46,11 +46,11 @@ test('a message written to a friend who is offline reaches them later', async ({
   // Long enough for each to hear the other's sealing key and Lighthouses.
   await rook.waitForTimeout(6000)
 
-  // Mika closes Pigeon. Rook writes, sees it left at the Lighthouses, and closes his.
+  // Mika closes Pigeon. Rook writes, sees it mailed to the Lighthouses, and closes his.
   await mika.close()
   await chat.getByRole('textbox', { name: 'Message to Mika' }).fill('are we still on for saturday?')
   await chat.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(chat).toContainText('for when Mika', { timeout: 60_000 })
+  await expect(chat).toContainText('Mailed.', { timeout: 60_000 })
   await rook.close()
 
   // Mika opens Pigeon again, and the message is in her chat with Rook.
@@ -63,16 +63,18 @@ test('a message written to a friend who is offline reaches them later', async ({
         'are we still on for saturday?',
         { timeout: 30_000 },
       )
-      // Opened, the chat gathers what came while she was away under one heading, with an
-      // envelope on the message and no line of its own under it.
+      // Opened, the chat folds what came while she was away into one envelope, which opens
+      // into the message, under a line saying how it came.
       await mikaMessenger.getByRole('button', { name: /Rook/ }).dblclick()
       const letters = back.getByRole('dialog', { name: 'Rook - Conversation' })
+      const envelope = letters.getByRole('button', {
+        name: /^Open the letter from Rook, 1 message by letter, through .+$/,
+      })
+      await expect(envelope).toBeVisible()
+      await envelope.click()
       await expect(
-        letters.getByRole('region', {
-          name: /^While you were away · 1 message by letter, through .+$/,
-        }),
+        letters.getByRole('region', { name: /^1 message by letter, through .+$/ }),
       ).toContainText('are we still on for saturday?')
-      await expect(letters.getByRole('button', { name: /^Came by letter, through / })).toBeVisible()
       return
     } catch (error) {
       if (attempt === 2) throw error

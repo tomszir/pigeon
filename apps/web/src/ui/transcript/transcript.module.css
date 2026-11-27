@@ -5,8 +5,11 @@
 .log {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 5px 7px;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 8px;
+  background: var(--pg-chat-area);
   font: var(--pg-type-message);
 }
 
@@ -14,88 +17,46 @@
   margin: 0;
 }
 
-.says {
-  font: var(--pg-type-body);
+/* A day line and the lines of what happened around the messages: the etched rule of a group box,
+   with the words in it. */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
   color: var(--pg-text-faint);
+  font: var(--pg-type-body);
 }
 
-.text {
-  margin-left: 10px;
+.line::before,
+.line::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  border-top: 1px solid var(--pg-menu-border);
+  border-bottom: 1px solid var(--pg-panel-highlight);
+  opacity: 0.7;
+}
+
+.line span {
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
-.own {
-  color: var(--pg-text-own);
+.day {
+  margin-top: 4px;
+  font: var(--pg-type-body-strong);
 }
 
-.notice {
-  font: var(--pg-type-body);
-}
-
-.buzz {
-  margin: 1px 0;
-  font-weight: 700;
-}
-
-.letter,
 .system {
   color: var(--pg-text-faint);
 }
 
-.typing {
-  color: var(--pg-text-faint);
-  font-style: italic;
+.buzz {
+  color: var(--pg-text);
+  font: var(--pg-type-body-strong);
 }
 
 .error {
   color: var(--pg-text-error);
-}
-
-/* One message with its notes; the status icon's tooltip is placed against it. */
-.row {
-  position: relative;
-}
-
-/* A message's way, small under it. */
-.route {
-  margin: 1px 0 2px 10px;
-  font-size: 0.9em;
-}
-
-.routeWaiting {
-  color: var(--pg-text-muted);
-}
-
-.routeAction {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pg-link);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.routeAction:hover {
-  color: var(--pg-link-hover);
-}
-
-.routeDone {
-  color: var(--pg-text-ok);
-}
-
-/* Messages that came by letter together: a heading, and a brown rule down their side. */
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin: 2px 0;
-  padding: 2px 0 2px 6px;
-  border-left: 2px solid #c9a24a;
-}
-
-.sectionHeading {
-  font: var(--pg-type-body);
-  font-weight: 700;
-  color: #7a5a00;
 }
