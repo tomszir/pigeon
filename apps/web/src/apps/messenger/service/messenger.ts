@@ -359,6 +359,11 @@ export interface MessengerConnection {
   settings: Accessor<MessengerSettings>
   /** Turns relay-only connections on or off, and reconnects everything to match. */
   setRelayOnly: (relayOnly: boolean) => Promise<void>
+  /**
+   * Turns hearing about mail at once on or off. Off, the waits standing at your Lighthouses end
+   * at once, their connections closed.
+   */
+  setHearAtOnce: (on: boolean) => Promise<void>
   /** How many signaling relays are reachable now, where the transport can tell. */
   relays: () => { readonly reachable: number; readonly total: number } | undefined
 }

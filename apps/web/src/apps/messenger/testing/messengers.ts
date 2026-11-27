@@ -128,7 +128,14 @@ export interface TestLighthouse {
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
-export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse {
+export function testLighthouse(
+  clock: Clock,
+  name = 'test-lighthouse',
+  options: {
+    /** Its connections can hold a wait and answer it later, as a runner's do. */
+    readonly waits?: boolean
+  } = {},
+): TestLighthouse {
   const signer = fakeSigner(name)
   const url = name === 'test-lighthouse' ? 'wss://lighthouse.test/' : `wss://${name}.test/`
   const inner = createMailStore()
@@ -149,6 +156,8 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
     now: clock.now,
     name: 'Test Lighthouse',
     software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+    // A put's wakes as soon as its reply is out, which a test's fake clock never holds back.
+    defer: (run) => queueMicrotask(run),
   })
   let n = 0
   let isDown = false
@@ -172,13 +181,23 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
         sleep: () => new Promise(() => undefined),
         open: (_url, events) => {
           if (isDown) {
-            void Promise.resolve().then(events.onClose)
+            void Promise.resolve().then(() => events.onClose())
             return { send: () => undefined, close: () => undefined }
           }
-          const connection = lighthouse.connect('203.0.113.7')
           const close = () => {
             if (open.delete(close)) events.onClose()
           }
+          const connection = lighthouse.connect(
+            '203.0.113.7',
+            undefined,
+            options.waits === true
+              ? {
+                  push: (frame) => events.onMessage(frame),
+                  close: () => close(),
+                  heard: () => clock.now(),
+                }
+              : undefined,
+          )
           open.add(close)
           void Promise.resolve().then(events.onOpen)
           return {

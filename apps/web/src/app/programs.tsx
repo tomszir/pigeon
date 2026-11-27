@@ -80,6 +80,12 @@ export function createPrograms(
           official={OFFICIAL_LIGHTHOUSES}
           relayOnly={host.messenger()?.settings().relayOnly}
           onRelayOnly={(on) => void setRelayOnly(on)}
+          hearAtOnce={
+            host.messenger() === undefined
+              ? undefined
+              : host.messenger()?.settings().hearAtOnce !== false
+          }
+          onHearAtOnce={(on) => void host.messenger()?.setHearAtOnce(on)}
           onClose={window.close}
         />
       ),

@@ -42,6 +42,12 @@ LIGHTHOUSES
   the device that made it, or who asked.
   A link made by an older Pigeon no longer
   opens: make a new one and share that.
+  While Pigeon is open it waits at your
+  Lighthouses, so mail comes in seconds;
+  they see you're here, to the second.
+  Turn off Hear About Mail at Once, in
+  Network, and they see that only when
+  Pigeon checks for mail.
 
 KNOWN LIMITS
   Some networks block direct connections;

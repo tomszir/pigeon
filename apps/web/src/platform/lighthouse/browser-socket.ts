@@ -8,10 +8,10 @@ export const openBrowserSocket =
   (url, events) => {
     const socket = new Socket(url)
     let gone = false
-    const close = () => {
+    const close = (code?: number) => {
       if (gone) return
       gone = true
-      events.onClose()
+      events.onClose(code)
     }
     socket.addEventListener('open', () => {
       if (!gone) events.onOpen()
@@ -19,8 +19,9 @@ export const openBrowserSocket =
     socket.addEventListener('message', (event) => {
       if (!gone && typeof event.data === 'string') events.onMessage(event.data)
     })
-    socket.addEventListener('close', close)
-    socket.addEventListener('error', close)
+    // The code says why: a Lighthouse that closed it for room says so (1013).
+    socket.addEventListener('close', (event) => close(event.code))
+    socket.addEventListener('error', () => close())
     return {
       send: (text) => socket.send(text),
       close: () => {
