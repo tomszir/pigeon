@@ -1,0 +1,17 @@
+defect: a wait at a Lighthouse taken off your list goes on, and is opened again when it drops
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: ends the wait at a Lighthouse taken off your list
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index d38e110..03226a7 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -219,7 +219,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+     retain(list) {
+       const kept = new Set(list.map(keyOf))
+       for (const [key, state] of waiting) {
+-        if (kept.has(key)) continue
++        if (kept.has(key) || key !== '') continue
+         waiting.delete(key)
+         state.gen += 1
+         if (state.standing) {
