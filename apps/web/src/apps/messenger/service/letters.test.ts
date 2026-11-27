@@ -126,6 +126,50 @@ describe('a letter in flight', () => {
   })
 })
 
+describe('a mail check during a letter run', () => {
+  it('mails what it found missing once the run ends, and starts nothing more', async () => {
+    const first = await appendMessage(emptyLog('pair:x'), me, 'one', 1)
+    const second = await appendMessage(first.log, me, 'two', 2)
+    let chat = first.log
+    const sent: { entries: readonly LogEntry[] }[] = []
+    let release: () => void = () => undefined
+    let held = true
+    const letters = createLetters({
+      store: createMemoryStore(),
+      device: me.id,
+      random: (length) => new Uint8Array(length),
+      now: () => 0,
+      sleep: async () => undefined,
+      stopped: () => false,
+      chat: () => chat,
+      connected: () => false,
+      recipient: async () => ({ identity: friend.id }) as never,
+      ownDevices: async () => undefined,
+      takeEntries: async () => true,
+      mailbox: {
+        send: async (_kind: unknown, _to: unknown, body: { entries: readonly LogEntry[] }) => {
+          sent.push(body)
+          // The first letter's put is held, so the run is under way when the check comes.
+          if (held) await new Promise<void>((resolve) => (release = resolve))
+          held = false
+          return true
+        },
+      } as never,
+    })
+    letters.wrote(friend.id)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(sent).toHaveLength(1)
+    // A message that went straight to a friend who then left unseen to have it: no `wrote`,
+    // only the mail check's resume, which comes while the run is putting the first letter.
+    chat = second.log
+    await letters.resume(friend.id)
+    release()
+    for (let i = 0; i < 10; i++) await flush()
+    expect(sent.map((body) => body.entries.map((entry) => entry.seq))).toEqual([[1], [2]])
+    expect(letters.busy()).toBe(false)
+  })
+})
+
 describe('what says they have a message', () => {
   const ownEntries = async (count: number) => {
     let log = emptyLog('pair:x')
