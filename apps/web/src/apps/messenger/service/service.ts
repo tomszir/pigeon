@@ -126,12 +126,12 @@ import {
 } from './rekeys.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
 import {
+  bundleFriends,
   type FarewellRecord,
   type FriendRecord,
   type HostedInvite,
   isBlockedRecords,
   isChatLog,
-  isFriendRecords,
   isHostedInvite,
   isMailBook,
   isMessengerSettings,
@@ -2206,11 +2206,13 @@ export async function createMessenger(deps: MessengerDeps) {
     const state = deviceState(log)
     if (!state.active.has(signer.id)) return false
     const secret = fields['selfSecret']
-    const friends = fields['friends']
+    // Friends one by one, as a newer Pigeon may keep some in a shape this one can't read: those
+    // are set aside, counted at each start, and the rest come through.
+    const friends = bundleFriends(fields['friends'])
     const blockedList = fields['blocked']
     const profileValue = fields['profile']
     const friendDevices = fields['friendDevices']
-    if (!isPairSecret(secret) || !isFriendRecords(friends) || !isBlockedRecords(blockedList))
+    if (!isPairSecret(secret) || friends === undefined || !isBlockedRecords(blockedList))
       return false
     if (!isProfile(profileValue)) return false
     const logs =
@@ -2218,7 +2220,8 @@ export async function createMessenger(deps: MessengerDeps) {
         ? Object.entries(friendDevices)
         : []
     await store.set(KEYS.profile, profileValue)
-    await store.set(KEYS.friends, friends)
+    await store.set(KEYS.friends, friends.readable)
+    await setAside(KEYS.unreadableFriends, friends.unreadable)
     await store.set(KEYS.blocked, blockedList)
     // The profile is the other device's now; this one's old change time no longer applies.
     await store.delete(KEYS.profileChangedAt)
