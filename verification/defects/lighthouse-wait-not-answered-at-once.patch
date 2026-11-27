@@ -1,0 +1,17 @@
+defect: a wait whose tags already hold mail past its cursor stands instead of hearing mail at once
+test: apps/lighthouse src/server/wait-conformance.test.ts
+expect: sends every connection what the reference does
+
+diff --git i/packages/lighthouse/src/lighthouse/lighthouse.ts w/packages/lighthouse/src/lighthouse/lighthouse.ts
+index 8bc1ccb..267b3d7 100644
+--- i/packages/lighthouse/src/lighthouse/lighthouse.ts
++++ w/packages/lighthouse/src/lighthouse/lighthouse.ts
+@@ -393,7 +393,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
+         waits.add(waiter, standingNow)
+         hooks.changed?.()
+         const page = await store.list(request.tags, request.cursor, 1, at)
+-        if (page.items.length > 0 && waits.take(waiter, standingNow) !== undefined) {
++        if (page.items.length < 0 && waits.take(waiter, standingNow) !== undefined) {
+           hooks.changed?.()
+           return reply(frame, req, { type: 'waited', why: 'mail' })
+         }

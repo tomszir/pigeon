@@ -1,0 +1,17 @@
+defect: a put wakes the wait on the connection that made it
+test: apps/lighthouse src/server/wait-conformance.test.ts
+expect: sends every connection what the reference does
+
+diff --git i/packages/lighthouse/src/lighthouse/lighthouse.ts w/packages/lighthouse/src/lighthouse/lighthouse.ts
+index 8bc1ccb..c8ee6d9 100644
+--- i/packages/lighthouse/src/lighthouse/lighthouse.ts
++++ w/packages/lighthouse/src/lighthouse/lighthouse.ts
+@@ -190,7 +190,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
+     const at = now()
+     for (const waiter of waits.on(tag)) {
+       const standing = waits.get(waiter)
+-      if (standing === undefined || seq <= standing.cursor || waiter === putter) continue
++      if (standing === undefined || seq <= standing.cursor) continue
+       if (fresh && standing.until <= at) continue
+       if (waits.quiet(waiter, at)) {
+         waits.take(waiter)

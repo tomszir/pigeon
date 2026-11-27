@@ -1,0 +1,17 @@
+defect: the Worker ignores keepalives the runtime answered, and closes a waiting connection as idle
+test: apps/lighthouse-worker src/object/wait-conformance.test.ts
+expect: sends every connection what the reference does
+
+diff --git i/apps/lighthouse-worker/src/object/lighthouse-object.ts w/apps/lighthouse-worker/src/object/lighthouse-object.ts
+index f90d341..cf9e21e 100644
+--- i/apps/lighthouse-worker/src/object/lighthouse-object.ts
++++ w/apps/lighthouse-worker/src/object/lighthouse-object.ts
+@@ -216,7 +216,7 @@ export class LighthouseObject {
+   private heard(socket: WebSocket): number {
+     const kept = (socket as HibernatingSocket).deserializeAttachment()
+     const frame = this.seen.get(socket) ?? (isAttachment(kept) ? kept.seen : 0)
+-    const keepalive = this.state.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? 0
++    const keepalive = 0
+     return Math.max(frame, keepalive)
+   }
+ 
