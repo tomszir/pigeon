@@ -53,11 +53,12 @@ Today a link bundle copies your friends once. Afterwards only the device log, yo
 - Every letter that carries a chain carries the sender's device log, and every mail check merges every log it fetched before acting on anything. So a device holding a secret made after a removal has heard of that removal, and never seals the secret to the removed device (P4, P2).
 - A device is on the secret replacement rounds settle on: from the first secret, the earliest proposal (time, device, secret) for the secret held, counting only proposals from devices on their side's list. A claimed round number counts for nothing, so a removed device can't install a secret nobody can replace; once its removal is heard, its proposal stops counting and the device falls back, to the writer's new round. Rival proposals settle the same way on every device. A first secret counts as an entry does, from a device on the list or from a removed one if stamped before its removal, and of several the earliest wins, so arrival order never decides. #158's confirmed secret is a friendship's first secret, and an unconfirmed one is never in the chain, so a device whose own wasn't taken adopts the confirmed one.
 - A chain is never dropped when a tombstone lands. A removed device's tombstone, stamped after its removal, can end a friendship on a device that hasn't heard yet; when it hears, the tombstone stops counting and the friendship shows again, on the secret it was on. The model found that dropping it loses the secret for good when the removal is stamped by the writer's clock alone. With the removal stamped after everything the writer holds from the removed device, the writer never drops a chain that comes back, so dropping would be safe too; keeping it doesn't lean on that.
-- **The writer renews whatever the removed device may have read.** After a removal, the writer renews every live friendship whose secret it didn't itself propose after the removal, whenever it finds one: those live when it removed, a friendship another device paired or replaced in the window before it heard (whose secret went to the removed device too), a first secret the removed device forged and backdated, and a rival proposal that beat the writer's own. Each renewal is one more round, sealed to devices on the list. It is the replacement rounds' `begun` rule, carried over; the model found both gaps without it.
+- **Each writer renews whatever a removed device may have read, and renewals end.** Every proposal, first secrets included, carries signed the removals its maker had merged when it signed it, on your side and the friend's. After a removal, each side's writer renews every live friendship whose secret was signed by a device that hadn't merged that removal, or made by the removed device: a friendship live when it removed, one another device paired or replaced in the window before it heard (whose secret went to the removed device too), a first secret the removed device forged and backdated, and a rival that beat the writer's renewal. A renewal is signed knowing the removal, so the same side never renews it again; the other side renews it at most once, and its renewal knows both. The model found that renewing "unless I proposed it after the removal", by time, never ends when both sides run it, and repeats until the clock passes the removal's stamp when one side's clock ran fast. The replacement rounds' `begun` rule ends it by remembering what this device proposed; the marker does the same with what travels in the proposal, so the friend's side and every device decide alike.
 - A device whose secret for a friendship changes, through sync or the self room, sends the chain to the friend's devices too, as replacement rounds do. Otherwise a device still on the list that proposes and writes only to your devices would move them to a secret the friend never heard of. The model found this too.
 - A removed device's entries stamped from its removal on count for nothing. Its letters are refused by a device that knows of the removal, and its entries stamped before the removal are its own word (R2, R3).
 - A device that hasn't yet heard of a removal still treats the removed device as yours, and can seal it a secret made in that window. That stops when it merges the log, and the writer's renewal replaces any secret sealed to it then. It is the window threat-model.md already describes for friends who haven't seen the newer list.
-- A removal is stamped later than every entry the writer holds from the removed device, so what it had delivered to the writer keeps counting however fast its clock ran.
+- What a removed device stamped is measured against a threshold the writer signs beside the removal, later than the removal's `at` and every entry it holds from that device, so what it had delivered to the writer keeps counting however fast its clock ran. The writer's own clock never follows it.
+- **The friend runs the same rules.** A friend's device sends your devices its proposals whenever its secret changes, first secrets included, and refuses a letter from a device it knows you removed. A removed device holds the pair secret, the tags and the friend's sealing keys, so it can mail the friend a forged first secret; the friend forwards what it then holds, your writer renews from it, and the two sides meet again. The model found the friend side split for good without the forwarding.
 
 ## 4. Chat history
 
@@ -126,7 +127,7 @@ Each step is checked against this model first, as the repo asks for anything tha
 ## 9. What the model shows
 
 - **Under the design,** every scenario holds every invariant, explored breadth first to the end or to a bound, and with seeded random walks deeper.
-  - Your data: friends; a friend unfriended and paired with again; two devices pairing again at once; a removed device's forged second first secret; the friend replacing a secret in the window; a fast-clocked device removed after its changes; blocks; settings; a clock a month ahead; removal, with a forged entry and a forged pair-secret proposal; the removed device in the self room, signing two entries under one number; a link after a removal; tabs closed mid-check; and an unreadable entry.
+  - Your data: friends; a friend unfriended and paired with again; two devices pairing again at once; a removed device's forged second first secret, mailed to the friend too; the friend replacing a secret in the window; both sides removing a device; a fast-clocked device removed after its changes; blocks; settings; a clock a month ahead; removal, with a forged entry and a forged pair-secret proposal; the removed device in the self room, signing two entries under one number; a link after a removal; tabs closed mid-check; and an unreadable entry.
   - Chat history.
   - Invite links (a) and (b), under every condition, and (b) in the harder cases of §5.
   - Moving to pair secrets.
@@ -141,6 +142,9 @@ Each step is checked against this model first, as the repo asks for anything tha
   - any first secret counts, the first held kept (P5);
   - only friendships live at the removal renewed (P2b);
   - the friend's earlier proposal kept (P2b);
+  - renewal by time, never ending (S0);
+  - renewal by time, with a fast clock (S1);
+  - the friend not forwarding (P3);
   - two re-pairings left as they are (P3);
   - removal stamped by the writer's clock alone (W1);
   - secret state dropped at a tombstone, with the removal stamped by the writer's clock alone (P3);
@@ -193,7 +197,8 @@ Each step is checked against this model first, as the repo asks for anything tha
 - Lighthouses see how often you change your data, and bursts of history.
 - History by mail stops at 200 messages a chat; the rest needs the devices online with the friend, or a file.
 - An approval made on another device waits for the link's maker to run, and lapses if the maker is removed or replaced, or if the approving device is removed first.
-- Two of your devices pairing again with one friend at the same time: the chat says it is connecting until a device sees the friend in one of the two friendships, which then wins everywhere; if the friend never comes online or mails, it stays connecting.
+- Two of your devices pairing again with one friend at the same time: the chat says it is connecting until a device sees the friend in one of the two friendships (its hello, or a letter from one of its devices), which then wins everywhere; if the friend never comes online or mails, it stays connecting.
+- Each removal costs up to three renewals per friendship on each side, when the two sides' removals cross; one when they don't.
 - An older Pigeon on the list doesn't hear an unfriend or block made elsewhere until it updates; the confirmation names it.
 
 ## 13. Questions settled
