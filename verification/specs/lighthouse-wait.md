@@ -65,7 +65,7 @@ Conventions. `P` is docs/protocol.md, `TM` docs/threat-model.md, `LH` docs/light
 
 - At each Lighthouse a look reads its tags in lists of 512, all from the cursor it saved there, a page at a time, each to its end.
 - **The cursor saved** is the least over the lists, each counted as far as it's known to have left nothing unlisted: a finished list as far as the furthest any list had been answered before its last page was asked for, since a blob put after that has a later seq. A list that finished before the others got as far is asked once more at the end, so an empty one doesn't hold the cursor where it was. This holds with mail put while the look reads.
-- **A look that didn't finish** (a list or a blob that couldn't be got, a source's own limit holding blobs back) saves no cursor and keeps the last look's days, so the next lists the same days again from where the last finished one stopped.
+- **A look that didn't finish** (a list or a blob that couldn't be got, a source's own limit holding blobs back) saves no cursor and keeps the last look's days (F6), so the next lists the same days again from where the last finished one stopped.
 - How much one look may take, and how a tag flooded with junk is kept from holding back the rest, is left to its own design (#170).
 
 ## 6. Letter runs
@@ -124,8 +124,9 @@ Each has the id the model's checks use (`model/checks.ts`, `model/wait-model.ts`
 
 ### One look
 
-- **F2. No lost mail.** Looks one after another take every blob meant for the device, however the store is laid out, whatever is put between and during looks, and when the Lighthouse stops answering partway: junk, blobs shared with other devices that stay listed after a drop, lists of any size.
-- **F5. A finished look saves what it read.** A look that finished every list, with nothing put meanwhile, saves a cursor as far as anything its lists were answered with.
+- **F2. No lost mail.** Looks one after another take every blob meant for the device, however the store is laid out, whatever is put between and during looks, and when the Lighthouse stops answering a list or a get partway: junk, blobs shared with other devices that stay listed after a drop, lists of any size. A blob that couldn't be got is got next time.
+- **F5. A finished look saves what it read.** A look over a store nothing is put to finishes, and saves a cursor as far as the Lighthouse answered any of its lists with, worked out from the Lighthouse's answers, not the look's own word.
+- **F6. An unfinished look keeps its days.** A look the Lighthouse stopped answering, a list or a get, doesn't move the days the next one reads.
 
 ### Letter runs
 
@@ -141,6 +142,6 @@ Unchanged from the first design: no tag it doesn't already see, since a wait nam
 - One Lighthouse, one to three Pigeons, one sender; up to two puts, three looks, four ticks of time, one or two of each fault (a drop, a silence, a sleep, a reset, a failing Lighthouse, the day turning).
 - Limits scaled: a wait takes up to 3 tags and 3 seconds, the idle time is 2 or 3, tag budgets a few tags.
 - Frames per minute, puts per hour and their /48 caps, store size, claims and `get` are left out: waiting changes none of them.
-- One look: every store of up to four blobs over three tags in two lists; every schedule of up to two puts over its first six lists, over stores of up to two, with the Lighthouse answering every list or stopping at the first, third or fifth; and every schedule of three puts, over stores of one. Lists of 2 tags, pages of 1. A source's own limit isn't modelled; a look it holds back saves no cursor, as one that failed doesn't.
+- One look: every store of up to four blobs over three tags in two lists; every schedule of up to two puts over its first six requests, lists and gets alike, over stores of up to two, with the Lighthouse answering everything or stopping at its first or third list or its first or second get; and every schedule of three puts over eight requests, over stores of one. Lists of 2 tags, pages of 1. The puts and failures happen inside the Lighthouse, whatever the look does; puts it never got as far as are made after it. A source's own limit isn't modelled; a look it holds back saves no cursor, as one that failed doesn't.
 - The Worker's read counts are forgotten when it sleeps; Node's aren't. Parity traces leave sleeps and resets out.
 - The conformance traces use the protocol's own shape limits (128 tags, 600 seconds, pages of 256) with small budgets, five connections in three ranges, and run 200 traces of 80 events (2,000 with `PIGEON_HEAVY=1`).
