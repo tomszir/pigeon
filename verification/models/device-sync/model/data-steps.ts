@@ -3,11 +3,17 @@
 // none changes the one it was given. What a hostile removed device does is in data-hostile.ts.
 import { copy, uniq } from './canon.ts'
 import { counts, fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
-import { friendPropose, friendRelay, friendSync, friendToRenew } from './data-friend.ts'
+import {
+  friendPropose,
+  friendRelay,
+  friendRenew,
+  friendSync,
+  friendToRenew,
+} from './data-friend.ts'
 import { hostileSteps } from './data-hostile.ts'
 import { deliver, meet, newLetter, sealTo, takeEntries, toSend } from './data-mail.ts'
 import { finish, type Step, spend, sweep } from './data-run.ts'
-import { countsOn, dropEnded, knew, knowledge, winner } from './data-secrets.ts'
+import { countsOn, dropEnded, knew, knowledge, noteRenewal, winner } from './data-secrets.ts'
 import {
   type Budget,
   type DataConfig,
@@ -228,6 +234,7 @@ export function rekey(cfg: DataConfig, state: DataState): void {
     state.secrets[p.id] = { by: WRITER, knew: true }
     state.renewed = uniq([...state.renewed, inc])
     state.renewals[`${WRITER}:${inc}`] = (state.renewals[`${WRITER}:${inc}`] ?? 0) + 1
+    noteRenewal(state, WRITER, held, 'rmX')
     const chain = { [key]: dev.props[key] ?? [] }
     newLetter(cfg, state, 'rekey-friend', WRITER, [fr], [], chain, false)
     newLetter(cfg, state, 'rekey', WRITER, sealTo(cfg, state, WRITER), [], chain, false)
@@ -253,6 +260,7 @@ function writerSteps(cfg: DataConfig, state: DataState): Step[] {
       next.removalSt = cfg.rules.removalAfterHeld
         ? Math.max(writer.clock, ...held.map((e) => e.st + 1))
         : writer.clock
+      next.removalAt = writer.clock
       next.heldAtRemoval = held.map((e) => e.sig)
       next.liveAtRemoval = Object.keys(viewOf(next, cfg.rules, WRITER).live)
     }
@@ -448,6 +456,17 @@ function friendSteps(cfg: DataConfig, state: DataState): Step[] {
     }
     out.push(['F removes one of its own devices', finish(cfg, next)])
   }
+  if ((state.left.hold ?? 0) > 0) {
+    const next = copy(state)
+    spend(next, 'hold')
+    next.friendHold = true
+    out.push(["a Lighthouse holds the friends' mail", next])
+  }
+  if (state.friendHold) {
+    const next = copy(state)
+    delete next.friendHold
+    out.push(["the Lighthouse lets the friends' mail go", finish(cfg, next)])
+  }
   if ((state.left.friendSync ?? 0) > 0) {
     const next = copy(state)
     spend(next, 'friendSync')
@@ -462,9 +481,7 @@ function friendSteps(cfg: DataConfig, state: DataState): Step[] {
   }
   if (friendToRenew(cfg, state, 'F')) {
     const next = copy(state)
-    friendPropose(cfg, next, 'F')
-    const inc = next.friends.F?.inc ?? ''
-    next.renewals[`F:${inc}`] = (next.renewals[`F:${inc}`] ?? 0) + 1
+    friendRenew(cfg, next, 'F')
     out.push(["F's writer renews", finish(cfg, next)])
   }
   return out

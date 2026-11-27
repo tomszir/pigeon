@@ -50,11 +50,15 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     // A second first secret for a friendship it has read the first of, stamped as early as can be.
     const inc = `${forge.root}1`
     if (!dev.learned.includes(`${inc}r0`)) return []
+    // Stamped as early as it can be, or at the removal's own time once it has been removed.
+    if (forge.at === 'removal' && next.removalAt === 0) return []
+    const at = forge.at === 'removal' ? next.removalAt : 0
     const key = propKey(cfg.rules, forge.root, inc)
-    const p = { id: `${inc}x0`, inc, replaces: null, at: 0, by: REMOVED, round: 0, knew: ALL }
+    const p = { id: `${inc}x0`, inc, replaces: null, at, by: REMOVED, round: 0, knew: ALL }
     dev.props[key] = [...(dev.props[key] ?? []), p]
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
-    return [[`X forges a second first secret for ${forge.root}, stamped as early as it can`, next]]
+    const when = forge.at === 'removal' ? 'at the removal\u2019s time' : 'as early as it can'
+    return [[`X forges a second first secret for ${forge.root}, stamped ${when}`, next]]
   }
   const top =
     Math.max(
@@ -64,10 +68,12 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
       ]),
     ) + 1
   const n = dev.nextN++
-  const st = forge.stamp === 'early' ? 1 : top
+  // Ahead: a stamp far past every clock, which, while X is on the list, raises the threshold.
+  const st = forge.stamp === 'early' ? 1 : forge.stamp === 'ahead' ? top + 10 : top
   const late = next.allKnew ? { late: true as const } : {}
   dev.entries = [...dev.entries, { by: REMOVED, n, st, op: forge.op, sig: `X${n}a`, ...late }]
-  const when = forge.stamp === 'early' ? 'an early' : 'a current'
+  const when =
+    forge.stamp === 'early' ? 'an early' : forge.stamp === 'ahead' ? 'a far-ahead' : 'a current'
   return [[`X forges ${canon(forge.op)} at ${when} stamp`, next]]
 }
 
@@ -91,7 +97,7 @@ export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
       .filter(([, ps]) => ps.length > 0),
   )
   if (own.length > 0 || Object.keys(forged).length > 0)
-    for (const r of honest(state, cfg)) {
+    for (const r of honest(state, cfg).filter((d) => !cfg.xMails || cfg.xMails.includes(d))) {
       // A second entry under one number goes to the writer one way and to the others the other.
       const variant = r === WRITER ? 'a' : 'b'
       const pick = own.filter(

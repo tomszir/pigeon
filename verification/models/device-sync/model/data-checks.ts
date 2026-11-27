@@ -251,26 +251,25 @@ const sameSecret = (cfg: DataConfig): Check => ({
 })
 
 /**
- * S1: each side's writer renews a friendship at most three times for one removal on each side:
- * once for its own removal, and once for each rival signed without knowing it (the friend's
- * renewal or round, a first secret the removed device forged).
+ * S1: renewals are bounded: each side's writer renews once for its own removal and once more for
+ * each rival, a secret signed without knowing that removal or made by the removed device, each
+ * rival once; never from a secret signed knowing the removal. How many rivals there are depends on
+ * how many forgeries and rounds reach the other side before it hears, which a Lighthouse that
+ * delays mail can stretch, so no fixed number bounds it.
  */
 const renewalsBounded = (): Check => ({
   id: 'S1 renewals are bounded',
-  check: (s) => {
-    const over = Object.entries(s.renewals).find(([, n]) => n > MAX_RENEWALS)
-    return over ? `${over[0]} renewed ${over[1]} times` : undefined
-  },
+  check: (s) => s.renewalWrong,
 })
-
-export const MAX_RENEWALS = 3
 
 /** R5: a friend takes nothing from a device it knows you removed. */
 const friendTakesNothingLate = (): Check => ({
   id: 'R5 a friend takes nothing from a removed device once it knows',
   check: (s) => {
-    const fr = Object.entries(s.friends).find(([, f]) => f?.tookFromRemoved)
-    return fr ? `${fr[0]} took a letter from ${REMOVED} after it knew of the removal` : undefined
+    const late = s.lateToFriend[0]
+    return late
+      ? `${late} was taken from ${REMOVED}'s own letter after the removal was known`
+      : undefined
   },
 })
 
@@ -382,6 +381,8 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
   if (s.tombs.length) flags.push('unfriended')
   if (s.left.link === 0) flags.push('C linked')
   if (s.friends.F?.ownRemoved) flags.push('the friend removed a device')
+  if (s.removalSt > s.removalAt && s.removalAt > 0) flags.push('threshold later than the removal')
+  if (s.friendHold) flags.push("the friends' mail held")
   if (Object.values(s.friends).some((f) => f?.props.some((p) => p.by === REMOVED)))
     flags.push('a friend took a forged proposal')
   if (Object.values(s.renewals).some((n) => n > 1)) flags.push('renewed more than once')

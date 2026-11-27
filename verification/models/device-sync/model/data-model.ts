@@ -1,7 +1,7 @@
 // The your-data model put together: how it settles, its scenarios, and its planted defects.
 import { canon, copy } from './canon.ts'
 import { dataChecks, dataFlags } from './data-checks.ts'
-import { friendPropose, friendToRenew } from './data-friend.ts'
+import { friendRenew, friendToRenew } from './data-friend.ts'
 import { finish, sweep } from './data-run.ts'
 import {
   type DataConfig,
@@ -31,11 +31,8 @@ export function settle(cfg: DataConfig, state: DataState): DataState {
     }
     const before = canon(s)
     rekey(cfg, s)
-    if (friendToRenew(cfg, s, 'F')) {
-      const inc = s.friends.F?.inc ?? ''
-      s.renewals[`F:${inc}`] = (s.renewals[`F:${inc}`] ?? 0) + 1
-      friendPropose(cfg, s, 'F')
-    }
+    delete s.friendHold
+    if (friendToRenew(cfg, s, 'F')) friendRenew(cfg, s, 'F')
     for (const d of honest(s, cfg)) check(cfg, s, d)
     for (const r of ['F', 'G', ...(cfg.hostile ? [REMOVED] : [])]) check(cfg, s, r)
     const alive = new Set<string>([...honest(s, cfg), 'F', 'G', ...(cfg.hostile ? [REMOVED] : [])])
@@ -188,6 +185,42 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
       friendSync: 1,
       friendRelay: 1,
     },
+  ),
+  // X's clock runs ahead: it pairs with G, the writer takes its letter and removes it, so the
+  // threshold is later than the removal's clock time, and G's first secret (by X) falls between.
+  skewpair: config(
+    'skewpair: a fast-clocked device pairs, then is removed',
+    ['A', 'B', 'X'],
+    false,
+    { skew: 1, add: 1, remove: 1 },
+    { who: { skew: ['X'], add: ['X'] }, adds: ['G'] },
+  ),
+  // X, still on the list, has an entry stamped far ahead reach the writer, raising the threshold;
+  // the writer removes it; B, whose clock runs ahead, pairs with G in the window; X forges a first
+  // secret for G stamped at the removal's time, earlier than B's, and mails it to G and the writer.
+  hostilepair: config(
+    'hostilepair: a removed device raises the threshold and forges a first secret',
+    ['A', 'B', 'X'],
+    true,
+    { remove: 1, add: 1, skew: 1 },
+    {
+      who: { add: ['B'], skew: ['B'] },
+      adds: ['G'],
+      xMails: ['A'],
+      forges: [
+        { op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'ahead' },
+        { root: 'G', at: 'removal' },
+      ],
+    },
+  ),
+  // A Lighthouse holds the friend's mail while X mails G forged first secrets, each earlier than
+  // the last; each one G takes before it hears costs the writer a renewal (S1's rivals).
+  held: config(
+    'held: the friend\u2019s mail held while forgeries reach it',
+    ['A', 'B', 'X'],
+    true,
+    { add: 1, remove: 1, hold: 1 },
+    { who: { add: ['A'] }, adds: ['G'], xMails: [], forges: [{ root: 'G' }] },
   ),
   // Two devices pair again with one friend at once, after an unfriend.
   race: config(
@@ -376,6 +409,20 @@ export const DEFECTS: readonly Defect[] = [
     scenario: 'roots',
     rule: 'renewRemovedOwn',
     caughtBy: 'P5 no friendship on a removed device\u2019s secret',
+  },
+  {
+    name: 'a threshold friends never see',
+    what: 'friends judge a removed device\u2019s first secret by the removal\u2019s clock time, your devices by a later threshold',
+    scenario: 'skewpair',
+    rule: 'thresholdInLog',
+    caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'a threshold friends never see, gamed',
+    what: 'as above, with the removed device raising the threshold and forging a first secret between the two',
+    scenario: 'hostilepair',
+    rule: 'thresholdInLog',
+    caughtBy: 'P3 one pair secret per friend',
   },
   {
     name: 'two re-pairings left as they are',

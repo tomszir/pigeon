@@ -140,6 +140,7 @@ export type Budget =
   | 'friendRemove'
   | 'friendSync'
   | 'friendRelay'
+  | 'hold'
 
 export interface FriendDevice {
   inc: string
@@ -155,8 +156,6 @@ export interface FriendDevice {
    * and whether its copy of your list has your removal of X.
    */
   second?: { props: Proposal[]; knowsR: boolean }
-  /** Ghost: it took a removed device's letter after it knew of the removal. */
-  tookFromRemoved?: true
 }
 
 export interface DataState {
@@ -185,6 +184,15 @@ export interface DataState {
   liveAtRemoval: string[]
   /** Ghost: the friendships the writer has renewed after the removal. */
   renewed: string[]
+  /** The writer's own clock when it removed X; the threshold may be later. */
+  removalAt: number
+  /** A Lighthouse holds the friends' mail: letters to them wait until it lets them go. */
+  friendHold?: true
+  /** Ghost: forged proposals X mailed a friend that already knew of the removal. */
+  lateToFriend: string[]
+  /** Ghost: each winner a side's writer renewed from (`A:F1r0`), and any it shouldn't have. */
+  renewedFrom: string[]
+  renewalWrong?: string
   /** Ghost: renewals each side's writer has made of each friendship (`A:F1`, `F:F1`). */
   renewals: Record<string, number>
   /** Settling ran out of rounds without reaching a fixed point. */
@@ -249,6 +257,12 @@ export interface DataRules {
   readonly renewRivals: boolean
   /** A friend whose secret changes sends the proposals to your devices too, first secrets included. */
   readonly friendForwards: boolean
+  /**
+   * A removal's threshold is the `at` of its own device-log entry, which the writer sets later
+   * than every entry it holds from the device, so it reaches friends with the log. Off: friends
+   * judge by the writer's clock at the removal while your devices have a later threshold.
+   */
+  readonly thresholdInLog: boolean
   /** A friend refuses a letter from a device it knows you removed. */
   readonly friendRefuses: boolean
   /** A friend's device doesn't count a replacement by a device it knows you removed. */
@@ -289,6 +303,7 @@ export const DESIGN: DataRules = {
   renewLearned: true,
   renewRivals: true,
   friendForwards: true,
+  thresholdInLog: true,
   friendRefuses: true,
   friendDiscounts: true,
   renewRemovedOwn: true,
@@ -311,10 +326,12 @@ export interface DataConfig {
    * pair-secret proposal of its own for F, claiming a high round.
    */
   readonly forges?: readonly (
-    | { readonly op: Op; readonly stamp: 'early' | 'current' }
+    | { readonly op: Op; readonly stamp: 'early' | 'current' | 'ahead' }
     | { readonly proposal: true }
-    | { readonly root: FriendId }
+    | { readonly root: FriendId; readonly at?: 'removal' }
   )[]
+  /** The devices of yours a hostile removed device mails, besides the friends; all when left out. */
+  readonly xMails?: readonly Dev[]
   /** Which friends a person may pair with (again, after an unfriend); G when left out. */
   readonly adds?: readonly FriendId[]
   /** Which friends people change; any when left out. */
@@ -389,6 +406,9 @@ export function initialState(cfg: DataConfig): DataState {
     liveAtRemoval: [],
     renewed: [],
     renewals: {},
+    removalAt: 0,
+    lateToFriend: [],
+    renewedFrom: [],
   }
 }
 
