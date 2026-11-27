@@ -13,6 +13,7 @@ import {
   type LogEvent,
   propKey,
   REMOVED,
+  STAMP_CAP,
   WRITER,
 } from './data-state.ts'
 import { tellFriends, winners } from './data-tell.ts'
@@ -67,14 +68,27 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
         ...(d?.entries ?? []).map((e) => e.st),
       ]),
     ) + 1
-  const n = dev.nextN++
+  // At the cap: once removed, one below the highest stamp an entry may carry.
+  if (forge.stamp === 'cap' && next.removalSt === 0) return []
+  // Skipping a number leaves a gap no device can fill.
+  const n = forge.skip ? dev.nextN + 1 : dev.nextN
+  dev.nextN = n + 1
   // Ahead: a stamp far past every clock, which, while X is on the list, raises the threshold.
-  const st = forge.stamp === 'early' ? 1 : forge.stamp === 'ahead' ? top + 10 : top
+  const st =
+    forge.stamp === 'early'
+      ? 1
+      : forge.stamp === 'ahead'
+        ? top + 10
+        : forge.stamp === 'cap'
+          ? STAMP_CAP - 1
+          : top
   const late = next.allKnew ? { late: true as const } : {}
   dev.entries = [...dev.entries, { by: REMOVED, n, st, op: forge.op, sig: `X${n}a`, ...late }]
-  const when =
-    forge.stamp === 'early' ? 'an early' : forge.stamp === 'ahead' ? 'a far-ahead' : 'a current'
-  return [[`X forges ${canon(forge.op)} at ${when} stamp`, next]]
+  const when = { early: 'an early', ahead: 'a far-ahead', cap: 'the capped', current: 'a current' }[
+    forge.stamp
+  ]
+  const gap = forge.skip ? ', skipping a number,' : ''
+  return [[`X forges ${canon(forge.op)}${gap} at ${when} stamp`, next]]
 }
 
 export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {

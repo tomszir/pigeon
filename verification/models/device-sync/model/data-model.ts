@@ -222,6 +222,46 @@ export const SCENARIOS: Readonly<Record<string, DataConfig>> = {
     { add: 1, remove: 1, hold: 1 },
     { who: { add: ['A'] }, adds: ['G'], xMails: [], forges: [{ root: 'G' }] },
   ),
+  // X signs an entry under a number one past its next, leaving a gap nobody can fill, and sends
+  // it to the writer; your devices swap summaries until settling.
+  gap: config(
+    'gap: a removed device skips a number',
+    ['A', 'B', 'X'],
+    true,
+    { remove: 1 },
+    { xMails: ['A'], forges: [{ op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'early', skip: true }] },
+  ),
+  // Once removed, X sends B an entry stamped one below the cap. B takes it before it hears; then,
+  // having heard, B renames F, and A renames F after seeing B's change.
+  capped: config(
+    'capped: a removed device stamps at the cap',
+    ['A', 'B', 'X'],
+    true,
+    { remove: 1, pet: 2 },
+    {
+      who: { pet: ['A', 'B'] },
+      targets: ['F'],
+      petAfterRemoval: true,
+      xMails: ['B'],
+      forges: [{ op: { k: 'pet', fr: 'F', v: 'px' }, stamp: 'cap' }],
+    },
+  ),
+  // X, still on the list, signs entries whose kind names an object already has, and sends them.
+  kinds: config(
+    'kinds: entries with kind names an object already has',
+    ['A', 'B', 'X'],
+    true,
+    { pet: 1 },
+    {
+      who: { pet: ['A'] },
+      targets: ['F'],
+      xMails: ['A'],
+      forges: [
+        { op: { k: 'future', name: '__proto__' }, stamp: 'current' },
+        { op: { k: 'future', name: 'constructor' }, stamp: 'current' },
+      ],
+    },
+  ),
   // Two devices pair again with one friend at once, after an unfriend.
   race: config(
     'race: two devices pair again with one friend at once',
@@ -423,6 +463,34 @@ export const DEFECTS: readonly Defect[] = [
     scenario: 'hostilepair',
     rule: 'thresholdInLog',
     caughtBy: 'P3 one pair secret per friend',
+  },
+  {
+    name: 'summaries by the highest unbroken number',
+    what: 'a gap a removed device left makes every exchange send its entries again, for ever',
+    scenario: 'gap',
+    rule: 'summaryHighestHeld',
+    caughtBy: 'S0 settling ends',
+  },
+  {
+    name: 'stamps past entries that no longer count',
+    what: 'a discounted entry at the cap pushes later changes to the cap, where they tie',
+    scenario: 'capped',
+    rule: 'stampFollowsCounting',
+    caughtBy: 'W2 a change made after seeing another beats it',
+  },
+  {
+    name: 'a re-pair race settled by the friendship each device paired',
+    what: 'each device keeps the friendship it paired and ends the other, so two devices end both',
+    scenario: 'race',
+    rule: 'repairSeenByDevice',
+    caughtBy: 'T4 a re-pair race keeps the friend\u2019s friendship',
+  },
+  {
+    name: 'kind names looked up through the prototype',
+    what: 'fold looks a kind up in a table without checking the table owns the name, and `__proto__` fails it',
+    scenario: 'kinds',
+    rule: 'kindsOwnOnly',
+    caughtBy: 'C2 fold never fails',
   },
   {
     name: 'two re-pairings left as they are',

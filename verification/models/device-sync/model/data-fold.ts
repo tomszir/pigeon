@@ -20,9 +20,12 @@ import {
   type FriendId,
   knowsRemoval,
   REMOVED,
+  STAMP_CAP,
 } from './data-state.ts'
 
 export interface View {
+  /** The fold failed on an entry (only under a planted defect). */
+  readonly failed?: true
   /** Live incarnations, each with its friend. */
   readonly live: Readonly<Record<string, FriendId>>
   readonly pet: Readonly<Partial<Record<FriendId, string>>>
@@ -58,6 +61,7 @@ export function valueIn(e: Entry): string {
 /** Whether an entry counts on device `d`. */
 export function counts(state: DataState, rules: DataRules, d: Dev, e: Entry): boolean {
   if (e.op.k === 'future') return false
+  if (e.st > STAMP_CAP) return false
   const dev = state.devs[d]
   // The defect: an entry stamped further ahead of this device's clock than it allows is refused.
   if (!rules.acceptAhead && dev && e.st > dev.clock + AHEAD) return false
@@ -90,8 +94,26 @@ export function winners(
   return win
 }
 
+/** The kinds fold reads; any other name is a kind it can't read, skipped as unreadable. */
+const KINDS: Readonly<Record<string, true>> = {
+  add: true,
+  tomb: true,
+  pet: true,
+  block: true,
+  relay: true,
+}
+
+/** Whether an entry's kind name would fail a lookup that doesn't check its table owns the name. */
+function failsLookup(rules: DataRules, e: Entry): boolean {
+  if (rules.kindsOwnOnly || e.op.k !== 'future') return false
+  const name = e.op.name ?? 'future'
+  return name in KINDS && !Object.hasOwn(KINDS, name)
+}
+
 export function viewOf(state: DataState, rules: DataRules, d: Dev): View {
   const entries = state.devs[d]?.entries ?? []
+  if (entries.some((e) => failsLookup(rules, e)))
+    return { live: {}, pet: {}, blocked: {}, relay: false, failed: true }
   const win = winners(state, rules, d, entries)
   const counting = entries.filter((e) => counts(state, rules, d, e))
   const ended = new Set(counting.flatMap((e) => (e.op.k === 'tomb' ? [e.op.inc] : [])))

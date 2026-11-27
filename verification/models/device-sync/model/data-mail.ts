@@ -47,7 +47,8 @@ export function summaryOf(cfg: DataConfig, entries: readonly Entry[]): Summary {
   for (const by of uniq(entries.map((e) => e.by))) {
     const mine = entries.filter((e) => e.by === by).sort(byEntry)
     let n = 0
-    while (mine.some((e) => e.n === n + 1)) n++
+    if (cfg.rules.summaryHighestHeld) n = Math.max(0, ...mine.map((e) => e.n))
+    else while (mine.some((e) => e.n === n + 1)) n++
     const digest = cfg.rules.forkDigest ? digestOf(mine, n) : ''
     out[by] = { n, digest }
   }

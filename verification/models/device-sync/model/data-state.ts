@@ -6,6 +6,9 @@
 /** Your devices. A writes the device log; X is the one that may be removed; C may be linked. */
 export type Dev = 'A' | 'B' | 'C' | 'X'
 export const WRITER: Dev = 'A'
+
+/** The highest stamp an entry may carry; one past it is refused, and a device's own stop there. */
+export const STAMP_CAP = 100
 export const REMOVED: Dev = 'X'
 
 /** F is a friend from the start; G is a friend a device of yours may add. */
@@ -19,7 +22,7 @@ export type Op =
   | { readonly k: 'block'; readonly fr: FriendId; readonly v: boolean }
   | { readonly k: 'relay'; readonly v: boolean }
   /** A kind a newer Pigeon writes and this one can't read. */
-  | { readonly k: 'future' }
+  | { readonly k: 'future'; readonly name?: string }
 
 /**
  * An entry, signed by the device that wrote it: its number in that device's log, its stamp (a
@@ -118,6 +121,8 @@ export interface Action {
   readonly st: number
   readonly field: string
   readonly value: string
+  /** The changes to the same field, by devices on the list, it was made after seeing. */
+  readonly saw: readonly string[]
 }
 
 export type Budget =
@@ -172,6 +177,8 @@ export interface DataState {
   /** Ghost: every pair secret made, by whom, and whether its maker knew of X's removal. */
   secrets: Record<string, { by: string; knew: boolean; root?: FriendId }>
   actions: Action[]
+  /** Ghost: friendships a device ended to settle two re-pairings with one friend. */
+  repairTombs?: string[]
   /** Ghost: friendships (incarnations) a device on the list ended. */
   tombs: string[]
   left: Partial<Record<Budget, number>>
@@ -263,6 +270,29 @@ export interface DataRules {
    * judge by the writer's clock at the removal while your devices have a later threshold.
    */
   readonly thresholdInLog: boolean
+  /**
+   * A summary gives, per author, the highest number held (whatever is missing below it) and a
+   * digest of the entries held up to it. Off: the highest number held with none missing, so a gap
+   * nobody can fill makes every exchange send that author's entries again, for ever.
+   */
+  readonly summaryHighestHeld: boolean
+  /**
+   * A change is stamped past only the entries about its subject that count on the device. Off:
+   * past every entry held, so a removed device's entry stamped at the cap, discounted since, still
+   * pushes later changes to the cap, where they tie and the device decides.
+   */
+  readonly stampFollowsCounting: boolean
+  /**
+   * To settle two re-pairings, a device ends the other friendship only once it has itself seen
+   * the friend in one whose secret it holds. Off: each keeps the friendship it paired and ends the
+   * rest, so two devices end each other's, and no friendship is left.
+   */
+  readonly repairSeenByDevice: boolean
+  /**
+   * Fold looks up only kinds it knows as its own; any other name, `__proto__` or `constructor`
+   * included, is unreadable and skipped. Off: a name the lookup table inherits fails the fold.
+   */
+  readonly kindsOwnOnly: boolean
   /** A friend refuses a letter from a device it knows you removed. */
   readonly friendRefuses: boolean
   /** A friend's device doesn't count a replacement by a device it knows you removed. */
@@ -304,6 +334,10 @@ export const DESIGN: DataRules = {
   renewRivals: true,
   friendForwards: true,
   thresholdInLog: true,
+  repairSeenByDevice: true,
+  kindsOwnOnly: true,
+  summaryHighestHeld: true,
+  stampFollowsCounting: true,
   friendRefuses: true,
   friendDiscounts: true,
   renewRemovedOwn: true,
@@ -326,10 +360,17 @@ export interface DataConfig {
    * pair-secret proposal of its own for F, claiming a high round.
    */
   readonly forges?: readonly (
-    | { readonly op: Op; readonly stamp: 'early' | 'current' | 'ahead' }
+    | {
+        readonly op: Op
+        readonly stamp: 'early' | 'current' | 'ahead' | 'cap'
+        /** Signed under a number one past the next, leaving a gap no device can fill. */
+        readonly skip?: boolean
+      }
     | { readonly proposal: true }
     | { readonly root: FriendId; readonly at?: 'removal' }
   )[]
+  /** People change petnames only on devices that have heard of the removal (one scenario). */
+  readonly petAfterRemoval?: boolean
   /** The devices of yours a hostile removed device mails, besides the friends; all when left out. */
   readonly xMails?: readonly Dev[]
   /** Which friends a person may pair with (again, after an unfriend); G when left out. */
@@ -397,7 +438,7 @@ export function initialState(cfg: DataConfig): DataState {
     },
     mail: [],
     secrets: { [first.id]: { by: WRITER, knew: false, root: 'F' } },
-    actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add' }],
+    actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add', saw: [] }],
     tombs: [],
     left: { ...cfg.budgets },
     nextLetter: 1,

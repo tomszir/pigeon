@@ -1,6 +1,6 @@
 // The invariants of the your-data model, each named as verification/specs/device-sync.md names it.
 import { canon } from './canon.ts'
-import { counts, fieldOf, valueIn, viewOf } from './data-fold.ts'
+import { counts, fieldOf, valueIn, viewOf, winners } from './data-fold.ts'
 import { listFor } from './data-mail.ts'
 import { friendSecret, secretOf } from './data-secrets.ts'
 import {
@@ -232,6 +232,48 @@ const newestWins = (cfg: DataConfig): Check => ({
   },
 })
 
+/**
+ * W2: once mail settles, no register holds a change that a later change, made after seeing it,
+ * should have beaten: stamps must keep "a change made after seeing another beats it" true even
+ * where a removed device stamped at the cap.
+ */
+const laterBeats = (cfg: DataConfig): Check => ({
+  id: 'W2 a change made after seeing another beats it',
+  check: (s) => {
+    for (const d of honestDevs(cfg, s)) {
+      const dev = s.devs[d]
+      if (!dev) continue
+      for (const [field, e] of winners(s, cfg.rules, d, dev.entries)) {
+        const key = `${e.by}${e.n}`
+        const later = s.actions.find((a) => a.field === field && a.saw.includes(key))
+        if (later)
+          return `${d} shows ${key} for ${field}, though ${later.by}${later.n} was made after seeing it`
+      }
+    }
+    return undefined
+  },
+})
+
+/** C2: fold never fails, whatever kind name an entry carries and whoever wrote it. */
+const foldNeverFails = (cfg: DataConfig): Check => ({
+  id: 'C2 fold never fails',
+  check: (s) => {
+    const d = honestDevs(cfg, s).find((x) => viewOf(s, cfg.rules, x).failed)
+    return d ? `${d}'s fold failed on an entry's kind name` : undefined
+  },
+})
+
+/** T4: settling two re-pairings never ends the friendship the friend is in. */
+const repairKeepsFriends = (): Check => ({
+  id: 'T4 a re-pair race keeps the friend\u2019s friendship',
+  check: (s) => {
+    for (const [fr, f] of Object.entries(s.friends))
+      if (f && (s.repairTombs ?? []).includes(f.inc))
+        return `a device ended ${f.inc}, the friendship ${fr} is in, to settle a re-pair race`
+    return undefined
+  },
+})
+
 /** P3: once mail settles, every device on the list and the friend are on one pair secret. */
 const sameSecret = (cfg: DataConfig): Check => ({
   id: 'P3 one pair secret per friend',
@@ -341,6 +383,8 @@ export function dataChecks(cfg: DataConfig) {
       holdersKnowRemoval(cfg),
       nothingLate(cfg),
       discounted(cfg),
+      foldNeverFails(cfg),
+      repairKeepsFriends(),
       neverOnRemoved(cfg),
       renewalsBounded(),
       friendTakesNothingLate(),
@@ -355,6 +399,7 @@ export function dataChecks(cfg: DataConfig) {
       converge(cfg),
       unfriendStays(cfg),
       newestWins(cfg),
+      laterBeats(cfg),
       sameSecret(cfg),
       notOnRemoved(cfg),
       notOnRead(cfg),
