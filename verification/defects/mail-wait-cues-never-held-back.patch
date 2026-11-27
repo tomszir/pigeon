@@ -1,0 +1,17 @@
+defect: a Pigeon looks on every cue, however many looks in a row took nothing, so junk under one of its tags keeps it looking every few seconds
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: holds back cues whose looks took nothing
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index a48da12..595cb1f 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -207,7 +207,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+     },
+     lookDone() {
+       if (took) emptyCues = 0
+-      else if (cued) emptyCues += 1
++      else if (cued) emptyCues += 0
+       cued = false
+       took = false
+     },
