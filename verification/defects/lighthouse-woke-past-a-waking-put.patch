@@ -1,0 +1,17 @@
+defect: how far wakes have gone moves past a put whose wakes are still being sent
+test: packages/lighthouse src/lighthouse/lighthouse.test.ts
+expect: never past a put whose wakes
+
+diff --git i/packages/lighthouse/src/lighthouse/lighthouse.ts w/packages/lighthouse/src/lighthouse/lighthouse.ts
+index 598b36b..a523619 100644
+--- i/packages/lighthouse/src/lighthouse/lighthouse.ts
++++ w/packages/lighthouse/src/lighthouse/lighthouse.ts
+@@ -189,7 +189,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
+    */
+   const sayWoken = () => {
+     if (storing > 0) return
+-    const through = waking.size > 0 ? Math.min(...waking) - 1 : wokenTo
++    const through = wokenTo
+     if (through <= said) return
+     said = through
+     options.onWoken?.(through)
