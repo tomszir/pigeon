@@ -1,0 +1,17 @@
+defect: a tag that floods a look stays in with the rest, holding back every other tag
+test: apps/web src/apps/messenger/service/look.test.ts
+expect: passes every case
+
+diff --git i/apps/web/src/apps/messenger/service/look.ts w/apps/web/src/apps/messenger/service/look.ts
+index f4a1410..75dd423 100644
+--- i/apps/web/src/apps/messenger/service/look.ts
++++ w/apps/web/src/apps/messenger/service/look.ts
+@@ -212,7 +212,7 @@ export async function readLighthouse(
+     // Caught up with the rest: it joins them again.
+     if (!(entry.done && entry.proven >= cursor)) nextBehind[tag] = reach(entry)
+   }
+-  if (!mainDone && Object.keys(nextBehind).length < caps.behind) {
++  if (caps.behind < 0 && !mainDone && Object.keys(nextBehind).length < caps.behind) {
+     let heaviest: string | undefined
+     for (const [tag, n] of weight)
+       if (heaviest === undefined || n > (weight.get(heaviest) ?? 0)) heaviest = tag

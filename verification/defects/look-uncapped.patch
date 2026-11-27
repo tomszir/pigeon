@@ -1,0 +1,19 @@
+defect: a look reads a Lighthouse for as long as it keeps listing
+test: apps/web src/apps/messenger/service/look.test.ts
+expect: passes every case
+
+diff --git i/apps/web/src/apps/messenger/service/look.ts w/apps/web/src/apps/messenger/service/look.ts
+index f4a1410..156d38f 100644
+--- i/apps/web/src/apps/messenger/service/look.ts
++++ w/apps/web/src/apps/messenger/service/look.ts
+@@ -181,9 +181,7 @@ export async function readLighthouse(
+ 
+   while (lists.some((entry) => !entry.done)) {
+     if (
+-      gets >= caps.gets ||
+-      bytes >= caps.bytes ||
+-      calls >= caps.lists ||
++      calls >= 200 ||
+       options.stop?.() === true
+     ) {
+       capped = true

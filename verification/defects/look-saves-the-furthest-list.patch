@@ -1,0 +1,17 @@
+defect: a look saves the furthest cursor any list reached, passing what another had not listed
+test: apps/web src/apps/messenger/service/look.test.ts
+expect: passes every case
+
+diff --git i/apps/web/src/apps/messenger/service/look.ts w/apps/web/src/apps/messenger/service/look.ts
+index f4a1410..08181ad 100644
+--- i/apps/web/src/apps/messenger/service/look.ts
++++ w/apps/web/src/apps/messenger/service/look.ts
+@@ -204,7 +204,7 @@ export async function readLighthouse(
+   const reach = (entry: List) => (entry.done ? entry.proven : entry.at)
+   // The least over every chunk, so nothing a chunk hasn't listed is passed by.
+   const cursor =
+-    mains.length === 0 ? place.cursor : Math.max(place.cursor, Math.min(...mains.map(reach)))
++    mains.length === 0 ? place.cursor : Math.max(place.cursor, ...mains.map((entry) => entry.at))
+   const mainDone = mains.every((entry) => entry.done)
+   const nextBehind: Record<string, number> = {}
+   for (const entry of lists.filter((one) => one.own)) {

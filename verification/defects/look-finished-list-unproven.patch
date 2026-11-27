@@ -1,0 +1,17 @@
+defect: a finished list counts only as far as it listed, so an empty one holds the cursor back
+test: apps/web src/apps/messenger/service/look.test.ts
+expect: passes every case
+
+diff --git i/apps/web/src/apps/messenger/service/look.ts w/apps/web/src/apps/messenger/service/look.ts
+index f4a1410..9414318 100644
+--- i/apps/web/src/apps/messenger/service/look.ts
++++ w/apps/web/src/apps/messenger/service/look.ts
+@@ -174,7 +174,7 @@ export async function readLighthouse(
+     seen = Math.max(seen, listed.cursor)
+     if (!listed.more) {
+       entry.done = true
+-      entry.proven = Math.max(entry.at, before)
++      entry.proven = entry.at
+     }
+     return true
+   }
