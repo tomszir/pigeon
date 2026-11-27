@@ -657,6 +657,22 @@ describe('the mailbox', () => {
       expect(reasons).toEqual(['second'])
     })
 
+    it('keeps the Lighthouse’s cursor and days when it can’t read it to the end', async () => {
+      const { address, device, recipient } = setup({ firstGet: 'unreachable' })
+      const store = createMemoryStore()
+      const before = { [address.id]: { cursor: 0, at: NOON - 5 * DAY } }
+      await store.set('mail-fetched', before)
+      const rook = device('rook-laptop', 'rook')
+      const mika = device('mika-phone', 'mika', { store })
+      await rook.mailbox.send('farewell', await recipient(mika, 'mika'), { reason: 'first' })
+      const from: Source = { sender: fakeSigner('rook').id, secret, kinds: ['farewell'] }
+      await mika.mailbox.fetch([address], [from], async () => true)
+      // The days it read stay where they were, so the next look reads them all again.
+      expect(await store.get('mail-fetched')).toEqual(before)
+      await mika.mailbox.fetch([address], [from], async () => true)
+      expect(await store.get('mail-fetched')).toMatchObject({ [address.id]: { at: NOON } })
+    })
+
     it('still treats a Lighthouse that can’t be reached as unreachable, reading again next time', async () => {
       const { address, mika, from, take, reasons } = await twoLetters({ firstGet: 'unreachable' })
       await mika.mailbox.fetch([address], [from], take)
