@@ -1,4 +1,4 @@
-# 0061: Your devices in step through a shared log
+# 0062: Your devices in step through a shared log
 
 Your devices keep friends, petnames, mutes, blocks, settings, chat history and invite links in step through a signed log of each device's changes, passed on in the self room and the self mailbox, with tombstones that nothing undoes and pair secrets sealed beside the log, never in it.
 
