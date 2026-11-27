@@ -19,7 +19,6 @@ import {
   type LighthouseClient,
   type LogHead,
   lowSBody,
-  MAX_LIST_TAGS,
   MAX_MAIL_MS,
   type MailKind,
   mailTag,
@@ -33,6 +32,7 @@ import {
   utcDate,
 } from '@pigeon/core'
 import type { Store } from '../../../platform/storage/storage.ts'
+import { type Fetched, fetchedFrom, type LookCaps, readLighthouse } from './look.ts'
 import { createOutbox, letterKey, type Outgoing, type Recipient, type TagScheme } from './outbox.ts'
 
 export type { Recipient, TagScheme } from './outbox.ts'
@@ -50,7 +50,10 @@ const EXPIRES_MS = MAX_MAIL_MS - 60 * 60 * 1000
 
 const KEYS = {
   outbox: 'mail-outbox',
-  /** Per Lighthouse: the `list` cursor, and when this device last fetched there. */
+  /**
+   * Per Lighthouse: the `list` cursor, the tags read on their own with theirs, and when this
+   * device last fetched there.
+   */
   fetched: 'mail-fetched',
   /** (sender, id) of letters already taken, with when, kept as long as mail can be. */
   seen: 'mail-seen',
@@ -65,7 +68,10 @@ export interface Source {
   readonly kinds: readonly MailKind[]
   /** Blobs bigger than this are skipped unread. */
   readonly maxBytes?: number | undefined
-  /** At most this many blobs are got each fetch. */
+  /**
+   * At most about this many blobs are got at each Lighthouse in one look: reaching it stops the
+   * look there like its caps do, once the page under way is read, and the rest waits for the next.
+   */
   readonly maxItems?: number | undefined
   /**
    * Where to send receipts: the sender's devices and Lighthouses, if known. Asked each time, as
@@ -107,6 +113,8 @@ export interface MailboxDeps {
    * letter put after it was sealed; undefined for one whose list this Pigeon doesn't keep, which
    * goes to the devices it was sealed to.
    */
+  /** How much one look takes from each Lighthouse; LOOK_CAPS unless a test says otherwise. */
+  readonly lookCaps?: LookCaps | undefined
   readonly listOf?:
     | ((letter: {
         readonly kind: MailKind
@@ -496,11 +504,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
     fetch: (lighthouses, sources, take, look) =>
       serial(async () => {
         const completed: PeerId[] = []
-        const fetchedStored = await store.get(KEYS.fetched)
-        const fetched: Record<string, { cursor: number; at: number }> =
-          typeof fetchedStored === 'object' && fetchedStored !== null
-            ? { ...(fetchedStored as Record<string, { cursor: number; at: number }>) }
-            : {}
+        const fetched = fetchedFrom(await store.get(KEYS.fetched))
         const taken = await seen()
         const at = now()
         // Everything waiting, at every Lighthouse, is opened first and acted on after, so what a
@@ -514,12 +518,14 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           letter: Letter
           drop: string
         }[] = []
-        const reached: Record<string, { cursor: number; at: number }> = {}
-        // Blobs got per source this fetch, for its `maxItems`.
-        const got = new Map<Source, number>()
+        const reached: Record<string, Fetched> = {}
         for (const lighthouse of lighthouses) {
           if (deps.stopped()) return completed
-          const last = fetched[lighthouse.id] ?? { cursor: 0, at: at - LOOK_BACK_DAYS * DAY }
+          const last = fetched[lighthouse.id] ?? {
+            cursor: 0,
+            behind: {},
+            at: at - LOOK_BACK_DAYS * DAY,
+          }
           // Every source's tag for every day since the last fetch, and what each one is.
           const tags = new Map<string, { source: Source; date: string }>()
           for (const date of datesBetween(last.at, at))
@@ -529,64 +535,43 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             }
           if (tags.size === 0) continue
           const client = deps.client(lighthouse)
-          const all = [...tags.keys()]
-          let cursor = last.cursor
-          let reachable = true
-          let heldBack = false
-          // In chunks a Lighthouse takes in one list; each read to its end from the last cursor,
-          // so the cursor kept is the furthest any reached.
-          for (let start = 0; start < all.length && reachable; start += MAX_LIST_TAGS) {
-            const chunk = all.slice(start, start + MAX_LIST_TAGS)
-            let chunkCursor = last.cursor
-            for (let more = true; more && reachable; ) {
-              if (deps.stopped()) return completed
-              const listed = await client.request({
-                type: 'list',
-                tags: chunk,
-                cursor: chunkCursor,
+          // Blobs got per source at this Lighthouse in this look, for its `maxItems`.
+          const got = new Map<Source, number>()
+          const read = await readLighthouse(
+            [...tags.keys()],
+            { cursor: last.cursor, behind: last.behind },
+            async (chunk, cursor) => {
+              const listed = await client.request({ type: 'list', tags: chunk, cursor })
+              return listed.ok && listed.value.type === 'listed' ? listed.value : undefined
+            },
+            async (item) => {
+              const where = tags.get(item.tag)
+              if (where === undefined) return { kind: 'skipped' }
+              const { maxBytes } = where.source
+              if (maxBytes !== undefined && item.size > maxBytes) return { kind: 'skipped' }
+              const blob = await client.request({ type: 'get', id: item.id })
+              // Gone since it was listed (taken by another device, dropped, expired): there's
+              // nothing to read and nothing to wait for, so the rest of the list goes on, and
+              // the cursor moves past it with the rest.
+              if (blob.ok && blob.value.type === 'error' && blob.value.error === 'unknown')
+                return { kind: 'skipped' }
+              // Read again next time: the cursor isn't moved past what couldn't be got.
+              if (!blob.ok || blob.value.type !== 'blob') return { kind: 'failed' }
+              got.set(where.source, (got.get(where.source) ?? 0) + 1)
+              const bytes = base64Decode(blob.value.blob)
+              const size = bytes.ok ? bytes.value.length : blob.value.blob.length
+              // The size listed is only the Lighthouse's word: the blob itself is measured too,
+              // so one that lists a small size can't hand over a big blob to open.
+              if (maxBytes !== undefined && (!bytes.ok || size > maxBytes))
+                return { kind: 'got', bytes: size }
+              const dayOf = Date.parse(`${where.date}T00:00:00Z`)
+              const open = await openMail(crypto, deps.seal, deps.sealer, blob.value.blob, {
+                to: deps.self,
+                kinds: where.source.kinds,
+                dates: [utcDate(dayOf - DAY), where.date, utcDate(dayOf + DAY)],
               })
-              if (!listed.ok || listed.value.type !== 'listed') {
-                reachable = false
-                break
-              }
-              for (const item of listed.value.items) {
-                const where = tags.get(item.tag)
-                if (where === undefined) continue
-                const { maxBytes, maxItems } = where.source
-                if (maxBytes !== undefined && item.size > maxBytes) continue
-                const count = got.get(where.source) ?? 0
-                if (maxItems !== undefined && count >= maxItems) {
-                  // Read next time: the cursor isn't moved past what was left for later.
-                  heldBack = true
-                  continue
-                }
-                const blob = await client.request({ type: 'get', id: item.id })
-                // Gone since it was listed (taken by another device, dropped, expired): there's
-                // nothing to read and nothing to wait for, so the rest of the list goes on, and
-                // the cursor moves past it with the rest.
-                if (blob.ok && blob.value.type === 'error' && blob.value.error === 'unknown')
-                  continue
-                if (!blob.ok || blob.value.type !== 'blob') {
-                  // Read again next time: the cursor isn't moved past what couldn't be got.
-                  reachable = false
-                  break
-                }
-                got.set(where.source, count + 1)
-                // The size listed is only the Lighthouse's word: the blob itself is measured too,
-                // so one that lists a small size can't hand over a big blob to open.
-                if (maxBytes !== undefined) {
-                  const bytes = base64Decode(blob.value.blob)
-                  if (!bytes.ok || bytes.value.length > maxBytes) continue
-                }
-                const dayOf = Date.parse(`${where.date}T00:00:00Z`)
-                const open = await openMail(crypto, deps.seal, deps.sealer, blob.value.blob, {
-                  to: deps.self,
-                  kinds: where.source.kinds,
-                  dates: [utcDate(dayOf - DAY), where.date, utcDate(dayOf + DAY)],
-                })
-                const { sender } = where.source
-                if (!open.ok || (sender !== undefined && open.value.letter.sender !== sender))
-                  continue
+              const { sender } = where.source
+              if (open.ok && (sender === undefined || open.value.letter.sender === sender))
                 opened.push({
                   client,
                   lighthouse,
@@ -594,14 +579,23 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
                   source: where.source,
                   ...open.value,
                 })
-              }
-              if (!reachable) break
-              chunkCursor = listed.value.cursor
-              more = listed.value.more
-            }
-            cursor = Math.max(cursor, chunkCursor)
-          }
-          if (reachable && !heldBack) reached[lighthouse.id] = { cursor, at }
+              return { kind: 'got', bytes: size }
+            },
+            {
+              ...(deps.lookCaps === undefined ? {} : { caps: deps.lookCaps }),
+              // A source at its own limit stops the look like a cap: what's left is read next time.
+              stop: () =>
+                [...got].some(
+                  ([source, n]) => source.maxItems !== undefined && n >= source.maxItems,
+                ),
+              stopped: deps.stopped,
+            },
+          )
+          if (deps.stopped()) return completed
+          // A look that stopped at a cap keeps the last fetch's time, so the next one lists the
+          // same days again from the cursor saved, not only the days since now.
+          if (read.reachable)
+            reached[lighthouse.id] = { ...read.place, at: read.complete ? at : last.at }
         }
         if (deps.stopped()) return completed
         await look?.(opened.map(({ source, letter }) => ({ source, letter })))
