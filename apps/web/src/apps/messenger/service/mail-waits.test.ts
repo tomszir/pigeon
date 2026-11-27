@@ -153,6 +153,27 @@ describe('waiting at a Lighthouse', () => {
     expect(await junk(3, false, 2000)).toEqual({ early: false, cued: true })
   })
 
+  it('holds a Lighthouse that says mail to every wait to a few looks in half an hour', async () => {
+    const h = harness()
+    let looks = 0
+    // Each cue brings a look that takes nothing, and the wait after it hears `mail` at once.
+    for (let second = 0; second < 30 * 60; second++) {
+      if (h.cues() > looks) {
+        looks = h.cues()
+        h.waitsFor.lookDone()
+      }
+      const standing = h.waits.length
+      if (second === 0 || looks > 0) h.waitsFor.looked(lighthouse, looked())
+      await flush()
+      for (const wait of h.waits.slice(standing))
+        wait.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+      await h.pass(1000)
+    }
+    // At once, then after one, two, four, eight and ten minutes: the schedule's own pace.
+    expect(h.cues()).toBeGreaterThanOrEqual(5)
+    expect(h.cues()).toBeLessThanOrEqual(7)
+  })
+
   it('asks a Lighthouse from before waits nothing more for a while', async () => {
     const h = harness()
     h.waitsFor.looked(lighthouse, looked())

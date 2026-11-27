@@ -36,6 +36,13 @@ export const ROOM_CLOSE = 1013
 /** How often a connection with a wait standing sends a keepalive: well inside two minutes. */
 export const KEEPALIVE_MS = 50_000
 
+/**
+ * How long past its lease a wait is given before it's taken as answered: a Lighthouse may answer
+ * a lease late (the Worker, when something next wakes it), and an answer lost on the way must
+ * never hold one of a connection's request slots for good.
+ */
+export const WAIT_GRACE_MS = 30_000
+
 export type OpenSocket = (url: string, events: SocketEvents) => LighthouseSocket
 
 export type ClientError =
@@ -251,11 +258,20 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
     const sent = encodeRequest({ req, request })
     // A wait is answered when mail comes or its lease ends, not within the usual time.
     const held = request.type === 'wait'
+    // A new wait ends the one standing (the Lighthouse answers it `lease`): it's settled so here
+    // too, so a connection never holds more than one, whatever becomes of that answer.
+    if (held)
+      for (const entry of [...connection.waiting.values()])
+        if (entry.held) entry.settle(ok({ type: 'waited', why: 'lease' }))
     return new Promise<Answer>((resolve) => {
       const settle = settler(connection, req, resolve)
       connection.waiting.set(req, { sent, settle, held })
-      if (held) void keepAlive(connection)
-      else timer(connection, req, request.type === 'hello', settle)
+      if (request.type === 'wait') {
+        void keepAlive(connection)
+        void options.sleep(request.seconds * 1000 + WAIT_GRACE_MS).then(() => {
+          if (connection.waiting.has(req)) settle(err('timeout'))
+        })
+      } else timer(connection, req, request.type === 'hello', settle)
       try {
         connection.socket?.send(sent)
       } catch {
