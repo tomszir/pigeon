@@ -123,6 +123,11 @@ export interface Conn {
   /** When it last sent a keepalive. */
   readonly pinged: number
   readonly wait: Wait | null
+  /**
+   * Its `hello` was answered. A connection says hello first, which counts as a read, so a range
+   * past its reads opens connections that can do nothing but hear `hello-first`.
+   */
+  readonly greeted: boolean
 }
 
 export interface LighthouseState {
@@ -188,7 +193,7 @@ export type Body =
       readonly more: boolean
     }
   | { readonly type: 'dropped' }
-  | { readonly type: 'error'; readonly error: 'malformed' | 'limit' | 'unknown' }
+  | { readonly type: 'error'; readonly error: 'malformed' | 'limit' | 'unknown' | 'hello-first' }
 
 export type Output =
   | { readonly kind: 'reply'; readonly conn: string; readonly req: number; readonly body: Body }
@@ -401,6 +406,7 @@ export function step(
         seen: s.now,
         pinged: s.now,
         wait: null,
+        greeted: allowRead(event.range),
       }
       break
     }
@@ -411,6 +417,11 @@ export function step(
       setConn(event.conn, { seen: s.now })
       const { request, req } = event
       const reply = (body: Body) => out.push({ kind: 'reply', conn: event.conn, req, body })
+      const shapeless = request.type === 'wait' && !waitShapeOk(request, limits)
+      if (!conn.greeted && !shapeless) {
+        reply({ type: 'error', error: 'hello-first' })
+        break
+      }
       if (request.type === 'wait') {
         if (!waitShapeOk(request, limits)) {
           reply({ type: 'error', error: 'malformed' })

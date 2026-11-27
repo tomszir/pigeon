@@ -57,7 +57,9 @@ export function checkEvent(
   const waitedOut = out.flatMap((o) =>
     o.kind === 'reply' && o.body.type === 'waited' ? [{ ...o, why: o.body.why, body: o.body }] : [],
   )
-  const frame = event.kind === 'frame' ? event : undefined
+  // A frame on a connection whose hello was refused only hears `hello-first`: nothing to check.
+  const frame =
+    event.kind === 'frame' && before.conns[event.conn]?.greeted !== false ? event : undefined
   const waitFrame = frame?.request.type === 'wait' ? frame : undefined
   const putFrame = frame?.request.type === 'put' ? frame : undefined
   const wellFormedWait =
@@ -139,6 +141,16 @@ export function checkEvent(
   if (event.kind === 'tick' && Math.floor((now + event.seconds) / 60) !== minute) {
     minute = Math.floor((now + event.seconds) / 60)
     reads = {}
+  }
+  // A connection's hello, as it opens, is a read too.
+  if (event.kind === 'connect' && before.conns[event.conn] === undefined) {
+    const opened = after.conns[event.conn]
+    if (opened !== undefined) {
+      const made = reads[event.range] ?? 0
+      if (made >= limits.readsPerMinute) {
+        if (opened.greeted) fail('L3 read', `${event.conn}'s hello past its reads wasn't refused`)
+      } else reads = { ...reads, [event.range]: made + 1 }
+    }
   }
   if (
     frame !== undefined &&
