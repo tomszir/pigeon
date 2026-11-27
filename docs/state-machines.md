@@ -1,6 +1,6 @@
 # State machines
 
-Pairing, linking and recovery as the states each side goes through, what moves it on, and what it checks first, drawn in ASCII beside the message sequences in flows.md.
+Pairing, linking, recovery and waiting for mail at a Lighthouse as the states each side goes through, what moves it on, and what it checks first, drawn in ASCII beside the message sequences in flows.md.
 
 [flows.md](flows.md) draws the same handshakes as messages between two sides, and the device log's own states; [protocol.md](protocol.md) wins where either differs from it. [threat-model.md](threat-model.md) lists every message with the checks it gets. Boxes are states; an arrow is labelled with what moves it on, and anything not drawn leaves the state as it is.
 
@@ -347,3 +347,31 @@ Using it with every device lost (Recover My Pigeon), on a new browser:
 ```
 
 Until one old friend has handed the whole log back, the tail is the only copy of the recovery, and Kn still matters: Kn+1 is worth nothing to a friend who hasn't seen epoch n. A friend who hasn't seen it yet still takes I's devices from before.
+
+## Waiting for mail at a Lighthouse
+
+One connection at a Lighthouse, as the Lighthouse keeps it. A connection has one wait at most.
+
+```
+              wait, well formed           any wait ends the one standing first, with `lease`
+  ┌──────────┐ ─────────────────────────▶ ┌────────────┐
+  │ open, no │                            │  checked   │── over its range's reads, or past a tag
+  │   wait   │ ◀───────────────────────── │            │   budget once quiet waits are closed:
+  └──────────┘   `limit`, or `mail` at    └────────────┘   `limit`
+       ▲         once when its tags            │
+       │         hold a blob past its          │ nothing past its cursor
+       │         cursor                        ▼
+       │                                ┌────────────┐
+       └─────────────────────────────── │  standing  │
+          `mail`: another connection    └────────────┘
+          puts under one of its tags          │
+          past its cursor before its          │ the socket closes, or the connection is
+          lease ends; `lease`: its lease      │ closed for room or gone quiet
+          ends, or a new wait replaces it     ▼
+                                          (gone, unanswered)
+```
+
+- **Checked first.** Its shape (1 to 128 distinct tags, a lease of 1 to 600 seconds), else `malformed`; a hello before it, else `hello-first`; the range's reads this minute; the tags in live waits from its range, its /48 and everyone.
+- **A put** works out its reply and its store without looking at any wait, sends its reply, then answers `mail` to each standing wait it's news to, never the putter's own. A waiting connection not heard from for the idle time is closed instead.
+- **Node** answers a lease within a second of its end. **The Worker** answers it when something next wakes it, first thing. Waking with its memory lost, it rebuilds its waits from its sockets, then wakes those a put may have left unwoken by a reset, from the seq it wrote down.
+- **No room.** A new connection that finds the total, its range or its /48 full closes idle connections, then the standing wait that began first among those counted against every full limit (1013, `room`).

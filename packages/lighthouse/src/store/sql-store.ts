@@ -196,6 +196,16 @@ export function createSqlStore(
       } else db.exec('UPDATE blobs SET used = ? WHERE id = ?', JSON.stringify(used), id)
       return { kind: 'used', remaining }
     },
+    async after(seq, now, limit) {
+      return db
+        .exec(
+          'SELECT seq, tag FROM blobs WHERE seq > ? AND expires > ? ORDER BY seq LIMIT ?',
+          seq,
+          now,
+          limit,
+        )
+        .rows.map((row) => ({ seq: num(row['seq']), tag: text(row['tag']) }))
+    },
     async expire(now) {
       // Only the rows about to go are read, through the expiry index.
       const gone = db.exec(

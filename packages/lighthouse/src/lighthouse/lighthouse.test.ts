@@ -26,8 +26,9 @@ const HOUR = 60 * 60 * 1000
 const NONCE = key(250)
 
 /** A reply, which every frame here should get rather than having its connection closed. */
-const must = (text: string | undefined): string => {
+const must = (text: string | null | undefined): string => {
   if (text === undefined) throw new Error('closed unanswered')
+  if (text === null) throw new Error('held, unanswered')
   return text
 }
 
@@ -436,5 +437,120 @@ describe('the Lighthouse', () => {
       'hello',
       'stored',
     ])
+  })
+})
+
+describe('a wait', () => {
+  /** A connection that says hello, keeps what's pushed to it, and can send any frame. */
+  function waiting(
+    lighthouse: ReturnType<typeof createLighthouse>,
+    nonce: string,
+    address: string,
+  ) {
+    const pushed: string[] = []
+    const connection = lighthouse.connect(address, undefined, {
+      push: (frame) => pushed.push(frame),
+      close: () => undefined,
+      heard: () => NOW,
+    })
+    let req = 0
+    const send = async (request: LighthouseRequest) => {
+      req += 1
+      const sent = encodeRequest({ req, request })
+      return { sent, reply: await connection.receive(sent) }
+    }
+    return { pushed, send, nonce }
+  }
+  const hello = (nonce: string): LighthouseRequest => ({
+    type: 'hello',
+    protocol: LIGHTHOUSE_PROTOCOL,
+    nonce,
+  })
+
+  it("is answered later, signed over its own connection's nonce and its own frame", async () => {
+    let now = NOW
+    const tasks: (() => void)[] = []
+    const lighthouse = createLighthouse({
+      signer,
+      crypto: fakeCrypto,
+      store: createMemoryStore(),
+      now: () => now,
+      name: 'Test Lighthouse',
+      software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+      defer: (run) => void tasks.push(run),
+    })
+    const waiter = waiting(lighthouse, key(240), '203.0.113.7')
+    const putter = waiting(lighthouse, key(241), '198.51.100.9')
+    await waiter.send(hello(waiter.nonce))
+    await putter.send(hello(putter.nonce))
+    const tag = key(9)
+    const wait = await waiter.send({ type: 'wait', tags: [tag], cursor: 0, seconds: 60 })
+    expect(wait.reply).toBeNull()
+    const put = await putter.send({
+      type: 'put',
+      tag,
+      blob: base64Encode(new Uint8Array([1, 2, 3])),
+      expires: now + HOUR,
+      drops: [await hashOf(1)],
+    })
+    // The put's reply comes first; the wake once it has gone.
+    expect(waiter.pushed).toEqual([])
+    const stored = await openReply(fakeCrypto, signer.id, must(put.reply), {
+      nonce: putter.nonce,
+      sent: put.sent,
+    })
+    expect(stored.ok && stored.value.reply.type).toBe('stored')
+    for (const run of tasks.splice(0)) run()
+    await lighthouse.settled()
+    expect(waiter.pushed).toHaveLength(1)
+    const woken = await openReply(fakeCrypto, signer.id, waiter.pushed[0] ?? '', {
+      nonce: waiter.nonce,
+      sent: wait.sent,
+    })
+    expect(woken.ok && woken.value).toMatchObject({
+      req: 2,
+      reply: { type: 'waited', why: 'mail' },
+    })
+    // Not on another connection, nor as the answer to another frame.
+    for (const expected of [
+      { nonce: putter.nonce, sent: wait.sent },
+      { nonce: waiter.nonce, sent: put.sent },
+    ])
+      expect((await openReply(fakeCrypto, signer.id, waiter.pushed[0] ?? '', expected)).ok).toBe(
+        false,
+      )
+
+    // A second wait, unanswered until its lease ends.
+    const again = await waiter.send({ type: 'wait', tags: [tag], cursor: 1, seconds: 5 })
+    expect(again.reply).toBeNull()
+    now += 5000
+    await lighthouse.expireWaits()
+    const lease = await openReply(fakeCrypto, signer.id, waiter.pushed[1] ?? '', {
+      nonce: waiter.nonce,
+      sent: again.sent,
+    })
+    expect(lease.ok && lease.value.reply).toEqual({ type: 'waited', why: 'lease' })
+  })
+
+  it('is refused on a connection with nowhere to send its answer', async () => {
+    const lighthouse = createLighthouse({
+      signer,
+      crypto: fakeCrypto,
+      store: createMemoryStore(),
+      now: () => NOW,
+      name: 'Test Lighthouse',
+      software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+    })
+    const connection = lighthouse.connect('203.0.113.7')
+    await connection.receive(encodeRequest({ req: 1, request: hello(NONCE) }))
+    const sent = encodeRequest({
+      req: 2,
+      request: { type: 'wait', tags: [key(9)], cursor: 0, seconds: 5 },
+    })
+    const reply = await openReply(fakeCrypto, signer.id, must(await connection.receive(sent)), {
+      nonce: NONCE,
+      sent,
+    })
+    expect(reply.ok && reply.value.reply).toEqual({ type: 'error', error: 'limit' })
   })
 })

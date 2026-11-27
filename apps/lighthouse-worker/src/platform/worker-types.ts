@@ -16,6 +16,10 @@ export interface DurableObjectState {
   acceptWebSocket(socket: WebSocket, tags?: string[]): void
   /** The sockets taken on and still open, or only those with `tag`. */
   getWebSockets(tag?: string): WebSocket[]
+  /** A text frame the runtime answers itself, on every socket, without waking the object. */
+  setWebSocketAutoResponse(pair: WebSocketRequestResponsePair): void
+  /** When the runtime last answered that frame on `socket`, or null if it never has. */
+  getWebSocketAutoResponseTimestamp(socket: WebSocket): Date | null
 }
 
 /** A WebSocket the runtime hibernates: what it keeps with the socket while it sleeps. */

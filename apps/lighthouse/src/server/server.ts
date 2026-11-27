@@ -13,10 +13,10 @@ import {
   DEFAULT_LIMITS,
   type Lighthouse,
   type Limits,
-  roomForConnection,
   wideRange,
 } from '@pigeon/lighthouse'
 import { type WebSocket, WebSocketServer } from 'ws'
+import { createConnections } from './connections.ts'
 
 /**
  * Replies a client may leave unread before it's cut off. Replies are made whether or not the
@@ -139,58 +139,40 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
     )
   })
   const sockets = new WebSocketServer({ server: http, maxPayload: MAX_FRAME_BYTES })
-  /** Connections open now, by address range and by IPv6 /48. */
-  const open = new Map<string, number>()
-  let total = 0
   const budget = new SendBudget()
-  const move = (key: string | undefined, by: number) => {
-    if (key === undefined) return
-    const count = (open.get(key) ?? 0) + by
-    if (count <= 0) open.delete(key)
-    else open.set(key, count)
-  }
+  const connections = createConnections({
+    lighthouse: options.lighthouse,
+    limits,
+    now: Date.now,
+  })
+  // Leases that ended are answered, and connections gone quiet closed, within a second.
+  const ticker = setInterval(() => void connections.tick().catch(() => undefined), 1000)
+  ticker.unref()
 
   sockets.on('connection', (socket, request) => {
     const address = clientAddress(request, options.trustForwardedFor)
     const range = addressRange(address)
     const wide = wideRange(range)
-    const room = roomForConnection(limits, {
-      total,
-      range: open.get(range) ?? 0,
-      wide: wide === undefined ? 0 : (open.get(wide) ?? 0),
-    })
-    if (!room) {
+    const connection = connections.open(
+      {
+        send: (frame) => sendOrCut(socket, frame, MAX_BUFFERED_BYTES, budget, range, wide),
+        close: (code, reason) => socket.close(code, reason),
+      },
+      address,
+    )
+    if (connection === undefined) {
       // Terminated, not closed: a client that never answers the close would otherwise keep the
       // socket for ws's 30 seconds, uncounted.
       socket.terminate()
       return
     }
-    total += 1
-    move(range, 1)
-    move(wide, 1)
-    const idle = setTimeout(() => socket.close(1000, 'idle'), limits.idleSeconds * 1000)
-    idle.unref()
-    socket.on('close', () => {
-      clearTimeout(idle)
-      total -= 1
-      move(range, -1)
-      move(wide, -1)
-    })
-
-    const connection = options.lighthouse.connect(address)
+    socket.on('close', () => connection.closed())
     socket.on('message', (data, binary) => {
       if (binary) {
         socket.close(1003, 'text frames only')
         return
       }
-      idle.refresh()
-      void connection.receive(data.toString()).then(
-        (reply) => {
-          if (reply === undefined) socket.close(1008, 'limit')
-          else sendOrCut(socket, reply, MAX_BUFFERED_BYTES, budget, range, wide)
-        },
-        () => socket.close(1011, 'error'),
-      )
+      void connection.message(data.toString()).catch(() => socket.close(1011, 'error'))
     })
   })
   return new Promise((resolve, reject) => {
@@ -201,6 +183,7 @@ export function startServer(options: ServerOptions): Promise<RunningServer> {
         port: typeof address === 'object' && address !== null ? address.port : options.port,
         close: () =>
           new Promise<void>((done) => {
+            clearInterval(ticker)
             for (const client of sockets.clients) client.terminate()
             sockets.close(() => http.close(() => done()))
           }),

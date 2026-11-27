@@ -12,6 +12,8 @@ import {
   frameReq,
   LIGHTHOUSE_PROTOCOL,
   MAX_BLOB_BYTES,
+  MAX_WAIT_SECONDS,
+  MAX_WAIT_TAGS,
   mailBlobId,
   openReply,
   parseRequest,
@@ -45,6 +47,7 @@ describe('requests', () => {
       { type: 'list-claimed', tags: [key(1)], cursor: 0 },
       { type: 'get', id: key(4) },
       { type: 'drop', id: key(4), key: key(5) },
+      { type: 'wait', tags: [key(1), key(2)], cursor: 12, seconds: 600 },
     ] as const) {
       expect(parseRequest(encodeRequest({ req: 7, request }))).toEqual({
         ok: true,
@@ -85,6 +88,54 @@ describe('requests', () => {
     expect(parseRequest(JSON.stringify({ req: 0, request: { type: 'get', id: key(1) } })).ok).toBe(
       false,
     )
+  })
+})
+
+describe('a wait', () => {
+  const tags = (count: number) => Array.from({ length: count }, (_, i) => key(i + 1))
+  const wait = (fields: Record<string, unknown>) =>
+    parseRequest(JSON.stringify({ req: 1, request: { type: 'wait', ...fields } })).ok
+
+  it('takes 1 to 128 distinct tags and a lease of 1 to 600 seconds', () => {
+    expect(wait({ tags: tags(1), cursor: 0, seconds: 1 })).toBe(true)
+    expect(wait({ tags: tags(MAX_WAIT_TAGS), cursor: 0, seconds: MAX_WAIT_SECONDS })).toBe(true)
+  })
+
+  it('refuses no tags, too many, the same twice, a lease out of range, or a bad cursor', () => {
+    for (const fields of [
+      { tags: [], cursor: 0, seconds: 5 },
+      { tags: tags(MAX_WAIT_TAGS + 1), cursor: 0, seconds: 5 },
+      { tags: [key(1), key(1)], cursor: 0, seconds: 5 },
+      { tags: [key(1).toUpperCase()], cursor: 0, seconds: 5 },
+      { tags: tags(1), cursor: 0, seconds: 0 },
+      { tags: tags(1), cursor: 0, seconds: MAX_WAIT_SECONDS + 1 },
+      { tags: tags(1), cursor: 0, seconds: 1.5 },
+      { tags: tags(1), cursor: -1, seconds: 5 },
+      { tags: tags(1), seconds: 5 },
+    ])
+      expect(wait(fields), JSON.stringify(fields)).toBe(false)
+  })
+
+  it('is answered by a waited that says only mail or lease', async () => {
+    const sent = encodeRequest({
+      req: 2,
+      request: { type: 'wait', tags: tags(1), cursor: 0, seconds: 9 },
+    })
+    const to = { req: 2, nonce: key(8), request: await frameHash(fakeCrypto, sent) }
+    for (const why of ['mail', 'lease'] as const) {
+      const text = await sealReply(lighthouse, 5, to, { type: 'waited', why })
+      const opened = await openReply(fakeCrypto, lighthouse.id, text, { nonce: key(8), sent })
+      expect(opened.ok && opened.value.reply).toEqual({ type: 'waited', why })
+    }
+    for (const reply of [
+      { type: 'waited', why: 'soon' },
+      { type: 'waited', why: 'mail', tag: key(1) },
+    ]) {
+      const text = await sealReply(lighthouse, 5, to, reply as never)
+      expect((await openReply(fakeCrypto, lighthouse.id, text, { nonce: key(8), sent })).ok).toBe(
+        false,
+      )
+    }
   })
 })
 

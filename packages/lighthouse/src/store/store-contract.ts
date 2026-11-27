@@ -64,6 +64,23 @@ export function describeMailStore(
         expect(await (await reopen(again)).totalBytes()).toBe(0)
       })
 
+    it('names the live blobs after a seq, oldest first, with their tags', async () => {
+      const store = await make()
+      await store.put(sampleBlob(1), 0)
+      await store.put(sampleBlob(2, { expires: 50 }), 0)
+      await store.put(sampleBlob(3), 0)
+      await store.put(sampleBlob(4), 0)
+      const all = await store.after(0, 0, 10)
+      expect(all.map((blob) => blob.tag)).toEqual([1, 2, 3, 4].map((n) => sampleBlob(n).tag))
+      const first = all[0]?.seq ?? 0
+      // Expired ones aren't news to anyone; the limit keeps the oldest.
+      expect((await store.after(first, 60, 10)).map((blob) => blob.tag)).toEqual(
+        [3, 4].map((n) => sampleBlob(n).tag),
+      )
+      expect(await store.after(first, 60, 1)).toHaveLength(1)
+      expect(await store.after(all.at(-1)?.seq ?? 0, 0, 10)).toEqual([])
+    })
+
     it('stores a blob once, and lists it under its tag in the order it came', async () => {
       const store = await make()
       expect(await store.put(sampleBlob(1), 0)).toBe('stored')

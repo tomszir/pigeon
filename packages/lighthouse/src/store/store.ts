@@ -63,6 +63,15 @@ export interface MailStore {
    * same drop never both succeed.
    */
   useDrop(id: string, hash: string, now: number): Promise<DropOutcome>
+  /**
+   * The live blobs with a seq after `seq`, oldest first, at most `limit`, by tag: for a
+   * Lighthouse waking from a reset to find the puts whose wakes it may not have sent.
+   */
+  after(
+    seq: number,
+    now: number,
+    limit: number,
+  ): Promise<readonly { readonly seq: number; readonly tag: string }[]>
   /** Deletes what has expired; says how many. */
   expire(now: number): Promise<number>
   /**

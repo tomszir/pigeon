@@ -58,6 +58,8 @@ function fakeState(): DurableObjectState & {
       getAlarm: async () => alarm,
     },
     acceptWebSocket: (socket, tags = []) => void accepted.push({ socket, tags }),
+    setWebSocketAutoResponse: () => undefined,
+    getWebSocketAutoResponseTimestamp: () => null,
     getWebSockets: (tag) =>
       accepted
         .filter((entry) => tag === undefined || entry.tags.includes(tag))
@@ -156,8 +158,8 @@ describe('the Worker Lighthouse', () => {
         codes.push(code)
       },
     } as unknown as WebSocket
-    object.webSocketClose(socket, 1005)
-    object.webSocketClose(socket, 4001)
+    await object.webSocketClose(socket, 1005)
+    await object.webSocketClose(socket, 4001)
     expect(codes).toEqual([1000, 4001])
   })
 

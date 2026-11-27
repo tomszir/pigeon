@@ -42,8 +42,20 @@ export interface Limits {
   readonly connectionsPer48: number
   /** Connections open at once from everyone together. */
   readonly maxConnections: number
-  /** Seconds a connection may send nothing before it's closed, freeing its place. */
+  /**
+   * Seconds a connection may send nothing, neither a frame nor a keepalive, before it's closed,
+   * freeing its place. A waiting connection that goes this long unheard counts toward no limit.
+   */
   readonly idleSeconds: number
+  /**
+   * Tags in all standing waits from one address range. Waits are counted by their tags, not
+   * their connections, so the many small Pigeons behind one carrier address can all wait.
+   */
+  readonly waitedTagsPerRange: number
+  /** Tags in all standing waits from one IPv6 /48. */
+  readonly waitedTagsPer48: number
+  /** Tags in all standing waits together: what bounds the index of waits in memory. */
+  readonly maxWaitedTags: number
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -63,9 +75,16 @@ export const DEFAULT_LIMITS: Limits = {
   connectionsPer48: 512,
   maxConnections: 10_000,
   // Pigeon looks for mail every 30 seconds while an invite of yours waits and every 10 minutes
-  // otherwise (and, at most every 5 seconds, when you come back to it or send), and opens a new connection when its last one was closed: two minutes keeps the
-  // socket between quick checks and lets it go between slow ones.
+  // otherwise (and, at most every 5 seconds, when you come back to it or send), and opens a new
+  // connection when its last one was closed: two minutes keeps the socket between quick checks
+  // and lets it go between slow ones. One with a wait standing sends a keepalive every 50
+  // seconds, so it stays.
   idleSeconds: 120,
+  // As many tags as 16 and 64 waits of 128 tags each.
+  waitedTagsPerRange: 2048,
+  waitedTagsPer48: 8192,
+  // A million entries would take most of a Worker isolate's 128 MB.
+  maxWaitedTags: 200_000,
 }
 
 /** What a blob costs to keep: its bytes, plus its id, tag and drop hashes and a record's room. */

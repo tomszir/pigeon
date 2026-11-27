@@ -42,7 +42,13 @@ function setup(
         // Unanswered is closed, as the runners close it.
         void connection
           .receive(relay.rewrite?.(text) ?? text)
-          .then((reply) => (reply === undefined ? events.onClose() : events.onMessage(reply)))
+          .then((reply) =>
+            reply === undefined
+              ? events.onClose()
+              : reply === null
+                ? undefined
+                : events.onMessage(reply),
+          )
       },
       close: () => events.onClose(),
     }
