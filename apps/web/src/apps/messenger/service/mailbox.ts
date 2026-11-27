@@ -378,16 +378,16 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
   }
 
   /**
-   * Puts `kept` once: the first put sealed to the list as it stands (to `everyone` it's sealed
-   * to, as its first put is, or only to those it waits on), and the letter as it's kept after;
-   * none once nobody it waits on is left on the list. Under the same id each time, so a device
-   * that has it takes it once and its receipt still names it.
+   * Puts `kept` once, sealed to the list as it stands (to `everyone` it's sealed to, as its
+   * first put is, or only to those it waits on), and the letter as it's kept after; none once
+   * nobody it waits on is left on the list. Under the same id each time, so a device that has it
+   * takes it once and its receipt still names it; what was put before is left to expire.
    */
   async function putLetter(
     kept: Outgoing,
     everyone: boolean,
   ): Promise<{ readonly after: Outgoing | undefined; readonly where: LighthouseAddress[] }> {
-    const letter = kept.putAt === 0 ? await resealed(kept) : kept
+    const letter = await resealed(kept)
     if (letter === undefined) return { after: kept, where: [] }
     if (letter.waiting.length === 0) return { after: undefined, where: [] }
     const devices = everyone
