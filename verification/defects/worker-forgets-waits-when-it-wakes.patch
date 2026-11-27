@@ -3,15 +3,15 @@ test: apps/lighthouse-worker src/object/wait-conformance.test.ts
 expect: sends every connection what the reference does
 
 diff --git i/apps/lighthouse-worker/src/object/lighthouse-object.ts w/apps/lighthouse-worker/src/object/lighthouse-object.ts
-index f90d341..85e5977 100644
+index 9de6ac1..ecf9ed5 100644
 --- i/apps/lighthouse-worker/src/object/lighthouse-object.ts
 +++ w/apps/lighthouse-worker/src/object/lighthouse-object.ts
-@@ -147,7 +147,7 @@ export class LighthouseObject {
+@@ -148,7 +148,7 @@ export class LighthouseObject {
        for (const socket of this.state.getWebSockets()) {
          if (this.closed.has(socket)) continue
          const saved = (socket as HibernatingSocket).deserializeAttachment()
--        if (isAttachment(saved)) this.connect(lighthouse, socket as HibernatingSocket, saved)
-+        if (isAttachment(saved) && saved.wait === undefined) this.connect(lighthouse, socket as HibernatingSocket, saved)
+-        if (!isAttachment(saved)) continue
++        if (!isAttachment(saved) || saved.wait !== undefined) continue
+         this.seen.set(socket, saved.seen)
+         this.connect(lighthouse, socket as HibernatingSocket, saved)
        }
-       const kept = sql.exec("SELECT value FROM lighthouse_state WHERE name = 'woke'").toArray()[0]
-       if (kept === undefined) {

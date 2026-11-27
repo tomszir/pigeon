@@ -3,12 +3,12 @@ test: apps/lighthouse src/server/wait-conformance.test.ts
 expect: sends every connection what the reference does
 
 diff --git i/packages/lighthouse/src/lighthouse/lighthouse.ts w/packages/lighthouse/src/lighthouse/lighthouse.ts
-index 8bc1ccb..c8ee6d9 100644
+index 598b36b..e2af4b2 100644
 --- i/packages/lighthouse/src/lighthouse/lighthouse.ts
 +++ w/packages/lighthouse/src/lighthouse/lighthouse.ts
-@@ -190,7 +190,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
+@@ -221,7 +221,7 @@ export function createLighthouse(options: LighthouseOptions): Lighthouse {
      const at = now()
-     for (const waiter of waits.on(tag)) {
+     for (const waiter of waits.on(printOf(tag))) {
        const standing = waits.get(waiter)
 -      if (standing === undefined || seq <= standing.cursor || waiter === putter) continue
 +      if (standing === undefined || seq <= standing.cursor) continue
