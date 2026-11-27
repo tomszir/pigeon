@@ -63,6 +63,33 @@ describe('hearing about mail at once', () => {
     for (const lease of leases) expect(lease).toBeGreaterThan(500)
   })
 
+  type Friend = Awaited<ReturnType<typeof friendsApart>>['mika']
+  const endings: readonly (readonly [string, (friend: Friend) => Promise<unknown>])[] = [
+    ['waiting is turned off', (friend) => friend.messenger.setHearAtOnce(false)],
+    ['relay-only is turned on', (friend) => friend.messenger.setRelayOnly(true)],
+    ['its Lighthouse is taken off the list', (friend) => friend.messenger.setLighthouses([])],
+  ]
+  for (const [what, end] of endings)
+    it(`ends Mika's standing wait at once when ${what}, and sends no other`, async () => {
+      const { clock, lighthouse, rook, mika } = await friendsApart()
+      // Rook's link is gone, so Rook waits, and looks, every ten minutes.
+      for (const link of rook.messenger.inviteLinks())
+        await rook.messenger.cancelInviteLink(link.secret)
+      await rook.messenger.checkMail()
+      await mika.messenger.checkMail()
+      await flush(200)
+      expect(lighthouse.standing()).toBe(2)
+      await end(mika)
+      await flush(200)
+      expect(lighthouse.standing()).toBe(1)
+      // Look after look, on screen all the while, only Rook's stands.
+      for (let second = 0; second < 25 * 60; second += 10) {
+        await clock.tick(10_000)
+        await flush(20)
+        expect(lighthouse.standing()).toBeLessThanOrEqual(1)
+      }
+    })
+
   it('keeps waiting turned off, and turns it on again', async () => {
     const { mika } = await friendsApart()
     expect(mika.messenger.settings().hearAtOnce).toBeUndefined()

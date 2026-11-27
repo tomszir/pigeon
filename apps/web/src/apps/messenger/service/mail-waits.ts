@@ -18,6 +18,8 @@ const DAY = 24 * HOUR
 /** How long before a dropped wait is opened again, at first and at most. */
 export const REOPEN_FIRST_MS = 5000
 export const REOPEN_MOST_MS = 5 * 60 * 1000
+/** A wait whose lease ends with longer than this before the next look is sent again. */
+export const RENEW_AFTER_MS = 5000
 /** A wait that stood this long went well: the next drop is reopened quickly again. */
 const STOOD_MS = 60 * 1000
 /** The most a look waits after a cue, so a network watcher can't as easily line up put and fetch. */
@@ -55,6 +57,8 @@ export interface MailWaitsDeps {
   readonly on: () => boolean
   /** Pigeon is on screen: a dropped wait is opened again only then. */
   readonly visible: () => boolean
+  /** Whether a Lighthouse is on your list now: a look under way may have read one just removed. */
+  readonly listed: (address: LighthouseAddress) => boolean
   /** Asks for a look through the scheduler, which keeps looks apart. */
   readonly cue: () => void
   /** How long until the next scheduled look, in ms. */
@@ -73,14 +77,20 @@ export interface MailWaits {
    */
   retain(list: readonly LighthouseAddress[]): void
   /**
-   * A look's `take`, noting whether it took anything that counted, which says how soon the next
-   * cue may bring a look.
+   * Runs one look, whose `take` is passed through `count` to note whether it took anything that
+   * counted, which says how soon the next cue may bring a look. Noted however the look ends.
    */
-  counting<A extends unknown[]>(
+  look<T>(run: (count: Counting) => Promise<T>): Promise<T>
+}
+
+/** What a look notes, for how soon the next cue may bring one. */
+export interface Counting {
+  /** `take`, noting whether it took anything that counted. */
+  take<A extends unknown[]>(
     take: (...args: A) => Promise<boolean>,
   ): (...args: A) => Promise<boolean>
-  /** The look `counting` was used for has finished. */
-  lookDone(): void
+  /** A receipt came for a letter that waited for it: that counts too. */
+  answered(): void
 }
 
 interface Waiting {
@@ -133,7 +143,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
 
   async function send(state: Waiting): Promise<void> {
     const client = deps.client(state.address)
-    if (client === undefined || deps.closed() || !deps.on()) return
+    if (client === undefined || deps.closed() || !deps.on() || !deps.listed(state.address)) return
     const now = clock.now()
     state.gen += 1
     const gen = state.gen
@@ -154,6 +164,12 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       if (reply.type === 'waited') {
         state.backoff = 0
         if (reply.why === 'mail') await cue()
+        // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
+        // or worked out as a timer's look began): it's sent again, to last until that look.
+        else if (deps.nextLook() > RENEW_AFTER_MS && !deps.closed() && deps.on()) {
+          state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
+          await send(state)
+        }
       } else if (reply.type === 'error' && reply.error === 'malformed')
         state.unsupportedUntil = clock.now() + HOUR
       // Refused for its limits: this Pigeon looks on its schedule.
@@ -175,7 +191,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
 
   return {
     looked(address, looked) {
-      if (deps.closed() || !deps.on()) return
+      if (deps.closed() || !deps.on() || !deps.listed(address)) return
       const key = keyOf(address)
       const state: Waiting = waiting.get(key) ?? {
         address,
@@ -203,18 +219,26 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       state.backoff = 0
       void send(state).catch(() => undefined)
     },
-    counting(take) {
-      return async (...args) => {
-        const counted = await take(...args)
-        if (counted) took = true
-        return counted
+    async look(run) {
+      try {
+        return await run({
+          take:
+            (take) =>
+            async (...args) => {
+              const counted = await take(...args)
+              if (counted) took = true
+              return counted
+            },
+          answered: () => {
+            took = true
+          },
+        })
+      } finally {
+        if (took) emptyCues = 0
+        else if (cued) emptyCues += 1
+        cued = false
+        took = false
       }
-    },
-    lookDone() {
-      if (took) emptyCues = 0
-      else if (cued) emptyCues += 1
-      cued = false
-      took = false
     },
     retain(list) {
       const kept = new Set(list.map(keyOf))

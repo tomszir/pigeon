@@ -183,6 +183,8 @@ export interface Mailbox {
     sources: readonly Source[],
     take: (source: Source, letter: Letter, lighthouse: LighthouseAddress) => Promise<boolean>,
     look?: (letters: readonly { source: Source; letter: Letter }[]) => Promise<void>,
+    /** A receipt came for a letter that waited for it. */
+    answered?: () => void,
   ): Promise<readonly PeerId[]>
   /** Who an outgoing letter still waits on receipts from: senders whose receipts to look for. */
   waitingOn(): Promise<readonly Recipient[]>
@@ -310,18 +312,17 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
   }
 
   /** A receipt from one of `sender`'s devices for letter `id`; true when that was the last. */
-  async function received(sender: PeerId, device: PeerId, id: string): Promise<boolean> {
-    let completed = false
+  async function received(sender: PeerId, device: PeerId, id: string) {
+    let heard: 'none' | 'some' | 'all' = 'none'
     await outbox.change((letters) =>
       letters.flatMap((letter) => {
         if (letter.id !== id || letter.to.identity !== sender) return [letter]
         const waiting = letter.waiting.filter((other) => other !== device)
-        if (waiting.length > 0) return [{ ...letter, waiting }]
-        completed = true
-        return []
+        heard = waiting.length > 0 ? 'some' : 'all'
+        return waiting.length > 0 ? [{ ...letter, waiting }] : []
       }),
     )
-    return completed
+    return heard as 'none' | 'some' | 'all'
   }
 
   type SendOptions = Parameters<Mailbox['send']>[3]
@@ -495,7 +496,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
         return allTaken
       }),
 
-    fetch: (lighthouses, sources, take, look) =>
+    fetch: (lighthouses, sources, take, look, answered) =>
       serial(async () => {
         const completed: PeerId[] = []
         const fetchedStored = await store.get(KEYS.fetched)
@@ -608,12 +609,11 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           const key = `${letter.sender} ${letter.id}`
           if (letter.kind === 'receipt') {
             const body = letter.body as { for?: unknown }
-            if (
-              taken[key] === undefined &&
-              typeof body?.for === 'string' &&
-              (await received(letter.sender, letter.from, body.for))
-            )
-              completed.push(letter.sender)
+            const fresh = taken[key] === undefined && typeof body?.for === 'string'
+            const heard = fresh ? await received(letter.sender, letter.from, `${body.for}`) : 'none'
+            if (heard === 'all') completed.push(letter.sender)
+            // A receipt for mail that waited for it is news, as a letter is; one for nothing isn't.
+            if (heard !== 'none') answered?.()
             if (taken[key] === undefined && typeof body?.for === 'string')
               deps.onReceipt?.(letter.sender, body.for, letter.from)
             taken[key] = at
