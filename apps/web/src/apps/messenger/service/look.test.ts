@@ -1,7 +1,8 @@
 // One look at one Lighthouse with more tags than one list takes, run through every case of the
 // waiting model's look (verification/models/lighthouse-wait/model/fetch.ts): every small store
 // over three tags in two lists, every way a sender can put while the look reads, and a Lighthouse
-// that stops answering partway. The model's planted defects are caught by the same cases.
+// that stops answering a list or a get partway. The puts and failures happen inside the model's
+// Lighthouse, whatever the look does. The model's planted defects are caught by the same cases.
 import { describe, expect, it } from 'vitest'
 import {
   checkLooks,
@@ -11,23 +12,23 @@ import {
 } from '../../../../../../verification/models/lighthouse-wait/model/fetch.ts'
 import { readLighthouse } from './look.ts'
 
-/** The look the mailbox makes, through the model's Lighthouse: it takes and drops what's its own. */
-const implementation: LookWith = async (lighthouse, tags, cursor, taken, limits, options) => {
+/**
+ * The look the mailbox makes, through the model's Lighthouse: it gets every blob listed under its
+ * tags, takes and drops what's its own, and stops at a blob it can't get.
+ */
+const implementation: LookWith = async (lighthouse, tags, cursor, taken, limits) => {
   const have = new Set(taken)
-  const listed = new Map<string, { readonly mine: boolean }>()
   const result = await readLighthouse(
     tags,
     cursor,
-    async (chunk, from) => {
-      options.between?.()
-      const page = lighthouse.list(chunk, from)
-      for (const item of page?.items ?? []) listed.set(item.id, item)
-      return page
-    },
+    async (chunk, from) => lighthouse.list(chunk, from),
     async (item) => {
-      if (listed.get(item.id)?.mine === true && tags.includes(item.tag)) {
-        have.add(item.id)
-        lighthouse.drop(item.id)
+      if (!tags.includes(item.tag)) return { kind: 'done' }
+      const got = lighthouse.get(item.id)
+      if (got === undefined) return { kind: 'failed' }
+      if (got !== 'gone' && got.mine) {
+        have.add(got.id)
+        lighthouse.drop(got.id)
       }
       return { kind: 'done' }
     },
@@ -37,7 +38,8 @@ const implementation: LookWith = async (lighthouse, tags, cursor, taken, limits,
     taken: [...have].sort(),
     cursor: result.complete ? result.cursor : cursor,
     complete: result.complete,
-    seen: result.listedTo,
+    // The mailbox moves a Lighthouse's days on only with a cursor from a look that finished.
+    movesDays: result.complete,
   }
 }
 
@@ -45,11 +47,16 @@ describe('a look over several lists', () => {
   it('passes every case of the model’s look', async () => {
     const { found, cases } = await checkLooks(implementation)
     expect(found).toBeUndefined()
-    expect(cases).toBeGreaterThan(300_000)
+    expect(cases).toBeGreaterThan(400_000)
   }, 120_000)
 
   it('runs cases that tell the model’s planted defects from the design', async () => {
-    for (const defect of [{ savesLeast: false }, { provesFinished: false }])
+    for (const defect of [
+      { savesLeast: false },
+      { provesFinished: false },
+      { stopsAtFailedGet: false },
+      { keepsDaysWhenUnfinished: false },
+    ])
       expect((await checkLooks(modelLook({ ...FETCH_RULES, ...defect }))).found).toBeDefined()
   }, 120_000)
 
