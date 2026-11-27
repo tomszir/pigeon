@@ -675,7 +675,8 @@ export async function createMessenger(deps: MessengerDeps) {
     // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
     await inviteLinks?.catchUp().catch(() => undefined)
     const all = [...sources, ...(inviteLinks?.sources() ?? [])]
-    const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
+    const heard = await mailbox.fetch(lighthouses(), all, mailWaits.counting(takeLetter), lookAt)
+    mailWaits.lookDone()
     // Old secrets with no replacement under way yet, now that any proposal waiting for this
     // device has been taken.
     await replaceOldSecrets()
@@ -688,6 +689,18 @@ export async function createMessenger(deps: MessengerDeps) {
         await farewellHeard(id)
   }
 
+  /** Waits at this Pigeon's own Lighthouses after each look, so mail comes in seconds. */
+  const mailWaits = createMailWaits({
+    clock,
+    random: deps.random,
+    client: lighthouseClient,
+    on: () => settings().hearAtOnce !== false && !settings().relayOnly,
+    visible: deps.visible ?? (() => true),
+    cue: () => mailSchedule.lookSoon(0),
+    nextLook: () => (mailSchedule.lookedAt() ?? clock.now()) + MAIL_EVERY_MS - clock.now(),
+    closed: () => closed,
+  })
+
   const mailSchedule = createMailSchedule({
     clock,
     wake: deps.wake,
@@ -697,17 +710,6 @@ export async function createMessenger(deps: MessengerDeps) {
     inviteWaiting: () => inviteLinks?.waiting() === true,
   })
   const { checkMail, lookSoon, gapLeft, lookedAt, lookState, stopWaking } = mailSchedule
-  /** Waits at this Pigeon's own Lighthouses after each look, so mail comes in seconds. */
-  const mailWaits = createMailWaits({
-    clock,
-    random: deps.random,
-    client: lighthouseClient,
-    on: () => settings().hearAtOnce !== false && !settings().relayOnly,
-    visible: deps.visible ?? (() => true),
-    cue: () => lookSoon(0),
-    nextLook: () => (lookedAt() ?? clock.now()) + MAIL_EVERY_MS - clock.now(),
-    closed: () => closed,
-  })
 
   const [state, setState] = createStore<FriendStore>({
     friends: {},

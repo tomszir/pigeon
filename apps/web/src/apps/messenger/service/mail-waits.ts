@@ -22,6 +22,14 @@ export const REOPEN_MOST_MS = 5 * 60 * 1000
 const STOOD_MS = 60 * 1000
 /** The most a look waits after a cue, so a network watcher can't as easily line up put and fetch. */
 export const CUE_JITTER_MS = 2000
+/**
+ * How long the next cue waits after one brought a look that took nothing, at first, doubling to
+ * the schedule's own ten minutes. Anyone holding a tag a Pigeon waits on (a friend, someone with
+ * an invite link) could put junk under it every few seconds; without this each put would bring a
+ * look at every Lighthouse on the list.
+ */
+export const EMPTY_CUE_HOLD_MS = 60 * 1000
+export const EMPTY_CUE_HOLD_MOST_MS = 10 * 60 * 1000
 
 /**
  * The tags a wait names after a look at `at`: of those the look listed, today's, yesterday's in
@@ -59,6 +67,15 @@ export interface MailWaits {
   looked(address: LighthouseAddress, looked: Looked): void
   /** Waiting turned off, or relay-only on: every connection with a wait standing is closed. */
   stop(): void
+  /**
+   * A look's `take`, noting whether it took anything that counted, which says how soon the next
+   * cue may bring a look.
+   */
+  counting<A extends unknown[]>(
+    take: (...args: A) => Promise<boolean>,
+  ): (...args: A) => Promise<boolean>
+  /** The look `counting` was used for has finished. */
+  lookDone(): void
 }
 
 interface Waiting {
@@ -83,6 +100,31 @@ const keyOf = (address: LighthouseAddress) => `${address.id} ${address.url} ${ad
 export function createMailWaits(deps: MailWaitsDeps): MailWaits {
   const { clock } = deps
   const waiting = new Map<string, Waiting>()
+  /** Cues in a row whose looks took nothing; a look that takes something starts it again. */
+  let emptyCues = 0
+  /** A cue asked for a look that hasn't finished yet. */
+  let cued = false
+  /** The look under way took something that counted. */
+  let took = false
+  /** A fraction from 0 to 1, from the random source. */
+  const fraction = () => (deps.random(1)[0] ?? 0) / 255
+  /** One cue at a time: a second `mail` while one is held back is the same cue. */
+  let holding = false
+
+  /** Asks for a look, a moment from now, or later after cues whose looks took nothing. */
+  async function cue() {
+    if (holding) return
+    holding = true
+    const hold =
+      emptyCues === 0
+        ? 0
+        : Math.min(EMPTY_CUE_HOLD_MS * 2 ** (emptyCues - 1), EMPTY_CUE_HOLD_MOST_MS)
+    await clock.sleep(hold + Math.floor(fraction() * CUE_JITTER_MS))
+    holding = false
+    if (deps.closed() || !deps.on()) return
+    cued = true
+    deps.cue()
+  }
 
   async function send(state: Waiting): Promise<void> {
     const client = deps.client(state.address)
@@ -106,11 +148,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       const reply = answer.value
       if (reply.type === 'waited') {
         state.backoff = 0
-        if (reply.why === 'mail') {
-          const jitter = Math.floor(((deps.random(1)[0] ?? 0) / 255) * CUE_JITTER_MS)
-          await clock.sleep(jitter)
-          if (!deps.closed() && deps.on()) deps.cue()
-        }
+        if (reply.why === 'mail') await cue()
       } else if (reply.type === 'error' && reply.error === 'malformed')
         state.unsupportedUntil = clock.now() + HOUR
       // Refused for its limits: this Pigeon looks on its schedule.
@@ -124,7 +162,8 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
     if (clock.now() - state.since >= STOOD_MS) state.backoff = 0
     state.backoff =
       state.backoff === 0 ? REOPEN_FIRST_MS : Math.min(state.backoff * 2, REOPEN_MOST_MS)
-    await clock.sleep(state.backoff)
+    // Half of it random, so connections a Lighthouse dropped all at once don't come back in step.
+    await clock.sleep(Math.floor(state.backoff * (0.5 + fraction() / 2)))
     if (gen !== state.gen || state.heldOff || deps.closed() || !deps.on() || !deps.visible()) return
     if (state.until > clock.now()) await send(state)
   }
@@ -158,6 +197,19 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, Math.max(1000, deps.nextLook()))
       state.backoff = 0
       void send(state).catch(() => undefined)
+    },
+    counting(take) {
+      return async (...args) => {
+        const counted = await take(...args)
+        if (counted) took = true
+        return counted
+      }
+    },
+    lookDone() {
+      if (took) emptyCues = 0
+      else if (cued) emptyCues += 1
+      cued = false
+      took = false
     },
     stop() {
       for (const state of waiting.values()) {

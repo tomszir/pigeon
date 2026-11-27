@@ -3,7 +3,7 @@
 import type { LighthouseAddress, LighthouseClient, LighthouseRequest } from '@pigeon/core'
 import { describe, expect, it } from 'vitest'
 import type { Looked } from './look.ts'
-import { createMailWaits, REOPEN_FIRST_MS, waitTags } from './mail-waits.ts'
+import { createMailWaits, EMPTY_CUE_HOLD_MS, REOPEN_FIRST_MS, waitTags } from './mail-waits.ts'
 
 const lighthouse: LighthouseAddress = { id: 'lh' as never, name: 'Harbour', url: 'wss://h.test/' }
 const NOON = Date.UTC(2026, 10, 27, 12)
@@ -125,6 +125,32 @@ describe('waiting at a Lighthouse', () => {
     expect(h.cues()).toBe(0)
     await h.pass(2000)
     expect(h.cues()).toBe(1)
+  })
+
+  it('holds back cues whose looks took nothing, longer each time, until one takes mail', async () => {
+    const h = harness()
+    /** A look, then `mail` at once (junk put under a tag it waits on), then that cue's look. */
+    const junk = async (n: number, took: boolean, after: number) => {
+      h.waitsFor.looked(lighthouse, looked())
+      await flush()
+      h.waits[n]?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+      await flush()
+      const before = h.cues()
+      await h.pass(after - 1)
+      const early = h.cues() > before
+      await h.pass(1)
+      if (h.cues() > before) {
+        if (took) await h.waitsFor.counting(async () => true)()
+        h.waitsFor.lookDone()
+      }
+      return { early, cued: h.cues() > before }
+    }
+    expect(await junk(0, false, 2000)).toEqual({ early: false, cued: true })
+    // The next cue waits a minute, the one after two, however often junk comes.
+    expect(await junk(1, false, EMPTY_CUE_HOLD_MS + 2000)).toEqual({ early: false, cued: true })
+    expect(await junk(2, true, 2 * EMPTY_CUE_HOLD_MS + 2000)).toEqual({ early: false, cued: true })
+    // That look took mail: cues come at once again.
+    expect(await junk(3, false, 2000)).toEqual({ early: false, cued: true })
   })
 
   it('asks a Lighthouse from before waits nothing more for a while', async () => {
