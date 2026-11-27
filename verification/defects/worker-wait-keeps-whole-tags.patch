@@ -1,0 +1,17 @@
+defect: a wait keeps its tags whole, so one of 128 tags doesn't fit what a Worker socket keeps
+test: apps/lighthouse-worker src/object/wait-conformance.test.ts
+expect: keeps waits of 128 tags
+
+diff --git i/packages/lighthouse/src/lighthouse/waits.ts w/packages/lighthouse/src/lighthouse/waits.ts
+index c22f5eb..0e990fa 100644
+--- i/packages/lighthouse/src/lighthouse/waits.ts
++++ w/packages/lighthouse/src/lighthouse/waits.ts
+@@ -26,7 +26,7 @@ export interface Wait {
+ }
+ 
+ /** Characters of a tag (base32, 52 in all) a wait keeps: 60 bits. */
+-export const PRINT = 12
++export const PRINT = 52
+ 
+ /** What a wait keeps of a tag, and what a put's tag is looked up by. */
+ export const printOf = (tag: string): string => tag.slice(0, PRINT)

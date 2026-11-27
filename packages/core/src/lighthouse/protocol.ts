@@ -32,6 +32,16 @@ export const MAX_DROPS = 64
 export const MAX_LIST_TAGS = 512
 /** Blobs named in one `listed` page. */
 export const LIST_PAGE = 256
+/** Tags one `wait` may name. */
+export const MAX_WAIT_TAGS = 128
+/** The longest lease a `wait` may ask for, in seconds. */
+export const MAX_WAIT_SECONDS = 600
+/**
+ * The keepalive a connection with a wait standing sends, as a bare text frame, and its answer.
+ * Neither is a request: nothing is signed, and no limit counts them.
+ */
+export const KEEPALIVE = 'ping'
+export const KEEPALIVE_ANSWER = 'pong'
 
 export interface LighthouseSoftware {
   readonly name: string
@@ -68,6 +78,17 @@ export type LighthouseRequest =
   | { readonly type: 'list-claimed'; readonly tags: readonly string[]; readonly cursor: number }
   | { readonly type: 'get'; readonly id: string }
   | { readonly type: 'drop'; readonly id: string; readonly key: string }
+  /**
+   * Answered once, by `waited`: as soon as a blob is put under one of `tags` past `cursor` by
+   * another connection, or when the lease of `seconds` ends, or another `wait` on the connection
+   * replaces it. A Lighthouse that predates waits calls it malformed.
+   */
+  | {
+      readonly type: 'wait'
+      readonly tags: readonly string[]
+      readonly cursor: number
+      readonly seconds: number
+    }
 
 export type LighthouseError =
   /** This Lighthouse doesn't speak the client's protocol. */
@@ -117,6 +138,8 @@ export type LighthouseReply =
       readonly expires: number
     }
   | { readonly type: 'dropped'; readonly id: string; readonly remaining: number }
+  /** A wait's one answer: `mail` when something came for it, `lease` when it ended without. */
+  | { readonly type: 'waited'; readonly why: 'mail' | 'lease' }
   | {
       readonly type: 'error'
       readonly error: LighthouseError
@@ -199,6 +222,21 @@ const REQUEST_CHECKS: Readonly<Record<LighthouseRequest['type'], (fields: Fields
   'list-claimed': (f) => isListRequest(f),
   get: (f) => isMailKey(f['id']),
   drop: (f) => isMailKey(f['id']) && isMailKey(f['key']),
+  wait: (f) => {
+    const tags = f['tags']
+    const seconds = f['seconds']
+    return (
+      Array.isArray(tags) &&
+      tags.length > 0 &&
+      tags.length <= MAX_WAIT_TAGS &&
+      tags.every(isMailKey) &&
+      new Set(tags).size === tags.length &&
+      isCount(f['cursor']) &&
+      isCount(seconds) &&
+      seconds >= 1 &&
+      seconds <= MAX_WAIT_SECONDS
+    )
+  },
 }
 
 const parse = (text: string): unknown => {
@@ -312,6 +350,9 @@ const REPLY_CHECKS: Readonly<Record<LighthouseReply['type'], (fields: Fields) =>
     blobSize(f['blob']) !== undefined &&
     isCount(f['expires']),
   dropped: (f) => isMailKey(f['id']) && isCount(f['remaining']),
+  // Nothing but why: an answer that says more is refused.
+  waited: (f) =>
+    (f['why'] === 'mail' || f['why'] === 'lease') && Object.keys(f).sort().join() === 'type,why',
   error: (f) =>
     typeof f['error'] === 'string' &&
     ERRORS.has(f['error']) &&

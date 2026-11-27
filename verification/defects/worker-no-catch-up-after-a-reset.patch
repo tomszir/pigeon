@@ -1,0 +1,17 @@
+defect: the Worker, woken after a reset, never wakes the waits a put stored before it lost
+test: apps/lighthouse-worker src/object/wait-conformance.test.ts
+expect: sends every connection what the reference does
+
+diff --git i/apps/lighthouse-worker/src/object/lighthouse-object.ts w/apps/lighthouse-worker/src/object/lighthouse-object.ts
+index f90d341..3f63a23 100644
+--- i/apps/lighthouse-worker/src/object/lighthouse-object.ts
++++ w/apps/lighthouse-worker/src/object/lighthouse-object.ts
+@@ -156,7 +156,7 @@ export class LighthouseObject {
+         this.wokeThrough(Number(top?.['seq'] ?? 0))
+       } else {
+         const through = Number(kept['value'])
+-        const looked = await lighthouse.catchUp(through)
++        const looked = through
+         if (looked > through) this.wokeThrough(looked)
+       }
+       return { lighthouse, store, address }

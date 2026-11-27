@@ -94,7 +94,13 @@ function setup(
           send: (text) =>
             void connection
               .receive(text)
-              .then((reply) => (reply === undefined ? events.onClose() : events.onMessage(reply))),
+              .then((reply) =>
+                reply === undefined
+                  ? events.onClose()
+                  : reply === null
+                    ? undefined
+                    : events.onMessage(reply),
+              ),
           close: () => events.onClose(),
         }
       },

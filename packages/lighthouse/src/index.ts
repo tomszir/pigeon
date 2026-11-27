@@ -1,8 +1,11 @@
 export type {
+  ConnectionHooks,
   Lighthouse,
   LighthouseConnection,
   LighthouseOptions,
   SavedConnection,
+  SavedWait,
+  Scope,
 } from './lighthouse/lighthouse.ts'
 export { createLighthouse, MAX_PENDING } from './lighthouse/lighthouse.ts'
 export type { LimitCounter, Limits, OpenConnections } from './limits/limits.ts'

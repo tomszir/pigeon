@@ -58,6 +58,8 @@ function fakeState(): DurableObjectState & {
       getAlarm: async () => alarm,
     },
     acceptWebSocket: (socket, tags = []) => void accepted.push({ socket, tags }),
+    setWebSocketAutoResponse: () => undefined,
+    getWebSocketAutoResponseTimestamp: () => null,
     getWebSockets: (tag) =>
       accepted
         .filter((entry) => tag === undefined || entry.tags.includes(tag))
@@ -74,6 +76,9 @@ function fakeSocket(attachment: unknown) {
     send: (text: string) => sent.push(text),
     close: (code: number) => void closed.push(code),
     serializeAttachment: (value: unknown) => {
+      // The runtime keeps at most 2,048 bytes with a socket, and throws past it.
+      if (new TextEncoder().encode(JSON.stringify(value)).length > 2048)
+        throw new Error('attachment too big')
       kept = value
     },
     deserializeAttachment: () => kept,
@@ -156,8 +161,8 @@ describe('the Worker Lighthouse', () => {
         codes.push(code)
       },
     } as unknown as WebSocket
-    object.webSocketClose(socket, 1005)
-    object.webSocketClose(socket, 4001)
+    await object.webSocketClose(socket, 1005)
+    await object.webSocketClose(socket, 4001)
     expect(codes).toEqual([1000, 4001])
   })
 

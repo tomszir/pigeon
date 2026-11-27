@@ -4,3 +4,8 @@ declare class WebSocketPair {
   0: WebSocket
   1: WebSocket
 }
+
+/** A request frame and the response the runtime sends for it on its own. */
+declare class WebSocketRequestResponsePair {
+  constructor(request: string, response: string)
+}

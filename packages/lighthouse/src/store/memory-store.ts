@@ -74,6 +74,13 @@ export function createMemoryStore(): MailStore {
       else blobs.set(id, { ...blob, used })
       return { kind: 'used', remaining }
     },
+    async after(after, now, limit) {
+      return [...blobs.values()]
+        .filter((blob) => blob.seq > after && blob.expires > now)
+        .sort((a, b) => a.seq - b.seq)
+        .slice(0, limit)
+        .map(({ seq, tag }) => ({ seq, tag }))
+    },
     async expire(now) {
       const gone = [...blobs.values()].filter((blob) => blob.expires <= now)
       for (const blob of gone) remove(blob.id)

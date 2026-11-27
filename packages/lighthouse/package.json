@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/store/store-contract.ts"
+    "./testing": "./src/store/store-contract.ts",
+    "./wait-traces": "./src/testing/wait-traces.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",

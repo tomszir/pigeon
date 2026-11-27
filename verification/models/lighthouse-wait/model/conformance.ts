@@ -43,6 +43,8 @@ export interface TraceOptions {
   readonly resets?: boolean
   /** On the Worker, whether it may sleep (yes unless said). */
   readonly sleeps?: boolean
+  /** Waits of up to the most tags a wait may name, for limits that take them. */
+  readonly bigWaits?: boolean
 }
 
 /** The tag names a trace may use: a few, so waits and puts often meet. */
@@ -63,6 +65,14 @@ export const TRACE_LIMITS: WaitLimits = {
   maxConnections: 4,
   connectionsPerRange: 3,
   pageSize: 256,
+}
+
+/** The trace limits with tag budgets big enough for waits of 128 tags. */
+export const BIG_TRACE_LIMITS: WaitLimits = {
+  ...TRACE_LIMITS,
+  tagsPerRange: 1000,
+  tagsPer48: 2000,
+  maxWaitedTags: 4000,
 }
 
 /**
@@ -165,7 +175,18 @@ export function randomTrace(options: TraceOptions, rules: Rules = RULES): readon
           ? []
           : shape < 0.08
             ? Array.from({ length: limits.maxTags + 1 }, (_, n) => `x${n}`)
-            : someTags()
+            : options.bigWaits === true && shape < 0.6
+              ? // Up to the most a wait may name, the trace's own tags among them.
+                [
+                  ...new Set([
+                    ...someTags(),
+                    ...Array.from(
+                      { length: Math.floor(next() * limits.maxTags) },
+                      (_, n) => `w${n}`,
+                    ),
+                  ]),
+                ].slice(0, limits.maxTags)
+              : someTags()
       // Leases from shorter than the idle time to well past it, as 600 seconds are past 120.
       const seconds =
         shape > 0.96 ? limits.maxSeconds + 1 : shape > 0.93 ? 0 : 1 + Math.floor(next() * 10)

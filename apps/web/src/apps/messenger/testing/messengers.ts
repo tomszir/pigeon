@@ -185,7 +185,13 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
             send: (text) =>
               void connection
                 .receive(text)
-                .then((reply) => (reply === undefined ? close() : events.onMessage(reply))),
+                .then((reply) =>
+                  reply === undefined
+                    ? close()
+                    : reply === null
+                      ? undefined
+                      : events.onMessage(reply),
+                ),
             close,
           }
         },

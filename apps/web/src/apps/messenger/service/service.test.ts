@@ -1876,7 +1876,7 @@ describe('invite links through Lighthouses', () => {
       let req = 0
       const ask = async (request: LighthouseRequest): Promise<LighthouseReply> => {
         const text = await connection.receive(encodeRequest({ req: ++req, request }))
-        if (text === undefined) throw new Error('closed')
+        if (text === undefined || text === null) throw new Error('closed, or held')
         return (JSON.parse(text) as { reply: LighthouseReply }).reply
       }
       await ask({
