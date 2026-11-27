@@ -1,0 +1,17 @@
+defect: a look passes over a blob it couldn't get, and saves a cursor past it
+test: apps/web src/apps/messenger/service/look.test.ts
+expect: passes every case
+
+diff --git i/apps/web/src/apps/messenger/service/look.ts w/apps/web/src/apps/messenger/service/look.ts
+index 0321566..057e424 100644
+--- i/apps/web/src/apps/messenger/service/look.ts
++++ w/apps/web/src/apps/messenger/service/look.ts
+@@ -66,7 +66,7 @@ export async function readLighthouse(
+     if (listed === undefined) return false
+     for (const one of listed.items) {
+       const outcome = await item(one)
+-      if (outcome.kind === 'failed') return false
++      if (outcome.kind === 'failed') continue
+       if (outcome.kind === 'held') held = true
+     }
+     entry.at = Math.max(entry.at, listed.cursor)
