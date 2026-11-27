@@ -271,7 +271,7 @@ export interface DataRules {
    */
   readonly thresholdInLog: boolean
   /**
-   * A summary gives, per author, the highest number held (whatever is missing below it) and a
+   * A summary gives, per author, the highest number held (even with numbers missing below it) and a
    * digest of the entries held up to it. Off: the highest number held with none missing, so a gap
    * nobody can fill makes every exchange send that author's entries again, for ever.
    */
