@@ -313,6 +313,27 @@ export function importedFriends(value: unknown): readonly FriendRecord[] | undef
     : undefined
 }
 
+/**
+ * Friends from a link bundle, read one by one: each that isn't a friend record this Pigeon reads,
+ * or has a name over the limit, comes back untouched in `unreadable`, and the rest with only the
+ * fields Pigeon knows. Undefined when the bundle holds no list of friends at all.
+ */
+export function bundleFriends(
+  value: unknown,
+):
+  | { readonly readable: readonly FriendRecord[]; readonly unreadable: readonly unknown[] }
+  | undefined {
+  if (!Array.isArray(value)) return undefined
+  const readable: FriendRecord[] = []
+  const unreadable: unknown[] = []
+  for (const record of value) {
+    const friend = isFriendRecord(record) ? importedFriend(record) : undefined
+    if (friend === undefined) unreadable.push(record)
+    else readable.push(friend)
+  }
+  return { readable, unreadable }
+}
+
 /** Blocked people from a file: undefined if any is unreadable or has a name over the limit. */
 export function importedBlocked(value: unknown): readonly BlockedRecord[] | undefined {
   if (!isBlockedRecords(value) || !value.every((record) => fitsName(record.handle)))
