@@ -1,0 +1,17 @@
+defect: a look that didn't finish moves its Lighthouse's days on, so the next skips the days it didn't read
+test: apps/web src/apps/messenger/service/mailbox.test.ts
+expect: keeps the Lighthouse’s cursor and days
+
+diff --git i/apps/web/src/apps/messenger/service/mailbox.ts w/apps/web/src/apps/messenger/service/mailbox.ts
+index 91937e6..3f37e37 100644
+--- i/apps/web/src/apps/messenger/service/mailbox.ts
++++ w/apps/web/src/apps/messenger/service/mailbox.ts
+@@ -580,7 +580,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
+           )
+           if (deps.stopped()) return completed
+           // One that didn't finish saves nothing, keeping its days: the next reads them again.
+-          if (read.complete) reached[lighthouse.id] = { cursor: read.cursor, at }
++          reached[lighthouse.id] = { cursor: read.complete ? read.cursor : last.cursor, at }
+         }
+         if (deps.stopped()) return completed
+         await look?.(opened.map(({ source, letter }) => ({ source, letter })))
