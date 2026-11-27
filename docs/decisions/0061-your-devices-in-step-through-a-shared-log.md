@@ -1,8 +1,8 @@
 # 0061: Your devices in step through a shared log
 
-Proposed: your devices keep friends, petnames, mutes, blocks, settings, chat history and invite links in step through a signed log of each device's changes, passed on in the self room and the self mailbox, with tombstones that nothing undoes and pair secrets sealed beside the log, never in it.
+Your devices keep friends, petnames, mutes, blocks, settings, chat history and invite links in step through a signed log of each device's changes, passed on in the self room and the self mailbox, with tombstones that nothing undoes and pair secrets sealed beside the log, never in it.
 
-- Status: proposed, not accepted; the maintainer chooses before anything is built
+- Status: accepted
 - Date: 2026-11-27
 
 ## Context
@@ -19,7 +19,7 @@ Constraints:
 
 A model of the design and its alternatives, `verification/models/device-sync/`, and a design note, `verification/specs/device-sync-design.md`, set out the options, the invariants and what each planted defect breaks.
 
-## Decision (proposed)
+## Decision
 
 - **A shared log of your changes.** Each device appends signed entries (`add`, `tomb`, `pet`, `mute`, `block`, `setting`, link entries, `approve`), each stamped later than anything the device has seen. Your devices pass each other what the other lacks, in the self room and in one new letter kind, `mail:sync`, under the self secret's tags.
 - **Rules for what it shows.**
@@ -30,6 +30,13 @@ A model of the design and its alternatives, `verification/models/device-sync/`, 
 - **Chat history by page.** The most recent 200 messages a chat go by mail, paced under the Lighthouse's limit. Older history catches up live.
 - **Invite links, option (b).** Every device shows your links and their requests. Any device can approve, as an entry; the maker carries it out when it next runs, and acts only on a device still on its list. Nothing changes for whoever asks.
 - **Older Pigeons** are sealed `mail:sync` only once they say they read it. At the update, friends that differ between devices are listed for the person to settle.
+- **Settled with it.**
+  - Always Go Through the Relay is one setting for all your devices, newest change winning, and Settings says so.
+  - Mutes sync with petnames.
+  - Unfriending reaches every device, and the confirmation says "on all your devices".
+  - Tombstones are kept for good.
+  - There is one letter kind, `mail:sync`, for every kind of data.
+  - A link waiting on its maker shows "waiting for the phone", or whatever that device is called, and a new link is offered once the maker is gone. An approval lapses if the device that made it is removed before the maker acts on it.
 - **First:** #150, #157 and #203.
 
 ## Consequences

@@ -1,6 +1,6 @@
 # Keeping your devices in step: a design note
 
-A proposed design for sharing friends, petnames, blocks, chat history, invite links and settings across a person's linked devices, for the maintainer to choose from. It is checked by the model in `verification/models/device-sync/` against the invariants in `device-sync.md`. Nothing here is built.
+The design for sharing friends, petnames, blocks, chat history, invite links and settings across a person's linked devices. It is checked by the model in `verification/models/device-sync/` against the invariants in `device-sync.md`. Nothing here is built.
 
 ## 1. Recommendation in brief
 
@@ -165,9 +165,9 @@ Each step is checked against this model first, as the repo asks for anything tha
 - History by mail stops at 200 messages a chat; the rest needs the devices online with the friend, or a file.
 - An approval made on another device waits for the link's maker to run, and lapses if the maker is removed or replaced.
 
-## 12. Open questions for the maintainer
+## 12. Questions settled
 
-Each has a recommended answer.
+Each was settled as recommended below.
 
 1. **Should Always Go Through the Relay be one setting for all your devices?** Recommended: yes, newest change wins, and Settings says it applies to every device. The alternative, per device, is safer for someone who wants it only on the phone, but then "settings" covers nothing yet.
 2. **Do mutes sync with petnames?** Recommended: yes. They're yours across your devices, never sent to friends.
