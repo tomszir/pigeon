@@ -4,6 +4,26 @@
      `---'       version, newest first
 ==============================================
 
+0.8.3, 27 November 2026
+----------------------------------------------
+  * Update an open tab by itself when nothing
+    is lost.
+  * Save a changed name and personal message.
+  * Look for mail when you come back or send.
+  * Keep fetching a Lighthouse's mail past a
+    gone blob.
+  * Cover what self-updating tabs still miss.
+  * Stop windows reading a closed branch's
+    value.
+  * Show each message's way as an icon with
+    details.
+  * Offer Try Again for unsent mail, and Check
+    Now.
+  * Group messages that came by letter in one
+    section.
+  * Put a letter again at the friend's current
+    Lighthouses.
+
 0.8.2, 26 November 2026
 ----------------------------------------------
   * Secrets you share with friends from
