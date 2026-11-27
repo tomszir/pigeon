@@ -125,6 +125,8 @@ export interface TestLighthouse {
   connect(address: string): LighthouseConnection
   /** The `seq` of the last blob it stored: a cursor past everything it holds now. */
   lastSeq(): number
+  /** The lease of every wait sent to it, in seconds, in the order they came. */
+  leases(): readonly number[]
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
@@ -161,6 +163,7 @@ export function testLighthouse(
   })
   let n = 0
   let isDown = false
+  const leases: number[] = []
   const open = new Set<() => void>()
   return {
     down(value) {
@@ -172,6 +175,7 @@ export function testLighthouse(
     },
     connect: (address) => lighthouse.connect(address),
     lastSeq: () => stored,
+    leases: () => leases,
     address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
@@ -201,7 +205,9 @@ export function testLighthouse(
           open.add(close)
           void Promise.resolve().then(events.onOpen)
           return {
-            send: (text) =>
+            send: (text) => {
+              const sent = JSON.parse(text) as { request?: { type?: string; seconds?: number } }
+              if (sent.request?.type === 'wait') leases.push(sent.request.seconds ?? 0)
               void connection
                 .receive(text)
                 .then((reply) =>
@@ -210,7 +216,8 @@ export function testLighthouse(
                     : reply === null
                       ? undefined
                       : events.onMessage(reply),
-                ),
+                )
+            },
             close,
           }
         },

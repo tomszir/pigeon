@@ -97,7 +97,7 @@ import {
   type OpenedLink,
 } from './invite-links.ts'
 import { createLetters, type Letters } from './letters.ts'
-import { createMailSchedule, MAIL_AFTER_SEND_MS, MAIL_EVERY_MS } from './mail-schedule.ts'
+import { createMailSchedule, MAIL_AFTER_SEND_MS } from './mail-schedule.ts'
 import { createMailWaits } from './mail-waits.ts'
 import {
   createMailbox,
@@ -697,7 +697,7 @@ export async function createMessenger(deps: MessengerDeps) {
     on: () => settings().hearAtOnce !== false && !settings().relayOnly,
     visible: deps.visible ?? (() => true),
     cue: () => mailSchedule.lookSoon(0),
-    nextLook: () => (mailSchedule.lookedAt() ?? clock.now()) + MAIL_EVERY_MS - clock.now(),
+    nextLook: () => mailSchedule.nextLookIn(),
     closed: () => closed,
   })
 

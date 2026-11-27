@@ -23,7 +23,7 @@ async function friendsApart() {
   await rook.messenger.approveRequest(link.secret, request?.identity ?? '')
   await clock.tick(60_000)
   await flush(400)
-  return { clock, rook, mika }
+  return { clock, lighthouse, rook, mika }
 }
 
 describe('hearing about mail at once', () => {
@@ -43,6 +43,24 @@ describe('hearing about mail at once', () => {
     }
     const texts = only(mika.messenger.friends()).log.entries.map((entry) => entry.text)
     expect(texts).toContain('are you there?')
+  })
+
+  it('leaves every wait standing until the next scheduled look, look after look', async () => {
+    const { clock, lighthouse, rook } = await friendsApart()
+    // With no link open, both look every ten minutes.
+    for (const link of rook.messenger.inviteLinks())
+      await rook.messenger.cancelInviteLink(link.secret)
+    await clock.tick(60_000)
+    await flush(200)
+    const before = lighthouse.leases().length
+    for (let second = 0; second < 45 * 60; second += 10) {
+      await clock.tick(10_000)
+      await flush(20)
+    }
+    const leases = lighthouse.leases().slice(before)
+    // Each lasts to its Pigeon's next look, ten minutes on, never collapsing to a moment.
+    expect(leases.length).toBeGreaterThanOrEqual(8)
+    for (const lease of leases) expect(lease).toBeGreaterThan(500)
   })
 
   it('keeps waiting turned off, and turns it on again', async () => {

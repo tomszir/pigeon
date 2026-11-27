@@ -42,6 +42,11 @@ export interface MailSchedule {
   readonly gapLeft: () => number
   /** When the last look finished. */
   readonly lookedAt: Accessor<number | undefined>
+  /**
+   * How long until the next look a timer brings, in ms. Right during a timer's own look too: it's
+   * counted from when that look began, not from when the last one finished.
+   */
+  readonly nextLookIn: () => number
   /** Whether a look is under way, or asked for and waiting its turn. */
   readonly lookState: Accessor<'idle' | 'waiting' | 'checking'>
   /** Stops listening for the person coming back, if anything was. */
@@ -93,12 +98,21 @@ export function createMailSchedule(deps: MailScheduleDeps): MailSchedule {
   }
   const stopWaking = deps.wake?.on(() => lookSoon(0))
 
+  /** When each timer next brings a look. */
+  let timerAt = clock.now() + MAIL_EVERY_MS
+  let inviteAt = clock.now() + INVITE_MAIL_EVERY_MS
+  const nextLookIn = () =>
+    Math.max(0, (deps.inviteWaiting() ? Math.min(timerAt, inviteAt) : timerAt) - clock.now())
+
   function run(): void {
     // Mail is looked for every few minutes while the Messenger runs, as well as on start.
     void (async () => {
       while (!closed()) {
+        timerAt = clock.now() + MAIL_EVERY_MS
         await clock.sleep(MAIL_EVERY_MS)
         if (closed()) return
+        // The next is a whole period from this look's start, at the soonest.
+        timerAt = clock.now() + MAIL_EVERY_MS
         await checkMail().catch(() => undefined)
       }
     })()
@@ -106,12 +120,14 @@ export function createMailSchedule(deps: MailScheduleDeps): MailSchedule {
     // together pair within a minute.
     void (async () => {
       while (!closed()) {
+        inviteAt = clock.now() + INVITE_MAIL_EVERY_MS
         await clock.sleep(INVITE_MAIL_EVERY_MS)
         if (closed()) return
+        inviteAt = clock.now() + INVITE_MAIL_EVERY_MS
         if (deps.inviteWaiting()) await checkMail().catch(() => undefined)
       }
     })()
   }
 
-  return { checkMail, lookSoon, gapLeft, lookedAt, lookState, stopWaking, run }
+  return { checkMail, lookSoon, gapLeft, lookedAt, nextLookIn, lookState, stopWaking, run }
 }
