@@ -6,42 +6,23 @@
 
 0.8.4, 28 November 2026
 ----------------------------------------------
-  * Size incoming chat panels to their
-    content.
-  * Bind invite answers to the request they
-    answer.
-  * Settle friends your devices disagreed on
-    at the update.
-  * Keep friends, blocks and settings in step
-    everywhere.
-  * Keep friends, blocks and settings in step
-    everywhere.
-  * Keep a signed log of your changes in step
-    on your devices.
-  * Sign chat and device-log entries saying
-    what they are.
-  * Renew a wait a quiet Worker leaves
-    unanswered.
-  * Count each receipt once, and renew only a
-    lease that ran.
-  * Keep each wait to the next look, and count
-    its receipts.
-  * Hear about mail in seconds while Pigeon is
-    open.
-  * Answer a waiting Pigeon as soon as its
-    mail comes.
-  * Never skip mail put while a look reads
-    several lists.
-  * Mail what a check finds missing during a
-    letter run.
-  * Put mail again to the devices on the list
-    then.
-  * Send a replaced pair secret even if the
-    tab closes first.
-  * Link a new device even when one friend
-    can't be read.
-  * Show messages as panels with Mailed and
-    Received marks.
+  * Messages are now drawn as chat panels with
+    subtle Mailed and Received ticks, and
+    unread letters arrive in an envelope you
+    click to open.
+  * Incoming chat panels now fit each
+    message's width cleanly.
+  * Pigeon hears about new Lighthouse mail in
+    seconds while it is open.
+  * Friends, blocks, petnames, mutes and
+    settings stay in sync across your linked
+    devices.
+  * Invite answers are bound to the request
+    they answer, and re-asking works cleanly.
+  * Chat and device-log entries are signed
+    with their entry type.
+  * Older pre-0.8.4 links and keys are no
+    longer supported.
 
 0.8.3, 27 November 2026
 ----------------------------------------------
