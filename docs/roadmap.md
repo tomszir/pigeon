@@ -38,13 +38,19 @@ The next releases, in build order. Each matches a GitHub milestone of the same n
 
 ### 0.8.4 · Seamless, continued
 
-- Device sync: friends, blocks, petnames, mutes and settings kept in sync through your shared log ([0062](decisions/0062-your-devices-in-step-through-a-shared-log.md)).
-- Chats and invite links in sync across linked devices.
+- Device sync step 1: friends, blocks, petnames, mutes and settings kept in sync through your shared log ([0062](decisions/0062-your-devices-in-step-through-a-shared-log.md)).
 - Lighthouse push.
 - Typed signing for device-log and chat entries.
 - Invite answers bound to the request they answer.
+- Message panels with Mailed/Received ticks and pixel-art letter envelope.
 
 **Done when** Toms adds a friend on his phone and the friend shows on his PC, and a message sent from the phone shows on the PC within seconds of opening it, without the two ever being open at the same time.
+
+### 0.8.5 · Device sync
+
+- Chats and open invite links kept in sync across your linked devices.
+
+**Done when** Toms's chat history and open invite links stay in sync between his phone and PC without them needing to be online together.
 
 ### 0.9.0 · Groups
 
@@ -60,11 +66,6 @@ The next releases, in build order. Each matches a GitHub milestone of the same n
   - on iPhone, web push works only for Home Screen apps
 
 **Done when** five friends use a group for a week without any two needing to be online at once, a member who was offline catches up, and a removed member gets nothing new; and Mika's phone, with Pigeon closed, shows that Toms wrote, and opening it shows the message.
-
-### 0.9.x · Hardening
-
-- Security hardening with no known attack, so none of it holds up a release.
-- A rule nobody can steer for settling two recoveries made for the same device log.
 
 ### 0.10.0 · Forward secrecy
 
