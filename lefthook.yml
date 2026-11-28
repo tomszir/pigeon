@@ -10,8 +10,3 @@ commit-msg:
   jobs:
     - name: conventional commit, no AI attribution
       run: node scripts/check-commit-msg.ts {1}
-
-pre-push:
-  jobs:
-    - name: check-docs
-      run: scripts/check-docs

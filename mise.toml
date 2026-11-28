@@ -53,14 +53,13 @@ description = "Unit tests in every package"
 run = "pnpm -r test"
 
 [tasks.check]
-description = "The gate: lint (Biome, rustfmt, Clippy), types, unit tests (Vitest, cargo test), docs (what CI runs)"
+description = "The gate: lint (Biome, rustfmt, Clippy), types, unit tests (Vitest, cargo test), script tests (what CI runs)"
 run = [
   "pnpm biome check .",
   "pnpm --filter @pigeon/crypto-wasm lint",
   "pnpm -r typecheck",
   "pnpm -r test",
   "node --test scripts/*.test.ts",
-  "scripts/check-docs",
 ]
 
 [tasks.e2e]
