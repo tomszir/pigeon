@@ -20,9 +20,12 @@ import {
   type FriendId,
   knowsRemoval,
   REMOVED,
+  STAMP_CAP,
 } from './data-state.ts'
 
 export interface View {
+  /** The fold failed on an entry (only under a planted defect). */
+  readonly failed?: true
   /** Live incarnations, each with its friend. */
   readonly live: Readonly<Record<string, FriendId>>
   readonly pet: Readonly<Partial<Record<FriendId, string>>>
@@ -58,6 +61,7 @@ export function valueIn(e: Entry): string {
 /** Whether an entry counts on device `d`. */
 export function counts(state: DataState, rules: DataRules, d: Dev, e: Entry): boolean {
   if (e.op.k === 'future') return false
+  if (e.st > STAMP_CAP) return false
   const dev = state.devs[d]
   // The defect: an entry stamped further ahead of this device's clock than it allows is refused.
   if (!rules.acceptAhead && dev && e.st > dev.clock + AHEAD) return false
@@ -90,8 +94,33 @@ export function winners(
   return win
 }
 
+/** What fold does with each kind it reads; any other name is a kind it can't read, skipped. */
+const READERS: Readonly<Record<string, (e: Entry) => void>> = {
+  add: () => {},
+  tomb: () => {},
+  pet: () => {},
+  block: () => {},
+  relay: () => {},
+}
+
+/**
+ * The reader for a kind name: only one the table itself holds. The defect looks through inherited
+ * names too, so `__proto__` finds `Object.prototype`, which isn't a function, and calling it throws.
+ */
+function readerFor(rules: DataRules, name: string): ((e: Entry) => void) | undefined {
+  if (rules.kindsOwnOnly) return Object.hasOwn(READERS, name) ? READERS[name] : undefined
+  return READERS[name]
+}
+
 export function viewOf(state: DataState, rules: DataRules, d: Dev): View {
   const entries = state.devs[d]?.entries ?? []
+  try {
+    for (const e of entries)
+      readerFor(rules, e.op.k === 'future' ? (e.op.name ?? 'future') : e.op.k)?.(e)
+  } catch {
+    // A fold that throws stops the device taking anything more: what C2 refuses.
+    return { live: {}, pet: {}, blocked: {}, relay: false, failed: true }
+  }
   const win = winners(state, rules, d, entries)
   const counting = entries.filter((e) => counts(state, rules, d, e))
   const ended = new Set(counting.flatMap((e) => (e.op.k === 'tomb' ? [e.op.inc] : [])))

@@ -1,7 +1,7 @@
 // The invariants of the your-data model, each named as verification/specs/device-sync.md names it.
 import { canon } from './canon.ts'
-import { counts, fieldOf, valueIn, viewOf } from './data-fold.ts'
-import { listFor } from './data-mail.ts'
+import { counts, fieldOf, valueIn, viewOf, winners } from './data-fold.ts'
+import { listFor, sealTo, summaryOf, takeEntries, toSend } from './data-mail.ts'
 import { friendSecret, secretOf } from './data-secrets.ts'
 import {
   type DataConfig,
@@ -12,6 +12,8 @@ import {
   honest,
   knowsRemoval,
   REMOVED,
+  STAMP_CAP,
+  WRITER,
 } from './data-state.ts'
 import type { Invariant, StepInvariant } from './explore.ts'
 
@@ -43,7 +45,11 @@ const noNewSecretToRemoved = (): Check => ({
   id: 'P2 no new secret to a removed device',
   check: (s) => {
     const x = s.devs[REMOVED]
-    const leaked = x?.learned.filter((id) => s.secrets[id]?.knew && s.secrets[id]?.by !== REMOVED)
+    // A removal no device log took counts as made: what was made after it mustn't reach X either.
+    const after = (id: string) => s.removalRefused !== undefined && !s.removalRefused.includes(id)
+    const leaked = x?.learned.filter(
+      (id) => (s.secrets[id]?.knew || after(id)) && s.secrets[id]?.by !== REMOVED,
+    )
     return leaked?.length ? `${REMOVED} holds ${leaked.join(',')}` : undefined
   },
 })
@@ -232,6 +238,55 @@ const newestWins = (cfg: DataConfig): Check => ({
   },
 })
 
+/**
+ * W2: once mail settles, no register holds a change that a later change, made after seeing it,
+ * should have beaten: stamps must keep "a change made after seeing another beats it" true even
+ * where a removed device stamped at the cap, and no change is pushed to the cap by an entry that
+ * doesn't count.
+ */
+const laterBeats = (cfg: DataConfig): Check => ({
+  id: 'W2 a change made after seeing another beats it',
+  check: (s) => {
+    for (const d of honestDevs(cfg, s)) {
+      const dev = s.devs[d]
+      if (!dev) continue
+      for (const [field, e] of winners(s, cfg.rules, d, dev.entries)) {
+        const key = `${e.by}${e.n}`
+        const later = s.actions.find((a) => a.field === field && a.saw.includes(key))
+        if (later)
+          return `${d} shows ${key} for ${field}, though ${later.by}${later.n} was made after seeing it`
+      }
+    }
+    // And no change sits at the cap unless something about its subject that counted on its device
+    // came within one of it (clocks in the model stay far below the cap): an entry that doesn't
+    // count, such as a removed device's past its removal, never pushes one there.
+    const pushed = s.actions.find((a) => a.st >= STAMP_CAP && a.top < STAMP_CAP - 1)
+    if (pushed)
+      return `${pushed.by}${pushed.n} is stamped at the cap, though nothing that counted came near it`
+    return undefined
+  },
+})
+
+/** C2: fold never fails, whatever kind name an entry carries and whoever wrote it. */
+const foldNeverFails = (cfg: DataConfig): Check => ({
+  id: 'C2 fold never fails',
+  check: (s) => {
+    const d = honestDevs(cfg, s).find((x) => viewOf(s, cfg.rules, x).failed)
+    return d ? `${d}'s fold failed on an entry's kind name` : undefined
+  },
+})
+
+/** T4: settling two re-pairings never ends the friendship the friend is in. */
+const repairKeepsFriends = (): Check => ({
+  id: 'T4 a re-pair race keeps the friend\u2019s friendship',
+  check: (s) => {
+    for (const [fr, f] of Object.entries(s.friends))
+      if (f && (s.repairTombs ?? []).includes(f.inc))
+        return `a device ended ${f.inc}, the friendship ${fr} is in, to settle a re-pair race`
+    return undefined
+  },
+})
+
 /** P3: once mail settles, every device on the list and the friend are on one pair secret. */
 const sameSecret = (cfg: DataConfig): Check => ({
   id: 'P3 one pair secret per friend',
@@ -251,26 +306,25 @@ const sameSecret = (cfg: DataConfig): Check => ({
 })
 
 /**
- * S1: each side's writer renews a friendship at most three times for one removal on each side:
- * once for its own removal, and once for each rival signed without knowing it (the friend's
- * renewal or round, a first secret the removed device forged).
+ * S1: renewals are bounded: each side's writer renews once for its own removal and once more for
+ * each rival, a secret signed without knowing that removal or made by the removed device, each
+ * rival once; never from a secret signed knowing the removal. How many rivals there are depends on
+ * how many forgeries and rounds reach the other side before it hears, which a Lighthouse that
+ * delays mail can stretch, so no fixed number bounds it.
  */
 const renewalsBounded = (): Check => ({
   id: 'S1 renewals are bounded',
-  check: (s) => {
-    const over = Object.entries(s.renewals).find(([, n]) => n > MAX_RENEWALS)
-    return over ? `${over[0]} renewed ${over[1]} times` : undefined
-  },
+  check: (s) => s.renewalWrong,
 })
-
-export const MAX_RENEWALS = 3
 
 /** R5: a friend takes nothing from a device it knows you removed. */
 const friendTakesNothingLate = (): Check => ({
   id: 'R5 a friend takes nothing from a removed device once it knows',
   check: (s) => {
-    const fr = Object.entries(s.friends).find(([, f]) => f?.tookFromRemoved)
-    return fr ? `${fr[0]} took a letter from ${REMOVED} after it knew of the removal` : undefined
+    const late = s.lateToFriend[0]
+    return late
+      ? `${late} was taken from ${REMOVED}'s own letter after the removal was known`
+      : undefined
   },
 })
 
@@ -289,6 +343,17 @@ const neverOnRemoved = (cfg: DataConfig): Check => ({
     }
     return undefined
   },
+})
+
+/** R6: the writer can always remove a device: the removal's stamp fits, at or below the cap. */
+const removalFits = (): Check => ({
+  id: 'R6 a removal can always be made',
+  check: (s) =>
+    s.removalRefused
+      ? `no device log takes ${WRITER}'s removal of ${REMOVED}, so it stays on the list`
+      : s.removalSt > STAMP_CAP
+        ? `${REMOVED}'s removal is stamped ${s.removalSt}, above the cap`
+        : undefined,
 })
 
 /** P2b: once mail settles after a removal, no live friendship is on a secret the removed device read. */
@@ -334,6 +399,23 @@ const notOnRemoved = (cfg: DataConfig): Check => ({
   },
 })
 
+/**
+ * Settled, a device sends another whatever that one's summary says it lacks at every mail check, not
+ * only when something changes. If the other refuses all of it, that repeats for ever.
+ */
+function resentForEver(cfg: DataConfig, s: DataState): string | undefined {
+  for (const d of honestDevs(cfg, s))
+    for (const r of sealTo(cfg, s, d)) {
+      const mine = s.devs[d]
+      const theirs = s.devs[r]
+      if (!mine || !theirs || (r === REMOVED && cfg.hostile)) continue
+      const sent = toSend(cfg, mine.entries, summaryOf(cfg, theirs.entries))
+      if (sent.length > 0 && !takeEntries(cfg, theirs.entries, sent).changed)
+        return `${d} sends ${r} ${sent.map((e) => `${e.by}${e.n}`).join(',')} at every check, and ${r} refuses them`
+    }
+  return undefined
+}
+
 export function dataChecks(cfg: DataConfig) {
   return {
     safety: [
@@ -342,20 +424,26 @@ export function dataChecks(cfg: DataConfig) {
       holdersKnowRemoval(cfg),
       nothingLate(cfg),
       discounted(cfg),
+      foldNeverFails(cfg),
+      repairKeepsFriends(),
       neverOnRemoved(cfg),
       renewalsBounded(),
       friendTakesNothingLate(),
+      removalFits(),
     ],
     stepChecks: [tombsHold(cfg)],
     settled: [
       {
         id: 'S0 settling ends',
         check: (s: DataState) =>
-          s.unsettled ? 'settling ran out of rounds without reaching a fixed point' : undefined,
+          s.unsettled
+            ? 'settling ran out of rounds without reaching a fixed point'
+            : resentForEver(cfg, s),
       },
       converge(cfg),
       unfriendStays(cfg),
       newestWins(cfg),
+      laterBeats(cfg),
       sameSecret(cfg),
       notOnRemoved(cfg),
       notOnRead(cfg),
@@ -382,12 +470,18 @@ export function dataFlags(cfg: DataConfig, s: DataState): string[] {
   if (s.tombs.length) flags.push('unfriended')
   if (s.left.link === 0) flags.push('C linked')
   if (s.friends.F?.ownRemoved) flags.push('the friend removed a device')
+  if (s.removalSt > s.removalAt && s.removalAt > 0) flags.push('threshold later than the removal')
+  if (s.friendHold) flags.push("the friends' mail held")
   if (Object.values(s.friends).some((f) => f?.props.some((p) => p.by === REMOVED)))
     flags.push('a friend took a forged proposal')
   if (Object.values(s.renewals).some((n) => n > 1)) flags.push('renewed more than once')
   if ((cfg.budgets.crash ?? 0) > (s.left.crash ?? 0)) flags.push('a tab closed')
   if (s.mail.some((l) => l.lost.length)) flags.push('letter lost')
   const sigs = honestDevs(cfg, s).flatMap((d) => (s.devs[d]?.entries ?? []).map((e) => e.sig))
+  const xOn = (d: Dev) => (s.devs[d]?.entries ?? []).filter((e) => e.by === REMOVED).map((e) => e.n)
+  const xSets = honestDevs(cfg, s).map((d) => canon(xOn(d)))
+  if (new Set(xSets).size > 1 && xSets.every((x) => x !== '[]'))
+    flags.push('devices hold different entries of one author')
   if (sigs.some((x) => x.endsWith('a') && sigs.includes(`${x.slice(0, -1)}b`)))
     flags.push('devices hold different entries under one number')
   for (const d of honestDevs(cfg, s)) {

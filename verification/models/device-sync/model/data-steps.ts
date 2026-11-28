@@ -3,11 +3,26 @@
 // none changes the one it was given. What a hostile removed device does is in data-hostile.ts.
 import { copy, uniq } from './canon.ts'
 import { counts, fieldOf, liveFriends, valueIn, viewOf } from './data-fold.ts'
-import { friendPropose, friendRelay, friendSync, friendToRenew } from './data-friend.ts'
+import {
+  friendPropose,
+  friendRelay,
+  friendRenew,
+  friendSync,
+  friendToRenew,
+} from './data-friend.ts'
 import { hostileSteps } from './data-hostile.ts'
 import { deliver, meet, newLetter, sealTo, takeEntries, toSend } from './data-mail.ts'
 import { finish, type Step, spend, sweep } from './data-run.ts'
-import { countsOn, dropEnded, knew, knowledge, winner } from './data-secrets.ts'
+import {
+  countsOn,
+  dropEnded,
+  friendSecret,
+  knew,
+  knowledge,
+  noteRenewal,
+  secretOf,
+  winner,
+} from './data-secrets.ts'
 import {
   type Budget,
   type DataConfig,
@@ -17,12 +32,14 @@ import {
   type FriendId,
   honest,
   knowsRemoval,
+  LOG_CEIL,
   newDevice,
   type Op,
   onList,
   type Proposal,
   propKey,
   REMOVED,
+  STAMP_CAP,
   WRITER,
 } from './data-state.ts'
 import { tellFriends, winners } from './data-tell.ts'
@@ -39,15 +56,32 @@ export function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry 
   const dev = state.devs[d]
   if (!dev) throw new Error(`no device ${d}`)
   dev.clock += 1
-  const seen = dev.entries.filter((e) => subjectOf(e.op) === subjectOf(op)).map((e) => e.st)
-  const st = Math.max(dev.clock, ...seen.map((x) => x + 1))
+  // Later than every entry about the same subject that counts here: one that doesn't (a removed
+  // device's, stamped past its removal) can't push this device's stamps, to the cap or anywhere.
+  const about = dev.entries.filter(
+    (e) =>
+      subjectOf(e.op) === subjectOf(op) &&
+      (!cfg.rules.stampFollowsCounting || counts(state, cfg.rules, d, e)),
+  )
+  const st = Math.min(STAMP_CAP, Math.max(dev.clock, ...about.map((e) => e.st + 1)))
+  // Ghost for W2, whatever the rule: the highest stamp about the subject that counted here.
+  const top = Math.max(
+    0,
+    ...dev.entries
+      .filter((e) => subjectOf(e.op) === subjectOf(op) && counts(state, cfg.rules, d, e))
+      .map((e) => e.st),
+  )
+  const field0 = fieldOf({ by: d, n: 0, st, op, sig: '' })
+  const saw = state.actions
+    .filter((a) => a.field === field0 && dev.entries.some((e) => e.by === a.by && e.n === a.n))
+    .map((a) => `${a.by}${a.n}`)
   const n = dev.nextN++
   const e: Entry = { by: d, n, st, op, sig: `${d}${n}a` }
   dev.entries = takeEntries(cfg, dev.entries, [e]).entries
   dev.dirty = true
   const field = fieldOf(e)
   if (field !== undefined && !(d === REMOVED && cfg.hostile))
-    state.actions.push({ by: d, n, st: e.st, field, value: valueIn(e) })
+    state.actions.push({ by: d, n, st: e.st, field, value: valueIn(e), saw, top })
   return e
 }
 
@@ -127,7 +161,8 @@ function personSteps(cfg: DataConfig, state: DataState, d: Dev): Step[] {
     const incs = heldIncs(cfg, state, d, fr)
     act(`unfriends ${fr}`, 'unfriend', (s) => unfriend(cfg, s, d, fr, incs))
     const v = `p${d}`
-    if (view.pet[fr] !== v)
+    const heard = !cfg.petAfterRemoval || knowsRemoval(state.devs[d] ?? newDevice())
+    if (view.pet[fr] !== v && heard)
       act(`names ${fr} ${v}`, 'pet', (s) => write(cfg, s, d, { k: 'pet', fr, v }))
     if (!view.blocked[fr])
       act(`blocks ${fr}`, 'block', (s) => {
@@ -228,6 +263,7 @@ export function rekey(cfg: DataConfig, state: DataState): void {
     state.secrets[p.id] = { by: WRITER, knew: true }
     state.renewed = uniq([...state.renewed, inc])
     state.renewals[`${WRITER}:${inc}`] = (state.renewals[`${WRITER}:${inc}`] ?? 0) + 1
+    noteRenewal(state, WRITER, held, 'rmX')
     const chain = { [key]: dev.props[key] ?? [] }
     newLetter(cfg, state, 'rekey-friend', WRITER, [fr], [], chain, false)
     newLetter(cfg, state, 'rekey', WRITER, sealTo(cfg, state, WRITER), [], chain, false)
@@ -246,13 +282,29 @@ function writerSteps(cfg: DataConfig, state: DataState): Step[] {
       // What X stamped from here on is discounted: from later than everything the writer holds
       // from X, so what X had already delivered keeps counting however fast its clock ran. The
       // writer's own clock doesn't follow.
-      const held = writer.entries.filter((e) => e.by === REMOVED)
+      // Only what counts: one stamped above the cap counts for nothing, and the removal stops at the
+      // cap, so it always fits in the device log.
+      const held = writer.entries.filter(
+        (e) =>
+          e.by === REMOVED && (!cfg.rules.removalWithinCap || counts(next, cfg.rules, WRITER, e)),
+      )
       writer.clock += 1
-      writer.log = uniq([...writer.log, 'rmX'])
-      writer.dirty = true
-      next.removalSt = cfg.rules.removalAfterHeld
+      const after = cfg.rules.removalAfterHeld
         ? Math.max(writer.clock, ...held.map((e) => e.st + 1))
         : writer.clock
+      const st = cfg.rules.removalWithinCap ? Math.min(STAMP_CAP, after) : after
+      if (st > LOG_CEIL) {
+        next.removalRefused = Object.keys(next.secrets)
+        out.push([
+          `${WRITER} tries to remove ${REMOVED}; no device log takes the stamp`,
+          finish(cfg, next),
+        ])
+        return out
+      }
+      writer.log = uniq([...writer.log, 'rmX'])
+      writer.dirty = true
+      next.removalSt = st
+      next.removalAt = writer.clock
       next.heldAtRemoval = held.map((e) => e.sig)
       next.liveAtRemoval = Object.keys(viewOf(next, cfg.rules, WRITER).live)
     }
@@ -338,12 +390,36 @@ function settleRepairs(cfg: DataConfig, state: DataState, d: Dev): void {
   if (!cfg.rules.settleRepairs) return
   for (const fr of ['F', 'G'] as const) {
     const incs = heldIncs(cfg, state, d, fr)
-    const seen = state.friends[fr]?.inc
-    if (incs.length < 2 || !seen || !incs.includes(seen)) continue
+    if (incs.length < 2) continue
+    const seen = cfg.rules.repairSeenByDevice
+      ? seenIn(cfg, state, d, fr)
+      : pairedHere(state, d, fr, incs)
+    if (!seen || !incs.includes(seen)) continue
     const others = incs.filter((inc) => inc !== seen)
-    state.tombs = uniq([...state.tombs, ...others])
+    state.repairTombs = uniq([...(state.repairTombs ?? []), ...others])
     for (const inc of others) write(cfg, state, d, { k: 'tomb', fr, inc })
   }
+}
+
+/**
+ * The friendship device `d` has seen the friend in: one whose secret `d` holds and the friend is
+ * on, so its hello in those rooms, or its letter under those tags, can reach `d`. Nothing else.
+ */
+function seenIn(cfg: DataConfig, state: DataState, d: Dev, fr: FriendId): string | undefined {
+  const friend = state.friends[fr]
+  if (!friend) return undefined
+  const theirs = friendSecret(cfg.rules, state, friend)?.id
+  const mine = secretOf(cfg.rules, state, d, fr, friend.inc)?.id
+  return theirs !== undefined && mine === theirs ? friend.inc : undefined
+}
+
+/** The planted defect: the friendship this device paired, which says nothing of the friend. */
+function pairedHere(state: DataState, d: Dev, fr: FriendId, incs: string[]): string | undefined {
+  const own = (state.devs[d]?.entries ?? []).filter(
+    (e) => e.by === d && e.op.k === 'add' && e.op.fr === fr && incs.includes(e.op.inc),
+  )
+  const last = own.at(-1)
+  return last?.op.k === 'add' ? last.op.inc : undefined
 }
 
 /** Puts again what was lost: sealed again to the list as it is now, or the same letter. */
@@ -448,6 +524,17 @@ function friendSteps(cfg: DataConfig, state: DataState): Step[] {
     }
     out.push(['F removes one of its own devices', finish(cfg, next)])
   }
+  if ((state.left.hold ?? 0) > 0) {
+    const next = copy(state)
+    spend(next, 'hold')
+    next.friendHold = true
+    out.push(["a Lighthouse holds the friends' mail", next])
+  }
+  if (state.friendHold) {
+    const next = copy(state)
+    delete next.friendHold
+    out.push(["the Lighthouse lets the friends' mail go", finish(cfg, next)])
+  }
   if ((state.left.friendSync ?? 0) > 0) {
     const next = copy(state)
     spend(next, 'friendSync')
@@ -462,9 +549,7 @@ function friendSteps(cfg: DataConfig, state: DataState): Step[] {
   }
   if (friendToRenew(cfg, state, 'F')) {
     const next = copy(state)
-    friendPropose(cfg, next, 'F')
-    const inc = next.friends.F?.inc ?? ''
-    next.renewals[`F:${inc}`] = (next.renewals[`F:${inc}`] ?? 0) + 1
+    friendRenew(cfg, next, 'F')
     out.push(["F's writer renews", finish(cfg, next)])
   }
   return out

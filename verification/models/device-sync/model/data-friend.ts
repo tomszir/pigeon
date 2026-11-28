@@ -4,7 +4,7 @@
 // propose a round of its own, and remove one of its own devices, after which its writer renews
 // the friendship by the same rule as yours.
 import { uniq } from './canon.ts'
-import { friendSecret } from './data-secrets.ts'
+import { friendSecret, noteRenewal } from './data-secrets.ts'
 import {
   type DataConfig,
   type DataState,
@@ -101,16 +101,18 @@ export function friendTakes(cfg: DataConfig, state: DataState, letter: Letter, f
   if (!friend) return
   if (letter.log.includes('rmX')) friend.knowsR = true
   // A letter from a device it knows you removed counts for nothing.
-  if (letter.from === REMOVED && friend.knowsR) {
-    if (cfg.rules.friendRefuses) return
-    friend.tookFromRemoved = true
-  }
+  const late = letter.from === REMOVED && friend.knowsR
+  if (late && cfg.rules.friendRefuses) return
   const before = friendSecret(cfg.rules, state, friend)?.id
   const props = Object.values(letter.props)
     .flat()
     .filter((p) => p.inc === friend.inc)
   friend.learned = uniq([...friend.learned, ...props.map((p) => p.id)])
-  friend.props = [...friend.props, ...props.filter((p) => !friend.props.some((h) => h.id === p.id))]
+  const fresh = props.filter((p) => !friend.props.some((h) => h.id === p.id))
+  friend.props = [...friend.props, ...fresh]
+  // Ghost for R5, judged by what was taken, not by the switch: anything new from a removed
+  // device's own letter after the friend knew of the removal.
+  if (late) state.lateToFriend = [...state.lateToFriend, ...fresh.map((p) => `${fr}:${p.id}`)]
   const after = friendSecret(cfg.rules, state, friend)?.id
   if (cfg.rules.friendForwards && after !== before) friendSend(cfg, state, fr)
 }
@@ -147,4 +149,14 @@ export function friendRelay(cfg: DataConfig, state: DataState, fr: FriendId): vo
     props: { [propKey(cfg.rules, fr, f.inc)]: second.props },
     summary: {},
   })
+}
+
+/** The friend's writer renews the friendship it is in, after removing one of its own devices. */
+export function friendRenew(cfg: DataConfig, state: DataState, fr: FriendId): void {
+  const f = state.friends[fr]
+  const held = f ? friendSecret(cfg.rules, state, f) : undefined
+  if (!f || !held) return
+  state.renewals[`${fr}:${f.inc}`] = (state.renewals[`${fr}:${f.inc}`] ?? 0) + 1
+  noteRenewal(state, fr, held, 'rmF')
+  friendPropose(cfg, state, fr)
 }

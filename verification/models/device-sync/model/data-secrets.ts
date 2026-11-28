@@ -81,7 +81,9 @@ export const countsOnFriend =
   (p: Proposal): boolean => {
     if (!rules.friendDiscounts || !(friend.knowsR && p.by === REMOVED)) return true
     if (p.replaces !== null) return false
-    return !rules.rootRules || p.at < state.removalSt
+    // The friend reads the threshold from your device log, where the removal's `at` carries it.
+    const threshold = rules.thresholdInLog ? state.removalSt : state.removalAt
+    return !rules.rootRules || p.at < threshold
   }
 
 /** The secret device `d` is on for friendship `inc` of `fr`. */
@@ -153,4 +155,22 @@ export function dropEnded(rules: DataRules, state: DataState, d: Dev): void {
 /** The removals device `d` has merged, signed into what it proposes as `knew`. */
 export function knowledge(state: DataState, d: Dev): LogEvent[] {
   return (state.devs[d]?.log ?? []).filter((e): e is LogEvent => e === 'rmX' || e === 'rmF')
+}
+
+/**
+ * Ghost for S1: notes that `side`'s writer renewed from `held`. A renewal must answer a rival: a
+ * secret signed without knowing that side's removal, or made by a removed device, and each rival
+ * once.
+ */
+export function noteRenewal(
+  state: DataState,
+  side: string,
+  held: Proposal,
+  removal: LogEvent,
+): void {
+  const key = `${side}:${held.id}`
+  if (state.renewedFrom.includes(key)) state.renewalWrong ??= `${key} renewed from twice`
+  if (held.knew.includes(removal) && held.by !== REMOVED)
+    state.renewalWrong ??= `${side} renewed from ${held.id}, signed knowing its removal`
+  state.renewedFrom = [...state.renewedFrom, key]
 }

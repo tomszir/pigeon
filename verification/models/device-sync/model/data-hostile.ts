@@ -9,10 +9,13 @@ import { countsOn, winner } from './data-secrets.ts'
 import {
   type DataConfig,
   type DataState,
+  ENTRY_CAP,
   honest,
+  LOG_CEIL,
   type LogEvent,
   propKey,
   REMOVED,
+  STAMP_CAP,
   WRITER,
 } from './data-state.ts'
 import { tellFriends, winners } from './data-tell.ts'
@@ -46,15 +49,26 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
     return [['X forges a pair-secret proposal of its own for F, claiming round 50', next]]
   }
+  if ('flood' in forge) {
+    const from = dev.nextN
+    dev.nextN = from + 2 * ENTRY_CAP
+    for (let n = from; n < dev.nextN; n++)
+      dev.entries = [...dev.entries, { by: REMOVED, n, st: n, op: { k: 'future' }, sig: `X${n}a` }]
+    return [[`X signs entries ${from} to ${dev.nextN - 1}, of a kind no Pigeon reads`, next]]
+  }
   if ('root' in forge) {
     // A second first secret for a friendship it has read the first of, stamped as early as can be.
     const inc = `${forge.root}1`
     if (!dev.learned.includes(`${inc}r0`)) return []
+    // Stamped as early as it can be, or at the removal's own time once it has been removed.
+    if (forge.at === 'removal' && next.removalAt === 0) return []
+    const at = forge.at === 'removal' ? next.removalAt : 0
     const key = propKey(cfg.rules, forge.root, inc)
-    const p = { id: `${inc}x0`, inc, replaces: null, at: 0, by: REMOVED, round: 0, knew: ALL }
+    const p = { id: `${inc}x0`, inc, replaces: null, at, by: REMOVED, round: 0, knew: ALL }
     dev.props[key] = [...(dev.props[key] ?? []), p]
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
-    return [[`X forges a second first secret for ${forge.root}, stamped as early as it can`, next]]
+    const when = forge.at === 'removal' ? 'at the removal\u2019s time' : 'as early as it can'
+    return [[`X forges a second first secret for ${forge.root}, stamped ${when}`, next]]
   }
   const top =
     Math.max(
@@ -63,12 +77,35 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
         ...(d?.entries ?? []).map((e) => e.st),
       ]),
     ) + 1
-  const n = dev.nextN++
-  const st = forge.stamp === 'early' ? 1 : top
+  // At the cap: once removed, one below the highest stamp an entry may carry.
+  if (forge.stamp === 'cap' && next.removalSt === 0) return []
+  // At the device log's ceiling, above the cap, while still on the list.
+  if (forge.stamp === 'over' && next.removalSt !== 0) return []
+  // Skipping a number leaves a gap no device can fill.
+  const n = forge.skip ? dev.nextN + 1 : dev.nextN
+  dev.nextN = n + 1
+  // Ahead: a stamp far past every clock, which, while X is on the list, raises the threshold.
+  const st =
+    forge.stamp === 'early'
+      ? 1
+      : forge.stamp === 'ahead'
+        ? top + 10
+        : forge.stamp === 'cap'
+          ? STAMP_CAP - 1
+          : forge.stamp === 'over'
+            ? LOG_CEIL
+            : top
   const late = next.allKnew ? { late: true as const } : {}
   dev.entries = [...dev.entries, { by: REMOVED, n, st, op: forge.op, sig: `X${n}a`, ...late }]
-  const when = forge.stamp === 'early' ? 'an early' : 'a current'
-  return [[`X forges ${canon(forge.op)} at ${when} stamp`, next]]
+  const when = {
+    early: 'an early',
+    ahead: 'a far-ahead',
+    cap: 'the capped',
+    over: 'the device log\u2019s highest',
+    current: 'a current',
+  }[forge.stamp]
+  const gap = forge.skip ? ', skipping a number,' : ''
+  return [[`X forges ${canon(forge.op)}${gap} at ${when} stamp`, next]]
 }
 
 export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
@@ -91,12 +128,16 @@ export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
       .filter(([, ps]) => ps.length > 0),
   )
   if (own.length > 0 || Object.keys(forged).length > 0)
-    for (const r of honest(state, cfg)) {
+    for (const r of honest(state, cfg).filter((d) => !cfg.xMails || cfg.xMails.includes(d))) {
       // A second entry under one number goes to the writer one way and to the others the other.
       const variant = r === WRITER ? 'a' : 'b'
-      const pick = own.filter(
-        (e) => e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n),
+      const picked = own.filter(
+        (e) =>
+          (e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n)) &&
+          (!cfg.xSplits || e.n <= ENTRY_CAP === (r === WRITER)),
       )
+      const latest = Math.max(...picked.map((e) => e.n))
+      const pick = cfg.xSendsLatest ? picked.filter((e) => e.n === latest) : picked
       const sent = canon([pick, forged])
       if (state.xSent[r] === sent) continue
       const next = copy(state)

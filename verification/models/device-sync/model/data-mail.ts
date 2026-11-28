@@ -10,6 +10,7 @@ import {
   type DataConfig,
   type DataState,
   type Dev,
+  ENTRY_CAP,
   type Entry,
   entryKey,
   everKnown,
@@ -47,7 +48,8 @@ export function summaryOf(cfg: DataConfig, entries: readonly Entry[]): Summary {
   for (const by of uniq(entries.map((e) => e.by))) {
     const mine = entries.filter((e) => e.by === by).sort(byEntry)
     let n = 0
-    while (mine.some((e) => e.n === n + 1)) n++
+    if (cfg.rules.summaryHighestHeld) n = Math.max(0, ...mine.map((e) => e.n))
+    else while (mine.some((e) => e.n === n + 1)) n++
     const digest = cfg.rules.forkDigest ? digestOf(mine, n) : ''
     out[by] = { n, digest }
   }
@@ -124,6 +126,11 @@ export function takeEntries(
   let changed = false
   for (const e of incoming) {
     const at = out.findIndex((h) => entryKey(h) === entryKey(e))
+    // Past the per-author cap, refused and not passed on.
+    const full = cfg.rules.capByNumber
+      ? e.n > ENTRY_CAP
+      : out.filter((h) => h.by === e.by).length >= ENTRY_CAP
+    if (at < 0 && full) continue
     if (at < 0) {
       out.push(e)
       changed = true

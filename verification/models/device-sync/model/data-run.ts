@@ -30,7 +30,8 @@ export function sweep(state: DataState): void {
  * case), and a friend's device takes its letters (when doesn't matter to anything checked here).
  */
 export function finish(cfg: DataConfig, state: DataState): DataState {
-  const readers = ['F', 'G', ...(cfg.hostile ? [REMOVED] : [])]
+  // While a Lighthouse holds the friends' mail, only a hostile removed device reads at once.
+  const readers = [...(state.friendHold ? [] : ['F', 'G']), ...(cfg.hostile ? [REMOVED] : [])]
   state.mail.forEach((l, i) => {
     if (!l.put) return
     for (const r of l.pending) if (readers.includes(r)) deliver(cfg, state, i, r)
