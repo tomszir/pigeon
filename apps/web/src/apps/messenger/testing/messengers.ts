@@ -129,6 +129,11 @@ export interface TestLighthouse {
   leases(): readonly number[]
   /** Waits standing at it now: sent, unanswered, on a connection still open. */
   standing(): number
+  /**
+   * Holds the next request of `type` until `release`: `reached` settles once it has come, so a
+   * test can act while a look is part way through.
+   */
+  holdNext(type: string): { readonly reached: Promise<void>; readonly release: () => void }
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
@@ -170,6 +175,7 @@ export function testLighthouse(
   const open = new Set<() => void>()
   /** Each standing wait, as its connection and request number. */
   const waiting = new Set<string>()
+  const holds: { type: string; reached: () => void; gate: Promise<void> }[] = []
   return {
     down(value) {
       isDown = value
@@ -182,6 +188,18 @@ export function testLighthouse(
     lastSeq: () => stored,
     leases: () => leases,
     standing: () => waiting.size,
+    holdNext(type) {
+      let reached = (): void => undefined
+      let release = (): void => undefined
+      const came = new Promise<void>((settle) => {
+        reached = settle
+      })
+      const gate = new Promise<void>((settle) => {
+        release = settle
+      })
+      holds.push({ type, reached, gate })
+      return { reached: came, release }
+    },
     address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
@@ -229,13 +247,18 @@ export function testLighthouse(
                 leases.push(sent.request.seconds ?? 0)
                 waiting.add(`${socket} ${sent.req}`)
               }
-              void connection.receive(text).then((reply) => {
-                if (reply === undefined) close()
-                else if (reply !== null) {
-                  answered(reply)
-                  events.onMessage(reply)
-                }
-              })
+              const held = holds.findIndex((hold) => hold.type === sent.request?.type)
+              const hold = held === -1 ? undefined : holds.splice(held, 1)[0]
+              hold?.reached()
+              void (hold?.gate ?? Promise.resolve()).then(() =>
+                connection.receive(text).then((reply) => {
+                  if (reply === undefined) close()
+                  else if (reply !== null) {
+                    answered(reply)
+                    events.onMessage(reply)
+                  }
+                }),
+              )
             },
             close,
           }

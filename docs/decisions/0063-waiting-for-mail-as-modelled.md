@@ -30,6 +30,7 @@ Everything in 0055 stands, except where this says otherwise.
 
 - **A wait follows only a look that read its Lighthouse to the end**: nothing refused, nothing failed to get, nothing held back by a source's limit. Otherwise its tags would hold a blob past its cursor and every wait would be answered at once.
 - **A wait's tags come from the look before it**: today's, yesterday's in the first two hours of the UTC day and tomorrow's in the last two, by that look's clock, which are always among what it listed. Sent again after a drop, the wait names the same tags with what's left of its lease.
+- **A wait stands until the next scheduled look.** Its lease runs to that look. One cut shorter (to an invite's quick look that has since stopped, or to a moment as a timer's look began) is sent again once it has run its course, with the same tags and cursor and a lease to the next look, unless that look is 5 seconds off or less. A `lease` that comes early isn't followed by another wait.
 - **Turning waiting off, or relay-only on, closes every connection with a wait standing**, so the Lighthouse stops learning presence at once.
 - **Closed for room, a Pigeon waits for its next scheduled look** before it opens that connection again. Other drops are reopened while Pigeon is on screen, after 5 seconds doubling to 5 minutes, and the doubling starts again once a wait has stood a minute or been answered.
 - **The cursor saved never passes a blob not yet listed.** A look reads its tags in lists of 512, each to its end. The cursor it saves is the least over the lists, a finished one counting as far as anything had been answered before its last page was asked for, since a blob put after that has a later seq. A list that finished before the others got that far is asked once more at the end. A look that didn't finish saves no cursor and keeps the last look's days, as it does now.
@@ -52,3 +53,5 @@ Ruled out:
 - **Re-checking every standing wait each time the Worker wakes**: it would cost a query per wait on every put after a quiet spell, where `wokeThrough` costs one number.
 - **Saving the furthest cursor of the lists**, as a look did: a blob put under a list that finished while another was still reading was passed by.
 - **Looking again on a cue after a look that didn't finish**: a Lighthouse that never lets a look finish would keep a Pigeon looking every few seconds.
+- **Waiting again after any `lease`**: a Lighthouse that answers every wait at once would keep a Pigeon sending thousands a second. Only a lease that ran its course is renewed, and each renewal lasts more than 5 seconds.
+- **Doing nothing on `lease`**, as first designed: a lease cut short by an invite's quick look, or worked out as a timer's look began, left no wait for up to ten minutes.

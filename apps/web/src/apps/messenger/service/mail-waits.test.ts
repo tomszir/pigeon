@@ -18,7 +18,7 @@ function harness(
   options: {
     on?: () => boolean
     visible?: () => boolean
-    listed?: () => boolean
+    lighthouses?: () => readonly LighthouseAddress[]
     nextLook?: () => number
   } = {},
 ) {
@@ -44,7 +44,7 @@ function harness(
     client: () => client,
     on: options.on ?? (() => true),
     visible: options.visible ?? (() => true),
-    listed: options.listed ?? (() => true),
+    lighthouses: options.lighthouses ?? (() => [lighthouse]),
     cue: () => {
       cues += 1
     },
@@ -193,6 +193,7 @@ describe('waiting at a Lighthouse', () => {
     await flush()
     expect(h.waits[0]?.request).toMatchObject({ seconds: 30 })
     next = 9 * 60 * 1000
+    await h.pass(30_000)
     h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
     await flush()
     expect(h.waits[1]?.request).toMatchObject({ type: 'wait', cursor: 41, seconds: 540 })
@@ -213,10 +214,35 @@ describe('waiting at a Lighthouse', () => {
     expect(h.waits[1]?.request).toMatchObject({ type: 'wait', seconds: 600 })
   })
 
+  it('waits again lease after lease while each runs its course, one wait per lease', async () => {
+    const h = harness({ nextLook: () => 6000 })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    for (let lease = 0; lease < 50; lease++) {
+      await h.pass(6000)
+      h.waits.at(-1)?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+      await flush()
+    }
+    expect(h.waits).toHaveLength(51)
+    for (const wait of h.waits) expect(wait.request).toMatchObject({ seconds: 6 })
+  })
+
+  it('asks a Lighthouse that answers `lease` before the lease ends nothing more', async () => {
+    const h = harness({ nextLook: () => 9 * 60 * 1000 })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    await h.pass(4000)
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+    await flush()
+    await h.pass(60_000)
+    expect(h.waits).toHaveLength(1)
+  })
+
   it('doesn’t wait again when the next look is about to come', async () => {
     const h = harness({ nextLook: () => 2000 })
     h.waitsFor.looked(lighthouse, looked())
     await flush()
+    await h.pass(2000)
     h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
     await flush()
     expect(h.waits).toHaveLength(1)
@@ -267,14 +293,26 @@ describe('waiting at a Lighthouse', () => {
   })
 
   it('waits at no Lighthouse a look read after it was taken off your list', async () => {
-    let listed = true
-    const h = harness({ listed: () => listed })
+    let list = [lighthouse]
+    const h = harness({ lighthouses: () => list })
     // The look began with it on the list; it was removed before the look said what it read.
-    listed = false
+    list = []
     h.waitsFor.retain([])
     h.waitsFor.looked(lighthouse, looked())
     await flush()
     expect(h.waits).toEqual([])
+  })
+
+  it('takes a Lighthouse as listed only with the same id, URL and pass', async () => {
+    for (const other of [
+      { ...lighthouse, id: 'another' as never },
+      { ...lighthouse, pass: 'p' },
+    ]) {
+      const h = harness({ lighthouses: () => [other] })
+      h.waitsFor.looked(lighthouse, looked())
+      await flush()
+      expect(h.waits).toEqual([])
+    }
   })
 
   it('counts a receipt for waiting mail as something taken, so a reply after it isn’t held back', async () => {

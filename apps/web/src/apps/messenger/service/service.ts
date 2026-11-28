@@ -697,7 +697,7 @@ export async function createMessenger(deps: MessengerDeps) {
     client: lighthouseClient,
     on: () => settings().hearAtOnce !== false && !settings().relayOnly,
     visible: deps.visible ?? (() => true),
-    listed: (address) => lighthouses().some((other) => other.url === address.url),
+    lighthouses,
     cue: () => mailSchedule.lookSoon(0),
     nextLook: () => mailSchedule.nextLookIn(),
     closed: () => closed,

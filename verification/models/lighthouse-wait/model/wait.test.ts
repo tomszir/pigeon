@@ -8,7 +8,7 @@ import { DEFECTS, SCENARIOS, waitModel, withDefect } from './wait-model.ts'
 
 /** What each scenario must reach, so it can't pass by never getting there. */
 const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
-  cycle: ['mail put', 'a wait stands', 'cued'],
+  cycle: ['mail put', 'a wait stands', 'cued', 'a lease ran its course'],
   sleep: ['a wake owed across a reset', 'cued'],
   fault: ['a wait stands', 'cued'],
   reads: ['a wait stands', 'cued'],

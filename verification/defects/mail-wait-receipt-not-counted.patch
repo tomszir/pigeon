@@ -3,16 +3,14 @@ test: apps/web src/apps/messenger/service/mailbox.test.ts
 expect: leaves a letter for an offline friend
 
 diff --git i/apps/web/src/apps/messenger/service/mailbox.ts w/apps/web/src/apps/messenger/service/mailbox.ts
-index a50a1f1..8eda153 100644
+index cb64da6..7527849 100644
 --- i/apps/web/src/apps/messenger/service/mailbox.ts
 +++ w/apps/web/src/apps/messenger/service/mailbox.ts
-@@ -613,8 +613,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
+@@ -617,7 +617,6 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
              const heard = fresh ? await received(letter.sender, letter.from, `${body.for}`) : 'none'
              if (heard === 'all') completed.push(letter.sender)
-             // A receipt for mail that waited for it is news, as a letter is; one for nothing isn't.
+             // A receipt that ends a wait is news, as a letter is; one again, or for nothing, isn't.
 -            if (heard !== 'none') answered?.()
--            if (taken[key] === undefined && typeof body?.for === 'string')
-+                  if (taken[key] === undefined && typeof body?.for === 'string')
+             if (taken[key] === undefined && typeof body?.for === 'string')
                deps.onReceipt?.(letter.sender, body.for, letter.from)
              taken[key] = at
-           } else {

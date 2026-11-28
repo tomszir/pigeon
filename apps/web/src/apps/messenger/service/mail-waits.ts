@@ -20,6 +20,8 @@ export const REOPEN_FIRST_MS = 5000
 export const REOPEN_MOST_MS = 5 * 60 * 1000
 /** A wait whose lease ends with longer than this before the next look is sent again. */
 export const RENEW_AFTER_MS = 5000
+/** How early a `lease` may come and still count as the lease's end: its seconds are rounded up. */
+const LEASE_SLACK_MS = 1000
 /** A wait that stood this long went well: the next drop is reopened quickly again. */
 const STOOD_MS = 60 * 1000
 /** The most a look waits after a cue, so a network watcher can't as easily line up put and fetch. */
@@ -57,8 +59,8 @@ export interface MailWaitsDeps {
   readonly on: () => boolean
   /** Pigeon is on screen: a dropped wait is opened again only then. */
   readonly visible: () => boolean
-  /** Whether a Lighthouse is on your list now: a look under way may have read one just removed. */
-  readonly listed: (address: LighthouseAddress) => boolean
+  /** Your Lighthouses now: a look under way may have read one just taken off the list. */
+  readonly lighthouses: () => readonly LighthouseAddress[]
   /** Asks for a look through the scheduler, which keeps looks apart. */
   readonly cue: () => void
   /** How long until the next scheduled look, in ms. */
@@ -123,6 +125,9 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
   let took = false
   /** A fraction from 0 to 1, from the random source. */
   const fraction = () => (deps.random(1)[0] ?? 0) / 255
+  /** Whether `address` is on your list now, matched as `retain` matches: id, URL and pass. */
+  const listed = (address: LighthouseAddress) =>
+    deps.lighthouses().some((other) => keyOf(other) === keyOf(address))
   /** One cue at a time: a second `mail` while one is held back is the same cue. */
   let holding = false
 
@@ -141,57 +146,72 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
     deps.cue()
   }
 
+  /**
+   * Sends `state`'s wait and acts on its answer, sending it again while that's called for: after a
+   * lease that ended well before the next look, or a drop while on screen. A loop, not recursion,
+   * so a Lighthouse that answers at once costs a wait per RENEW_AFTER_MS at most, and no stack.
+   */
   async function send(state: Waiting): Promise<void> {
-    const client = deps.client(state.address)
-    if (client === undefined || deps.closed() || !deps.on() || !deps.listed(state.address)) return
-    const now = clock.now()
-    state.gen += 1
-    const gen = state.gen
-    state.standing = true
-    state.since = now
-    const seconds = Math.min(MAX_WAIT_SECONDS, Math.max(1, Math.ceil((state.until - now) / 1000)))
-    const answer = await client.request({
-      type: 'wait',
-      tags: state.tags,
-      cursor: state.cursor,
-      seconds,
-    })
-    // Replaced by a newer wait, or stopped: its answer is that one's business, or nobody's.
-    if (gen !== state.gen) return
-    state.standing = false
-    if (answer.ok) {
-      const reply = answer.value
-      if (reply.type === 'waited') {
-        state.backoff = 0
-        if (reply.why === 'mail') await cue()
-        // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
-        // or worked out as a timer's look began): it's sent again, to last until that look.
-        else if (deps.nextLook() > RENEW_AFTER_MS && !deps.closed() && deps.on()) {
+    for (;;) {
+      const client = deps.client(state.address)
+      if (client === undefined || deps.closed() || !deps.on() || !listed(state.address)) return
+      const now = clock.now()
+      state.gen += 1
+      const gen = state.gen
+      state.standing = true
+      state.since = now
+      const seconds = Math.min(MAX_WAIT_SECONDS, Math.max(1, Math.ceil((state.until - now) / 1000)))
+      const answer = await client.request({
+        type: 'wait',
+        tags: state.tags,
+        cursor: state.cursor,
+        seconds,
+      })
+      // Replaced by a newer wait, or stopped: its answer is that one's business, or nobody's.
+      if (gen !== state.gen) return
+      state.standing = false
+      if (answer.ok) {
+        const reply = answer.value
+        if (reply.type === 'waited') {
+          state.backoff = 0
+          if (reply.why === 'mail') {
+            await cue()
+            return
+          }
+          // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
+          // or worked out as a timer's look began): it's sent again, to last until that look. Only
+          // once it ran its course: a Lighthouse that answers `lease` early isn't asked again, and
+          // each lease sent again is longer than RENEW_AFTER_MS, so it's one wait per few seconds
+          // at most.
+          if (clock.now() < state.until - LEASE_SLACK_MS || deps.nextLook() <= RENEW_AFTER_MS)
+            return
           state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
-          await send(state)
+          continue
         }
-      } else if (reply.type === 'error' && reply.error === 'malformed')
-        state.unsupportedUntil = clock.now() + HOUR
-      // Refused for its limits: this Pigeon looks on its schedule.
-      return
+        if (reply.type === 'error' && reply.error === 'malformed')
+          state.unsupportedUntil = clock.now() + HOUR
+        // Refused for its limits: this Pigeon looks on its schedule.
+        return
+      }
+      if (answer.error === 'room') {
+        state.heldOff = true
+        return
+      }
+      // Dropped: opened again while Pigeon is on screen, a little later each time.
+      if (clock.now() - state.since >= STOOD_MS) state.backoff = 0
+      state.backoff =
+        state.backoff === 0 ? REOPEN_FIRST_MS : Math.min(state.backoff * 2, REOPEN_MOST_MS)
+      // Half of it random, so connections a Lighthouse dropped all at once don't come back in step.
+      await clock.sleep(Math.floor(state.backoff * (0.5 + fraction() / 2)))
+      if (gen !== state.gen || state.heldOff || deps.closed() || !deps.on() || !deps.visible())
+        return
+      if (state.until <= clock.now()) return
     }
-    if (answer.error === 'room') {
-      state.heldOff = true
-      return
-    }
-    // Dropped: opened again while Pigeon is on screen, a little later each time.
-    if (clock.now() - state.since >= STOOD_MS) state.backoff = 0
-    state.backoff =
-      state.backoff === 0 ? REOPEN_FIRST_MS : Math.min(state.backoff * 2, REOPEN_MOST_MS)
-    // Half of it random, so connections a Lighthouse dropped all at once don't come back in step.
-    await clock.sleep(Math.floor(state.backoff * (0.5 + fraction() / 2)))
-    if (gen !== state.gen || state.heldOff || deps.closed() || !deps.on() || !deps.visible()) return
-    if (state.until > clock.now()) await send(state)
   }
 
   return {
     looked(address, looked) {
-      if (deps.closed() || !deps.on() || !deps.listed(address)) return
+      if (deps.closed() || !deps.on() || !listed(address)) return
       const key = keyOf(address)
       const state: Waiting = waiting.get(key) ?? {
         address,

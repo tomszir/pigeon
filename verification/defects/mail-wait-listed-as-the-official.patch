@@ -1,0 +1,17 @@
+defect: waits check the official Lighthouses instead of your list, so a look under way leaves a wait at one you took off it
+test: apps/web src/apps/messenger/service/hear-at-once.test.ts
+expect: leaves no wait at a Lighthouse taken off the list while a look read it
+
+diff --git i/apps/web/src/apps/messenger/service/service.ts w/apps/web/src/apps/messenger/service/service.ts
+index b0778b3..670ba16 100644
+--- i/apps/web/src/apps/messenger/service/service.ts
++++ w/apps/web/src/apps/messenger/service/service.ts
+@@ -697,7 +697,7 @@ export async function createMessenger(deps: MessengerDeps) {
+     client: lighthouseClient,
+     on: () => settings().hearAtOnce !== false && !settings().relayOnly,
+     visible: deps.visible ?? (() => true),
+-    lighthouses,
++    lighthouses: () => deps.lighthouses ?? [],
+     cue: () => mailSchedule.lookSoon(0),
+     nextLook: () => mailSchedule.nextLookIn(),
+     closed: () => closed,

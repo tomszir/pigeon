@@ -3,14 +3,14 @@ test: apps/web src/apps/messenger/service/mail-waits.test.ts
 expect: after a lease cut to a moment
 
 diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
-index 4968680..632e212 100644
+index 5a75379..3407b20 100644
 --- i/apps/web/src/apps/messenger/service/mail-waits.ts
 +++ w/apps/web/src/apps/messenger/service/mail-waits.ts
-@@ -167,7 +167,6 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
-         // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
-         // or worked out as a timer's look began): it's sent again, to last until that look.
-         else if (deps.nextLook() > RENEW_AFTER_MS && !deps.closed() && deps.on()) {
+@@ -185,7 +185,6 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+           // at most.
+           if (clock.now() < state.until - LEASE_SLACK_MS || deps.nextLook() <= RENEW_AFTER_MS)
+             return
 -          state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
-           await send(state)
+           continue
          }
-       } else if (reply.type === 'error' && reply.error === 'malformed')
+         if (reply.type === 'error' && reply.error === 'malformed')

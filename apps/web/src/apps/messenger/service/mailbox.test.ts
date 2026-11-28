@@ -204,6 +204,47 @@ describe('the mailbox', () => {
     expect(answered).toHaveBeenCalledOnce()
   })
 
+  it('counts a receipt as news once for each device, and one for nothing never', async () => {
+    const { address, device, recipient } = setup()
+    const rook = device('rook-laptop', 'rook')
+    const phone = device('mika-phone', 'mika')
+    const laptop = device('mika-laptop', 'mika')
+    const toRook = await recipient(rook, 'rook')
+    const toMika = await recipient(phone, 'mika')
+    const both = { ...toMika, keys: [...toMika.keys, ...(await recipient(laptop, 'mika')).keys] }
+    await rook.mailbox.send('farewell', both, {})
+    const fromRook: Source = {
+      sender: toRook.identity,
+      secret,
+      kinds: ['farewell'],
+      replyTo: toRook,
+    }
+    const take = vi.fn(async (_source: Source, _letter: Letter) => true)
+    await phone.mailbox.fetch([address], [fromRook], take)
+    const id = take.mock.calls[0]?.[1].id ?? ''
+    const fromMika: Source = { sender: toMika.identity, secret, kinds: ['receipt'] }
+    const answered = vi.fn()
+    const rookLooks = () =>
+      rook.mailbox.fetch([address], [fromMika], async () => true, undefined, answered)
+    await rookLooks()
+    expect(answered).toHaveBeenCalledOnce()
+    // The phone receipts the same letter again and again, each receipt a letter of its own, while
+    // it still waits on the laptop: none of them is news.
+    for (let again = 0; again < 3; again++)
+      await phone.mailbox.send('receipt' as never, toRook, { for: id }, { once: true })
+    await rookLooks()
+    expect(answered).toHaveBeenCalledOnce()
+    // Nor is a receipt for a letter nobody sent.
+    await phone.mailbox.send('receipt' as never, toRook, { for: 'no-such-letter' }, { once: true })
+    await rookLooks()
+    expect(answered).toHaveBeenCalledOnce()
+    // The laptop's own receipt is.
+    await laptop.mailbox.fetch([address], [fromRook], async () => true)
+    await rookLooks()
+    expect(answered).toHaveBeenCalledTimes(2)
+    expect(await rook.mailbox.waitingOn()).toEqual([])
+  })
+
   it('keeps a letter sent during a fetch before it’s put, and puts it at the next start', async () => {
     const { address, device, recipient } = setup()
     const store = createMemoryStore()

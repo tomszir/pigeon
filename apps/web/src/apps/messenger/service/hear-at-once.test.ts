@@ -26,6 +26,22 @@ async function friendsApart() {
   return { clock, lighthouse, rook, mika }
 }
 
+type Clock = Awaited<ReturnType<typeof friendsApart>>['clock']
+
+/** Seconds until `heard` holds, a second at a time, or Infinity after `most`. */
+async function secondsUntil(clock: Clock, heard: () => boolean, most = 300): Promise<number> {
+  for (let second = 0; second <= most; second++) {
+    if (heard()) return second
+    await clock.tick(1000)
+    await flush(50)
+  }
+  return Number.POSITIVE_INFINITY
+}
+
+const texts = (friend: {
+  messenger: { friends(): readonly { log: { entries: readonly { text?: string }[] } }[] }
+}) => only(friend.messenger.friends()).log.entries.map((entry) => entry.text)
+
 describe('hearing about mail at once', () => {
   it('brings a message between two open friends who never meet within seconds', async () => {
     const { clock, rook, mika } = await friendsApart()
@@ -89,6 +105,55 @@ describe('hearing about mail at once', () => {
         expect(lighthouse.standing()).toBeLessThanOrEqual(1)
       }
     })
+
+  it('brings a second message as quickly as the first: a look that took a letter isn’t empty', async () => {
+    const { clock, rook, mika } = await friendsApart()
+    await mika.messenger.checkMail()
+    await flush(200)
+    const friend = only(rook.messenger.friends()).id
+    await rook.messenger.send(friend, 'one')
+    expect(await secondsUntil(clock, () => texts(mika).includes('one'))).toBeLessThan(40)
+    await rook.messenger.send(friend, 'two')
+    // Held back a minute, as after a cue whose look took nothing, it would take over sixty.
+    expect(await secondsUntil(clock, () => texts(mika).includes('two'))).toBeLessThan(40)
+  })
+
+  it('brings a reply as quickly after a receipt: a look that took a receipt isn’t empty', async () => {
+    const { clock, rook, mika } = await friendsApart()
+    for (const link of rook.messenger.inviteLinks())
+      await rook.messenger.cancelInviteLink(link.secret)
+    await rook.messenger.checkMail()
+    await mika.messenger.checkMail()
+    await flush(200)
+    const toMika = only(rook.messenger.friends()).id
+    await rook.messenger.send(toMika, 'are you there?')
+    expect(await secondsUntil(clock, () => texts(mika).includes('are you there?'))).toBeLessThan(40)
+    // Mika's receipt brings Rook a look of its own, which takes nothing but that receipt.
+    await secondsUntil(clock, () => false, 30)
+    await mika.messenger.send(only(mika.messenger.friends()).id, 'here')
+    expect(await secondsUntil(clock, () => texts(rook).includes('here'))).toBeLessThan(40)
+  })
+
+  it('leaves no wait at a Lighthouse taken off the list while a look read it', async () => {
+    const { lighthouse, rook, mika } = await friendsApart()
+    for (const link of rook.messenger.inviteLinks())
+      await rook.messenger.cancelInviteLink(link.secret)
+    await rook.messenger.checkMail()
+    // Mika's wait has ended, as it has while a cue's look is under way: turned off and on again.
+    await mika.messenger.setHearAtOnce(false)
+    await mika.messenger.setHearAtOnce(true)
+    await flush(200)
+    expect(lighthouse.standing()).toBe(1)
+    // Her look is part way through when the Lighthouse leaves her list, and leaves no wait there.
+    const listing = lighthouse.holdNext('list')
+    const look = mika.messenger.checkMail()
+    await listing.reached
+    await mika.messenger.setLighthouses([])
+    listing.release()
+    await look
+    await flush(200)
+    expect(lighthouse.standing()).toBe(1)
+  })
 
   it('keeps waiting turned off, and turns it on again', async () => {
     const { mika } = await friendsApart()
