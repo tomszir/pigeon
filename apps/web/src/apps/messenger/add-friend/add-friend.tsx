@@ -613,7 +613,7 @@ function SentAsks(props: { messenger: Messenger; now: () => number }) {
               </span>
               <Button
                 label={sent.state === 'waiting' ? 'Stop waiting' : 'OK'}
-                onClick={() => void props.messenger.forgetAsk(sent.secret)}
+                onClick={() => void props.messenger.forgetAsk(sent.reply)}
               />
             </li>
           )}

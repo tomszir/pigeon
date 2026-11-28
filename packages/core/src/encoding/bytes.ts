@@ -141,6 +141,16 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, i) => byte === b[i])
 }
 
+/**
+ * Whether two base32 strings (ids, secrets, tags) spell the same bytes: compared decoded, never as
+ * text. Two missing ones are the same; one that doesn't decode is the same as nothing.
+ */
+export function sameBase32(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b
+  const [x, y] = [base32Decode(a), base32Decode(b)]
+  return x.ok && y.ok && bytesEqual(x.value, y.value)
+}
+
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 /** Standard base64 with padding: how sealed mail travels in JSON, at a third more than raw. */

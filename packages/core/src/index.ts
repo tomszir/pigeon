@@ -71,6 +71,7 @@ export {
   base64Decode,
   base64Encode,
   bytesEqual,
+  sameBase32,
   utf8Encode,
 } from './encoding/bytes.ts'
 export type { Json } from './encoding/canonical.ts'
@@ -222,13 +223,16 @@ export type {
 } from './pairing/link.ts'
 export { hostLink, openLink } from './pairing/link.ts'
 export type {
+  AnswerFor,
   CardError,
   InviteAnswer,
+  InviteAnswerKind,
   InviteCard,
   InviteLink,
   InviteRequest,
 } from './pairing/mailed-invite.ts'
 export {
+  answerIsFor,
   DEFAULT_INVITE_LINK_LIFETIME,
   DEFAULT_INVITE_LINK_USES,
   decodeInviteLink,

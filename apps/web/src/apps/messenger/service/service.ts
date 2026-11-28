@@ -2420,7 +2420,7 @@ export async function createMessenger(deps: MessengerDeps) {
     /** Asks to be friends through a link opened with `openInviteLink`. */
     askThroughLink: (opened: Extract<OpenedLink, { ok: true }>) =>
       inviteLinks?.ask(opened) ?? Promise.resolve('not-sent' as const),
-    forgetAsk: (secret: string) => inviteLinks?.forgetAsk(secret) ?? Promise.resolve(),
+    forgetAsk: (reply: string) => inviteLinks?.forgetAsk(reply) ?? Promise.resolve(),
     /** Where friends leave mail for this Pigeon. */
     lighthouses,
     /** Changes where mail is left for you, and says so to friends and your other devices. */

@@ -17,6 +17,7 @@ import {
   bytesEqual,
   hexDecode,
   hexEncode,
+  sameBase32,
   utf8Decode,
   utf8Encode,
 } from '../encoding/bytes.ts'
@@ -412,8 +413,21 @@ export interface InviteRequest {
   readonly link: string
 }
 
-/** An answer's body: added, with the pair secret and the inviter's log, or not. */
-export type InviteAnswer =
+/**
+ * What an answer says it answers, in its signed body: the reply secret of the request it's for,
+ * and the card tag of the link that request went through. An asker takes an answer for a request
+ * only when both are that request's, so one copied under another request's reply tag ends
+ * nothing.
+ */
+export interface AnswerFor {
+  /** base32, 26 characters: the request's reply secret. */
+  readonly reply: string
+  /** base32, 52 characters: the link's card tag, as the request named it. */
+  readonly link: string
+}
+
+/** An answer's kind and what goes with it: added, with the pair secret and the inviter's log, or not. */
+export type InviteAnswerKind =
   | {
       readonly answer: 'added'
       readonly secret: string
@@ -431,6 +445,9 @@ export type InviteAnswer =
     }
   /** Too many requests are waiting on the link: ask again once some are answered. */
   | { readonly answer: 'busy' }
+
+/** An answer's body: its kind, and the request it answers. */
+export type InviteAnswer = InviteAnswerKind & AnswerFor
 
 export const inviteRequestBody = (request: InviteRequest): Json => request as unknown as Json
 export const inviteAnswerBody = (answer: InviteAnswer): Json => answer as unknown as Json
@@ -463,10 +480,43 @@ export function readInviteRequest(sender: PeerId, body: unknown): InviteRequest 
   return { name: cleanHandle(name), deviceLog, keys, lighthouses, reply, link }
 }
 
+/** `length` bytes in base32, written as Pigeon writes it: one spelling only, since it's signed. */
+const isWritten = (value: unknown, length: number): value is string => {
+  if (typeof value !== 'string' || !/^[a-z2-7]+$/.test(value)) return false
+  const bytes = base32Decode(value)
+  return bytes.ok && bytes.value.length === length && base32Encode(bytes.value) === value
+}
+
+/** What an answer's body says it answers, both parts as Pigeon writes them, or nothing. */
+function readAnswerFor(fields: Record<string, unknown>): AnswerFor | undefined {
+  const { reply, link } = fields
+  if (!isWritten(reply, INVITE_SECRET_BYTES) || !isWritten(link, 32)) return undefined
+  return { reply, link }
+}
+
+/**
+ * Whether `answer` says it answers the request with reply secret `reply` through the link whose
+ * card tag is `link`, compared as bytes.
+ */
+export function answerIsFor(answer: AnswerFor, reply: string, link: string): boolean {
+  return sameBase32(answer.reply, reply) && sameBase32(answer.link, link)
+}
+
 /** Reads an answer's body for `sender`; nothing is checked cryptographically here. */
 export function readInviteAnswer(sender: PeerId, body: unknown): InviteAnswer | undefined {
   if (typeof body !== 'object' || body === null) return undefined
   const fields = body as Record<string, unknown>
+  const answerFor = readAnswerFor(fields)
+  if (answerFor === undefined) return undefined
+  const answer = readAnswerKind(sender, fields)
+  return answer === undefined ? undefined : { ...answer, ...answerFor }
+}
+
+/** An answer's kind and what goes with it, without what it says it answers. */
+function readAnswerKind(
+  sender: PeerId,
+  fields: Record<string, unknown>,
+): InviteAnswerKind | undefined {
   if (fields['answer'] === 'declined') return { answer: 'declined' }
   if (fields['answer'] === 'closed') {
     // A log that isn't the sender's is left out, never the answer.

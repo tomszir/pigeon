@@ -259,7 +259,8 @@ export interface MessengerInvites {
   openInviteLink: (text: string) => Promise<OpenedLink>
   /** Asks to be friends through a link opened with `openInviteLink`. */
   askThroughLink: (opened: Extract<OpenedLink, { ok: true }>) => Promise<AskResult>
-  forgetAsk: (secret: string) => Promise<void>
+  /** Forgets a request you sent, by its reply secret: two links can share a secret. */
+  forgetAsk: (reply: string) => Promise<void>
 }
 
 /** Your devices: the list, linking another, recovering, and the recovery key. */

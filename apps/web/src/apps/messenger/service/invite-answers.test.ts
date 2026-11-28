@@ -12,6 +12,7 @@ import {
   emptyDeviceLog,
   type InviteCard,
   type InviteLink,
+  inviteCardTag,
   type Json,
   type Letter,
   type LighthouseClient,
@@ -73,7 +74,7 @@ async function newest(): Promise<DeviceLog> {
 async function mikaAsked(
   maker: string,
   state: SentAsk['state'] = 'waiting',
-  options: { log?: DeviceLog; known?: DeviceLog } = {},
+  options: { log?: DeviceLog; known?: DeviceLog; others?: readonly SentAsk[] } = {},
 ) {
   const keys = [
     await bindSealingKey(rook, seal.sealer('rook')),
@@ -93,7 +94,7 @@ async function mikaAsked(
     state,
     ...(options.log === undefined ? {} : { log: options.log }),
   }
-  const store = createMemoryStore({ 'invite-asks': [ask] })
+  const store = createMemoryStore({ 'invite-asks': [...(options.others ?? []), ask] })
   const sent: Json[] = []
   const befriended: LinkFriend[] = []
   const mailbox = {
@@ -143,6 +144,19 @@ const source: Source = {
   kinds: ['invite-answer'],
 }
 
+/** `body`, saying it answers the request with reply secret `to` through Rook's link. */
+const bound = async (body: Json, to = reply): Promise<Json> => ({
+  ...(body as Record<string, Json>),
+  reply: to,
+  link: await inviteCardTag(fakeCrypto, secret),
+})
+
+/** Where the answers to the request just sent come: its own reply secret. */
+const sentTo = (sent: Json[]): Source => ({
+  ...source,
+  secret: (sent[0] as { reply: string }).reply,
+})
+
 /** An answer from `from`, of Rook's, as the mailbox hands it over once it holds. */
 const answer = (from: string, body: Json): Letter =>
   ({
@@ -166,7 +180,7 @@ describe('answers through a link only its maker counts', () => {
         kind === 'closed with its log'
           ? { answer: 'closed', deviceLog: withPhone }
           : { answer: kind }
-      expect(await links.take(source, answer(phone.id, body as Json))).toBe(true)
+      expect(await links.take(source, answer(phone.id, await bound(body as Json)))).toBe(true)
       expect(links.asks()[0]?.state).toBe('waiting')
       expect(links.sources().some((one) => one.secret === reply)).toBe(true)
     })
@@ -174,15 +188,17 @@ describe('answers through a link only its maker counts', () => {
   it("takes the maker's added after a removed device's declined in the same fetch", async () => {
     const { withoutPhone } = await logs()
     const { links, befriended } = await mikaAsked(rook.id)
-    await links.take(source, answer(phone.id, { answer: 'declined' }))
+    await links.take(source, answer(phone.id, await bound({ answer: 'declined' })))
     const added = { answer: 'added', secret: pairSecret, name: 'Rook', deviceLog: withoutPhone }
-    expect(await links.take(source, answer(rook.id, added as unknown as Json))).toBe(true)
+    expect(await links.take(source, answer(rook.id, await bound(added as unknown as Json)))).toBe(
+      true,
+    )
     expect(befriended.map((friend) => friend.id)).toEqual([rook.id])
   })
 
   it("still takes the maker's own declined", async () => {
     const { links } = await mikaAsked(rook.id)
-    await links.take(source, answer(rook.id, { answer: 'declined' }))
+    await links.take(source, answer(rook.id, await bound({ answer: 'declined' })))
     expect(links.asks()[0]?.state).toBe('declined')
   })
 
@@ -192,19 +208,18 @@ describe('answers through a link only its maker counts', () => {
     // request was sealed to the stolen device too. It signs the phone's removal onto its own copy
     // of epoch 0 and answers `closed` with that: before Mika hears of the recovery, the log holds.
     const { withPhone, withoutPhone } = await logs()
-    const { links, befriended } = await mikaAsked(phone.id)
+    const { links, befriended, sent } = await mikaAsked(phone.id)
     const base = await opened()
     const card = { ...base.card, from: phone.id, deviceLog: withPhone }
     const link = { ...base.link, maker: await linkMaker(fakeCrypto, phone.id) }
     expect(await links.ask({ ok: true, ...base, link, card })).toBe('sent')
-    await links.take(
-      source,
-      answer(rook.id, { answer: 'closed', deviceLog: withoutPhone } as never),
-    )
+    const to = sentTo(sent)
+    const closed = { answer: 'closed', deviceLog: withoutPhone } as unknown as Json
+    await links.take(to, answer(rook.id, await bound(closed, to.secret)))
     expect(links.asks()[0]?.state).toBe('waiting')
     // the phone's added, after it in the same fetch, is still taken
     const added = { answer: 'added', secret: pairSecret, name: 'Rook', deviceLog: withPhone }
-    await links.take(source, answer(phone.id, added as unknown as Json))
+    await links.take(to, answer(phone.id, await bound(added as unknown as Json, to.secret)))
     expect(befriended.map((friend) => friend.id)).toEqual([rook.id])
   })
 
@@ -250,25 +265,30 @@ describe('answers through a link only its maker counts', () => {
       4,
     )
     if (epoch1 === undefined) throw new Error('no recovery')
-    const { links } = await mikaAsked(phone.id)
+    const { links, sent } = await mikaAsked(phone.id)
     const base = await opened()
     const card = { ...base.card, from: phone.id, deviceLog: epoch1 }
     const link = { ...base.link, maker: await linkMaker(fakeCrypto, phone.id) }
     expect(await links.ask({ ok: true, ...base, link, card })).toBe('sent')
-    await links.take(source, answer(tablet.id, { answer: 'closed', deviceLog: off.log } as never))
+    const to = sentTo(sent)
+    const closed = { answer: 'closed', deviceLog: off.log } as unknown as Json
+    await links.take(to, answer(tablet.id, await bound(closed, to.secret)))
     expect(links.asks()[0]?.state).toBe('waiting')
   })
 })
 
 describe('the log a friend added through a link is kept with', () => {
   /** Rook adds Mika with the log from before: the phone still on it, no recovery key. */
-  const staleAdded = async () =>
-    ({
-      answer: 'added',
-      secret: pairSecret,
-      name: 'Rook',
-      deviceLog: (await logs()).withPhone,
-    }) as unknown as Json
+  const staleAdded = async (to = reply) =>
+    bound(
+      {
+        answer: 'added',
+        secret: pairSecret,
+        name: 'Rook',
+        deviceLog: (await logs()).withPhone,
+      } as unknown as Json,
+      to,
+    )
 
   const kept = (friend: LinkFriend | undefined) => {
     if (friend === undefined) throw new Error('not befriended')
@@ -277,11 +297,12 @@ describe('the log a friend added through a link is kept with', () => {
   }
 
   it("keeps the card's newer log when the maker's added carries an older one", async () => {
-    const { links, befriended } = await mikaAsked(rook.id)
+    const { links, befriended, sent } = await mikaAsked(rook.id)
     const base = await opened()
     const card = { ...base.card, deviceLog: await newest() }
     expect(await links.ask({ ok: true, ...base, card })).toBe('sent')
-    await links.take(source, answer(rook.id, await staleAdded()))
+    const to = sentTo(sent)
+    await links.take(to, answer(rook.id, await staleAdded(to.secret)))
     expect(kept(befriended[0])).toEqual({ phone: false, recovery: true })
   })
 
@@ -293,7 +314,7 @@ describe('the log a friend added through a link is kept with', () => {
     expect(await links.ask({ ok: true, ...base, card })).toBe('sent')
     // Asking again after an answer draws a new reply secret: the added comes under it.
     const again = { ...source, secret: (sent[0] as { reply: string }).reply }
-    await links.take(again, answer(rook.id, await staleAdded()))
+    await links.take(again, answer(rook.id, await staleAdded(again.secret)))
     expect(kept(befriended[0])).toEqual({ phone: false, recovery: true })
   })
 
@@ -311,7 +332,7 @@ describe('the log a friend added through a link is kept with', () => {
       name: 'Rook',
       deviceLog: (await logs()).withPhone,
     }
-    await links.take(source, answer(phone.id, added as unknown as Json))
+    await links.take(source, answer(phone.id, await bound(added as unknown as Json)))
     expect(befriended).toEqual([])
   })
 })
@@ -338,10 +359,12 @@ async function opened(): Promise<{ link: InviteLink; card: InviteCard; fingerpri
 }
 
 describe('asking again through a link', () => {
-  it('keeps the reply secret while the request before still waits', async () => {
+  it('draws a new reply secret even while the request before still waits, which it replaces', async () => {
+    // An answer to the request before, put under the old reply secret, can't end this one.
     const { links, sent } = await mikaAsked(rook.id)
     expect(await links.ask({ ok: true, ...(await opened()) })).toBe('sent')
-    expect((sent[0] as { reply: string }).reply).toBe(reply)
+    expect((sent[0] as { reply: string }).reply).not.toBe(reply)
+    expect(links.asks().map((ask) => ask.reply)).toEqual([(sent[0] as { reply: string }).reply])
   })
 
   it('draws a new reply secret once the request before was answered', async () => {
@@ -357,5 +380,177 @@ describe('asking again through a link', () => {
     expect(await links.ask({ ok: true, ...lapsed })).toBe('expired')
     const long = { ...base, link: { ...base.link, end: NOW + 30 * DAY } }
     expect(await links.ask({ ok: true, ...long })).toBe('too-long')
+  })
+})
+describe('every list heard of the person asked', () => {
+  /** A request to Rook through another link of his, made by the laptop, keeping his newest log. */
+  const throughTheLaptop = async (): Promise<SentAsk> => ({
+    secret: base32Encode(new Uint8Array(16).fill(11)),
+    identity: rook.id,
+    name: 'Rook',
+    fingerprint: 'x',
+    keys: [await bindSealingKey(rook, seal.sealer('rook'))],
+    lighthouses: [lighthouse],
+    reply: base32Encode(new Uint8Array(16).fill(12)),
+    expires: NOW + DAY,
+    maker: rook.id,
+    at: NOW,
+    state: 'waiting',
+    log: await newest(),
+  })
+
+  it("refuses an added from a device another request's log says was taken off", async () => {
+    // The phone's own link, with its card on the list from before; another request already
+    // heard Rook's newer list, which takes the phone off.
+    const { withPhone } = await logs()
+    const { links, befriended } = await mikaAsked(phone.id, 'waiting', {
+      log: withPhone,
+      others: [await throughTheLaptop()],
+    })
+    const added = { answer: 'added', secret: pairSecret, name: 'Rook', deviceLog: withPhone }
+    await links.take(source, answer(phone.id, await bound(added as unknown as Json)))
+    expect(befriended).toEqual([])
+  })
+
+  it('keeps the newest list heard of theirs when added through a card from before', async () => {
+    const { withPhone } = await logs()
+    const { links, befriended } = await mikaAsked(rook.id, 'waiting', {
+      log: withPhone,
+      others: [await throughTheLaptop()],
+    })
+    const added = { answer: 'added', secret: pairSecret, name: 'Rook', deviceLog: withPhone }
+    await links.take(source, answer(rook.id, await bound(added as unknown as Json)))
+    const friend = befriended[0]
+    expect(
+      friend === undefined ? undefined : deviceState(friend.deviceLog).active.has(phone.id),
+    ).toBe(false)
+    expect(friend?.deviceLog.recovery).toBeDefined()
+  })
+
+  it("won't open or ask through a card from a device another request's log says was taken off", async () => {
+    const { withPhone } = await logs()
+    const { links } = await mikaAsked(rook.id, 'declined', { others: [await throughTheLaptop()] })
+    const base = await opened()
+    const card = { ...base.card, from: phone.id, deviceLog: withPhone }
+    const link = { ...base.link, maker: await linkMaker(fakeCrypto, phone.id) }
+    expect(await links.ask({ ok: true, ...base, link, card })).toBe('not-sent')
+  })
+})
+
+describe('an answer counts only for the request it names', () => {
+  const added = (deviceLog: DeviceLog) =>
+    ({ answer: 'added', secret: pairSecret, name: 'Rook', deviceLog }) as unknown as Json
+
+  it("leaves a refusal copied under another request's reply tag untaken, and takes the real added", async () => {
+    const { withoutPhone } = await logs()
+    const elsewhere = base32Encode(new Uint8Array(16).fill(4))
+    const { links, befriended } = await mikaAsked(rook.id)
+    // The maker's refusal to another request, put under this one's reply tag.
+    const copied = answer(rook.id, await bound({ answer: 'declined' }, elsewhere))
+    expect(await links.take(source, copied)).toBe(false)
+    // One naming this reply secret but another link's card tag is left the same way.
+    const otherLink = {
+      ...((await bound({ answer: 'declined' })) as Record<string, Json>),
+      link: await inviteCardTag(fakeCrypto, elsewhere),
+    } as Json
+    expect(await links.take(source, answer(rook.id, otherLink))).toBe(false)
+    expect(links.asks()[0]?.state).toBe('waiting')
+    expect(links.sources().some((one) => one.secret === reply)).toBe(true)
+    expect(await links.take(source, answer(rook.id, await bound(added(withoutPhone))))).toBe(true)
+    expect(befriended.map((friend) => friend.id)).toEqual([rook.id])
+  })
+
+  it('drops an answer that names no request, or names it in another spelling', async () => {
+    const { withoutPhone } = await logs()
+    const { links, befriended } = await mikaAsked(rook.id)
+    const tag = await inviteCardTag(fakeCrypto, secret)
+    const unbound = [
+      { answer: 'declined' },
+      { answer: 'declined', reply },
+      { answer: 'busy', link: tag },
+      added(withoutPhone),
+      { ...(added(withoutPhone) as Record<string, Json>), reply: reply.toUpperCase(), link: tag },
+      { ...(added(withoutPhone) as Record<string, Json>), reply, link: tag.toUpperCase() },
+    ] as Json[]
+    for (const body of unbound) await links.take(source, answer(rook.id, body))
+    expect(links.asks()[0]?.state).toBe('waiting')
+    expect(befriended).toEqual([])
+    await links.take(source, answer(rook.id, await bound(added(withoutPhone))))
+    expect(befriended.map((friend) => friend.id)).toEqual([rook.id])
+  })
+
+  it('keeps a request through a lookalike link with the same secret apart from the one waiting', async () => {
+    const { withPhone } = await logs()
+    const eve = fakeSigner('eve')
+    const { links } = await mikaAsked(rook.id)
+    const base = await opened()
+    // The same secret, naming someone else.
+    const evesLink = {
+      ...base,
+      link: {
+        ...base.link,
+        fingerprint: await linkFingerprint(fakeCrypto, eve.id),
+        maker: await linkMaker(fakeCrypto, eve.id),
+      },
+      card: {
+        ...base.card,
+        identity: eve.id,
+        from: eve.id,
+        deviceLog: emptyDeviceLog(eve.id),
+        keys: [await bindSealingKey(eve, seal.sealer('eve'))],
+      },
+    }
+    expect(await links.ask({ ok: true, ...evesLink })).toBe('sent')
+    // The same secret and identity, naming another of Rook's devices as its maker.
+    const phonesLink = {
+      ...base,
+      link: { ...base.link, maker: await linkMaker(fakeCrypto, phone.id) },
+      card: { ...base.card, from: phone.id, deviceLog: withPhone },
+    }
+    expect(await links.ask({ ok: true, ...phonesLink })).toBe('sent')
+    const kept = links.asks()
+    expect(kept).toHaveLength(3)
+    expect(kept.find((one) => one.reply === reply)).toMatchObject({
+      identity: rook.id,
+      maker: rook.id,
+      state: 'waiting',
+    })
+    expect(new Set(kept.map((one) => one.reply)).size).toBe(3)
+  })
+
+  it("won't let a late refusal to the request before drop the added to the one after (#234)", async () => {
+    const { withoutPhone } = await logs()
+    const { links, sent, befriended } = await mikaAsked(rook.id)
+    expect(await links.ask({ ok: true, ...(await opened()) })).toBe('sent')
+    const again = sentTo(sent)
+    expect(again.secret).not.toBe(reply)
+    // The maker's refusal to the first request, late, under either reply tag.
+    expect(await links.take(again, answer(rook.id, await bound({ answer: 'declined' })))).toBe(
+      false,
+    )
+    await links.take(source, answer(rook.id, await bound({ answer: 'declined' })))
+    expect(links.asks().map((ask) => ask.state)).toEqual(['waiting'])
+    await links.take(again, answer(rook.id, await bound(added(withoutPhone), again.secret)))
+    expect(befriended.map((friend) => friend.id)).toEqual([rook.id])
+  })
+
+  it('forgets a request by its reply secret, leaving another with the same link secret', async () => {
+    const eve = fakeSigner('eve')
+    const lookalike: SentAsk = {
+      secret,
+      identity: eve.id,
+      name: 'Eve',
+      fingerprint: 'y',
+      keys: [],
+      lighthouses: [lighthouse],
+      reply: base32Encode(new Uint8Array(16).fill(12)),
+      expires: NOW + DAY,
+      maker: eve.id,
+      at: NOW,
+      state: 'waiting',
+    }
+    const { links } = await mikaAsked(rook.id, 'waiting', { others: [lookalike] })
+    await links.forgetAsk(reply)
+    expect(links.asks().map((ask) => ask.identity)).toEqual([eve.id])
   })
 })

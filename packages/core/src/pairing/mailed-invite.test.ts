@@ -5,6 +5,7 @@ import type { LighthouseAddress } from '../lighthouse/address.ts'
 import { bindSealingKey } from '../mail/mail.ts'
 import { fakeCrypto, fakeSealCrypto, fakeSigner } from '../testing/testing.ts'
 import {
+  answerIsFor,
   decodeInviteLink,
   encodeInviteLinkFragment,
   type InviteCard,
@@ -277,24 +278,80 @@ describe('requests and answers', () => {
     // A name is cleaned of line breaks and reordering marks; one with nothing else is refused.
     expect(readInviteRequest(stranger.id, { ...request, name: 'Eve\n\u202e' })?.name).toBe('Eve')
     expect(readInviteRequest(stranger.id, { ...request, name: '\u200f' })).toBeUndefined()
-    const added = { answer: 'added', secret: 'x', name: 'Rook', deviceLog: emptyDeviceLog(rook.id) }
+    const to = { reply: secret, link: await inviteCardTag(fakeCrypto, secret) }
+    const added = {
+      answer: 'added',
+      secret: 'x',
+      name: 'Rook',
+      deviceLog: emptyDeviceLog(rook.id),
+      ...to,
+    }
     expect(readInviteAnswer(rook.id, added)).toEqual(added)
     expect(readInviteAnswer(rook.id, { ...added, name: 'Ro\u2066ok' })).toEqual(added)
-    expect(readInviteAnswer(rook.id, { answer: 'declined', extra: 1 })).toEqual({
+    expect(readInviteAnswer(rook.id, { answer: 'declined', extra: 1, ...to })).toEqual({
       answer: 'declined',
+      ...to,
     })
-    expect(readInviteAnswer(rook.id, { answer: 'maybe' })).toBeUndefined()
+    expect(readInviteAnswer(rook.id, { answer: 'maybe', ...to })).toBeUndefined()
     const log = emptyDeviceLog(rook.id)
-    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: log })).toEqual({
+    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: log, ...to })).toEqual({
       answer: 'closed',
       deviceLog: log,
+      ...to,
     })
     // Someone else's log, or none that reads, leaves the answer without one.
     expect(
-      readInviteAnswer(rook.id, { answer: 'closed', deviceLog: emptyDeviceLog(stranger.id) }),
-    ).toEqual({ answer: 'closed' })
-    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: 7 })).toEqual({
+      readInviteAnswer(rook.id, {
+        answer: 'closed',
+        deviceLog: emptyDeviceLog(stranger.id),
+        ...to,
+      }),
+    ).toEqual({ answer: 'closed', ...to })
+    expect(readInviteAnswer(rook.id, { answer: 'closed', deviceLog: 7, ...to })).toEqual({
       answer: 'closed',
+      ...to,
     })
+  })
+})
+
+describe('what an answer says it answers', () => {
+  const rook = fakeSigner('rook')
+  const reply = base32Encode(new Uint8Array(16).fill(9))
+  const other = base32Encode(new Uint8Array(16).fill(4))
+  const secret = base32Encode(new Uint8Array(16).fill(7))
+
+  it('reads an answer only when it names both the reply secret and the card tag', async () => {
+    const link = await inviteCardTag(fakeCrypto, secret)
+    expect(readInviteAnswer(rook.id, { answer: 'declined', reply, link })).toEqual({
+      answer: 'declined',
+      reply,
+      link,
+    })
+    // Unbound: naming neither, or only one, is no answer at all.
+    expect(readInviteAnswer(rook.id, { answer: 'declined' })).toBeUndefined()
+    expect(readInviteAnswer(rook.id, { answer: 'declined', reply })).toBeUndefined()
+    expect(readInviteAnswer(rook.id, { answer: 'busy', link })).toBeUndefined()
+    const added = { answer: 'added', secret: 'x', name: 'Rook', deviceLog: emptyDeviceLog(rook.id) }
+    expect(readInviteAnswer(rook.id, added)).toBeUndefined()
+    // Each as Pigeon writes it: lowercase base32 of the right length.
+    expect(
+      readInviteAnswer(rook.id, { answer: 'busy', reply: reply.toUpperCase(), link }),
+    ).toBeUndefined()
+    expect(readInviteAnswer(rook.id, { answer: 'busy', reply, link: `${link}a` })).toBeUndefined()
+    expect(
+      readInviteAnswer(rook.id, { answer: 'busy', reply: reply.slice(0, -1), link }),
+    ).toBeUndefined()
+    expect(readInviteAnswer(rook.id, { answer: 'busy', reply: 7, link })).toBeUndefined()
+  })
+
+  it('answers a request only when both are its own', async () => {
+    const link = await inviteCardTag(fakeCrypto, secret)
+    const elsewhere = await inviteCardTag(fakeCrypto, other)
+    const answer = { answer: 'declined', reply, link } as const
+    expect(answerIsFor(answer, reply, link)).toBe(true)
+    expect(answerIsFor(answer, other, link)).toBe(false)
+    expect(answerIsFor(answer, reply, elsewhere)).toBe(false)
+    // Compared as bytes, never as text.
+    expect(answerIsFor(answer, reply.toUpperCase(), link)).toBe(true)
   })
 })

@@ -15,6 +15,7 @@
 // its cards are put claimed, with a claim key each link has, which never leaves this device, and
 // whoever opens it reads the tag's claimed cards first, which nobody else can add to.
 import {
+  answerIsFor,
   base32Decode,
   base32Encode,
   type Crypto,
@@ -28,6 +29,7 @@ import {
   formatFingerprint,
   INVITE_LINK_LIFETIMES,
   INVITE_LINK_USES,
+  type InviteAnswerKind,
   type InviteCard,
   type InviteLink,
   inviteAnswerBody,
@@ -44,7 +46,6 @@ import {
   isPairSecret,
   isPeerId,
   isSealingKey,
-  type Json,
   type Letter,
   type LighthouseAddress,
   type LighthouseClient,
@@ -60,6 +61,7 @@ import {
   type SealCrypto,
   type SealingKey,
   type Signer,
+  sameBase32,
   sealInviteCard,
   speakerIdentity,
   verifySealingKey,
@@ -516,7 +518,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   }
 
   /** "Closed", with your device log as this device has it. */
-  const closedAnswer = () => inviteAnswerBody({ answer: 'closed', deviceLog: deps.deviceLog() })
+  const closedAnswer = (): InviteAnswerKind => ({ answer: 'closed', deviceLog: deps.deviceLog() })
 
   /** Where whoever opens a new link looks: your official Lighthouses, or the one it names. */
   function readLighthouses(): LighthouseAddress[] {
@@ -558,13 +560,25 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     }
   }
 
-  /** Answers every device that asked; `kept` ones wait for that device's receipt. */
-  async function answer(request: LinkRequest, body: Json, kept: boolean) {
+  /**
+   * Answers every device that asked through the link whose secret is `secret`; `kept` ones wait
+   * for that device's receipt. Each answer names the reply secret it's for and the link's card
+   * tag, so a copy put under another request's reply tag ends nothing there.
+   */
+  async function answer(
+    request: LinkRequest,
+    secret: string,
+    kind: InviteAnswerKind,
+    kept: boolean,
+  ) {
+    const link = await inviteCardTag(crypto, secret)
     for (const reply of request.replies)
-      await deps.mailbox.send('invite-answer', answerTo(request, reply), body, {
-        once: !kept,
-        waitFor: [reply.device],
-      })
+      await deps.mailbox.send(
+        'invite-answer',
+        answerTo(request, reply),
+        inviteAnswerBody({ ...kind, reply: reply.reply, link }),
+        { once: !kept, waitFor: [reply.device] },
+      )
   }
 
   /** Tells everyone still waiting on a link that closed: it won't add them. */
@@ -579,7 +593,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         ),
       })),
     )
-    for (const request of waiting) await answer(request, closedAnswer(), false)
+    for (const request of waiting) await answer(request, link.secret, closedAnswer(), false)
   }
 
   /**
@@ -628,12 +642,13 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     const latest = linkOf(secret)?.requests.find((other) => other.identity === identity) ?? request
     await answer(
       latest,
-      inviteAnswerBody({
+      secret,
+      {
         answer: 'added',
         secret: request.pairSecret,
         name: deps.name(),
         deviceLog: deps.deviceLog(),
-      }),
+      },
       true,
     )
     await serial(() =>
@@ -682,17 +697,16 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       at: letter.at,
       state: 'waiting',
     }
-    const addedAnswer = (pairSecret: string) =>
-      inviteAnswerBody({
-        answer: 'added',
-        secret: pairSecret,
-        name: deps.name(),
-        deviceLog: deps.deviceLog(),
-      })
+    const addedAnswer = (pairSecret: string): InviteAnswerKind => ({
+      answer: 'added',
+      secret: pairSecret,
+      name: deps.name(),
+      deviceLog: deps.deviceLog(),
+    })
     // What to send once the lock is let go, since this runs inside a fetch and the mailbox does
     // one thing at a time: never waited on.
     const outcome = await serial(
-      async (): Promise<{ to: LinkRequest; body: Json; kept: boolean } | undefined> => {
+      async (): Promise<{ to: LinkRequest; body: InviteAnswerKind; kept: boolean } | undefined> => {
         const current = linkOf(link.secret)
         if (current === undefined) return undefined
         const before = current.requests.find((other) => other.identity === sender)
@@ -737,7 +751,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
             ...other,
             closedAnswers: other.closedAnswers + 1,
           }))
-          return { to: view, body: inviteAnswerBody({ answer: 'busy' }), kept: false }
+          return { to: view, body: { answer: 'busy' }, kept: false }
         }
         // New, or asking again after a decline: waiting for you.
         await updateLink(link.secret, (other) => ({
@@ -748,8 +762,36 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       },
     )
     if (outcome !== undefined)
-      void answer(outcome.to, outcome.body, outcome.kept).catch(() => undefined)
+      void answer(outcome.to, link.secret, outcome.body, outcome.kept).catch(() => undefined)
     return true
+  }
+
+  /**
+   * Whether `ask` is the request kept for the link with this secret, identity and maker: a link
+   * with the same secret naming anyone else, as a copy by someone holding it, is another request.
+   */
+  const sameAsk = (ask: SentAsk, secret: string, identity: PeerId, maker: PeerId) =>
+    sameBase32(ask.secret, secret) &&
+    sameBase32(ask.identity, identity) &&
+    sameBase32(ask.maker, maker)
+
+  /**
+   * Every log heard of `identity`'s, merged: the one you keep for them, and each request's to them
+   * (a card's, and what answers carried). So a request through a card on an older list, or an
+   * answer from a device taken off it, can't bring back what a newer one said.
+   */
+  async function heardLog(identity: PeerId): Promise<DeviceLog | undefined> {
+    let log = await deps.knownLog(identity)
+    for (const other of asks())
+      if (sameBase32(other.identity, identity) && other.log !== undefined)
+        log = log === undefined ? other.log : await mergeDeviceLogs(crypto, log, other.log)
+    return log
+  }
+
+  /** A card's log merged with every list heard of its identity's. */
+  async function cardLog(card: InviteCard): Promise<DeviceLog> {
+    const heard = await heardLog(card.identity)
+    return heard === undefined ? card.deviceLog : mergeDeviceLogs(crypto, heard, card.deviceLog)
   }
 
   /** Takes the answer to a request you sent. True once it's been looked at for good. */
@@ -759,12 +801,12 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     if (deps.isBlocked(ask.identity)) return true
     const body = readInviteAnswer(letter.sender, letter.body)
     if (body === undefined) return true
-    // What you know of their list: the log you keep for them, and what answers said.
-    const kept = await deps.knownLog(ask.identity)
-    const known =
-      kept === undefined || ask.log === undefined
-        ? (ask.log ?? kept)
-        : await mergeDeviceLogs(crypto, kept, ask.log)
+    // An answer that says it's for another request, as one copied under this request's reply tag:
+    // left, not taken, so it can't stand in for the answer meant for that request, whose letter
+    // id it has.
+    if (!answerIsFor(body, ask.reply, await inviteCardTag(crypto, ask.secret))) return false
+    // What you know of their list: every log heard of theirs.
+    const known = await heardLog(ask.identity)
     if (body.answer !== 'added') {
       // Only the device the link names answers through it. Any other device's answer, a removed
       // one's included, is dropped as it is, so the request goes on waiting for the maker. Even a
@@ -1003,8 +1045,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         }))
         return found
       })
-      if (request !== undefined)
-        await answer(request, inviteAnswerBody({ answer: 'declined' }), false)
+      if (request !== undefined) await answer(request, secret, { answer: 'declined' }, false)
     },
 
     /** Looks up someone's link: their card, checked, or why there's nothing to ask. */
@@ -1020,6 +1061,9 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       if (card.expires <= now()) return { ok: false, error: 'expired' }
       if (!card.open || card.keys.length === 0) return { ok: false, error: 'closed' }
       if (deps.isFriend(card.identity)) return { ok: false, error: 'friend' }
+      // From a device a list heard of theirs says was taken off: it adds nobody.
+      if (!deviceState(await cardLog(card)).active.has(card.from))
+        return { ok: false, error: 'closed' }
       return {
         ok: true,
         link,
@@ -1037,11 +1081,13 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       // The answer comes where you fetch mail, and a pass can't go in a request.
       const mine = deps.lighthouses().filter((address) => address.pass === undefined)
       if (mine.length === 0) return 'no-lighthouse'
-      // A request still waiting keeps its reply secret, so an answer already on its way still finds
-      // this device. One already answered gets a new one: whoever read the request before can't
-      // answer this one.
-      const before = asks().find((other) => other.secret === link.secret)
-      const reply = before?.state === 'waiting' ? before.reply : base32Encode(deps.random(16))
+      // Every list heard of theirs: a card from a device it says was taken off isn't asked through.
+      const log = await cardLog(card)
+      if (!deviceState(log).active.has(card.from)) return 'not-sent'
+      // A new reply secret each time, so an answer to the request before, under the old one, can't
+      // end this one: the maker answers the newest it holds for this device, `added` again if it
+      // added you. Whoever read the request before can't answer this one either.
+      const reply = base32Encode(deps.random(16))
       const to: Recipient = {
         identity: card.identity,
         secret: link.secret,
@@ -1058,11 +1104,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         link: await inviteCardTag(crypto, link.secret),
       })
       if (!(await deps.mailbox.send('invite', to, body, { once: true }))) return 'not-sent'
-      // The card's log, checked when the link was opened, merged with what the request before kept
-      // (a newer log a `closed` answer carried), so asking again loses nothing heard of their list.
-      const kept = before?.identity === card.identity ? before.log : undefined
-      const log =
-        kept === undefined ? card.deviceLog : await mergeDeviceLogs(crypto, kept, card.deviceLog)
       const sent: SentAsk = {
         secret: link.secret,
         identity: card.identity,
@@ -1077,15 +1118,19 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         at: now(),
         state: 'waiting',
       }
+      // It takes the place of the request kept for this link, identity and maker, and only that one.
       await serial(() =>
-        saveAsks([...asks().filter((other) => other.secret !== link.secret), sent]),
+        saveAsks([
+          ...asks().filter((other) => !sameAsk(other, link.secret, card.identity, card.from)),
+          sent,
+        ]),
       )
       return 'sent'
     },
 
-    /** Forgets a request you sent, answered or not. */
-    forgetAsk: (secret: string) =>
-      serial(() => saveAsks(asks().filter((other) => other.secret !== secret))),
+    /** Forgets a request you sent, answered or not, by its reply secret. */
+    forgetAsk: (reply: string) =>
+      serial(() => saveAsks(asks().filter((other) => !sameBase32(other.reply, reply)))),
 
     /** Whose mail to look for: requests through your links, answers to your requests. */
     sources(): Source[] {
