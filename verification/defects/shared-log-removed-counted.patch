@@ -1,0 +1,17 @@
+defect: a removed device’s entries stamped at or after its removal still count
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: removal: every invariant holds
+
+diff --git i/packages/core/src/shared-log/fold.ts w/packages/core/src/shared-log/fold.ts
+index df578d1..b60f343 100644
+--- i/packages/core/src/shared-log/fold.ts
++++ w/packages/core/src/shared-log/fold.ts
+@@ -65,7 +65,7 @@ export function counting(
+     // A removed device's entries count up to its removal's own `at`, which the device that
+     // removed it stamped later than every entry it held from it.
+     const removal = context.removals.get(entry.device)
+-    if (removal !== undefined && entry.stamp >= removal.at) continue
++    if (removal !== undefined && entry.stamp >= removal.at && removal.at < 0) continue
+     const op = readOp(entry)
+     if (op !== undefined) out.push({ entry, op })
+   }

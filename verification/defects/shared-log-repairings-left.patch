@@ -1,0 +1,17 @@
+defect: two friendships with one friend are left as they are once the friend is seen in one
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: race: every invariant holds
+
+diff --git i/packages/core/src/shared-log/changes.ts w/packages/core/src/shared-log/changes.ts
+index e19edc3..acfe8c2 100644
+--- i/packages/core/src/shared-log/changes.ts
++++ w/packages/core/src/shared-log/changes.ts
+@@ -57,7 +57,7 @@ export function settleOps(
+   seen: string,
+ ): readonly SharedOp[] {
+   const held = heldFriendships(log, context, friend)
+-  if (held.length < 2 || !held.includes(seen)) return []
++  if (held.length < 2 || !held.includes(seen) || seen !== '') return []
+   return held.filter((inc) => inc !== seen).map((inc) => ({ kind: 'tomb', friend, inc }))
+ }
+ 

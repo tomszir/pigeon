@@ -1,0 +1,14 @@
+defect: a mail:sync letter or self-room entries are taken from a device off the list
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: removal: every invariant holds
+
+diff --git i/packages/core/src/shared-log/sync.ts w/packages/core/src/shared-log/sync.ts
+index aa82a5b..713d1e1 100644
+--- i/packages/core/src/shared-log/sync.ts
++++ w/packages/core/src/shared-log/sync.ts
+@@ -54,4 +54,4 @@ export function readSyncBody(identity: PeerId, body: unknown): SyncBody | undefi
+  * a device that knows of the removal, whatever they say.
+  */
+ export const syncCounts = (log: DeviceLog, from: PeerId, self: PeerId): boolean =>
+-  from !== self && deviceState(log).active.has(from)
++  from !== self && deviceState(log).writer !== undefined

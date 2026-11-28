@@ -1,0 +1,17 @@
+defect: unfriending writes no tombstone, so the friendship comes back from another device
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: friends: every invariant holds
+
+diff --git i/packages/core/src/shared-log/changes.ts w/packages/core/src/shared-log/changes.ts
+index e19edc3..9731587 100644
+--- i/packages/core/src/shared-log/changes.ts
++++ w/packages/core/src/shared-log/changes.ts
+@@ -28,7 +28,7 @@ export function unfriendOps(
+   context: FoldContext,
+   friend: PeerId,
+ ): readonly SharedOp[] {
+-  return heldFriendships(log, context, friend).map((inc) => ({ kind: 'tomb', friend, inc }))
++  return []
+ }
+ 
+ /** Blocking: unfriending, then the block, stamped after the tombstones. */

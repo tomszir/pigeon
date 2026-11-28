@@ -1,0 +1,16 @@
+defect: an entry stamped far ahead of what a device holds is refused
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: skew: every invariant holds
+
+diff --git i/packages/core/src/shared-log/log.ts w/packages/core/src/shared-log/log.ts
+index 6d8d1b6..b24fe91 100644
+--- i/packages/core/src/shared-log/log.ts
++++ w/packages/core/src/shared-log/log.ts
+@@ -64,6 +64,7 @@ export async function takeSharedEntries(
+   for (const value of incoming) {
+     if (!isSharedEntry(log.identity, value)) continue
+     if (!authors.has(value.device) || value.n > MAX_SHARED_ENTRIES_PER_DEVICE) continue
++    if (value.stamp > Math.max(0, ...log.entries.map((e) => e.stamp)) + 100_000) continue
+     const kept = held.get(keyOf(value))
+     if (kept !== undefined && sameEntry(kept, value)) continue
+     // Two entries under one number: the lower signature, compared as bytes, stays everywhere.

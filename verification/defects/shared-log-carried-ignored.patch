@@ -1,0 +1,17 @@
+defect: a letter is planned without what earlier letters carried, so a reader whose summary has gone stale is sent old entries for ever
+test: apps/web src/apps/messenger/service/shared-log.test.ts
+expect: gets every change, one at a time
+
+diff --git i/packages/core/src/shared-log/exchange.ts w/packages/core/src/shared-log/exchange.ts
+index b77d3d9..a16629a 100644
+--- i/packages/core/src/shared-log/exchange.ts
++++ w/packages/core/src/shared-log/exchange.ts
+@@ -99,7 +99,7 @@ export async function planLetter(
+   let due = false
+   for (const [device, peer] of peers) {
+     const lack = (await missingShared(crypto, log, peer.known)).filter(
+-      (entry) => !peer.carried.has(keyOf(entry)),
++      (entry) => entry !== undefined,
+     )
+     lacking.set(device, new Set(lack.map(keyOf)))
+     for (const entry of lack) wanted.set(keyOf(entry), entry)

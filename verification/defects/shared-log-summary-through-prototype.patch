@@ -1,0 +1,17 @@
+defect: a summary from another device is read through what every object inherits, so a name it never sent can say what it holds
+test: packages/core src/shared-log/shared-log.test.ts
+expect: is read by its own keys only
+
+diff --git i/packages/core/src/shared-log/log.ts w/packages/core/src/shared-log/log.ts
+index 696ae03..06caf45 100644
+--- i/packages/core/src/shared-log/log.ts
++++ w/packages/core/src/shared-log/log.ts
+@@ -117,7 +117,7 @@ export const summaryOf = (
+   summary: SharedSummary,
+   device: PeerId,
+ ): { readonly n: number; readonly digest: string } | undefined =>
+-  Object.hasOwn(summary, device) ? summary[device] : undefined
++  summary[device]
+ 
+ /** The most devices a summary names: far more than anyone has ever had on their list. */
+ export const MAX_SUMMARY_DEVICES = 64

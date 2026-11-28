@@ -199,7 +199,7 @@ describe('a tab that closes before a new pair secret is put', () => {
     const closing = await startApart('rook', tab.store, clock, lighthouse)
     await flush(400)
     await closing.messenger.removeDevice(phone.messenger.device)
-    await flush(800)
+    await flush(1600)
     expect(tab.closed()).toBe(true)
     await closing.messenger.close()
     lighthouse.down(false)

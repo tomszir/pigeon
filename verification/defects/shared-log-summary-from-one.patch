@@ -1,0 +1,18 @@
+defect: a summary describes only the run of entries from 1, so entries past a gap are sent for ever
+test: packages/core src/shared-log/shared-log.test.ts
+expect: is described whole, so two devices holding the same entries send each other nothing
+
+diff --git i/packages/core/src/shared-log/log.ts w/packages/core/src/shared-log/log.ts
+index fc2ce8c..dce3611 100644
+--- i/packages/core/src/shared-log/log.ts
++++ w/packages/core/src/shared-log/log.ts
+@@ -87,7 +87,8 @@ const entriesOf = (log: SharedLog, device: PeerId) =>
+   log.entries.filter((entry) => entry.device === device)
+ 
+ /** The highest number held among one device's entries in order, gaps or not. */
+-const highest = (entries: readonly SharedEntry[]): number => entries.at(-1)?.n ?? 0
++const highest = (entries: readonly SharedEntry[]): number =>
++  entries.reduce((n, entry) => (entry.n === n + 1 ? entry.n : n), 0)
+ 
+ /**
+  * A digest of every entry held from one device numbered up to `n`, gaps included: SHA-256 over

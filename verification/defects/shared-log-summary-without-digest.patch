@@ -1,0 +1,17 @@
+defect: summaries carry no digest, so two entries under one number never meet
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: room: every invariant holds
+
+diff --git i/packages/core/src/shared-log/log.ts w/packages/core/src/shared-log/log.ts
+index fc2ce8c..10135c8 100644
+--- i/packages/core/src/shared-log/log.ts
++++ w/packages/core/src/shared-log/log.ts
+@@ -159,7 +159,7 @@ export async function missingShared(
+     }
+     const ours = highest(mine)
+     if (them.n > ours) continue
+-    if ((await digestOf(crypto, mine, them.n)) !== them.digest) out.push(...mine)
++    if (them.digest === '\u0000') out.push(...mine)
+     else out.push(...mine.filter((entry) => entry.n > them.n))
+   }
+   return out

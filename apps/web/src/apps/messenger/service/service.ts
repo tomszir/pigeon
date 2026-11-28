@@ -48,7 +48,6 @@ import {
   MAX_HANDLE_LENGTH,
   MAX_PERSONAL_MESSAGE_LENGTH,
   MAX_WRONG_TRIES,
-  type MailKind,
   type NewFriend,
   newCode,
   type OpenStep,
@@ -72,6 +71,7 @@ import {
   type SealCrypto,
   type Sealer,
   type Signer,
+  SYNC_MAIL_KIND,
   sealingKeyToKeep,
   selfRoomsAt,
   startPairSession,
@@ -99,13 +99,7 @@ import {
 import { createLetters, type Letters } from './letters.ts'
 import { createMailSchedule, MAIL_AFTER_SEND_MS } from './mail-schedule.ts'
 import { createMailWaits } from './mail-waits.ts'
-import {
-  createMailbox,
-  type Mailbox,
-  type Recipient,
-  type RecipientList,
-  type Source,
-} from './mailbox.ts'
+import { createMailbox, type Mailbox, type Recipient, type Source } from './mailbox.ts'
 import type {
   CodeAsk,
   FriendView,
@@ -114,6 +108,7 @@ import type {
   Note,
   OpenedInvite,
 } from './messenger.ts'
+import { createRecipients } from './recipients.ts'
 import {
   begin,
   consider,
@@ -132,7 +127,8 @@ import {
   settle,
   winner,
 } from './rekeys.ts'
-import { isRemovalNotice, type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
+import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
+import { loadSharedLog, READS } from './shared-log.ts'
 import {
   bundleFriends,
   type FarewellRecord,
@@ -421,55 +417,15 @@ export async function createMessenger(deps: MessengerDeps) {
   /** Messages left at friends' Lighthouses while they're away, once friends are loaded. */
   let letters: Letters | undefined
 
-  /**
-   * A letter's recipient's devices as their list stands now, and the keys known for them: your
-   * other devices on your list, or a friend's on theirs. Nothing for any other (an invite's
-   * answer, a farewell to someone no longer a friend), nor for a notice to devices just taken
-   * off your list kept from before such notices were marked: those go as they were sealed.
-   */
-  async function listNow(letter: {
-    readonly kind: MailKind
-    readonly to: Recipient
-    readonly body: Json
-  }): Promise<RecipientList | undefined> {
-    const { to } = letter
-    if (to.tags !== undefined) return undefined
-    if (to.identity === self) {
-      if (letter.kind === 'self' && isRemovalNotice(letter.body)) return undefined
-      const book = await mailBook(self)
-      const keys = Object.values(book.keys).filter((key) => devices.isOwnOther(key.device))
-      return { devices: theirDevices(self), keys }
-    }
-    if (friend(to.identity) === undefined) return undefined
-    // Their list as kept, never the empty one of a friend whose log isn't loaded yet.
-    await devices.loadFriend(to.identity)
-    const book = await mailBook(to.identity)
-    const keys = Object.values(book.keys).filter(
-      (key) => devices.classify(to.identity, key.device) === 'friend',
-    )
-    return { devices: theirDevices(to.identity), keys }
-  }
   /** Invite links through Lighthouses, once friends are loaded. */
   let inviteLinks: InviteLinks | undefined
-
-  /**
-   * Who `id` is to mail: their pair secret, the sealing keys of their devices still on their
-   * list, and their Lighthouses (the official ones, if they never said) that this Pigeon may
-   * reach. Undefined when there's no secret, no key to seal to or no Lighthouse to leave it at.
-   */
-  async function recipient(id: PeerId, secret: string | undefined): Promise<Recipient | undefined> {
-    if (secret === undefined) return undefined
-    const book = await mailBook(id)
-    const keys = Object.values(book.keys).filter(
-      (key) => devices.classify(id, key.device) === 'friend',
-    )
-    if (keys.length === 0) return undefined
-    const named = book.lighthouses.length > 0 ? book.lighthouses : (deps.lighthouses ?? [])
-    // None this Pigeon may reach: their mail waits until you meet.
-    const lighthouses = named.filter(mayReach)
-    if (lighthouses.length === 0) return undefined
-    return { identity: id, secret, keys, lighthouses }
-  }
+  const { recipient, selfRecipient, listNow } = createRecipients({
+    ...{ self, device: signer.id, devices, mailBook, mayReach, lighthouses },
+    theirDevices: (id) => theirDevices(id),
+    isFriend: (id) => friend(id) !== undefined,
+    official: deps.lighthouses ?? [],
+    reads: (kind, device) => sharedLog.reads(kind, device),
+  })
 
   /**
    * A farewell by mail counts only from a device on that friend's list as this device knows
@@ -498,6 +454,8 @@ export async function createMessenger(deps: MessengerDeps) {
       return letters.take(letter.sender, letter, through)
     }
     if (letter.kind === 'self') return source.sender === self && takeSelfNews(letter)
+    if (letter.kind === SYNC_MAIL_KIND)
+      return source.sender === self && letter.sender === self && sharedLog.takeLetter(letter)
     if (letter.kind === 'invite' || letter.kind === 'invite-answer')
       return inviteLinks?.take(source, letter) ?? Promise.resolve(false)
     if (letter.kind !== 'farewell') return false
@@ -506,30 +464,6 @@ export async function createMessenger(deps: MessengerDeps) {
     if (devices.classify(letter.sender, letter.from) !== 'friend') return false
     if (view.removedYouAt === undefined) handlers.unfriended(letter.sender, { type: 'unfriended' })
     return true
-  }
-
-  /**
-   * Your own other devices to mail: the self secret (the old one while one is replaced, or
-   * `under`), the sealing keys of your devices still on your list (or of `only` those devices),
-   * and every Lighthouse on this device's list and the one your other devices last said.
-   */
-  async function selfRecipient(
-    only?: readonly PeerId[],
-    under?: string,
-  ): Promise<Recipient | undefined> {
-    const kept = devices.selfSecretState()
-    const secret = under ?? (kept === undefined ? undefined : mailSecret(kept))
-    if (secret === undefined) return undefined
-    const book = await mailBook(self)
-    const keys = Object.values(book.keys).filter(
-      (key) =>
-        key.device !== signer.id &&
-        (only === undefined ? devices.isOwnOther(key.device) : only.includes(key.device)),
-    )
-    if (keys.length === 0) return undefined
-    const all = [...lighthouses(), ...book.lighthouses]
-    const where = all.filter((address, i) => all.findIndex((o) => o.id === address.id) === i)
-    return { identity: self, secret, keys, lighthouses: where }
   }
 
   /**
@@ -550,7 +484,7 @@ export async function createMessenger(deps: MessengerDeps) {
       const keys = await ownKeys()
       const to = await selfRecipient()
       if (to !== undefined) {
-        const news = { log, keys, profile, lighthouses: list, invites }
+        const news = { log, keys, profile, lighthouses: list, invites, reads: READS }
         await mailbox.send('self', to, selfNewsBody(news), { supersede: true })
       }
       const off = removed.filter((device) => !devices.isOwnOther(device))
@@ -583,6 +517,7 @@ export async function createMessenger(deps: MessengerDeps) {
     if (news.profile !== undefined) await takeProfile(news.profile)
     if (news.lighthouses !== undefined) await takeLighthouses(news.lighthouses)
     if (news.invites !== undefined) await inviteLinks?.takeShared(letter.from, news.invites)
+    if (news.reads !== undefined) await sharedLog.heardReads(letter.from, news.reads)
     return true
   }
 
@@ -597,9 +532,11 @@ export async function createMessenger(deps: MessengerDeps) {
       // And the logs that ride with proposals for a new secret, so a removal in one counts for
       // a proposal from that device in another.
       if (letter.kind === 'rekey') await takeRekeyLogs(readRekey(letter.body)?.logs)
-      if (source.sender !== self || letter.kind !== 'self') continue
-      const news = readSelfNews(self, letter.body)
-      if (news !== undefined) await takeOwnLog(news.log)
+      if (source.sender !== self) continue
+      // Your device log rides in your news and in your shared log's letters.
+      const log = letter.kind === 'self' ? readSelfNews(self, letter.body)?.log : undefined
+      const carried = log ?? sharedLog.carried(letter)
+      if (carried !== undefined) await takeOwnLog(carried)
     }
   }
 
@@ -640,7 +577,7 @@ export async function createMessenger(deps: MessengerDeps) {
         sources.push({
           sender: self,
           secret,
-          kinds: ['self', 'receipt', 'letter', 'rekey'],
+          kinds: ['self', 'receipt', 'letter', 'rekey', SYNC_MAIL_KIND],
           replyTo: () => selfRecipient(),
         })
     for (const view of friendList()) {
@@ -682,6 +619,8 @@ export async function createMessenger(deps: MessengerDeps) {
     // Old secrets with no replacement under way yet, now that any proposal waiting for this
     // device has been taken.
     await replaceOldSecrets()
+    // What your other devices may lack, now that what they sent has been taken.
+    await sharedLog.flush()
     // What waits to be mailed to friends who are away: written before a close, or held back.
     for (const view of friendList()) void letters?.resume(view.id).catch(() => undefined)
     // A farewell every device of theirs has a receipt for was heard: nothing more to say.
@@ -789,6 +728,14 @@ export async function createMessenger(deps: MessengerDeps) {
     writes.add(settled)
     void settled.then(() => writes.delete(settled))
   }
+  /** The self room's session, once started: declared before anything that tells it news. */
+  let selfSession: PairSession | undefined
+  /** Your shared log: the changes made on each of your devices, kept in step between them. */
+  const sharedLog = await loadSharedLog({
+    ...{ crypto, signer, store, clock, self, devices, mailbox, recipient: selfRecipient },
+    stopped: () => closed,
+    announce: () => selfSession?.announceSync(),
+  })
   // Leaving this Pigeon waits for its farewells to be said.
   let farewellsSaid: (() => void)[] = []
   /** Told each time a farewell is said, while leaving shows how many have heard. */
@@ -1930,7 +1877,6 @@ export async function createMessenger(deps: MessengerDeps) {
 
   // Your devices. They meet in a self room named from the self secret, where
   // device logs travel, so an approval or a removal on one reaches the rest.
-  let selfSession: PairSession | undefined
   const selfChat = `self:${self}`
   async function startSelfSession() {
     if (selfSession !== undefined || devices.selfSecretState() === undefined) return
@@ -1965,6 +1911,7 @@ export async function createMessenger(deps: MessengerDeps) {
       },
       profile: profileChange,
       onProfile: (change) => void takeProfile(change),
+      sync: sharedLog.selfRoom,
     })
     selfSession = session
     // While a self secret from before is replaced, its rooms too, until another of your devices
@@ -2067,6 +2014,7 @@ export async function createMessenger(deps: MessengerDeps) {
     // Each open link's card says your list as it is now.
     void inviteLinks?.refresh().catch(() => undefined)
     await actOnRemovals()
+    void sharedLog.deviceLogChanged().catch(() => undefined)
     for (const session of [...sessions.values(), ...farewellSessions.values()]) {
       session.recheck()
       session.shareDevices()
@@ -2497,7 +2445,8 @@ export async function createMessenger(deps: MessengerDeps) {
         .map((device) => ({ device: device.id, name: device.name }))
       if (here === undefined) return false
       const before = devices.devices().map((device) => device.id)
-      if (!(await devices.recoverHere(key, keep, next))) return false
+      const off = before.filter((id) => !keep.some((kept) => kept.device === id))
+      if (!(await devices.recoverHere(key, keep, next, sharedLog.removalAt(off)))) return false
       await ownChanged()
       // Devices the recovery left off are told, so they stop talking.
       tellOwnDevices(before)
@@ -2512,7 +2461,8 @@ export async function createMessenger(deps: MessengerDeps) {
     },
     /** Takes a device off your list, from the first device. */
     async removeDevice(id: PeerId) {
-      if (!(await devices.change('remove', id))) return
+      // Signed later than every entry of its in your shared log, which then stop counting there.
+      if (!(await devices.change('remove', id, undefined, sharedLog.removalAt([id])))) return
       await ownChanged()
       // The removed device is told too, so it stops talking even if it's never in the self room.
       tellOwnDevices([id])
