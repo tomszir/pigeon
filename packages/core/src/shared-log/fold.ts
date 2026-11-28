@@ -31,6 +31,8 @@ export interface Friendship {
   readonly inc: string
   /** The stamp of the newest add that made it. */
   readonly stamp: number
+  /** What the friend was called, by the newest add that says. */
+  readonly name?: string
   /** Every add that made it was written at the update, from what a device held before. */
   readonly before: boolean
 }
@@ -117,22 +119,32 @@ export function foldShared(log: SharedLog, context: FoldContext): SharedView {
     if (op.kind === 'setting' && op.key === 'relay') relay = op.value
   }
   // Each live friendship, from its newest add.
-  const adds = new Map<string, { entry: SharedEntry; friend: PeerId; before: boolean }>()
+  const adds = new Map<
+    string,
+    { entry: SharedEntry; friend: PeerId; before: boolean; name?: string }
+  >()
   for (const { entry, op } of entries) {
     if (op.kind !== 'add' || ended.has(op.inc)) continue
     const held = adds.get(op.inc)
     const before = (held?.before ?? true) && op.before === true
-    if (held === undefined || later(entry, held.entry))
-      adds.set(op.inc, { entry, friend: op.friend, before })
-    else adds.set(op.inc, { ...held, before })
+    const newer = held === undefined || later(entry, held.entry)
+    const name = (newer ? (op.name ?? held?.name) : (held?.name ?? op.name)) ?? undefined
+    const base = newer ? { entry, friend: op.friend } : { entry: held.entry, friend: held.friend }
+    adds.set(op.inc, { ...base, before, ...(name === undefined ? {} : { name }) })
   }
   const friendships = new Map<string, Friendship>()
   const shown = new Map<PeerId, Friendship>()
   const shownEntry = new Map<PeerId, SharedEntry>()
-  for (const [inc, { entry, friend, before }] of adds) {
+  for (const [inc, { entry, friend, before, name }] of adds) {
     const block = blockedAt.get(friend)
     if (block !== undefined && block >= entry.stamp) continue
-    const friendship = { friend, inc, stamp: entry.stamp, before }
+    const friendship = {
+      friend,
+      inc,
+      stamp: entry.stamp,
+      before,
+      ...(name === undefined ? {} : { name }),
+    }
     friendships.set(inc, friendship)
     const held = shownEntry.get(friend)
     if (held === undefined || later(entry, held)) {

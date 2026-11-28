@@ -5,6 +5,31 @@ import type { Messenger } from '../service/messenger.ts'
 import { MyDevices } from './my-devices.tsx'
 
 describe('MyDevices', () => {
+  it('lists friends from before on your other devices only, to keep or remove everywhere', () => {
+    const settleElsewhere = vi.fn(async () => undefined)
+    const messenger = {
+      isFirstDevice: () => false,
+      deviceStatus: () => 'active',
+      twin: () => false,
+      waitingForList: () => false,
+      checkDevices: () => false,
+      elsewhere: () => [{ id: 'm', inc: 'i1', name: 'Mika' }],
+      settleElsewhere,
+      devices: () => [],
+    } as unknown as Messenger
+    render(() => (
+      <MyDevices
+        messenger={messenger}
+        onLinkDevice={() => undefined}
+        onStartOver={() => undefined}
+        onClose={() => undefined}
+      />
+    ))
+    expect(screen.getByText('Mika')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Remove Everywhere/ }))
+    expect(settleElsewhere).toHaveBeenCalledWith('i1', false)
+  })
+
   it('asks you to check your list once the secret your devices meet with was replaced', async () => {
     const [check, setCheck] = createSignal(true)
     const devicesChecked = vi.fn(async () => setCheck(false))
@@ -13,6 +38,7 @@ describe('MyDevices', () => {
       deviceStatus: () => 'active',
       twin: () => false,
       waitingForList: () => false,
+      elsewhere: () => [],
       checkDevices: check,
       devicesChecked,
       devices: () => [

@@ -2,6 +2,7 @@
 // interface that holds them, written out in roles so a reader can see what a Messenger can do
 // without reading the code that does it. service.ts builds one; its return type and this
 // interface must stay assignable to each other (messenger.test.ts checks).
+
 import type {
   AvatarTraits,
   ChatLog,
@@ -192,6 +193,14 @@ export interface MessengerProfile {
   setProfile(next: Profile): Promise<void>
 }
 
+/** A friendship from before your devices kept in step, on another of them and never on this one. */
+export interface Elsewhere {
+  readonly id: PeerId
+  readonly inc: string
+  /** What they were called there. */
+  readonly name: string
+}
+
 /** Your friends and the people you've blocked. */
 export interface MessengerFriends {
   friends: () => readonly FriendView[]
@@ -210,6 +219,13 @@ export interface MessengerFriends {
    * on a Pigeon from before: an unfriend or block made here doesn't reach them until they update.
    */
   notInStep: () => readonly string[]
+  /**
+   * Friends from before your devices kept in step that another of your devices holds and this one
+   * never did: added there, or removed here, which only you can tell.
+   */
+  elsewhere: () => readonly Elsewhere[]
+  /** Keeps one of `elsewhere` on your other devices, or removes it there too. */
+  settleElsewhere: (inc: string, keep: boolean) => Promise<void>
   blocked: Accessor<readonly BlockedRecord[]>
   unblock(id: PeerId): Promise<void>
 }
