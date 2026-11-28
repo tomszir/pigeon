@@ -7,8 +7,6 @@ import {
   emptyLog,
   isDeviceLog,
   type Json,
-  lowSDeviceLog,
-  lowSEntry,
   mergeEntries,
   type PeerId,
   pairRoom,
@@ -98,7 +96,6 @@ export function createYourData(deps: YourDataDeps): YourData {
           petname,
           mutedUntil,
           secret,
-          moved,
           sealed,
           replacing,
           prior,
@@ -111,7 +108,6 @@ export function createYourData(deps: YourDataDeps): YourData {
           ...(petname === undefined ? {} : { petname }),
           ...(mutedUntil === undefined ? {} : { mutedUntil }),
           ...(secret === undefined ? {} : { secret }),
-          ...(moved === true ? { moved } : {}),
           ...secretFlags({ sealed, replacing, prior, renew, begun }),
         }),
       ),
@@ -178,7 +174,7 @@ export function createYourData(deps: YourDataDeps): YourData {
     for (const [id, log] of deviceLogs)
       if (ids.has(id) && isDeviceLog(log) && log.identity === id) {
         await devices.loadFriend(id)
-        await devices.takeFriend(id, lowSDeviceLog(log))
+        await devices.takeFriend(id, log)
       }
     const have = new Map(friendList().map((view) => [view.id, view]))
     // A pair secret from a file may be known to whoever else had the file, or to a device it
@@ -202,12 +198,7 @@ export function createYourData(deps: YourDataDeps): YourData {
       }
       await store.set(
         KEYS.log(record.id),
-        await mergeEntries(
-          crypto,
-          current,
-          incoming.entries.map(lowSEntry),
-          devices.authors(record.id),
-        ),
+        await mergeEntries(crypto, current, incoming.entries, devices.authors(record.id)),
       )
     }
     // Records that couldn't be read were set aside when this started; only the readable ones are

@@ -1,6 +1,6 @@
 // Talking to one friend in your pair rooms: say hello, catch each other up on the chat log, and
 // pass typing, buzz and presence along. A friend can be in several rooms at once (today's and
-// yesterday's around midnight, or the old room while moving), so a session spans
+// yesterday's around midnight), so a session spans
 // rooms that come and go. Pure protocol over Rooms; the app stores the log and draws the events.
 //
 // A connection counts as a device only once that device's hello signs the nonce this side sent
@@ -88,10 +88,6 @@ export type PairEvent =
   | { readonly type: 'met'; readonly room: RoomName }
   /** One of the friend's devices proved itself with a hello in `room`: sent on every one. */
   | { readonly type: 'seen'; readonly room: RoomName; readonly device: PeerId }
-  /** The friend gave the pair secret in the old room, moving you both out of it. */
-  | { readonly type: 'secret'; readonly secret: string }
-  /** The friend has the secret you gave, they said in the old room. */
-  | { readonly type: 'secret-ok' }
 
 export interface PairSessionOptions {
   readonly crypto: Crypto
@@ -176,10 +172,6 @@ export interface PairSession {
   shareDevices(): void
   /** Lets go of connections from devices `accepts` no longer takes, as after a removal. */
   recheck(): void
-  /** Gives the friend the pair secret, in the old room. */
-  sendSecret(secret: string): Promise<void>
-  /** Tells the friend, in the old room, their secret arrived; resolves once it's been sent. */
-  confirmSecret(): Promise<void>
   /** The rooms the session is in now. */
   rooms(): readonly RoomName[]
   /** Starts talking in another room, greeting whoever is there. */
@@ -260,20 +252,15 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     rooms.get(room)?.room.send(connection, bytes)
   }
   const seal = (body: Body) => sealEnvelope(signer, chat, options.now(), body)
-  /**
-   * `all`: the friend's devices; `everyone`: those and your own others, for chat entries; `old`:
-   * the friend's devices in the old room alone.
-   */
-  const sendTo = (to: Link | 'all' | 'everyone' | 'old', body: Body) => {
+  /** `all`: the friend's devices; `everyone`: those and your own others, for chat entries. */
+  const sendTo = (to: Link | 'all' | 'everyone', body: Body) => {
     // A send to one connection is for that connection, not for whoever holds its id when the
     // queue gets to it.
-    const many = to === 'all' || to === 'everyone' || to === 'old'
+    const many = to === 'all' || to === 'everyone'
     const token = many ? undefined : tokens.get(to)
     queue = queue.then(async () => {
       const bytes = await seal(body)
-      if (to === 'old') {
-        for (const id of friendConnections) if (id.startsWith(`${chat}\n`)) deliver(id, bytes)
-      } else if (to === 'all' || to === 'everyone') {
+      if (to === 'all' || to === 'everyone') {
         for (const id of friendConnections) deliver(id, bytes)
         if (to === 'everyone') for (const id of selfConnections) deliver(id, bytes)
       } else if (token !== undefined && tokens.get(to) === token) deliver(to, bytes)
@@ -458,8 +445,6 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     typing: (_from, body) => options.onEvent({ type: 'typing', active: body.active }),
     buzz: () => options.onEvent({ type: 'buzz' }),
     unfriend: () => options.onEvent({ type: 'unfriended' }),
-    'pair-secret': (_from, body) => options.onEvent({ type: 'secret', secret: body.secret }),
-    'pair-secret-ok': () => options.onEvent({ type: 'secret-ok' }),
     bye: drop,
     'log-sync': (from, body) => {
       if (friendConnections.has(from)) options.onEvent({ type: 'has', have: body.have })
@@ -478,12 +463,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
    * connection, the log dedupes itself, and these happen once: the same envelope (author, time
    * and type) is taken only the first time.
    */
-  const ONCE: ReadonlySet<Body['type']> = new Set([
-    'buzz',
-    'unfriend',
-    'pair-secret',
-    'pair-secret-ok',
-  ])
+  const ONCE: ReadonlySet<Body['type']> = new Set(['buzz', 'unfriend'])
   const taken: string[] = []
   const firstTime = (key: string) => {
     if (taken.includes(key)) return false
@@ -510,16 +490,8 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     'profile',
     'buzz',
     'unfriend',
-    'pair-secret',
-    'pair-secret-ok',
     'log-entries',
   ])
-  /**
-   * Said only in the old room, the one named from both ids that is also the chat's id: the pair
-   * secret moves friends from before pair secrets out of it, and counts nowhere else. Checked
-   * before anything is taken once, so a copy in another room can't use up the one that counts.
-   */
-  const OLD_ROOM: ReadonlySet<Body['type']> = new Set(['pair-secret', 'pair-secret-ok'])
   let inbound = Promise.resolve()
 
   let closed = false
@@ -542,7 +514,6 @@ export function startPairSession(options: PairSessionOptions): PairSession {
           if (!opened.ok || !rooms.has(room.name)) return
           const { body, at } = opened.value
           const device = opened.value.from
-          if (OLD_ROOM.has(body.type) && room.name !== chat) return
           if (body.type === 'device-log') {
             await options.onDeviceLog?.(body.log)
             recheck()
@@ -686,14 +657,6 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       if (devices === undefined) return
       for (const [name, entry] of rooms)
         for (const peer of entry.room.peers()) sendTo(link(name, peer), devices)
-    },
-    async sendSecret(secret) {
-      sendTo('old', { type: 'pair-secret', secret })
-      await queue
-    },
-    async confirmSecret() {
-      sendTo('old', { type: 'pair-secret-ok' })
-      await queue
     },
     rooms: () => [...rooms.keys()],
     addRoom,

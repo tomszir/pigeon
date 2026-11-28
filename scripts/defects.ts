@@ -2,9 +2,9 @@
 // there to catch. A patch file starts with a header, then the diff, which `git apply` reads
 // past the header:
 //
-//   defect: isCanonicalSignature takes the high-S spelling of a P-256 signature
+//   defect: isCanonicalSignature takes an Ed25519 S at or past the group order
 //   test: apps/web src/platform/crypto/crypto-contract.test.ts
-//   expect: p256
+//   expect: own-refusal ed25519
 //
 // `test` is the package folder and the test file to run there; `expect` is text that the full
 // name of at least one failing test must contain, so a defect only counts as caught when the

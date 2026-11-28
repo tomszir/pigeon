@@ -4,19 +4,16 @@ import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import { fingerprint, formatFingerprint, pairRoom, parsePeerId } from './identity.ts'
 
 describe('parsePeerId', () => {
-  it('knows Ed25519 and P-256 keys by length', () => {
+  it('knows Ed25519 keys by length', () => {
     expect(parsePeerId(base32Encode(new Uint8Array(32)))).toMatchObject({
       ok: true,
       value: { kind: 'ed25519' },
-    })
-    expect(parsePeerId(base32Encode(new Uint8Array(65)))).toMatchObject({
-      ok: true,
-      value: { kind: 'p256' },
     })
   })
 
   it('rejects other lengths, upper case and junk', () => {
     expect(parsePeerId(base32Encode(new Uint8Array(31))).ok).toBe(false)
+    expect(parsePeerId(base32Encode(new Uint8Array(65))).ok).toBe(false)
     expect(parsePeerId(base32Encode(new Uint8Array(32)).toUpperCase()).ok).toBe(false)
     expect(parsePeerId('not a key').ok).toBe(false)
   })

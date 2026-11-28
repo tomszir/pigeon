@@ -46,7 +46,6 @@ import { browserFiles } from '../platform/files/browser-files.ts'
 import type { ShellApi, ShellEnv } from '../shell/shell/types.ts'
 import { brandIcon, tangoIcon } from '../ui/icons/icons.ts'
 import type { MenuEntry } from '../ui/menu/menu.tsx'
-import type { OldCode } from './address-invite.ts'
 import type { MessengerHost } from './messenger-host.ts'
 
 /** The openers the Messenger's windows hand to the rest of the desktop. */
@@ -55,7 +54,7 @@ export interface MessengerWindows {
   readonly openConversation: (contactId: string) => void
   readonly openFriendConversation: (id: PeerId) => void
   readonly openAddFriend: (incoming?: IncomingInvite, tab?: AddFriendTab) => void
-  readonly openJoinDevice: (incoming?: Invite | OldCode, confirmed?: boolean) => void
+  readonly openJoinDevice: (incoming?: Invite, confirmed?: boolean) => void
   readonly openMyDevices: () => void
   readonly openMakeRecoveryKey: () => void
   /** The id of a friend's conversation window. */
@@ -155,7 +154,7 @@ export function createMessengerWindows(
       content: (window) => <LinkDevice messenger={messenger} onClose={window.close} />,
     })
   }
-  const openJoinDevice = (incoming?: Invite | OldCode, confirmed = false) => {
+  const openJoinDevice = (incoming?: Invite, confirmed = false) => {
     if (incoming !== undefined) api.close('join-device')
     api.open('join-device', {
       title: 'Link to My Other Device',

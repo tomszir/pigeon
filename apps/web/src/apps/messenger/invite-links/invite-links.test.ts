@@ -4,7 +4,6 @@ import { inviteMessage, MAKE_ERRORS, shortLink } from './invite-links.tsx'
 
 const bytes = (fill: number) => base32Encode(new Uint8Array(16).fill(fill))
 const url = `https://pigeon.tomszir.com/#b/${bytes(1)}${bytes(2)}${bytes(3)}aaaaaaab`
-const old = `https://pigeon.tomszir.com/#a/${bytes(1)}${bytes(2)}`
 
 describe('inviteMessage', () => {
   it('says who the link is from, with the link on a line of its own', () => {
@@ -31,10 +30,7 @@ describe('making a link', () => {
 })
 
 describe('your links', () => {
-  it('shortens either kind of link to its start and end', () => {
+  it('shortens a link to its start and end', () => {
     expect(shortLink(url)).toBe(`pigeon.tomszir.com/#b/${bytes(1).slice(0, 4)}…aaaaab`)
-    expect(shortLink(old)).toBe(
-      `pigeon.tomszir.com/#a/${bytes(1).slice(0, 4)}…${bytes(2).slice(-6)}`,
-    )
   })
 })

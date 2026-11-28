@@ -54,18 +54,8 @@ describe('live codes', () => {
   })
 
   it('reject the wrong length and characters base32 lacks', () => {
-    for (const typed of ['K7RT-VP2-BXQQ', 'K7RT-VP2-BX9', '', 'K7RT-VP'])
+    for (const typed of ['K7RT-VP2-BXQQ', 'K7RT-VP2-BX9', '', 'K7RT-VP', 'K7RT-VP2B'])
       expect(decodeInvite(typed)).toEqual({ ok: false, error: 'malformed' })
-  })
-
-  it('tell an older Pigeon’s codes and links apart, which can’t be opened', () => {
-    for (const old of [
-      'K7RT-VP2B',
-      'k7rtvp2b',
-      'https://pigeon.tomszir.com/#i/k7rtvp2bp45jdqqex3mbo',
-    ])
-      expect(decodeInvite(old)).toEqual({ ok: false, error: 'old' })
-    expect(decodeDeviceLink('#l/k7rtvp2bp45jdqqex3mbo')).toEqual({ ok: false, error: 'old' })
   })
 })
 

@@ -7,10 +7,10 @@ import type { PeerId } from './peer-id.ts'
 
 export type { PeerId }
 
-export type KeyKind = 'ed25519' | 'p256'
+export type KeyKind = 'ed25519'
 
-/** Raw public key lengths: Ed25519 is 32 bytes, an uncompressed P-256 point is 65. */
-const KEY_LENGTHS: Readonly<Record<number, KeyKind>> = { 32: 'ed25519', 65: 'p256' }
+/** A raw Ed25519 public key is 32 bytes. */
+const ED25519_KEY_BYTES = 32
 
 export const peerIdFromPublicKey = (publicKey: Uint8Array): PeerId => base32Encode(publicKey)
 
@@ -23,9 +23,8 @@ export function parsePeerId(id: string): Result<PublicKey, 'malformed'> {
   if (id !== id.toLowerCase()) return err('malformed')
   const bytes = base32Decode(id)
   if (!bytes.ok) return bytes
-  const kind = KEY_LENGTHS[bytes.value.length]
-  if (kind === undefined) return err('malformed')
-  return ok({ kind, bytes: bytes.value })
+  if (bytes.value.length !== ED25519_KEY_BYTES) return err('malformed')
+  return ok({ kind: 'ed25519', bytes: bytes.value })
 }
 
 export const isPeerId = (id: string): boolean => parsePeerId(id).ok

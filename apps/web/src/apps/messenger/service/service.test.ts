@@ -5,8 +5,6 @@ import {
   decodeInvite,
   decodeInviteLink,
   emptyDeviceLog,
-  emptyLog,
-  encodePairSecret,
   encodeRequest,
   err,
   formatCode,
@@ -21,15 +19,12 @@ import {
   mailTag,
   openInviteCard,
   openMail,
-  PAIR_SECRET_BYTES,
   pairPassword,
   pairRoom,
   pairRoomOn,
-  type Room,
   roomsFor,
   sealInviteCard,
   selfRoomsAt,
-  startPairSession,
 } from '@pigeon/core'
 import {
   createMemoryNetwork,
@@ -198,9 +193,7 @@ describe('the Messenger service', () => {
     await flush()
     await a.messenger.remove(mikaId, { block: false })
     // Kept with the secret, so the farewell finds them in their private room.
-    expect(await a.store.get('farewells')).toEqual([
-      { id: mikaId, secret: expect.any(String), moved: true },
-    ])
+    expect(await a.store.get('farewells')).toEqual([{ id: mikaId, secret: expect.any(String) }])
 
     const back = await messenger(network, 'mika', { store: b.store, clock })
     await flush()
@@ -435,33 +428,13 @@ describe('the Messenger service', () => {
 
 const rookId = fakeSigner('rook').id
 const mikaId = fakeSigner('mika').id
-const legacy = () => pairRoom(fakeCrypto, rookId, mikaId)
+/** The room named from both ids alone, which nobody should ever join. */
+const idsRoom = () => pairRoom(fakeCrypto, rookId, mikaId)
 const HOUR = 60 * 60 * 1000
 
 /** The pair rooms a transport's joins named, other than invite rooms. */
 const pairJoins = (network: Network) =>
   network.joins.filter((join) => join.name.startsWith('pair:'))
-
-/**
- * Rook and Mika as friends from before pair secrets: no secret, so nothing sealed or being
- * replaced either, meeting in the old room.
- */
-async function oldFriends(network: Network, clock = fakeClock(NOON)) {
-  const { a, b } = await pair(network, {}, 'link', clock)
-  await a.messenger.close()
-  await b.messenger.close()
-  for (const side of [a, b]) {
-    const friends = (await side.store.get('friends')) as Record<string, unknown>[]
-    await side.store.set(
-      'friends',
-      friends.map(
-        ({ secret: _secret, moved: _moved, sealed: _sealed, replacing: _replacing, ...rest }) =>
-          rest,
-      ),
-    )
-  }
-  return { a: a.store, b: b.store, clock }
-}
 
 describe('private rooms', () => {
   it('pairs into a room named from a shared secret and locked with it', async () => {
@@ -471,8 +444,7 @@ describe('private rooms', () => {
     const mika = only(a.messenger.friends())
     expect(mika.secret).toBeDefined()
     expect(rook.secret).toBe(mika.secret)
-    expect(rook.moved && mika.moved).toBe(true)
-    expect(network.occupants(await legacy())).toBe(0)
+    expect(network.occupants(await idsRoom())).toBe(0)
     const today = await pairRoomOn(fakeCrypto, mika.secret ?? '', '2026-11-24')
     expect(network.occupants(today)).toBe(2)
     expect(
@@ -488,7 +460,7 @@ describe('private rooms', () => {
   it('shows someone who knows both ids nothing: not when they meet, and no hello', async () => {
     const network = createMemoryNetwork()
     await pair(network, {}, 'link', fakeClock(NOON))
-    const name = await legacy()
+    const name = await idsRoom()
     // Eve computes the old room from both ids and waits there.
     const eve = await network.transport().join(name)
     const heard: Uint8Array[] = []
@@ -504,89 +476,6 @@ describe('private rooms', () => {
       if (join.name !== name) expect(join.options.password).toBeDefined()
     // Neither of them ever joined the old room: Eve is the only one who did.
     expect(network.joins.filter((join) => join.name === name)).toHaveLength(1)
-  })
-
-  it('moves friends from before the secret the next time they meet', async () => {
-    const network = createMemoryNetwork()
-    const stores = await oldFriends(network)
-    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
-    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
-    await flush()
-    const mika = only(a.messenger.friends())
-    const rook = only(b.messenger.friends())
-    expect(mika.secret).toBeDefined()
-    expect(rook.secret).toBe(mika.secret)
-    expect(mika.moved && rook.moved).toBe(true)
-    // Both have left the old room, and the chat came along.
-    expect(network.occupants(await legacy())).toBe(0)
-    expect(a.messenger.friend(mika.id)?.online).toBe(true)
-    await a.messenger.send(mika.id, 'moved')
-    await flush()
-    expect(b.messenger.friend(rook.id)?.log.entries.map((entry) => entry.text)).toEqual(['moved'])
-
-    // It sticks: after a reload neither goes back to the old room.
-    await a.messenger.close()
-    await b.messenger.close()
-    const before = network.joins.length
-    await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
-    await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
-    await flush()
-    const name = await legacy()
-    expect(network.joins.slice(before).some((join) => join.name === name)).toBe(false)
-  })
-
-  it('keeps waiting in the old room for a friend who hasn’t come back', async () => {
-    const network = createMemoryNetwork()
-    const stores = await oldFriends(network)
-    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
-    await flush()
-    expect(only(a.messenger.friends()).moved).toBeUndefined()
-    expect(network.occupants(await legacy())).toBe(1)
-  })
-
-  it('moves a friend from before pair secrets once they update, if they never got a secret', async () => {
-    // Mika paired with a Pigeon from before pair secrets and has no secret; Rook made one when
-    // pairing.
-    const network = createMemoryNetwork()
-    const stores = await oldFriends(network)
-    const friends = (await stores.a.get('friends')) as Record<string, unknown>[]
-    const kept = 'a'.repeat(52)
-    await stores.a.set(
-      'friends',
-      friends.map((record) => ({ ...record, secret: kept })),
-    )
-    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
-    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
-    await flush()
-    const mika = only(a.messenger.friends())
-    const rook = only(b.messenger.friends())
-    expect(mika.moved && rook.moved).toBe(true)
-    expect(rook.secret).toBe(mika.secret)
-    expect(network.occupants(await legacy())).toBe(0)
-  })
-
-  it('moves the lower id once the higher is met in the secret’s rooms, with no confirmation', async () => {
-    // Mika (the lower id) gave a secret; Rook took it and moved, but closed before its
-    // pair-secret-ok went: Mika holds the secret without having moved.
-    const network = createMemoryNetwork()
-    const stores = await oldFriends(network)
-    const secret = encodePairSecret(new Uint8Array(PAIR_SECRET_BYTES).fill(5))
-    await rewriteMika(stores.a, (record) => ({ ...record, secret, moved: true }))
-    const friends = (await stores.b.get('friends')) as Record<string, unknown>[]
-    await stores.b.set(
-      'friends',
-      friends.map((record) => ({ ...record, secret })),
-    )
-    const a = await messenger(network, 'rook', { store: stores.a, clock: stores.clock })
-    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
-    await flush()
-    const mika = only(a.messenger.friends())
-    const rook = only(b.messenger.friends())
-    expect(rook).toMatchObject({ secret, moved: true })
-    expect(mika).toMatchObject({ secret, moved: true })
-    expect(mika.online).toBe(true)
-    expect(network.occupants(await legacy())).toBe(0)
-    expect(network.occupants(await today(secret))).toBe(2)
   })
 
   it('renames the room each UTC day, in both rooms around midnight', async () => {
@@ -649,114 +538,6 @@ describe('private rooms', () => {
     expect(only(a.messenger.friends()).online).toBe(true)
     const again = await messenger(network, 'rook', { store: a.store })
     expect(again.messenger.settings().relayOnly).toBe(true)
-  })
-})
-
-/**
- * A bare session as one of the friend's devices, saying `pair-secret` with a secret of its own
- * choosing. `room` is where it goes, whatever the session is told it is: the old room, so the
- * session sends there.
- */
-async function sayPairSecret(as: string, to: string, room: Room, secret: string) {
-  const signer = fakeSigner(as)
-  const name = await legacy()
-  let n = 0
-  const session = startPairSession({
-    crypto: fakeCrypto,
-    signer,
-    friend: fakeSigner(to).id,
-    chat: name,
-    rooms: [{ ...room, name }],
-    handle: () => as,
-    presence: () => ({ status: 'online', message: '' }),
-    log: emptyLog(name),
-    now: () => NOON,
-    random: (length) => new Uint8Array(length).fill(++n % 250),
-    onEvent: () => undefined,
-  })
-  await flush()
-  await session.sendSecret(secret)
-  await flush()
-  return session
-}
-
-/** A secret nobody paired with: what a device saying `pair-secret` might choose. */
-const chosen = encodePairSecret(new Uint8Array(PAIR_SECRET_BYTES).fill(7))
-
-/** Rook's record of Mika, rewritten in the store while closed. */
-async function rewriteMika(store: Store, change: (record: Record<string, unknown>) => object) {
-  const friends = (await store.get('friends')) as Record<string, unknown>[]
-  await store.set(
-    'friends',
-    friends.map((record) => change(record)),
-  )
-}
-
-// Mika's id is the lower: she gives the secret in the old room, and Rook takes it.
-describe('the pair secret in the old room', () => {
-  it('is taken only from the lower id', async () => {
-    expect(mikaId < rookId).toBe(true)
-    const network = createMemoryNetwork()
-    const stores = await oldFriends(network)
-    const b = await messenger(network, 'mika', { store: stores.b, clock: stores.clock })
-    await flush()
-    // Rook's device, the higher id, says a secret in the old room.
-    await sayPairSecret('rook', 'mika', await network.transport().join(await legacy()), chosen)
-    const rook = only(b.messenger.friends())
-    expect(rook.online).toBe(true)
-    expect(rook.secret).not.toBe(chosen)
-    expect(rook.moved).toBeUndefined()
-  })
-
-  it('counts for nothing in the secret’s own rooms, once moved', async () => {
-    const network = createMemoryNetwork()
-    const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
-    const held = only(a.messenger.friends()).secret ?? ''
-    await b.messenger.close()
-    const room = await network.transport().join(await today(held), {
-      password: await pairPassword(fakeCrypto, held),
-    })
-    await sayPairSecret('mika', 'rook', room, chosen)
-    const mika = only(a.messenger.friends())
-    expect(mika.online).toBe(true)
-    expect(mika.secret).toBe(held)
-  })
-
-  it('counts for nothing once the secret is sealed', async () => {
-    const network = createMemoryNetwork()
-    const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
-    const held = only(a.messenger.friends()).secret ?? ''
-    await a.messenger.close()
-    await b.messenger.close()
-    // Sealed, though not marked moved: back in the old room too.
-    await rewriteMika(a.store, ({ moved: _moved, ...rest }) => rest)
-    const back = await messenger(network, 'rook', { store: a.store, clock: fakeClock(NOON) })
-    await flush()
-    await sayPairSecret('mika', 'rook', await network.transport().join(await legacy()), chosen)
-    const mika = only(back.messenger.friends())
-    expect(mika.online).toBe(true)
-    expect(mika).toMatchObject({ secret: held, sealed: true })
-  })
-
-  it('counts for nothing while the secret is being replaced', async () => {
-    const network = createMemoryNetwork()
-    const { a, b } = await pair(network, {}, 'link', fakeClock(NOON))
-    const held = only(a.messenger.friends()).secret ?? ''
-    const old = 'a'.repeat(52)
-    await a.messenger.close()
-    await b.messenger.close()
-    // A replacement under way, the record not marked moved or sealed: back in the old room too.
-    await rewriteMika(a.store, ({ moved: _moved, sealed: _sealed, ...rest }) => ({
-      ...rest,
-      replacing: { old, at: NOON, by: rookId, sig: 'a'.repeat(52) },
-    }))
-    const back = await messenger(network, 'rook', { store: a.store, clock: fakeClock(NOON) })
-    await flush()
-    await sayPairSecret('mika', 'rook', await network.transport().join(await legacy()), chosen)
-    const mika = only(back.messenger.friends())
-    expect(mika.online).toBe(true)
-    expect(mika.secret).toBe(held)
-    expect(mika.replacing?.old).toBe(old)
   })
 })
 
@@ -1610,10 +1391,10 @@ describe('unreadable saved blocks and farewells', () => {
     expect(await store.get('blocked-unreadable')).toEqual(['nope'])
   })
 
-  it('sets an unreadable farewell aside, keeps the others, bare ids included', async () => {
+  it('sets an unreadable farewell aside, and keeps the others', async () => {
     const store = createMemoryStore()
     const bad = { id: ids[1], secret: 'not a secret' }
-    await store.set('farewells', [ids[0], bad, { id: ids[2] }] as never)
+    await store.set('farewells', [{ id: ids[0] }, bad, { id: ids[2] }] as never)
     const told: number[] = []
     const rook = await messenger(createMemoryNetwork(), 'rook', {
       store,
@@ -2145,34 +1926,6 @@ describe('invite links through Lighthouses', () => {
     const late = await messenger(createMemoryNetwork(), 'kestrel', { clock, lighthouse })
     await late.messenger.setProfile({ handle: 'Kestrel', status: 'online', message: '' })
     expect(await late.messenger.openInviteLink(link.url)).toEqual({ ok: false, error: 'closed' })
-  })
-
-  it('puts its cards again once after an update, a closed link staying closed', async () => {
-    const { clock, lighthouse, rook } = await apart()
-    const open = await made(rook)
-    const closed = await made(rook)
-    await rook.messenger.cancelInviteLink(closed.secret)
-    const before = rook.messenger.inviteLinks().find((link) => link.secret === closed.secret)
-    expect(Object.keys(before?.cards ?? {}).length).toBeGreaterThan(0)
-    await rook.messenger.close()
-    // As if this Pigeon ran code from before the cards were put again.
-    await rook.store.delete('cardsPutLowS')
-    const again = await messenger(createMemoryNetwork(), 'rook', {
-      clock,
-      lighthouse,
-      store: rook.store,
-    })
-    await flush(400)
-    expect(await rook.store.get('cardsPutLowS')).toBe(true)
-    const links = again.messenger.inviteLinks()
-    // Fake crypto seals the same card the same way, so it keeps its id: what matters is that each
-    // link still holds a card, and says the same to whoever opens it.
-    expect(Object.keys(links.find((l) => l.secret === open.secret)?.cards ?? {})).not.toEqual([])
-    expect(Object.keys(links.find((l) => l.secret === closed.secret)?.cards ?? {})).not.toEqual([])
-    const late = await messenger(createMemoryNetwork(), 'kestrel', { clock, lighthouse })
-    await late.messenger.setProfile({ handle: 'Kestrel', status: 'online', message: '' })
-    expect(await late.messenger.openInviteLink(closed.url)).toEqual({ ok: false, error: 'closed' })
-    expect((await late.messenger.openInviteLink(open.url)).ok).toBe(true)
   })
 
   it('answers a request that comes after the link was cancelled', async () => {

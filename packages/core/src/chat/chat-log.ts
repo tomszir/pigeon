@@ -5,7 +5,6 @@ import { base32DecodeExact, base32Encode, bytesEqual } from '../encoding/bytes.t
 import { canonicalBytes } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
-import { canonicalSignature } from '../identity/signature.ts'
 
 /** Longest message, in UTF-16 units: a screenful, and well inside one 64 KB envelope. */
 export const MAX_TEXT_LENGTH = 4000
@@ -55,22 +54,9 @@ const entryFields = (log: string, entry: Omit<LogEntry, 'sig'>) => ({
   text: entry.text,
 })
 
-/**
- * The bytes entries are signed over: what the entry is for, the log it belongs to, and the entry.
- * Every Pigeon from 0.8.2 takes them.
- */
+/** The bytes entries are signed over: what the entry is for, the log it belongs to, and the entry. */
 const typedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
   canonicalBytes({ v: ENTRY_CONTEXT, ...entryFields(log, entry) })
-
-/**
- * The bytes entries were signed over before 0.8.4, and still taken: the entry and its log, with
- * no `v`. Nothing else Pigeon signs has this shape, since every other kind carries a `v` or a
- * `type` and canonical JSON gives two different values different bytes, so no other signature
- * verifies over it. It can't be retired: entries signed this way keep travelling, and a tab still
- * on 0.8.3 or before signs it.
- */
-const untypedBytes = (log: string, entry: Omit<LogEntry, 'sig'>): Uint8Array =>
-  canonicalBytes(entryFields(log, entry))
 
 /**
  * What an entry is known by in its chat: its author and number. A chat holds one entry for each,
@@ -80,18 +66,14 @@ export const entryKey = (entry: Pick<LogEntry, 'author' | 'seq'>): string =>
   `${entry.author}/${entry.seq}`
 
 /**
- * Whether two copies are the same entry: the same signed content, and the same signature, its
- * bytes read in their low-S spelling, never compared as text. False when either doesn't decode.
+ * Whether two copies are the same entry: the same signed content, and the same signature bytes,
+ * never compared as text. False when either doesn't decode.
  */
 export function sameEntry(a: LogEntry, b: LogEntry): boolean {
-  if (!bytesEqual(untypedBytes('', a), untypedBytes('', b))) return false
+  if (!bytesEqual(typedBytes('', a), typedBytes('', b))) return false
   const left = base32DecodeExact(a.sig)
   const right = base32DecodeExact(b.sig)
-  if (!left.ok || !right.ok) return false
-  return bytesEqual(
-    canonicalSignature(a.author, left.value),
-    canonicalSignature(b.author, right.value),
-  )
+  return left.ok && right.ok && bytesEqual(left.value, right.value)
 }
 
 const compare = (a: LogEntry, b: LogEntry): number =>
@@ -114,28 +96,13 @@ export function summarize(log: ChatLog): LogSummary {
 }
 
 /**
- * An entry with its signature spelled low-S, the one way it's taken. A P-256 entry kept from a
- * Pigeon before low-S may be high-S; it's the same signature, so this is safe on any entry.
- */
-export function lowSEntry(entry: LogEntry): LogEntry {
-  const signature = base32DecodeExact(entry.sig)
-  if (!signature.ok) return entry
-  const canonical = canonicalSignature(entry.author, signature.value)
-  return canonical === signature.value ? entry : { ...entry, sig: base32Encode(canonical) }
-}
-
-/**
- * What `log` holds that a peer with `theirs` lacks, oldest first, spelled as they're taken, so
- * old entries still reach a device that lacks them. An entry whose Lamport time isn't a safe
- * integer is left out: a peer refuses every entry sent alongside one.
+ * What `log` holds that a peer with `theirs` lacks, oldest first. An entry whose Lamport time
+ * isn't a safe integer is left out: a peer refuses every entry sent alongside one.
  */
 export function missingFrom(log: ChatLog, theirs: LogSummary): readonly LogEntry[] {
-  return log.entries
-    .filter(
-      (entry) =>
-        entry.seq > (theirs[entry.author] ?? 0) && entry.lamport <= Number.MAX_SAFE_INTEGER,
-    )
-    .map(lowSEntry)
+  return log.entries.filter(
+    (entry) => entry.seq > (theirs[entry.author] ?? 0) && entry.lamport <= Number.MAX_SAFE_INTEGER,
+  )
 }
 
 /**
@@ -189,17 +156,10 @@ export function isLogEntry(value: unknown): value is LogEntry {
   )
 }
 
-/**
- * Whether `entry` is its author's, in `log`: signed over `typedBytes`, as entries are signed now,
- * or over `untypedBytes`, as they were before.
- */
+/** Whether `entry` is its author's, in `log`: signed over `typedBytes`. */
 export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry): Promise<boolean> {
   const sig = base32DecodeExact(entry.sig)
-  if (!sig.ok) return false
-  return (
-    (await crypto.verify(entry.author, sig.value, typedBytes(log, entry))) ||
-    crypto.verify(entry.author, sig.value, untypedBytes(log, entry))
-  )
+  return sig.ok && crypto.verify(entry.author, sig.value, typedBytes(log, entry))
 }
 
 /**

@@ -2,13 +2,11 @@
 // recovery key's file. The passphrase is stretched into an AES-256-GCM key and the sealed text
 // is one line, so it can sit in a .txt.
 //
-// New files are version 2: Argon2id (RFC 9106, memory-hard, so a guess costs a GPU far more
-// than PBKDF2's) with its parameters in the line. The key comes out of WebAssembly as 32 bytes
-// that go straight into a non-extractable WebCrypto key and are wiped. Version 1 files, from
-// before, used PBKDF2-SHA256 in WebCrypto; they still open, and nothing writes them any more.
+// Files are version 2: Argon2id (RFC 9106, memory-hard) with its parameters in the line. The
+// key comes out of WebAssembly as 32 bytes that go straight into a non-extractable WebCrypto key
+// and are wiped.
 import type { Argon2id, Argon2idParams } from '@pigeon/core'
 
-const V1 = 'pigeon-sealed:v1'
 const V2 = 'pigeon-sealed:v2'
 
 /** What new files are sealed with: RFC 9106's second recommended option (64 MiB, 3 passes). */
@@ -20,9 +18,6 @@ export const ARGON2ID_PARAMS: Argon2idParams = { memoryKiB: 64 * 1024, passes: 3
  * the work, which a phone can bear.
  */
 export const ARGON2ID_LIMITS: Argon2idParams = { memoryKiB: 128 * 1024, passes: 6, lanes: 4 }
-
-/** Rounds Pigeon wrote to version 1 files; one may ask for up to ten million. */
-const MAX_V1_ROUNDS = 10_000_000
 
 const SALT_BYTES = 16
 const IV_BYTES = 12
@@ -73,7 +68,7 @@ function withinLimits(params: Argon2idParams): boolean {
 }
 
 export interface PassphraseSealOptions {
-  /** Stretches passphrases for version 2 files. Version 1 files need none. */
+  /** Stretches passphrases. */
   argon2id: Argon2id
   /** Cost of new files; Pigeon's own choice unless a test wants it quick. Must be within limits. */
   params?: Argon2idParams
@@ -112,22 +107,6 @@ export function createPassphraseSeal(options: PassphraseSealOptions): Passphrase
     } finally {
       typed.fill(0)
       raw?.fill(0)
-    }
-  }
-
-  async function pbkdf2Key(passphrase: string, salt: Bytes, rounds: number) {
-    const typed = passphraseBytes(passphrase)
-    try {
-      const base = await subtle.importKey('raw', typed, 'PBKDF2', false, ['deriveKey'])
-      return await subtle.deriveKey(
-        { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: rounds },
-        base,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt'],
-      )
-    } finally {
-      typed.fill(0)
     }
   }
 
@@ -175,38 +154,13 @@ export function createPassphraseSeal(options: PassphraseSealOptions): Passphrase
     return decrypt(await argon2idKey(passphrase, saltBytes, costs), ivBytes, sealedBytes)
   }
 
-  async function openV1(passphrase: string, parts: string[]) {
-    if (parts.length !== 6) return undefined
-    const [, , rounds, salt, iv, sealed] = parts
-    const count = readCount(rounds)
-    const saltBytes = fromBase64(salt ?? '')
-    const ivBytes = fromBase64(iv ?? '')
-    const sealedBytes = fromBase64(sealed ?? '')
-    if (count === undefined || count > MAX_V1_ROUNDS) return undefined
-    if (saltBytes === undefined || ivBytes === undefined || sealedBytes === undefined)
-      return undefined
-    // WebCrypto, which does all of version 1, may refuse a passphrase it can't use (an empty
-    // one, in some browsers): that is a passphrase that doesn't open the file, as it always was.
-    let key: CryptoKey
-    try {
-      key = await pbkdf2Key(passphrase, saltBytes, count)
-    } catch {
-      return undefined
-    }
-    return decrypt(key, ivBytes, sealedBytes)
-  }
-
   async function open(passphrase: string, text: string): Promise<Uint8Array | undefined> {
     const line = text
       .split(/\r?\n/)
       .map((part) => part.trim())
-      .find((part) => /^pigeon-sealed:v[12]:/.test(part))
+      .find((part) => part.startsWith(`${V2}:`))
     if (line === undefined) return undefined
-    const parts = line.split(':')
-    const version = `${parts[0]}:${parts[1]}`
-    if (version === V2) return openV2(passphrase, parts)
-    if (version === V1) return openV1(passphrase, parts)
-    return undefined
+    return openV2(passphrase, line.split(':'))
   }
 
   return { seal, open }

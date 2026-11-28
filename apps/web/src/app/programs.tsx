@@ -25,7 +25,6 @@ import type { ShellProps } from '../shell/shell/shell.tsx'
 import type { ShellApi, ShellEnv, TraySpec } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'
 import { brandIcon, type Icon, tangoIcon } from '../ui/icons/icons.ts'
-import type { OldCode } from './address-invite.ts'
 import { BUNDLED_PAGES } from './bundled-pages.ts'
 import { createLaunchers } from './launchers.ts'
 import { createMessageBalloons, remindAboutRecoveryKey } from './message-balloons.ts'
@@ -46,7 +45,7 @@ export interface Programs extends ShellProps {
    * Link to My Other Device, perhaps from a link in the address bar. `confirmed` when you
    * already chose to link to it here, so it goes ahead without asking again.
    */
-  readonly openJoinDevice: (incoming?: Invite | OldCode, confirmed?: boolean) => void
+  readonly openJoinDevice: (incoming?: Invite, confirmed?: boolean) => void
   /** What the Messenger tells the desktop: balloons, buzzes, new friends. */
   readonly messengerEvents: MessengerEvents
 }

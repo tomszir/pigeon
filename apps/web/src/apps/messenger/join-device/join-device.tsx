@@ -19,7 +19,7 @@ export const CONFIRM_LINK_TIMEOUT_MS = 3 * 60 * 1000
 export interface JoinDeviceProps {
   messenger: Messenger
   /** A link from the address bar, if that's how it came. */
-  incoming?: Invite | { readonly old: true } | undefined
+  incoming?: Invite | undefined
   /** You already chose to link to `incoming` (before leaving the old Pigeon): don't ask again. */
   confirmed?: boolean
   sleep: (ms: number) => Promise<void>
@@ -33,10 +33,6 @@ export interface JoinDeviceProps {
   onClose: () => void
 }
 
-/** A link from an older Pigeon, which can't link to this one. */
-const OLD_LINK =
-  'That link was made by an older Pigeon, which can’t link to this one. Reload Pigeon on your other device, choose Link a Device again, and use the new code or link.'
-
 /** How long leaving waits for friends who are online to hear goodbye. */
 export const LEAVE_TIMEOUT_MS = 10_000
 
@@ -45,11 +41,9 @@ export function JoinDevice(props: JoinDeviceProps) {
   const phone = useLayout() === 'phone'
   const [typed, setTyped] = createSignal('')
   const [view, setView] = createSignal<Join>(
-    props.incoming !== undefined && 'old' in props.incoming
-      ? { kind: 'failed', text: OLD_LINK }
-      : props.incoming === undefined || props.confirmed === true
-        ? { kind: 'enter' }
-        : { kind: 'arrived', target: props.incoming },
+    props.incoming === undefined || props.confirmed === true
+      ? { kind: 'enter' }
+      : { kind: 'arrived', target: props.incoming },
   )
   // `view()` when it is the step `kind`, so a branch reads its own fields without a cast.
   const inKind = <K extends Join['kind']>(kind: K) => {
@@ -135,18 +129,14 @@ export function JoinDevice(props: JoinDeviceProps) {
     }
     props.onLeave(props.messenger, target)
   }
-  if (props.incoming !== undefined && !('old' in props.incoming) && props.confirmed === true)
-    void join(props.incoming)
+  if (props.incoming !== undefined && props.confirmed === true) void join(props.incoming)
 
   const submit = () => {
     const target = decodeDeviceLink(typed())
     if (!target.ok) {
       setView({
         kind: 'enter',
-        error:
-          target.error === 'old'
-            ? 'That looks like an 8-character code from an older Pigeon. Reload Pigeon on your other device and type the new 10-character code.'
-            : 'That isn’t a code or a link from Link a Device.',
+        error: 'That isn’t a code or a link from Link a Device.',
       })
       return
     }

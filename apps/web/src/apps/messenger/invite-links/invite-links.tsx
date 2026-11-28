@@ -40,7 +40,7 @@ export function timeLeft(ms: number): string {
 /** "pigeon.tomszir.com/#b/zbyd…5v4vju": enough to tell links apart, short enough for one line. */
 export function shortLink(url: string): string {
   const bare = url.replace(/^https?:\/\//, '')
-  const hash = bare.search(/#[ab]\//)
+  const hash = bare.search(/#b\//)
   if (hash < 0) return bare
   const body = bare.slice(hash + 3).split('?')[0] ?? ''
   return `${bare.slice(0, hash + 3)}${body.slice(0, 4)}…${body.slice(-6)}`

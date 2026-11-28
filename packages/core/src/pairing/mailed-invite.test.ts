@@ -96,16 +96,6 @@ describe('invite links', () => {
     expect(decodeInviteLink(`b/\u212a${body.slice(1)}`).ok).toBe(false)
   })
 
-  it('refuses a link made by an older Pigeon, which carries no maker or end', async () => {
-    const link = await linkFor()
-    const old = `a/${link.secret}${base32Encode(new Uint8Array(16).fill(1))}`
-    expect(decodeInviteLink(`https://pigeon.test/#${old}`)).toEqual({ ok: false, error: 'old' })
-    expect(decodeInviteLink(`Rook invites you!\nhttps://pigeon.test/#${old}`)).toEqual({
-      ok: false,
-      error: 'old',
-    })
-  })
-
   it('refuses a link that is cut short, or names a Lighthouse with a pass', async () => {
     const fragment = encodeInviteLinkFragment(await linkFor())
     expect(decodeInviteLink(fragment.slice(0, -1))).toEqual({ ok: false, error: 'malformed' })

@@ -1,14 +1,10 @@
 // Files sealed with a passphrase, in two isolated browsers under the site's Content Security
 // Policy: Argon2id loads, compiles and runs in WebAssembly, a file one browser seals opens in
-// the other, a file from before (PBKDF2) still opens, and a file asking for more than a file may
-// is refused without a derivation.
+// the other, and a file asking for more than a file may is refused without a derivation.
 import { argon2Sync } from 'node:crypto'
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 const DATA = '{"friends":[]}'
-// Sealed by 0.8.0 (PBKDF2-SHA256 at 600,000 rounds, version 1) with the passphrase "correct horse".
-const V1_FILE =
-  'pigeon-sealed:v1:600000:VatgPb3dXHCvQYQ3AI/A+Q==:1pvM9+gm+nN8ehAq:LK0HGLlBWbDdVu5vzEpnHwO8y8VSP5Hkv7RhIuCu'
 // Sealed by this code in a browser, with the real Argon2id, and kept: a change to the format or
 // the derivation shows here.
 const V2_FILE =
@@ -56,7 +52,7 @@ async function open(page: Page, passphrase: string, file: string): Promise<strin
   )
 }
 
-test('a file sealed in one browser opens in another, and one from before still opens', async ({
+test('a file sealed in one browser opens in another, and a kept one still opens', async ({
   browser,
 }) => {
   const refused: string[] = []
@@ -70,7 +66,6 @@ test('a file sealed in one browser opens in another, and one from before still o
   expect(await open(bob, 'correct horse', `Pigeon data\n${sealed}\n`)).toBe(DATA)
   expect(await open(bob, 'wrong horse', sealed)).toBeUndefined()
 
-  expect(await open(bob, 'correct horse', V1_FILE)).toBe(DATA)
   expect(await open(bob, 'correct horse', V2_FILE)).toBe(DATA)
 
   // The line is what protocol.md says: an independent Argon2id (OpenSSL's) and AES-GCM open it.

@@ -71,7 +71,7 @@ async function newest(): Promise<DeviceLog> {
  * Rook's log as the request keeps it, `known` what Mika keeps for Rook apart from it.
  */
 async function mikaAsked(
-  maker: string | undefined,
+  maker: string,
   state: SentAsk['state'] = 'waiting',
   options: { log?: DeviceLog; known?: DeviceLog } = {},
 ) {
@@ -88,7 +88,7 @@ async function mikaAsked(
     lighthouses: [lighthouse],
     reply,
     expires: NOW + DAY,
-    ...(maker === undefined ? {} : { maker }),
+    maker,
     at: NOW,
     state,
     ...(options.log === undefined ? {} : { log: options.log }),
@@ -357,13 +357,5 @@ describe('asking again through a link', () => {
     expect(await links.ask({ ok: true, ...lapsed })).toBe('expired')
     const long = { ...base, link: { ...base.link, end: NOW + 30 * DAY } }
     expect(await links.ask({ ok: true, ...long })).toBe('too-long')
-  })
-})
-
-describe('requests through links from older Pigeons', () => {
-  it('no longer waits on a request that names no maker, and says the link retired', async () => {
-    const { links } = await mikaAsked(undefined)
-    expect(links.asks()[0]?.state).toBe('retired')
-    expect(links.sources().some((one) => one.secret === reply)).toBe(false)
   })
 })

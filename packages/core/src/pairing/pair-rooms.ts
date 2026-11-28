@@ -1,7 +1,6 @@
 // Where two friends meet. Pairing gives them a 256-bit secret only they hold;
 // their room is named from it and the UTC date, so it changes every day, and it's locked with a
-// password derived from it. Friends from before the secret meet in the old room named from both
-// ids until they've moved (docs/protocol.md, "Rooms").
+// password derived from it (docs/protocol.md, "Rooms").
 import { base32Decode, base32Encode, concatBytes, utf8Encode } from '../encoding/bytes.ts'
 import type { Crypto } from '../identity/crypto.ts'
 import type { RoomName } from '../transport/transport.ts'
@@ -96,32 +95,17 @@ export interface PairRoomSpec {
   readonly password?: string
 }
 
-export interface PairPlace {
-  /** The old room named from both ids (`pairRoom`), which is also the chat's id. */
-  readonly legacy: `pair:${string}`
-  readonly secret?: string | undefined
-  /** Both sides hold the secret: the old room is no longer used. */
-  readonly moved?: boolean | undefined
-}
-
-/**
- * The rooms to be in for one friend at `now`: the old room until you've moved, and the secret's
- * rooms once you have a secret.
- */
+/** The rooms to be in for one friend at `now`: the secret's rooms for the days around it. */
 export async function pairRoomsAt(
   crypto: Crypto,
-  place: PairPlace,
+  secret: string,
   now: number,
 ): Promise<readonly PairRoomSpec[]> {
-  const { secret } = place
-  if (secret === undefined) return [{ name: place.legacy }]
-  const legacy: PairRoomSpec[] = place.moved === true ? [] : [{ name: place.legacy }]
   const password = await pairPassword(crypto, secret)
-  const daily = await Promise.all(
+  return Promise.all(
     pairDaysAt(now).map(async (day) => ({
       name: await pairRoomOn(crypto, secret, day),
       password,
     })),
   )
-  return [...legacy, ...daily]
 }

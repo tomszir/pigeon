@@ -1,16 +1,16 @@
 defect: the Node Lighthouse's Crypto verifies without checking the spelling first
 test: apps/lighthouse src/platform/crypto-contract.test.ts
-expect: high-S
+expect: own-refusal ed25519
 
 diff --git a/apps/lighthouse/src/platform/node-crypto.ts b/apps/lighthouse/src/platform/node-crypto.ts
-index 04fa4d9..97470fc 100644
+index 79a80d8..dcaff93 100644
 --- a/apps/lighthouse/src/platform/node-crypto.ts
 +++ b/apps/lighthouse/src/platform/node-crypto.ts
-@@ -43,7 +43,6 @@ export function createNodeCrypto(): Crypto {
+@@ -40,7 +40,6 @@ export function createNodeCrypto(subtle = webcrypto.subtle): Crypto {
          keys.set(signer, key)
        }
-       // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+       // One spelling per signature: an Ed25519 S at or past the group order is refused.
 -      if (!isCanonicalSignature(signer, signature)) return false
        const imported = await key
        if (imported === null) return false
-       const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN
+       return subtle.verify(ED25519, imported, copy(signature), copy(data)).catch(() => false)

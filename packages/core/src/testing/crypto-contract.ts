@@ -6,10 +6,10 @@
 //
 //   cryptoContract('browser WebCrypto', () => createBrowserCrypto())
 //
-// Wycheproof says what a correct ECDSA, Ed25519, HMAC, ECDH, HKDF or AES-GCM implementation
-// does. Pigeon refuses one thing more, the high-S spelling of a P-256 signature, and that rule is
-// stated again here from the protocol rather than imported from signature.ts, so a mistake there
-// can't also hide itself here. Vectors for options Pigeon never uses (other key, IV or tag sizes,
+// Wycheproof says what a correct Ed25519, HMAC, ECDH, HKDF or AES-GCM implementation does.
+// Pigeon's own spelling rule for Ed25519 (S below the group order) is stated again here from the
+// protocol rather than imported from signature.ts, so a mistake there can't also hide itself
+// here. Vectors for options Pigeon never uses (other key, IV or tag sizes,
 // associated data, a salt, truncated MACs) are left out by filters, and each family checks that
 // its filters still leave cases (valid and invalid ones, where the file has both that apply), so
 // a filter can't quietly empty it. Where the vectors that fit leave a rule unexercised, a
@@ -31,7 +31,6 @@ import { peerIdFromPublicKey } from '../identity/identity.ts'
 import type { SealCrypto, Sealer } from '../mail/seal-crypto.ts'
 import aesGcm from './wycheproof/aes_gcm_test.json'
 import ecdh from './wycheproof/ecdh_secp256r1_webcrypto_test.json'
-import ecdsa from './wycheproof/ecdsa_secp256r1_sha256_p1363_test.json'
 import ed25519 from './wycheproof/ed25519_test.json'
 import hkdf from './wycheproof/hkdf_sha256_test.json'
 import hmac from './wycheproof/hmac_sha256_test.json'
@@ -72,30 +71,15 @@ function covers(family: string, cases: readonly { readonly expected: boolean }[]
   })
 }
 
-// Pigeon's rule beyond ECDSA: of a signature's two spellings, (r, s) and (r, n - s), only the
-// one with s at most n / 2 is taken.
-const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n
-const big = (bytes: Uint8Array) => bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n)
-const sOf = (signature: Uint8Array) => big(signature.subarray(32))
-const isHighS = (signature: Uint8Array) => signature.length === 64 && sOf(signature) > N >> 1n
-
-function twin(signature: Uint8Array): Uint8Array {
-  const s = new Uint8Array(32)
-  for (let at = 31, rest = N - sOf(signature); at >= 0; at -= 1, rest >>= 8n)
-    s[at] = Number(rest & 255n)
-  return concatBytes(signature.subarray(0, 32), s)
-}
-
 interface SignatureGroup {
-  readonly publicKey: { readonly uncompressed?: string; readonly pk?: string }
+  readonly publicKey: { readonly pk?: string }
   readonly tests: readonly (Case & { readonly msg: string; readonly sig: string })[]
 }
 
 // Wycheproof's own flags for signatures that are spelled wrong rather than wrong in their maths:
-// out-of-range or overflowing integers, the wrong length, S at or past the group order. Pigeon
+// the wrong length, S at or past the group order. Pigeon
 // refuses these itself, before the platform sees them, so they're refused even by a platform
 // that would take them.
-const P256_SPELLING = ['RangeCheck', 'SignatureSize', 'ModifiedInteger', 'IntegerOverflow']
 const ED25519_SPELLING = [
   'SignatureMalleability',
   'TruncatedSignature',
@@ -107,45 +91,15 @@ const flagged = (c: Case, flags: readonly string[]) => c.flags.some((f) => flags
 // RFC 8032 (5.1.7) has a verifier refuse an Ed25519 S at or past the group order L. Wycheproof
 // flags its S = L and S just past L cases only as invalid, so they're picked out by that rule too.
 const L = (1n << 252n) + 27742317777372353535851937790883648493n
+const big = (bytes: Uint8Array) => bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n)
 const sAtOrPastL = (signature: Uint8Array) =>
   signature.length === 64 && big(signature.slice(32).reverse()) >= L
-
-// SEC 1 (4.1.4, step 1) has a verifier refuse r or s outside 1..n-1 before any maths. Wycheproof
-// flags many such cases only as "InvalidSignature", so they're picked out by that rule as well.
-const outOfRange = (signature: Uint8Array) => {
-  if (signature.length !== 64) return false
-  const r = big(signature.subarray(0, 32))
-  const s = sOf(signature)
-  return r < 1n || r >= N || s < 1n || s >= N
-}
-
-const p256Cases = () =>
-  (ecdsa as File<SignatureGroup>).testGroups.flatMap((group) => {
-    const signer = peerIdFromPublicKey(hex(group.publicKey.uncompressed ?? ''))
-    return group.tests.map((c) => {
-      const sig = hex(c.sig)
-      const high = isHighS(sig)
-      return { c, signer, sig, high, expected: result(c) === 'valid' && !high }
-    })
-  })
 
 const ed25519Cases = () =>
   (ed25519 as File<SignatureGroup>).testGroups.flatMap((group) => {
     const signer = peerIdFromPublicKey(hex(group.publicKey.pk ?? ''))
     return group.tests.map((c) => ({ c, signer, expected: result(c) === 'valid' }))
   })
-
-/**
- * P-256 PeerIds for 65-byte points that aren't on the curve: the public keys of Wycheproof's
- * ECDH cases flagged as invalid-curve attacks.
- */
-const offCurveSigners = () =>
-  (ecdh as unknown as File<{ readonly tests: readonly (Case & { public: EcJwk })[] }>).testGroups
-    .flatMap((group) => group.tests)
-    .filter((c) => c.flags.includes('InvalidCurveAttack'))
-    .map((c) => rawPublic(c.public))
-    .filter((raw) => raw.length === 65)
-    .map(peerIdFromPublicKey)
 
 export interface CryptoContractOptions {
   /**
@@ -168,59 +122,22 @@ export function cryptoContract(
     if (permissive)
       describe('its own refusals, over a platform that takes every signature', () => {
         const crypto = permissive()
-        const p256 = p256Cases().filter(
-          ({ c, sig, high }) =>
-            flagged(c, P256_SPELLING) || outOfRange(sig) || (result(c) === 'valid' && high),
-        )
         const ed = ed25519Cases().filter(
           ({ c }) => flagged(c, ED25519_SPELLING) || sAtOrPastL(hex(c.sig)),
         )
-        it('own-refusal: the platform given really takes everything, and both lists have cases', async () => {
-          expect(p256.length).toBeGreaterThan(0)
+        it('own-refusal: the platform given really takes everything, and the list has cases', async () => {
           expect(ed.length).toBeGreaterThan(0)
-          const valid = p256Cases().find(({ c, high }) => result(c) === 'valid' && !high)
-          if (valid === undefined) throw new Error('no low-S valid P-256 vector')
+          const valid = ed25519Cases().find(({ c }) => result(c) === 'valid')
+          if (valid === undefined) throw new Error('no valid Ed25519 vector')
           // A real platform refuses a signature over other bytes; this one must take it.
-          expect(await crypto.verify(valid.signer, valid.sig, utf8Encode('other bytes'))).toBe(true)
+          const other = utf8Encode('other bytes')
+          expect(await crypto.verify(valid.signer, hex(valid.c.sig), other)).toBe(true)
         })
-        it('own-refusal: p256 signers that are not points on the curve', async () => {
-          const valid = p256Cases().find(({ c, high }) => result(c) === 'valid' && !high)
-          if (valid === undefined) throw new Error('no low-S valid P-256 vector')
-          for (const signer of offCurveSigners())
-            expect(await crypto.verify(signer, valid.sig, hex(valid.c.msg))).toBe(false)
-        })
-        for (const { c, signer, sig, high } of p256)
-          it(label('own-refusal p256', c, high ? ' high-S' : ''), async () => {
-            expect(await crypto.verify(signer, sig, hex(c.msg))).toBe(false)
-          })
         for (const { c, signer } of ed)
           it(label('own-refusal ed25519', c), async () => {
             expect(await crypto.verify(signer, hex(c.sig), hex(c.msg))).toBe(false)
           })
       })
-
-    describe('ECDSA P-256 (Wycheproof, raw r || s)', () => {
-      const crypto = make()
-      const cases = p256Cases()
-      covers('p256', cases)
-      it('p256 has high-S signatures among its valid ones, so the low-S rule is exercised', () => {
-        expect(cases.some(({ c, high }) => result(c) === 'valid' && high)).toBe(true)
-      })
-      for (const { c, signer, sig, high, expected } of cases)
-        it(label('p256', c, high ? ' high-S' : ''), async () => {
-          expect(await crypto.verify(signer, sig, hex(c.msg))).toBe(expected)
-        })
-
-      // Each valid signature's other spelling: exactly the low-S one of the two is taken.
-      for (const { c, signer, sig } of cases)
-        if (result(c) === 'valid' && sig.length === 64)
-          it(label('p256-twin', c), async () => {
-            const msg = hex(c.msg)
-            const [low, high] = isHighS(sig) ? [twin(sig), sig] : [sig, twin(sig)]
-            expect(await crypto.verify(signer, low, msg)).toBe(true)
-            expect(await crypto.verify(signer, high, msg)).toBe(false)
-          })
-    })
 
     describe('Ed25519 (Wycheproof)', () => {
       const crypto = make()
@@ -274,23 +191,10 @@ export function cryptoContract(
         })
     })
 
-    // A PeerId is 65 bytes for P-256 whether or not they're a point on the curve, so a signer
-    // can name a key the platform won't import. Those are refused, whatever the signature.
-    it('p256 signers that are not points on the curve are refused', async () => {
-      const crypto = make()
-      const signers = offCurveSigners()
-      const valid = p256Cases().find(({ c, high }) => result(c) === 'valid' && !high)
-      if (valid === undefined) throw new Error('no low-S valid P-256 vector')
-      expect(signers.length).toBeGreaterThan(0)
-      for (const signer of signers)
-        expect(await crypto.verify(signer, valid.sig, hex(valid.c.msg))).toBe(false)
-    })
-
     it('verify answers false, never throws, for any signer, signature and data', async () => {
       const crypto = make()
-      const p256 = peerIdFromPublicKey(hex(ecdsa.testGroups[0]?.publicKey.uncompressed ?? ''))
       const ed = peerIdFromPublicKey(hex(ed25519.testGroups[0]?.publicKey.pk ?? ''))
-      const signer = fc.oneof(fc.constant(p256), fc.constant(ed), fc.string())
+      const signer = fc.oneof(fc.constant(ed), fc.string())
       const signature = fc.oneof(
         fc.uint8Array({ minLength: 64, maxLength: 64 }),
         fc.uint8Array({ maxLength: 80 }),

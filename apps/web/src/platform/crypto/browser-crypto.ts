@@ -1,10 +1,8 @@
-// WebCrypto behind core's Crypto and Signer. New keys are Ed25519; identities made with ECDSA
-// P-256, where a browser once lacked Ed25519, keep working (docs/protocol.md, "Identity"). The
+// WebCrypto behind core's Crypto and Signer. Keys are Ed25519 (docs/protocol.md, "Identity"). The
 // private key is made non-extractable and kept as a CryptoKey in IndexedDB, so the page can sign
 // with it but never read it.
 import {
   type Crypto,
-  canonicalSignature,
   isCanonicalSignature,
   type PeerId,
   parsePeerId,
@@ -21,8 +19,6 @@ export interface StoredIdentity {
 }
 
 const ED25519 = { name: 'Ed25519' } as const
-const P256 = { name: 'ECDSA', namedCurve: 'P-256' } as const
-const P256_SIGN = { name: 'ECDSA', hash: 'SHA-256' } as const
 
 const copy = (bytes: Uint8Array): Bytes => new Uint8Array(bytes)
 
@@ -34,10 +30,7 @@ export class NoEd25519Error extends Error {
   }
 }
 
-/**
- * A new Ed25519 key. There's no fallback: a P-256 signature has two spellings, which Pigeon
- * copes with only for identities made before, and every current browser has Ed25519.
- */
+/** A new Ed25519 key. There's no fallback: every current browser has Ed25519. */
 export async function generateIdentity(subtle = crypto.subtle): Promise<StoredIdentity> {
   let pair: CryptoKeyPair
   try {
@@ -56,16 +49,10 @@ export function isStoredIdentity(value: unknown): value is StoredIdentity {
 }
 
 export function signerFor(identity: StoredIdentity, subtle = crypto.subtle): Signer {
-  const id = peerIdFromPublicKey(identity.publicKey)
-  const algorithm = identity.privateKey.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN
   return {
-    id,
-    // WebCrypto's ECDSA gives either spelling; Pigeon signs and takes only the low-S one.
+    id: peerIdFromPublicKey(identity.publicKey),
     sign: async (data) =>
-      canonicalSignature(
-        id,
-        new Uint8Array(await subtle.sign(algorithm, identity.privateKey, copy(data))),
-      ),
+      new Uint8Array(await subtle.sign(ED25519, identity.privateKey, copy(data))),
   }
 }
 
@@ -74,9 +61,8 @@ export function createBrowserCrypto(subtle = crypto.subtle): Crypto {
   const importKey = (id: PeerId): Promise<CryptoKey | null> => {
     const parsed = parsePeerId(id)
     if (!parsed.ok) return Promise.resolve(null)
-    const algorithm = parsed.value.kind === 'ed25519' ? ED25519 : P256
     return subtle
-      .importKey('raw', copy(parsed.value.bytes), algorithm, true, ['verify'])
+      .importKey('raw', copy(parsed.value.bytes), ED25519, true, ['verify'])
       .catch(() => null)
   }
   return {
@@ -92,12 +78,11 @@ export function createBrowserCrypto(subtle = crypto.subtle): Crypto {
         key = importKey(signer)
         keys.set(signer, key)
       }
-      // One spelling per signature: a high-S P-256 one is a second spelling, refused.
+      // One spelling per signature: an Ed25519 S at or past the group order is refused.
       if (!isCanonicalSignature(signer, signature)) return false
       const imported = await key
       if (imported === null) return false
-      const algorithm = imported.algorithm.name === 'Ed25519' ? ED25519 : P256_SIGN
-      return subtle.verify(algorithm, imported, copy(signature), copy(data)).catch(() => false)
+      return subtle.verify(ED25519, imported, copy(signature), copy(data)).catch(() => false)
     },
   }
 }

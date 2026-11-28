@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
-import { isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner, untypedSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
   appendMessage,
   batchEntries,
   type ChatLog,
   emptyLog,
-  entryKey,
   isLogEntry,
   type LogEntry,
   MAX_LAMPORT_LEAD,
@@ -37,7 +35,7 @@ async function signed(
   text: string,
 ): Promise<LogEntry> {
   const unsigned = { author: signer.id, seq, lamport, at: 0, text }
-  const sig = await signer.sign(canonicalBytes({ log, ...unsigned }))
+  const sig = await signer.sign(canonicalBytes({ v: 'pigeon/chat-entry/v1', log, ...unsigned }))
   return { ...unsigned, sig: base32Encode(sig) }
 }
 
@@ -205,15 +203,9 @@ describe('an entry’s signed bytes', () => {
         }),
       ),
     ).toBe(true)
-    // One a Pigeon from before 0.8.4 signed, with no `v`, is taken too.
-    expect(
-      await signedBy(untypedSigner(rook), (u) =>
-        canonicalBytes({ log: 'pair:x', ...(u as Record<string, Json>) }),
-      ),
-    ).toBe(true)
   })
 
-  it('are taken in either shape, and in no other', async () => {
+  it('are taken in the typed shape, and in no other', async () => {
     const unsigned = { author: mika.id, seq: 1, lamport: 1, at: 0, text: 'hi' }
     const over = async (value: Record<string, string | number>) => ({
       ...unsigned,
@@ -221,12 +213,12 @@ describe('an entry’s signed bytes', () => {
     })
     const take = async (entry: LogEntry) =>
       (await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)).entries.length
-    // With no `v`, and saying it's a chat entry.
-    expect(await take(await over({ log: 'pair:x', ...unsigned }))).toBe(1)
+    // Saying it's a chat entry.
     expect(await take(await over({ v: 'pigeon/chat-entry/v1', log: 'pair:x', ...unsigned }))).toBe(
       1,
     )
     for (const value of [
+      { log: 'pair:x', ...unsigned },
       { v: 'pigeon/device-entry/v1', log: 'pair:x', ...unsigned },
       { v: 'pigeon/chat-entry/v2', log: 'pair:x', ...unsigned },
       { type: 'chat-entry', log: 'pair:x', ...unsigned },
@@ -243,27 +235,10 @@ it('batches entries under a byte budget, never splitting one', async () => {
   expect(batchEntries([], 400)).toEqual([])
 })
 
-describe('a P-256 author', () => {
-  it('has a high-S entry from before low-S refused as it arrives, and sent low-S, so it still reaches a device that lacks it', async () => {
-    const old = await p256Signer('high')
-    const kept = (await appendMessage(emptyLog('pair:x'), old, 'from before', 0)).log
-    const entry = kept.entries[0]
-    const signature = base32DecodeExact(entry?.sig ?? '')
-    expect(signature.ok && isHighS(signature.value)).toBe(true)
-    const strict = p256Crypto()
-    const authors = new Set([old.id])
-    expect((await mergeEntries(strict, emptyLog('pair:x'), kept.entries, authors)).entries).toEqual(
-      [],
-    )
-    const sent = missingFrom(kept, {})
-    expect(sent[0]?.sig).not.toBe(entry?.sig)
-    const taken = await mergeEntries(strict, emptyLog('pair:x'), sent, authors)
-    expect(taken.entries.map((e) => e.text)).toEqual(['from before'])
-    // One who holds it already in the old spelling keeps one copy, and knows it by one key.
-    expect((await mergeEntries(strict, kept, sent, authors)).entries.length).toBe(1)
-    expect(entryKey(sent[0] as LogEntry)).toBe(entryKey(entry as LogEntry))
-    // Both spellings are the same entry; other words under that signature are not.
-    expect(sameEntry(sent[0] as LogEntry, entry as LogEntry)).toBe(true)
-    expect(sameEntry({ ...(entry as LogEntry), text: 'other' }, entry as LogEntry)).toBe(false)
-  })
+it('knows two copies as the same entry by content and signature bytes', async () => {
+  const log = await write(emptyLog('pair:x'), [rook, 'hi'])
+  const entry = log.entries[0] as LogEntry
+  expect(sameEntry({ ...entry }, entry)).toBe(true)
+  expect(sameEntry({ ...entry, text: 'other' }, entry)).toBe(false)
+  expect(sameEntry({ ...entry, sig: 'not base32!' }, entry)).toBe(false)
 })

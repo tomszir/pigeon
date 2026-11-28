@@ -1,11 +1,6 @@
 import type { Argon2id, Argon2idParams } from '@pigeon/core'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  ARGON2ID_LIMITS,
-  ARGON2ID_PARAMS,
-  createPassphraseSeal,
-  type PassphraseSealer,
-} from './passphrase.ts'
+import { ARGON2ID_LIMITS, ARGON2ID_PARAMS, createPassphraseSeal } from './passphrase.ts'
 
 const data = new TextEncoder().encode('{"friends":[]}')
 const cheap: Argon2idParams = { memoryKiB: 64, passes: 1, lanes: 1 }
@@ -27,12 +22,6 @@ const stand: Argon2id = {
   },
 }
 const sealer = (params = cheap) => createPassphraseSeal({ argon2id: stand, params })
-
-// Sealed by 0.8.0's code (PBKDF2-SHA256 in WebCrypto, version 1), with these passphrases.
-const V1_AT_600K =
-  'pigeon-sealed:v1:600000:VatgPb3dXHCvQYQ3AI/A+Q==:1pvM9+gm+nN8ehAq:LK0HGLlBWbDdVu5vzEpnHwO8y8VSP5Hkv7RhIuCu'
-const V1_AT_1000 =
-  'pigeon-sealed:v1:1000:z+jaBD8z1b99xVe1O2y9XA==:uBPdgj+z3umqa+fb:ZsRP+Ijlpfdkz8Ds3RKBTOMMBSBFAmEDQo5jcZCL'
 
 describe('sealing with a passphrase', () => {
   it('writes version 2 with its Argon2id parameters, and opens it, inside a text file too', async () => {
@@ -74,24 +63,6 @@ describe('sealing with a passphrase', () => {
   it('treats the same text typed in either Unicode form as one passphrase', async () => {
     const sealed = await sealer().seal('pässword', data)
     expect(await sealer().open('pässword', sealed)).toEqual(data)
-  })
-
-  it('opens a file from 0.8.0, sealed with PBKDF2, without touching Argon2id', async () => {
-    const never = { derive: vi.fn() }
-    const seal: PassphraseSealer = createPassphraseSeal({ argon2id: never })
-    expect(await seal.open('correct horse', V1_AT_600K)).toEqual(data)
-    expect(await seal.open('pässwörd one', `Pigeon data\n${V1_AT_1000}\n`)).toEqual(data)
-    expect(await seal.open('wrong horse', V1_AT_1000)).toBeUndefined()
-    expect(never.derive).not.toHaveBeenCalled()
-  })
-
-  it('keeps a passphrase WebCrypto refuses for PBKDF2 on the wrong-passphrase path', async () => {
-    const refusing = {
-      importKey: () => Promise.reject(new DOMException('empty key', 'DataError')),
-    } as unknown as SubtleCrypto
-    const seal = createPassphraseSeal({ argon2id: { derive: vi.fn() }, subtle: refusing })
-    expect(await seal.open('', V1_AT_1000)).toBeUndefined()
-    expect(await sealer().open('', V1_AT_1000)).toBeUndefined()
   })
 
   it('writes a different salt and iv each time', async () => {
@@ -199,19 +170,10 @@ describe('a hostile file', () => {
 
   it('can’t name a version Pigeon doesn’t write', async () => {
     expect(await refused('pigeon-sealed:v3:1:2:3:4:5:6')).toBeUndefined()
+    expect(
+      await refused('pigeon-sealed:v1:1000:AAECAwQFBgcICQoLDA0ODw==:AAECAwQFBgcICQoL:AAAA'),
+    ).toBeUndefined()
     expect(await refused('pigeon-sealed::64:1:1')).toBeUndefined()
     expect(await refused('pigeon-sealed:')).toBeUndefined()
-  })
-
-  it('can’t ask for a million PBKDF2 rounds more than Pigeon ever wrote', async () => {
-    expect(
-      await refused('pigeon-sealed:v1:10000001:AAECAwQFBgcICQoLDA0ODw==:AAECAwQFBgcICQoL:AAAA'),
-    ).toBeUndefined()
-    expect(
-      await refused('pigeon-sealed:v1:1e9:AAECAwQFBgcICQoLDA0ODw==:AAECAwQFBgcICQoL:AAAA'),
-    ).toBeUndefined()
-    expect(
-      await refused('pigeon-sealed:v1:0:AAECAwQFBgcICQoLDA0ODw==:AAECAwQFBgcICQoL:AAAA'),
-    ).toBeUndefined()
   })
 })

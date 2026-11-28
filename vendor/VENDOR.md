@@ -41,9 +41,9 @@ The crop is part of the URL, so the bytes are stable and pinned like any downloa
 
 `wycheproof.lock.json`, written to `packages/core/src/testing/wycheproof/` by `mise run wycheproof:vendor`.
 
-| Files                                                                                                                                                                      | Source                                                                                              | Licence    |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------- |
-| `ecdsa_secp256r1_sha256_p1363_test.json`, `ed25519_test.json`, `hmac_sha256_test.json`, `ecdh_secp256r1_webcrypto_test.json`, `hkdf_sha256_test.json`, `aes_gcm_test.json` | `testvectors_v1/` of [C2SP/wycheproof](https://github.com/C2SP/wycheproof) at commit `65ca494727a5` | Apache 2.0 |
+| Files                                                                                                                            | Source                                                                                              | Licence    |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------- |
+| `ed25519_test.json`, `hmac_sha256_test.json`, `ecdh_secp256r1_webcrypto_test.json`, `hkdf_sha256_test.json`, `aes_gcm_test.json` | `testvectors_v1/` of [C2SP/wycheproof](https://github.com/C2SP/wycheproof) at commit `65ca494727a5` | Apache 2.0 |
 
 The licence text is `packages/core/src/testing/wycheproof/LICENSE`. They're test data for core's crypto contract (`crypto-contract.ts`), never shipped. To update them, move every URL in the lock to a newer commit, change each `integrity`, run the task, and read the diff: a vector whose verdict changed is a change in what Pigeon must accept or refuse.
 

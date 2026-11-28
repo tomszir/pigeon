@@ -151,17 +151,13 @@ export function encodeInviteLinkFragment(link: InviteLink): string {
   return `${base}?l=${encodeURIComponent(formatLighthouseAddress(link.lighthouse))}`
 }
 
-/**
- * Reads a whole link or the part after `#`. `old`: a link from before links named their maker and
- * end (`#a/`), which nothing can tell a removed device's from, so it no longer opens.
- */
-export function decodeInviteLink(text: string): Result<InviteLink, 'malformed' | 'old'> {
+/** Reads a whole link or the part after `#`. */
+export function decodeInviteLink(text: string): Result<InviteLink, 'malformed'> {
   const trimmed = text.trim()
   // The last '#': a link pasted with a message before it ("Toms invites you…") opens too, even
   // when the message has a '#' of its own.
   const hash = trimmed.lastIndexOf('#')
   const fragment = hash < 0 ? trimmed : trimmed.slice(hash + 1)
-  if (fragment.startsWith('a/')) return err('old')
   if (!fragment.startsWith('b/')) return err('malformed')
   const rest = fragment.slice(2)
   const mark = rest.indexOf('?')

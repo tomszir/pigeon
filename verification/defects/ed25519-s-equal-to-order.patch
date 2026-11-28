@@ -3,15 +3,13 @@ test: apps/web src/platform/crypto/crypto-contract.test.ts
 expect: own-refusal ed25519
 
 diff --git a/packages/core/src/identity/signature.ts b/packages/core/src/identity/signature.ts
-index 7a7f656..11a91c5 100644
+index 99db2db..65f72cc 100644
 --- a/packages/core/src/identity/signature.ts
 +++ b/packages/core/src/identity/signature.ts
-@@ -41,7 +41,7 @@ const sOf = (signature: Uint8Array) =>
+@@ -16,5 +16,5 @@ const toBig = (bytes: Uint8Array) => bytes.reduce((value, byte) => (value << 8n)
+  */
  export function isCanonicalSignature(signer: PeerId, signature: Uint8Array): boolean {
-   const kind = kindOf(signer)
-   if (kind === 'ed25519')
--    return signature.length === ED25519_SIGNATURE_BYTES && toBig(signature.slice(32).reverse()) < L
-+    return signature.length === ED25519_SIGNATURE_BYTES && toBig(signature.slice(32).reverse()) <= L
-   if (kind !== 'p256' || signature.length !== P256_SIGNATURE_BYTES) return false
-   // r is a value mod n too, so r + n would be another spelling if a verifier let it through.
-   const r = toBig(signature.subarray(0, 32))
+   if (!parsePeerId(signer).ok) return false
+-  return signature.length === ED25519_SIGNATURE_BYTES && toBig(signature.slice(32).reverse()) < L
++  return signature.length === ED25519_SIGNATURE_BYTES && toBig(signature.slice(32).reverse()) <= L
+ }

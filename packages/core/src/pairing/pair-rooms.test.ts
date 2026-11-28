@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pairRoom } from '../identity/identity.ts'
-import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
+import { fakeCrypto } from '../testing/testing.ts'
 import {
   encodePairSecret,
   isPairSecret,
@@ -71,18 +70,10 @@ describe('pair rooms', () => {
     expect(utcDay(at('2026-11-25T00:10:00Z'))).toBe('2026-11-25')
   })
 
-  it('keep the old room only until both sides have the secret', async () => {
-    const legacy = await pairRoom(fakeCrypto, fakeSigner('rook').id, fakeSigner('mika').id)
+  it('are the secret’s rooms for the days around now, locked with its password', async () => {
     const noon = at('2026-11-24T12:00:00Z')
-    expect(await pairRoomsAt(fakeCrypto, { legacy }, noon)).toEqual([{ name: legacy }])
     const password = await pairPassword(fakeCrypto, secret)
     const today = { name: await pairRoomOn(fakeCrypto, secret, '2026-11-24'), password }
-    expect(await pairRoomsAt(fakeCrypto, { legacy, secret }, noon)).toEqual([
-      { name: legacy },
-      today,
-    ])
-    expect(await pairRoomsAt(fakeCrypto, { legacy, secret, moved: true }, noon)).toEqual([today])
-    // A record that says moved but lost its secret still has somewhere to go.
-    expect(await pairRoomsAt(fakeCrypto, { legacy, moved: true }, noon)).toEqual([{ name: legacy }])
+    expect(await pairRoomsAt(fakeCrypto, secret, noon)).toEqual([today])
   })
 })

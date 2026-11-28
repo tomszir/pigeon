@@ -23,18 +23,8 @@ export const CODE_RANDOM_BYTES: number = 7 + LINK_SECRET_BYTES
 export const INVITE_LIFETIME_MS: number = 30 * 60 * 1000
 /** Fingerprints are 8 bytes (16 hex); in a link they're 13 base32 characters. */
 const FINGERPRINT_LENGTH = 13
-/**
- * Pigeons before codes went through SPAKE2 made 8-character codes, and links of those and a
- * fingerprint. They can't be opened any more, but they're told apart, so the person is told to
- * have their friend reload Pigeon rather than that they typed it wrong.
- */
-const OLD_CODE_LENGTH = 8
-
-/**
- * Why something isn't a code or link: `old` when it's one an older Pigeon made, which a current
- * one can't open, and `malformed` otherwise.
- */
-export type CodeError = 'malformed' | 'old'
+/** Why something isn't a code or link. */
+export type CodeError = 'malformed'
 
 /** A live code as the side that made it keeps it. */
 export interface LiveCode {
@@ -149,7 +139,6 @@ function readCode(text: string): Result<Invite, CodeError> {
     .toLowerCase()
     .replace(/[\s-]/g, '')
     .replace(/[018]/g, (digit) => LOOKALIKES[digit] ?? digit)
-  if (new RegExp(`^[a-z2-7]{${OLD_CODE_LENGTH}}$`).test(code)) return err('old')
   if (!new RegExp(`^[a-z2-7]{${CODE_LENGTH}}$`).test(code)) return err('malformed')
   return ok({
     via: 'code',
@@ -172,8 +161,6 @@ function decode(text: string, prefix: 'i/' | 'l/'): Result<Invite, CodeError> {
   const fragment = hash < 0 ? trimmed : trimmed.slice(hash + 1)
   if (fragment.startsWith(prefix)) {
     const body = fragment.slice(2).toLowerCase()
-    if (body.length === OLD_CODE_LENGTH + FINGERPRINT_LENGTH && /^[a-z2-7]+$/.test(body))
-      return err('old')
     if (body.length !== LINK_SECRET_LENGTH + FINGERPRINT_LENGTH) return err('malformed')
     const secret = body.slice(0, LINK_SECRET_LENGTH)
     const print = base32Decode(body.slice(LINK_SECRET_LENGTH))

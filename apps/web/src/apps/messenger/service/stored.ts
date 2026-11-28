@@ -38,10 +38,8 @@ export interface FriendRecord {
   readonly mutedUntil?: number | undefined
   /** They removed you: the chat stays, read-only, until you remove them too. */
   readonly removedYouAt?: number | undefined
-  /** The pair secret your rooms are named from; none for friends not yet moved. */
+  /** The pair secret your rooms are named from. */
   readonly secret?: string | undefined
-  /** Both of you hold the secret, so the old room named from your ids is no longer used. */
-  readonly moved?: boolean | undefined
   /**
    * The secret was made here, or reached this device sealed to it, by a Pigeon that seals every
    * secret it hands over. One without it is from before, and is replaced.
@@ -61,7 +59,6 @@ export interface FriendRecord {
 export interface FarewellRecord {
   readonly id: PeerId
   readonly secret?: string | undefined
-  readonly moved?: boolean | undefined
   /** The secret being replaced, while they may not have heard of the new one: met in too. */
   readonly old?: string | undefined
   /** Left in their mailbox too: their receipt says it was heard, as meeting them would. */
@@ -132,7 +129,6 @@ export const KEYS = {
    * Set once this device has put its open invite links' cards again, signed low-S: a card put
    * before Pigeon took only low-S may be refused, and nothing else puts it again on its own.
    */
-  cardsPutLowS: 'cardsPutLowS',
   /** The Lighthouses this Pigeon wants its mail left at, once changed from the default. */
   lighthouses: 'lighthouses',
   /** When the Lighthouse list was last changed here, so the newest wins on your devices. */
@@ -200,14 +196,13 @@ function splitRecords<T>(
 export const splitFriendRecords = (value: unknown) => splitRecords(value, isFriendRecord)
 
 /**
- * A pair secret, if any, whether you've moved to its rooms, whether it's from before secrets
+ * A pair secret, if any, whether it's from before secrets
  * were sealed, an old one being replaced (`replacing`, and `prior`, the round before, on a
  * friend; `old` on a farewell), whether it's to be replaced after a removal, and what was
  * proposed here after one.
  */
 const isPlace = (record: Record<string, unknown>) =>
   (record['secret'] === undefined || isPairSecret(record['secret'])) &&
-  (record['moved'] === undefined || typeof record['moved'] === 'boolean') &&
   (record['sealed'] === undefined || typeof record['sealed'] === 'boolean') &&
   (record['replacing'] === undefined ||
     (isReplacing(record['replacing']) && record['secret'] !== undefined)) &&
@@ -217,12 +212,11 @@ const isPlace = (record: Record<string, unknown>) =>
   (record['begun'] === undefined || isPairSecret(record['begun'])) &&
   (record['old'] === undefined || isPairSecret(record['old']))
 
-/** A farewell: a record, or the bare id stored before pair secrets. */
-export const isFarewell = (entry: unknown): entry is PeerId | FarewellRecord =>
-  (typeof entry === 'string' && isPeerId(entry)) ||
-  (isObject(entry) && typeof entry['id'] === 'string' && isPeerId(entry['id']) && isPlace(entry))
+/** A farewell: who, and where to find them. */
+export const isFarewell = (entry: unknown): entry is FarewellRecord =>
+  isObject(entry) && typeof entry['id'] === 'string' && isPeerId(entry['id']) && isPlace(entry)
 
-export function isFarewells(value: unknown): value is readonly (PeerId | FarewellRecord)[] {
+export function isFarewells(value: unknown): value is readonly FarewellRecord[] {
   return Array.isArray(value) && value.every(isFarewell)
 }
 
@@ -304,7 +298,6 @@ const importedFriend = (record: FriendRecord): FriendRecord | undefined => {
     ...(record.mutedUntil === undefined ? {} : { mutedUntil: record.mutedUntil }),
     ...(record.removedYouAt === undefined ? {} : { removedYouAt: record.removedYouAt }),
     ...(record.secret === undefined ? {} : { secret: record.secret }),
-    ...(record.moved === undefined ? {} : { moved: record.moved }),
     ...(record.sealed === undefined ? {} : { sealed: record.sealed }),
     ...(record.replacing === undefined ? {} : { replacing: record.replacing }),
     ...(record.prior === undefined ? {} : { prior: record.prior }),

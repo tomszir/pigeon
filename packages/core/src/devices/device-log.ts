@@ -25,18 +25,11 @@
 // runs through the key in `by`.
 //
 // Signatures are compared as the bytes they decode to, never as text, whether they're chained,
-// matched or ordered. A P-256 signature has a second spelling that verifies too (see
-// identity/signature.ts), and an entry's `prev` names the one before by its exact bytes. So
-// copies are compared by their content and the low-S bytes, and a high-S one is taken only where
-// the next entry's signed `prev` fixes it in place: the last entry of each chain, and every
-// recover and recovery commitment, has to be low-S. Pigeons from before low-S signed either way,
-// so a log they kept has its last spellings made low-S when it's read back (`lowSDeviceLog`);
-// nothing before them changes.
+// matched or ordered. An entry's `prev` names the one before by its exact bytes.
 import { base32DecodeExact, base32Encode, bytesEqual } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
-import { canonicalSignature } from '../identity/signature.ts'
 
 export type DeviceEntryKind = 'add' | 'remove' | 'name'
 
@@ -242,20 +235,10 @@ const entryFields = (identity: PeerId, entry: Unsigned) => ({
 
 /**
  * The bytes entries are signed over: what the entry is for, its identity and epoch (even epoch
- * 0), and the entry. Every Pigeon from 0.8.2 takes them.
+ * 0), and the entry.
  */
 const typedEntryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
   canonicalBytes({ v: ENTRY_CONTEXT, epoch, ...entryFields(identity, entry) } as Json)
-
-/**
- * The bytes entries were signed over before 0.8.4, and still taken: the entry with no `v`, and no
- * `epoch` in epoch 0. Nothing else Pigeon signs has this shape, since every other kind carries a
- * `v` or a `type` and canonical JSON gives two different values different bytes, so no other
- * signature verifies over it. It can't be retired: every entry but a log's last is fixed by the
- * next one's `prev`, and a tab still on 0.8.3 or before signs it.
- */
-const untypedEntryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
-  canonicalBytes({ ...(epoch === 0 ? {} : { epoch }), ...entryFields(identity, entry) } as Json)
 
 const recoveryBytes = (identity: PeerId, key: PeerId, at: number) =>
   canonicalBytes({ identity, type: 'recovery-key', key, at })
@@ -379,63 +362,32 @@ export function deviceState(log: DeviceLog): DeviceState {
   return stateOf(log)
 }
 
-/**
- * Whether `signature` is `signer`'s over `bytes`. Crypto takes only the low-S spelling; `fixed`
- * says a later signed `prev` names this spelling, so a high-S one from before low-S is read as
- * its low-S twin there and nowhere else.
- */
-function checkSig(
-  crypto: Crypto,
-  signer: PeerId,
-  signature: Uint8Array,
-  bytes: Uint8Array,
-  fixed = false,
-) {
-  const spelled = fixed ? canonicalSignature(signer, signature) : signature
-  return crypto.verify(signer, spelled, bytes)
-}
-
-/** `checkSig` on a signature as it's written, which has to decode first. */
+/** Whether `sig`, as it's written, is `signer`'s over `bytes`; it has to decode first. */
 async function checkWritten(crypto: Crypto, signer: PeerId, sig: string, bytes: Uint8Array) {
   const signature = base32DecodeExact(sig)
-  return signature.ok && checkSig(crypto, signer, signature.value, bytes)
+  return signature.ok && crypto.verify(signer, signature.value, bytes)
 }
 
-/** `sig` in the low-S spelling, as text, or undefined when it's spelled that way already. */
-function lowS(signer: PeerId, sig: string): string | undefined {
+/** A signature as the bytes it's compared by, or undefined when it doesn't decode. */
+function sigBytes(sig: string): Uint8Array | undefined {
   const signature = base32DecodeExact(sig)
-  if (!signature.ok) return undefined
-  const canonical = canonicalSignature(signer, signature.value)
-  return canonical === signature.value ? undefined : base32Encode(canonical)
+  return signature.ok ? signature.value : undefined
 }
 
-/**
- * A signature by `signer` as the bytes it's compared by: decoded, and made low-S when the
- * signer's kind of key has a second spelling. Undefined when it doesn't decode. With no signer
- * known, the bytes as written.
- */
-function sigBytes(signer: PeerId | undefined, sig: string): Uint8Array | undefined {
-  const signature = base32DecodeExact(sig)
-  if (!signature.ok) return undefined
-  return signer === undefined ? signature.value : canonicalSignature(signer, signature.value)
-}
-
-/** Two spellings of one signature by `signer` are the same signature. */
-function sameSig(signer: PeerId | undefined, a: string, b: string): boolean {
-  const left = sigBytes(signer, a)
-  const right = sigBytes(signer, b)
+/** Two copies of one signature: the same decoded bytes. */
+function sameSig(a: string, b: string): boolean {
+  const left = sigBytes(a)
+  const right = sigBytes(b)
   return left !== undefined && right !== undefined && bytesEqual(left, right)
 }
 
 /**
- * Orders two signatures by `signer`, from their decoded bytes. The order is that of their
- * base32 spelling, the order Pigeons have always settled a tie by, so every Pigeon still picks
- * the same one; spelling them from the bytes means no second spelling can change it. One that
- * doesn't decode sorts last.
+ * Orders two signatures from their decoded bytes, in the order of their base32 spelling. One
+ * that doesn't decode sorts last.
  */
-function compareSigs(signer: PeerId | undefined, a: string, b: string): number {
-  const left = sigBytes(signer, a)
-  const right = sigBytes(signer, b)
+function compareSigs(a: string, b: string): number {
+  const left = sigBytes(a)
+  const right = sigBytes(b)
   if (left === undefined || right === undefined)
     return Number(left === undefined) - Number(right === undefined)
   const [x, y] = [base32Encode(left), base32Encode(right)]
@@ -457,15 +409,8 @@ async function checkChain(
     const signature = base32DecodeExact(entry.sig)
     if (!named.ok || !signature.ok) return false
     if (entry.seq !== index + 1 || !bytesEqual(named.value, prev)) return false
-    // The next entry's signed `prev` fixes this one's spelling; the last one's isn't fixed.
-    const fixed = index < entries.length - 1
-    const signed = async (bytes: Uint8Array) =>
-      checkSig(crypto, state.writer, signature.value, bytes, fixed)
-    // The bytes entries are signed over now first, then the ones they were signed over before.
-    const holds =
-      (await signed(typedEntryBytes(identity, epoch, entry))) ||
-      (await signed(untypedEntryBytes(identity, epoch, entry)))
-    if (!holds) return false
+    const bytes = typedEntryBytes(identity, epoch, entry)
+    if (!(await crypto.verify(state.writer, signature.value, bytes))) return false
     if (apply(state, entry) !== undefined) return false
     prev = signature.value
   }
@@ -531,18 +476,15 @@ function keyFor(log: DeviceLog, epoch: number): PeerId | undefined {
 function trim(log: DeviceLog): DeviceLog {
   let over = totalEntries(log) - MAX_DEVICE_ENTRIES
   if (over <= 0) return log
-  // What's left of a cut chain ends on an entry nothing names as `prev` any more: low-S.
-  const cut = (writer: PeerId, entries: readonly DeviceEntry[]) => {
+  const cut = (entries: readonly DeviceEntry[]) => {
     const drop = Math.min(over, entries.length)
     over -= drop
-    return drop === 0 ? entries : lowSLast(writer, entries.slice(0, entries.length - drop))
+    return drop === 0 ? entries : entries.slice(0, entries.length - drop)
   }
   const epochs = epochsOf(log)
   if (epochs.length === 0) return log
-  const entries = isTail(log) ? log.entries : cut(log.identity, log.entries)
-  const older = epochs
-    .slice(0, -1)
-    .map((epoch) => ({ ...epoch, entries: cut(epoch.recover.writer, epoch.entries) }))
+  const entries = isTail(log) ? log.entries : cut(log.entries)
+  const older = epochs.slice(0, -1).map((epoch) => ({ ...epoch, entries: cut(epoch.entries) }))
   return withEpochs({ ...log, entries }, [...older, ...epochs.slice(-1)])
 }
 
@@ -633,28 +575,27 @@ export async function recoverDeviceLog(
   return withEpochs(known, [...epochsOf(known), epoch])
 }
 
-/** One entry in two copies: the same signed content, and the same signature however spelled. */
-function sameEntry(writer: PeerId, a: DeviceEntry, b: DeviceEntry | undefined): boolean {
-  if (b === undefined || !sameSig(writer, a.sig, b.sig)) return false
+/** One entry in two copies: the same signed content, and the same signature. */
+function sameEntry(a: DeviceEntry, b: DeviceEntry | undefined): boolean {
+  if (b === undefined || !sameSig(a.sig, b.sig)) return false
   return bytesEqual(typedEntryBytes('', 0, a), typedEntryBytes('', 0, b))
 }
 
 /**
- * The longer of two copies of one chain written by `writer`, or undefined when they disagree.
- * Ours when they're as long, so the spelling we hold stays.
+ * The longer of two copies of one chain, or undefined when they disagree. Ours when they're as
+ * long.
  */
 function longerChain(
-  writer: PeerId,
   ours: readonly DeviceEntry[],
   theirs: readonly DeviceEntry[],
 ): readonly DeviceEntry[] | undefined {
   const [short, long] = ours.length >= theirs.length ? [theirs, ours] : [ours, theirs]
-  return short.every((entry, index) => sameEntry(writer, entry, long[index])) ? long : undefined
+  return short.every((entry, index) => sameEntry(entry, long[index])) ? long : undefined
 }
 
-/** One recover in two copies, signed by `key`: the same content and the same signature. */
-function sameRecover(key: PeerId | undefined, a: RecoverEntry, b: RecoverEntry): boolean {
-  if (!sameSig(key, a.sig, b.sig)) return false
+/** One recover in two copies: the same content and the same signature. */
+function sameRecover(a: RecoverEntry, b: RecoverEntry): boolean {
+  if (!sameSig(a.sig, b.sig)) return false
   return bytesEqual(recoverBytes('', a), recoverBytes('', b))
 }
 
@@ -666,69 +607,22 @@ function sameRecover(key: PeerId | undefined, a: RecoverEntry, b: RecoverEntry):
  * everything after it. With no disagreement the one with more epochs wins, and each epoch both
  * share keeps the longer copy of its chain.
  */
-function settleEpochs(
-  ours: readonly Epoch[],
-  theirs: readonly Epoch[],
-  /** The key that signs the first recover of both runs. */
-  firstKey: PeerId | undefined,
-): readonly Epoch[] {
+function settleEpochs(ours: readonly Epoch[], theirs: readonly Epoch[]): readonly Epoch[] {
   const out: Epoch[] = []
-  let key = firstKey
   for (let index = 0; index < Math.max(ours.length, theirs.length); index += 1) {
     const a = ours[index]
     const b = theirs[index]
     if (a === undefined) return [...out, ...theirs.slice(index)]
     if (b === undefined) return [...out, ...ours.slice(index)]
-    if (!sameRecover(key, a.recover, b.recover)) {
+    if (!sameRecover(a.recover, b.recover)) {
       const replaced = index < ours.length - 1
-      const lower = compareSigs(key, a.recover.sig, b.recover.sig) < 0
+      const lower = compareSigs(a.recover.sig, b.recover.sig) < 0
       return [...out, ...(replaced || lower ? ours : theirs).slice(index)]
     }
-    const entries = longerChain(a.recover.writer, a.entries, b.entries) ?? a.entries
+    const entries = longerChain(a.entries, b.entries) ?? a.entries
     out.push({ recover: a.recover, entries })
-    key = a.recover.next
   }
   return out
-}
-
-/** `entries` with the last one's signature spelled low-S: the only spelling nothing fixes. */
-function lowSLast(writer: PeerId, entries: readonly DeviceEntry[]): readonly DeviceEntry[] {
-  const last = entries.at(-1)
-  if (last === undefined) return entries
-  const sig = lowS(writer, last.sig)
-  return sig === undefined ? entries : [...entries.slice(0, -1), { ...last, sig }]
-}
-
-/**
- * A log kept by a Pigeon from before low-S signatures, read back: each chain's last entry, each
- * recover and the recovery commitment spelled low-S, as they're checked now. Every other
- * signature is fixed by the signed `prev` after it and stays as it is. The same signatures, so
- * call it only on a log you already trust: one you stored, never one that just arrived. A log
- * with nothing to change comes back as it is.
- */
-export function lowSDeviceLog(log: DeviceLog): DeviceLog {
-  let changed = false
-  const entries = lowSLast(log.identity, log.entries)
-  if (entries !== log.entries) changed = true
-  let recovery = log.recovery
-  if (recovery !== undefined) {
-    const sig = lowS(log.identity, recovery.sig)
-    if (sig !== undefined) {
-      recovery = { ...recovery, sig }
-      changed = true
-    }
-  }
-  let key = isTail(log) ? log.by : log.recovery?.key
-  const epochs = epochsOf(log).map((epoch) => {
-    const sig = key === undefined ? undefined : lowS(key, epoch.recover.sig)
-    key = epoch.recover.next
-    const kept = lowSLast(epoch.recover.writer, epoch.entries)
-    if (sig === undefined && kept === epoch.entries) return epoch
-    changed = true
-    return { recover: { ...epoch.recover, sig: sig ?? epoch.recover.sig }, entries: kept }
-  })
-  if (!changed) return log
-  return withEpochs({ ...log, entries, ...(recovery === undefined ? {} : { recovery }) }, epochs)
 }
 
 function sameLog(a: DeviceLog, b: DeviceLog): boolean {
@@ -748,54 +642,52 @@ function sameLog(a: DeviceLog, b: DeviceLog): boolean {
  */
 export async function mergeDeviceLogs(
   crypto: Crypto,
-  kept: DeviceLog,
+  ours: DeviceLog,
   theirs: DeviceLog,
 ): Promise<DeviceLog> {
-  if (!isDeviceLog(theirs) || theirs.identity !== kept.identity) return kept
-  // Trusted already, so a spelling from before low-S can be made low-S, as it's checked now.
-  const ours = lowSDeviceLog(kept)
+  if (!isDeviceLog(theirs) || theirs.identity !== ours.identity) return ours
   let candidate: DeviceLog
   if (!isTail(ours) && !isTail(theirs)) {
     const recovery = ours.recovery ?? theirs.recovery
     candidate = withEpochs(
       {
         identity: ours.identity,
-        entries: longerChain(ours.identity, ours.entries, theirs.entries) ?? ours.entries,
+        entries: longerChain(ours.entries, theirs.entries) ?? ours.entries,
         ...(recovery === undefined ? {} : { recovery }),
       },
-      settleEpochs(epochsOf(ours), epochsOf(theirs), recovery?.key),
+      settleEpochs(epochsOf(ours), epochsOf(theirs)),
     )
   } else if (!isTail(ours)) {
     // Theirs is a tail: it has to follow on from an epoch we know.
     const at = firstEpoch(theirs) - 1
     const known = epochsOf(ours)
-    if (at > known.length) return kept
+    if (at > known.length) return ours
     candidate = withEpochs(ours, [
       ...known.slice(0, at),
-      ...settleEpochs(known.slice(at), epochsOf(theirs), keyFor(ours, at + 1)),
+      ...settleEpochs(known.slice(at), epochsOf(theirs)),
     ])
   } else if (!isTail(theirs)) {
     // Ours is our own tail: a whole log has to run through the key we recovered with.
     const at = firstEpoch(ours) - 1
-    if (keyFor(theirs, at + 1) !== ours.by) return kept
+    if (keyFor(theirs, at + 1) !== ours.by) return ours
     const known = epochsOf(theirs)
-    if (known.length < at) return kept
+    if (known.length < at) return ours
     candidate = withEpochs(theirs, [
       ...known.slice(0, at),
-      ...settleEpochs(epochsOf(ours), known.slice(at), ours.by),
+      ...settleEpochs(epochsOf(ours), known.slice(at)),
     ])
   } else {
     // Two tails: only one from our own key, starting where ours does, can add to ours.
-    if (firstEpoch(ours) !== firstEpoch(theirs) || ours.by !== theirs.by) return kept
-    candidate = withEpochs(ours, settleEpochs(epochsOf(ours), epochsOf(theirs), ours.by))
+    if (firstEpoch(ours) !== firstEpoch(theirs) || ours.by !== theirs.by) return ours
+    candidate = withEpochs(ours, settleEpochs(epochsOf(ours), epochsOf(theirs)))
     candidate = trim(candidate)
-    if (sameLog(candidate, ours)) return kept
-    return (await verifyOwnTail(crypto, candidate)) ? candidate : kept
+    if (sameLog(candidate, ours)) return ours
+    return (await verifyOwnTail(crypto, candidate)) ? candidate : ours
   }
   candidate = trim(candidate)
-  if (sameLog(candidate, ours)) return kept
+  if (sameLog(candidate, ours)) return ours
   if (sameLog(candidate, theirs)) candidate = theirs
-  return (await verifyDeviceLog(crypto, candidate)) ? candidate : kept
+  return (await verifyDeviceLog(crypto, candidate)) ? candidate : ours
 }
 
 /** Every device that has ever been on the list, removed ones too: whose old messages are whose. */

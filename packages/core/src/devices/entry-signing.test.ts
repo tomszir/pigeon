@@ -1,5 +1,5 @@
 // Checks that chat and device-log entries sign canonical domain-separated bytes, reject replays
-// across chats/epochs/kinds or tampered fields, and still verify legacy untyped signatures.
+// across chats/epochs/kinds, tampered fields, or untyped bytes.
 import { describe, expect, it } from 'vitest'
 import { appendMessage, emptyLog, verifyEntry } from '../chat/chat-log.ts'
 import { base32Encode, utf8Decode } from '../encoding/bytes.ts'
@@ -78,7 +78,7 @@ const decodeText = (bytes: Uint8Array): string => {
 
 describe('entry signing', () => {
   it('signs each entry as the current release does, and takes exactly what it takes', async () => {
-    // Chat entries: typed signing, legacy untyped verification, and refusal of cross-kind/tampered sigs.
+    // Chat entries: typed signing, and refusal of untyped/cross-kind/tampered sigs.
     const recAuthor = recording(author)
     const chat = await appendMessage(emptyLog('chat-one'), recAuthor.signer, 'hello', AT + 1)
     const chatFields = {
@@ -94,14 +94,10 @@ describe('entry signing', () => {
     )
     expect(await verifyEntry(fakeCrypto, 'chat-one', chat.entry)).toBe(true)
 
-    const untypedChatSig = base32Encode(await author.sign(canonicalBytes(chatFields)))
-    expect(await verifyEntry(fakeCrypto, 'chat-one', { ...chat.entry, sig: untypedChatSig })).toBe(
-      true,
-    )
-
-    // Wrong chat room, wrong domain tag, or tampered field must be refused.
+    // Wrong chat room, no or wrong domain tag, or tampered field must be refused.
     expect(await verifyEntry(fakeCrypto, 'chat-two', chat.entry)).toBe(false)
     for (const bad of [
+      canonicalBytes(chatFields),
       canonicalBytes({ v: 'pigeon/device-entry/v1', ...chatFields }),
       canonicalBytes({ v: 'pigeon/other/v1', ...chatFields }),
       canonicalBytes({ v: 'pigeon/chat-entry/v1', ...chatFields, text: 'tampered' }),
@@ -111,7 +107,7 @@ describe('entry signing', () => {
       expect(await verifyEntry(fakeCrypto, 'chat-one', { ...chat.entry, sig })).toBe(false)
     }
 
-    // Device-log entries across epoch 0 and epoch 1: typed signing, legacy untyped acceptance, and isolation.
+    // Device-log entries across epoch 0 and epoch 1: typed signing, and isolation.
     for (const epoch of [0, 1] as const) {
       const signer = writerOf(epoch)
       const recWriter = recording(signer)
@@ -142,14 +138,10 @@ describe('entry signing', () => {
       )
       expect(await verifyDeviceLog(fakeCrypto, appended.log)).toBe(true)
 
-      const untypedBytes = canonicalBytes(epoch === 0 ? deviceFields : { epoch, ...deviceFields })
-      const untypedSig = base32Encode(await signer.sign(untypedBytes))
-      expect(
-        await verifyDeviceLog(fakeCrypto, withEntries(base, [{ ...entry, sig: untypedSig }])),
-      ).toBe(true)
-
-      // Wrong epoch, wrong kind/context, wrong identity, or tampered fields must be refused.
+      // Untyped, wrong epoch, wrong kind/context, wrong identity, or tampered fields: refused.
       for (const bad of [
+        canonicalBytes(epoch === 0 ? deviceFields : { epoch, ...deviceFields }),
+        canonicalBytes({ epoch, ...deviceFields }),
         canonicalBytes({
           v: 'pigeon/device-entry/v1',
           epoch: epoch === 0 ? 1 : 0,

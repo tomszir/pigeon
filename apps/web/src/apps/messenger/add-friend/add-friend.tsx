@@ -33,7 +33,7 @@ export const ANSWER_TIMEOUT_MS = 45_000
 export const CONFIRM_TIMEOUT_MS = 3 * 60_000
 
 /** What the address bar brought: a live invite's code, or a link through Lighthouses. */
-export type IncomingInvite = Invite | { readonly link: string } | { readonly old: true }
+export type IncomingInvite = Invite | { readonly link: string }
 
 /** Add a Friend's tabs: links you send, a quick code, and one someone sent you. */
 export type AddFriendTab = 'links' | 'code' | 'enter'
@@ -62,11 +62,9 @@ type Failure =
   | 'link-not-found'
   | 'link-closed'
   | 'link-expired'
-  | 'link-retired'
   | 'link-too-long'
   | 'link-unsent'
   | 'link-no-lighthouse'
-  | 'old'
 
 type View =
   | { readonly kind: 'share' }
@@ -93,7 +91,6 @@ const FAILURES: Record<Failure, string> = {
   'wrong-code':
     "The Pigeon that answered says that code is wrong. Check it with your friend and type it again; after a few wrong tries the code stops working and they'll need a new one. If it keeps happening with the right code, someone else may be answering: ask for an invite link instead.",
   declined: "Your friend's Pigeon said no. Nobody was added.",
-  old: "That invite was made by an older Pigeon, which can't pair with this one. Ask your friend to reload Pigeon, or close it and open it again, then send you the new code or link.",
   blocked:
     'This invite is from someone you blocked. To add them, unblock them first in Contacts, Blocked People.',
   'no-confirm':
@@ -103,8 +100,6 @@ const FAILURES: Record<Failure, string> = {
   'link-closed':
     'This invite link is closed: it was used up, or your friend closed it. Ask them for a new one.',
   'link-expired': 'This invite link has run out. Ask your friend for a new one.',
-  'link-retired':
-    'This invite link was made by an older Pigeon, and links like it no longer open. Ask your friend for a new one.',
   'link-too-long':
     "This invite link says it lasts more than a week from now, and no Pigeon link does. Check your computer's date and time, or ask your friend for a new link.",
   'link-unsent':
@@ -214,9 +209,6 @@ export function AddFriend(props: AddFriendProps) {
       case 'expired':
         setView({ kind: 'failed', failure: 'link-expired' })
         return
-      case 'retired':
-        setView({ kind: 'failed', failure: 'link-retired' })
-        return
       case 'too-long':
         setView({ kind: 'failed', failure: 'link-too-long' })
         return
@@ -246,8 +238,7 @@ export function AddFriend(props: AddFriendProps) {
   }
 
   const openIncoming = (incoming: IncomingInvite) => {
-    if ('old' in incoming) setView({ kind: 'failed', failure: 'old' })
-    else if ('link' in incoming) void openLink(incoming.link)
+    if ('link' in incoming) void openLink(incoming.link)
     else void open(incoming)
   }
 
@@ -284,17 +275,13 @@ export function AddFriend(props: AddFriendProps) {
   })
 
   const submit = () => {
-    if (decodeInviteLink(typed()).ok || /#[ab]\//.test(typed())) {
+    if (decodeInviteLink(typed()).ok || /#b\//.test(typed())) {
       void openLink(typed())
       return
     }
     const invite = decodeInvite(typed())
     if (!invite.ok) {
-      setTypedError(
-        invite.error === 'old'
-          ? 'That looks like an 8-character code from an older Pigeon. Codes now have 10: check it, or ask your friend to reload Pigeon for a new one.'
-          : 'Type the 10-character code, or paste the whole link.',
-      )
+      setTypedError('Type the 10-character code, or paste the whole link.')
       return
     }
     void open(invite.value)
@@ -607,7 +594,6 @@ const ASK_STATES: Record<SentAsk['state'], string> = {
   busy: 'too many were waiting on the link; ask again later',
   // Never shown: an added request leaves the list.
   added: 'they added you',
-  retired: 'the link was made by an older Pigeon and no longer works; ask them for a new one',
 }
 
 /** Requests you sent through friends' links, until each is answered and forgotten. */

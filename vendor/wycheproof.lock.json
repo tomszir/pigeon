@@ -1,9 +1,5 @@
 {
   "sources": {
-    "ecdsa_secp256r1_sha256_p1363_test": {
-      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json",
-      "integrity": "sha512-AvFtwOV/UwOvZeGO6NG7IlKKVmdXIJaXxKVXwf5JLjs8rlU0pWKTD0oI7wneh1Bq2mwSZCrpCLwBTD8TNBSwlw=="
-    },
     "ed25519_test": {
       "url": "https://raw.githubusercontent.com/C2SP/wycheproof/65ca494727a52944c204441c860b039e6786b99b/testvectors_v1/ed25519_test.json",
       "integrity": "sha512-95+M2QIHBQPOlWUSMOySfN9xUkMvOo76+sILd309K0pO753Iy0L8FC9qmLv9n5idCe+ZoGMwpwU0lQE6QHBXUw=="

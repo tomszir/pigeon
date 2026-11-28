@@ -19,7 +19,6 @@ import {
   isTailLog,
   type KeptDevice,
   type LogEntry,
-  lowSDeviceLog,
   mergeDeviceLogs,
   type PeerId,
   recoverDeviceLog,
@@ -75,9 +74,7 @@ export async function loadDevices(deps: DevicesDeps) {
   const storedSelf = await store.get(DEVICE_KEYS.self)
   const self: PeerId = typeof storedSelf === 'string' ? storedSelf : signer.id
   const read = await store.get(DEVICE_KEYS.deviceLog)
-  // Kept by this device, so a signature spelled high-S before Pigeon took only low-S is read
-  // in its low-S spelling, as it's checked now.
-  const storedLog = isDeviceLog(read) ? lowSDeviceLog(read) : undefined
+  const storedLog = isDeviceLog(read) ? read : undefined
   // A device brought back by its recovery key holds a tail until a friend sends the whole log;
   // it's checked from the key the tail names, which this device signed with.
   const holds = (log: DeviceLog) =>
@@ -263,8 +260,7 @@ export async function loadDevices(deps: DevicesDeps) {
     async loadFriend(id: PeerId) {
       if (friendLogs.has(id)) return
       const read = await store.get(DEVICE_KEYS.friendDevices(id))
-      // Kept here already: read in low-S spellings, as for your own log.
-      const stored = isDeviceLog(read) ? lowSDeviceLog(read) : undefined
+      const stored = isDeviceLog(read) ? read : undefined
       if (stored !== undefined && stored.identity === id && (await verifyDeviceLog(crypto, stored)))
         friendLogs.set(id, stored)
       bump((n) => n + 1)

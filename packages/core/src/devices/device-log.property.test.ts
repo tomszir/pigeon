@@ -1,21 +1,15 @@
 // Property tests for the device log's merge rules. Each run writes a random history the way the
-// owner's devices would: adds, removes and renames, a recovery key, recoveries, and signatures
-// spelled high-S or low-S as Pigeons from before and after low-S spell them, over the bytes
-// every Pigeon checks or the ones that say what an entry is. From it come the
-// copies others hold or can make: older copies, tails, a signature's other spelling or capitals,
-// a stolen writer adding to an epoch it was recovered out of, a recovery key used twice, and
-// recovers forged with keys already used. They're merged in random orders, and every result is
-// checked against what the log promises. The first device signs with P-256, the one kind of key
-// with a second spelling; other devices and the recovery keys sign with the test fakes, so a
-// run stays fast.
+// owner's devices would: adds, removes and renames, a recovery key, and recoveries. From it come
+// the copies others hold or can make: older copies, tails, a signature in capitals, a stolen
+// writer adding to an epoch it was recovered out of, a recovery key used twice, and recovers
+// forged with keys already used. They're merged in random orders, and every result is checked
+// against what the log promises. Every key signs with the test fakes, so a run stays fast.
 import fc from 'fast-check'
-import { beforeAll, describe, expect, it } from 'vitest'
-import { base32Decode, base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
+import { describe, expect, it } from 'vitest'
+import { base32Decode, base32Encode } from '../encoding/bytes.ts'
 import type { Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
-import { canonicalSignature } from '../identity/signature.ts'
-import { flipS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeSigner, untypedSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntry,
@@ -24,7 +18,6 @@ import {
   deviceState,
   emptyDeviceLog,
   isTailLog,
-  lowSDeviceLog,
   MAX_DEVICE_ENTRIES,
   MAX_EPOCHS,
   mergeDeviceLogs,
@@ -35,25 +28,17 @@ import {
   verifyOwnTail,
 } from './device-log.ts'
 
-const crypto = p256Crypto()
-
-/**
- * How a device signed: an updated Pigeon, low-S over the bytes that say what an entry is; one
- * from 0.8.2 or 0.8.3, low-S over the untyped bytes; one from before low-S over those bytes too,
- * either way.
- */
-type Spelling = 'untyped' | 'updated' | 'old-low' | 'old-high'
+const crypto = fakeCrypto
 
 type Op =
   | {
       readonly kind: 'add' | 'remove' | 'name'
       readonly device: number
-      readonly spelling: Spelling
     }
-  | { readonly kind: 'commit'; readonly spelling: Spelling }
+  | { readonly kind: 'commit' }
   | { readonly kind: 'recover'; readonly writer: number; readonly keep: readonly number[] }
   /** The writer renames itself this many times, to fill the log to its limit. */
-  | { readonly kind: 'bulk'; readonly count: number; readonly spelling: Spelling }
+  | { readonly kind: 'bulk'; readonly count: number }
 
 /** What an attacker does with the owner's history. */
 interface Attack {
@@ -65,14 +50,12 @@ interface Attack {
   readonly forgedAt: readonly number[]
   /** A second recover of the latest epoch, signed by the owner's own key, at this time. */
   readonly twiceAt: number | undefined
-  /** Copies re-spelled: which copy, which signature, and capitals or the other S. */
-  readonly respell: readonly (readonly [number, number, boolean])[]
+  /** Copies re-spelled in capitals: which copy, and which signature. */
+  readonly respell: readonly (readonly [number, number])[]
 }
 
 interface Cast {
   readonly owner: Signer
-  /** The first device as a Pigeon from before low-S, when it signed high-S. */
-  readonly ownerHigh: Signer
   /** Devices a log can name: the first device, then the others. */
   readonly devices: readonly Signer[]
   /** `keys[e]` signs epoch e's recover. */
@@ -84,7 +67,6 @@ interface Cast {
 function castOf(owner: Signer): Cast {
   return {
     owner,
-    ownerHigh: { id: owner.id, sign: async (data) => flipS(await owner.sign(data)) },
     devices: [owner, ...['phone', 'tablet', 'desktop', 'watch'].map((name) => fakeSigner(name))],
     keys: Array.from({ length: MAX_EPOCHS + 2 }, (_, epoch) => fakeSigner(`recovery-${epoch}`)),
     attacker: fakeSigner('attacker'),
@@ -98,27 +80,16 @@ const pick = <T>(list: readonly T[], index: number): T => {
   return item
 }
 
-const signerFor = (cast: Cast, id: PeerId, spelling: Spelling): Signer => {
-  const signer =
-    id === cast.owner.id
-      ? spelling === 'old-high'
-        ? cast.ownerHigh
-        : cast.owner
-      : cast.devices.find((device) => device.id === id)
+const signerFor = (cast: Cast, id: PeerId): Signer => {
+  const signer = cast.devices.find((device) => device.id === id)
   if (signer === undefined) throw new Error('no such device')
-  // Every Pigeon before 0.8.4 signed entries untyped; an updated one signs them typed.
-  return spelling === 'updated' ? signer : untypedSigner(signer)
+  return signer
 }
 
-/** Whether a Pigeon signing this way reads its stored log low-S, as Pigeons since low-S do. */
-const sinceLowS = (spelling: Spelling) => spelling === 'untyped' || spelling === 'updated'
-
-// What a log says, whatever spelling it says it in: every signature decoded, either case, and
-// made low-S. Only the first device's key is P-256, so it's the one a twin spelling can come from.
-let ownerId: PeerId = ''
+// What a log says, whatever spelling it says it in: every signature decoded, either case.
 function meaningOfSig(sig: string): string {
   const bytes = base32Decode(sig)
-  return bytes.ok ? base32Encode(canonicalSignature(ownerId, bytes.value)) : `malformed:${sig}`
+  return bytes.ok ? base32Encode(bytes.value) : `malformed:${sig}`
 }
 function meaning(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(meaning)
@@ -166,12 +137,12 @@ function current(log: DeviceLog) {
 /** A whole log cut back to `epoch` as its latest, with that epoch's chain cut to `length`. */
 function cutTo(log: DeviceLog, epoch: number, length = Number.POSITIVE_INFINITY): DeviceLog {
   const { epochs: all = [], ...rest } = log
-  if (epoch === 0) return lowSDeviceLog({ ...rest, entries: log.entries.slice(0, length) })
+  if (epoch === 0) return { ...rest, entries: log.entries.slice(0, length) }
   const kept = all.slice(0, epoch)
   const last = kept.at(-1)
   if (last === undefined) throw new Error('no such epoch')
   const cut = { ...last, entries: last.entries.slice(0, length) }
-  return lowSDeviceLog({ ...rest, epochs: [...kept.slice(0, -1), cut] })
+  return { ...rest, epochs: [...kept.slice(0, -1), cut] }
 }
 
 /** `log` with one epoch's chain swapped for another. */
@@ -191,8 +162,8 @@ function tailOf(log: DeviceLog, from: number): DeviceLog | undefined {
   return { identity: log.identity, entries: [], from, by, epochs: epochs.slice(from - 1) }
 }
 
-/** The same log with one signature in capitals, or in its other spelling. */
-function respelled(log: DeviceLog, which: number, capitals: boolean): DeviceLog | undefined {
+/** The same log with one signature in capitals. */
+function respelled(log: DeviceLog, which: number): DeviceLog | undefined {
   const copy = JSON.parse(JSON.stringify(log)) as Record<string, unknown>
   const slots: { holder: Record<string, unknown>; field: string; value: string }[] = []
   const visit = (value: unknown) => {
@@ -200,12 +171,8 @@ function respelled(log: DeviceLog, which: number, capitals: boolean): DeviceLog 
     else if (typeof value === 'object' && value !== null) {
       const holder = value as Record<string, unknown>
       for (const [field, item] of Object.entries(holder)) {
-        if ((field === 'sig' || (capitals && field === 'prev')) && typeof item === 'string') {
-          // The other spelling is only made of one that decodes as written: lowercase.
-          if (
-            capitals ? item !== item.toUpperCase() : base32DecodeExact(item).ok && item.length > 60
-          )
-            slots.push({ holder, field, value: item })
+        if ((field === 'sig' || field === 'prev') && typeof item === 'string') {
+          if (item !== item.toUpperCase()) slots.push({ holder, field, value: item })
         } else visit(item)
       }
     }
@@ -213,12 +180,7 @@ function respelled(log: DeviceLog, which: number, capitals: boolean): DeviceLog 
   visit(copy)
   if (slots.length === 0) return undefined
   const slot = pick(slots, which)
-  if (capitals) slot.holder[slot.field] = slot.value.toUpperCase()
-  else {
-    const bytes = base32DecodeExact(slot.value)
-    if (!bytes.ok || bytes.value.length !== 64) return undefined
-    slot.holder[slot.field] = base32Encode(flipS(bytes.value))
-  }
+  slot.holder[slot.field] = slot.value.toUpperCase()
   return copy as unknown as DeviceLog
 }
 
@@ -226,23 +188,18 @@ async function append(
   cast: Cast,
   raw: DeviceLog,
   change: { kind: DeviceEntryKind; device: PeerId; name?: string },
-  spelling: Spelling,
   at: number,
 ): Promise<DeviceLog | undefined> {
   const writer = deviceState(raw).writer
-  const log = sinceLowS(spelling) ? lowSDeviceLog(raw) : raw
-  const result = await appendDeviceEntry(crypto, log, signerFor(cast, writer, spelling), change, at)
+  const result = await appendDeviceEntry(crypto, raw, signerFor(cast, writer), change, at)
   return result.ok ? result.log : undefined
 }
 
 async function step(cast: Cast, raw: DeviceLog, op: Op, at: number) {
   const state = deviceState(raw)
   switch (op.kind) {
-    case 'commit': {
-      const log = sinceLowS(op.spelling) ? lowSDeviceLog(raw) : raw
-      const signer = op.spelling === 'old-high' ? cast.ownerHigh : cast.owner
-      return setRecoveryKey(log, signer, pick(cast.keys, 1).id, at)
-    }
+    case 'commit':
+      return setRecoveryKey(raw, cast.owner, pick(cast.keys, 1).id, at)
     case 'recover': {
       const key = cast.keys.find((signer) => signer.id === state.recoveryKey)
       if (key === undefined) return undefined
@@ -257,13 +214,7 @@ async function step(cast: Cast, raw: DeviceLog, op: Op, at: number) {
       let log = raw
       for (let index = 0; index < op.count; index += 1) {
         const name = `Name ${at}.${index}`
-        const grown = await append(
-          cast,
-          log,
-          { kind: 'name', device: state.writer, name },
-          op.spelling,
-          at,
-        )
+        const grown = await append(cast, log, { kind: 'name', device: state.writer, name }, at)
         if (grown === undefined) break
         log = grown
       }
@@ -272,7 +223,7 @@ async function step(cast: Cast, raw: DeviceLog, op: Op, at: number) {
     default: {
       const device = pick(cast.devices, op.device).id
       const name = op.kind === 'remove' ? {} : { name: `${op.kind} ${at}` }
-      return append(cast, raw, { kind: op.kind, device, ...name }, op.spelling, at)
+      return append(cast, raw, { kind: op.kind, device, ...name }, at)
     }
   }
 }
@@ -288,8 +239,7 @@ interface Copy {
 }
 
 interface World {
-  /** The owner's log after each change, as its devices store it and as they send it. */
-  readonly stored: readonly DeviceLog[]
+  /** The owner's log after each change, as its devices store and send it. */
   readonly sent: readonly DeviceLog[]
   readonly final: DeviceLog
   /** Copies from the owner's writing, and re-spellings of them. */
@@ -303,20 +253,19 @@ interface World {
 async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<World> {
   const identity = cast.owner.id
   let raw = emptyDeviceLog(identity)
-  const stored = [raw]
+  const sent = [raw]
   for (const [index, op] of ops.entries()) {
     const next = await step(cast, raw, op, (index + 1) * 10)
     if (next === undefined) continue
     raw = next
-    stored.push(raw)
+    sent.push(raw)
   }
-  const sent = stored.map(lowSDeviceLog)
-  const final = lowSDeviceLog(raw)
+  const final = raw
   const last = latest(final)
 
   const tails = sent.flatMap((log) => [1, latest(log)].flatMap((from) => tailOf(log, from) ?? []))
   const honest: Copy[] = [
-    ...[...sent, ...stored, ...tails, cutTo(final, 0)].map((log) => ({
+    ...[...sent, ...tails, cutTo(final, 0)].map((log) => ({
       log,
       by: 'owner' as const,
     })),
@@ -326,7 +275,7 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
   for (let epoch = 0; epoch < last; epoch += 1) {
     const chain = chainOf(final, epoch)
     let stale = cutTo(final, epoch, pick(attack.forkAt, epoch) % (chain.length + 1))
-    const writer = signerFor(cast, writerOf(final, epoch), 'updated')
+    const writer = signerFor(cast, writerOf(final, epoch))
     for (const [index, entry] of attack.stolen.entries()) {
       const device = pick([...cast.devices, cast.attacker], entry.device).id
       const name = entry.kind === 'remove' ? {} : { name: `Stolen ${index}` }
@@ -357,7 +306,7 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
       const grown = await appendDeviceEntry(
         crypto,
         twice,
-        signerFor(cast, writer, 'updated'),
+        signerFor(cast, writer),
         { kind: 'name', device: writer, name: 'Renamed' },
         attack.twiceAt + 1,
       )
@@ -366,9 +315,9 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
     }
   }
 
-  for (const [copy, which, capitals] of attack.respell) {
+  for (const [copy, which] of attack.respell) {
     const source = pick(honest, copy)
-    const log = respelled(source.log, which, capitals)
+    const log = respelled(source.log, which)
     if (log !== undefined) honest.push({ log, by: source.by, respelled: true })
   }
 
@@ -404,20 +353,17 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
   const kept = [
     emptyDeviceLog(identity),
     ...sent,
-    ...stored,
     ...sent.flatMap((log) => tailOf(log, latest(log)) ?? []),
   ]
-  return { stored, sent, final, honest, forged, kept }
+  return { sent, final, honest, forged, kept }
 }
 
-const spelling = fc.constantFrom<Spelling>('untyped', 'updated', 'old-low', 'old-high')
 // Removals are what most rules guard, and each needs an add before it, so they come up often.
 const change = fc.record({
   kind: fc.constantFrom<'add' | 'remove' | 'name'>('add', 'remove', 'add', 'remove', 'name'),
   device: fc.nat(4),
-  spelling,
 })
-const commit = fc.record({ kind: fc.constant('commit' as const), spelling })
+const commit = fc.record({ kind: fc.constant('commit' as const) })
 const recover = fc.record({
   kind: fc.constant('recover' as const),
   writer: fc.nat(4),
@@ -426,7 +372,6 @@ const recover = fc.record({
 const bulk = fc.record({
   kind: fc.constant('bulk' as const),
   count: fc.integer({ min: 10, max: 60 }),
-  spelling,
 })
 
 /**
@@ -467,7 +412,7 @@ const attack: fc.Arbitrary<Attack> = fc.record({
   forkAt: fc.array(fc.nat(), { minLength: 1, maxLength: 4 }),
   forgedAt: fc.array(fc.nat(1_000_000), { minLength: 1, maxLength: 3 }),
   twiceAt: fc.option(fc.nat(1_000_000), { nil: undefined }),
-  respell: fc.array(fc.tuple(fc.nat(), fc.nat(), fc.boolean()), { maxLength: 4 }),
+  respell: fc.array(fc.tuple(fc.nat(), fc.nat()), { maxLength: 4 }),
 })
 
 /** Indices into the copies a world has: which to merge, in which order, from where. */
@@ -530,12 +475,7 @@ const suites = [
 
 for (const suite of suites) {
   describe(`device-log merges, for ${suite.name}`, { timeout: TIMEOUT }, () => {
-    let cast: Cast
-    beforeAll(async () => {
-      const owner = await p256Signer('low')
-      cast = castOf(owner)
-      ownerId = owner.id
-    })
+    const cast = castOf(fakeSigner('owner'))
 
     /**
      * Runs `check` on every merge of a picked copy into something kept, and of every forged one
@@ -552,7 +492,6 @@ for (const suite of suites) {
     ) =>
       fc.assert(
         fc.asyncProperty(suite.ops, attack, plan, async (ops, hostile, choice) => {
-          ownerId = cast.owner.id
           const world = await build(cast, ops, hostile)
           const ours = await keptAfter(world, choice)
           const copies = [...incoming(world, choice), ...(forged ? forgedCopies(world) : [])]
@@ -565,7 +504,6 @@ for (const suite of suites) {
     it('verifies everything the owner writes, as it is sent', () =>
       fc.assert(
         fc.asyncProperty(suite.ops, attack, async (ops, hostile) => {
-          ownerId = cast.owner.id
           const world = await build(cast, ops, hostile)
           for (const log of world.sent) expect(await verifyDeviceLog(crypto, log)).toBe(true)
           for (const log of world.kept)
@@ -577,7 +515,6 @@ for (const suite of suites) {
     it('settles on the same list in any order', () =>
       fc.assert(
         fc.asyncProperty(suite.ops, attack, plan, async (ops, hostile, choice) => {
-          ownerId = cast.owner.id
           const world = await build(cast, ops, hostile)
           const picked = choice.copies.map((index) => pick(world.honest, index))
           // A stolen writer's entries are the latest word to anyone who hasn't seen the epoch
@@ -611,7 +548,6 @@ for (const suite of suites) {
     it('takes the owner’s latest log over any older copy of it', () =>
       fc.assert(
         fc.asyncProperty(suite.ops, attack, async (ops, hostile) => {
-          ownerId = cast.owner.id
           const world = await build(cast, ops, hostile)
           for (const log of world.kept) {
             const merged = await mergeDeviceLogs(crypto, log, world.final)
@@ -665,7 +601,7 @@ for (const suite of suites) {
 
     it('keeps a log that holds, with its writer on the list', () =>
       forEachMerge(async (_ours, _theirs, merged) => {
-        const log = lowSDeviceLog(merged)
+        const log = merged
         const holds = isTailLog(log)
           ? await verifyOwnTail(crypto, log)
           : await verifyDeviceLog(crypto, log)
@@ -680,19 +616,12 @@ for (const suite of suites) {
         expect(await mergeDeviceLogs(crypto, merged, merged)).toBe(merged)
       }))
 
-    it('refuses a signature in capitals, and gains nothing from its other spelling', () =>
-      forEachMerge(async (ours, theirs, merged, copy) => {
-        // Re-spelling a copy that is itself re-spelled can spell it back as it was.
+    it('refuses a signature in capitals', () =>
+      forEachMerge(async (ours, theirs, _merged, copy) => {
         if (copy.respelled) return
-        // Its low-S spelling is the one a copy from before low-S is taken in.
-        const lowS = current(await mergeDeviceLogs(crypto, ours, lowSDeviceLog(theirs)))
         for (const which of [0, 1, 2, 7]) {
-          const shouted = respelled(theirs, which, true)
+          const shouted = respelled(theirs, which)
           if (shouted !== undefined) expect(await mergeDeviceLogs(crypto, ours, shouted)).toBe(ours)
-          const twin = respelled(theirs, which, false)
-          if (twin === undefined) continue
-          const result = current(await mergeDeviceLogs(crypto, ours, twin))
-          expect([current(ours), current(merged), lowS]).toContain(result)
         }
       }))
   })

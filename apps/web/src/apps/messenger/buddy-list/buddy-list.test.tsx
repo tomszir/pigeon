@@ -100,6 +100,7 @@ it('lists people you asked, until they add you, after your friends', () => {
     lighthouses: [],
     reply: 'b'.repeat(26),
     expires: NOW,
+    maker: 'k',
     at: NOW,
     state: 'waiting' as const,
   }

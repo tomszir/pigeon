@@ -1,17 +1,19 @@
-defect: a device-log entry is signed with no `v`, as before 0.8.4, so it doesn't say what it is
+defect: a device-log entry is signed with no `v` so it doesn't say what it is
 test: packages/core src/devices/entry-signing.test.ts
 expect: signs each entry as the current release does, and takes exactly what it takes
 
-diff --git i/packages/core/src/devices/device-log.ts w/packages/core/src/devices/device-log.ts
-index c38b66f..0b78385 100644
---- i/packages/core/src/devices/device-log.ts
-+++ w/packages/core/src/devices/device-log.ts
-@@ -577,7 +577,7 @@ export async function appendDeviceEntry(
+diff --git a/packages/core/src/devices/device-log.ts b/packages/core/src/devices/device-log.ts
+index b24b5fe..8935f8b 100644
+--- a/packages/core/src/devices/device-log.ts
++++ b/packages/core/src/devices/device-log.ts
+@@ -521,7 +521,9 @@ export async function appendDeviceEntry(
    }
    if (apply(state, unsigned) !== undefined) return { ok: false, error: 'not-allowed' }
    const epoch = last?.recover.epoch ?? 0
 -  const sig = base32Encode(await signer.sign(typedEntryBytes(log.identity, epoch, unsigned)))
-+  const sig = base32Encode(await signer.sign(untypedEntryBytes(log.identity, epoch, unsigned)))
++  const sig = base32Encode(
++    await signer.sign(canonicalBytes({ epoch, ...entryFields(log.identity, unsigned) } as Json)),
++  )
    const entry = { ...unsigned, sig }
    if (last === undefined) return { ok: true, log: { ...log, entries: [...log.entries, entry] } }
    const grown = { ...last, entries: [...last.entries, entry] }

@@ -1,7 +1,5 @@
 // Every kind of object Pigeon signs says what it's for, in a `v` or a `type`, so no signature can
-// be taken as another kind. The only shapes without one are the two kinds of log entry as every
-// Pigeon checks them, and those differ from each other. This drives each signing function with
-// a signer that records what it's asked to sign, so a kind that loses its marker fails here.
+// be taken as another kind. This drives each signing function with a signer that records what it's asked to sign, so a kind that loses its marker fails here.
 import { describe, expect, it } from 'vitest'
 import { appendMessage, emptyLog } from '../chat/chat-log.ts'
 import {
@@ -16,7 +14,7 @@ import { bindSealingKey, sealMail } from '../mail/mail.ts'
 import { sealEnvelope } from '../messages/envelope.ts'
 import { sealInviteCard } from '../pairing/mailed-invite.ts'
 import { signRekey } from '../pairing/rekey.ts'
-import { fakeCrypto, fakeSealCrypto, fakeSigner, untypedSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSealCrypto, fakeSigner } from '../testing/testing.ts'
 import type { Signer } from './crypto.ts'
 
 /** A signer that keeps the field names of every object it signs, under the kind it's told. */
@@ -40,13 +38,11 @@ function recorder() {
 
 const MARKERS = ['v', 'type']
 const marker = (shape: Record<string, unknown>) => MARKERS.find((key) => key in shape)
-const keys = (shape: Record<string, unknown>) => Object.keys(shape).sort().join(',')
 
 describe('what Pigeon signs', () => {
-  it('says what it is in every kind, but the two log entries as Pigeons before 0.8.4 signed them', async () => {
+  it('says what it is in every kind', async () => {
     const { shapes, wrap, as } = recorder()
     const rook = wrap(fakeSigner('rook'))
-    const oldRook = untypedSigner(wrap(fakeSigner('rook')))
     const seal = fakeSealCrypto()
     const key = wrap(fakeSigner('recovery'))
 
@@ -82,14 +78,10 @@ describe('what Pigeon signs', () => {
     await signRekey(rook, { replaces: 'pair', secret: 'secret', at: 1 } as never)
     as('chat-entry')
     await appendMessage(emptyLog('pair:x'), rook, 'hi', 1)
-    as('chat-entry, before 0.8.4')
-    await appendMessage(emptyLog('pair:x'), oldRook, 'hi', 1)
     as('device-entry')
     const phone = fakeSigner('phone').id
     const add = { kind: 'add', device: phone, name: 'Phone' } as const
     await appendDeviceEntry(fakeCrypto, emptyDeviceLog(rook.id), rook, add, 1)
-    as('device-entry, before 0.8.4')
-    await appendDeviceEntry(fakeCrypto, emptyDeviceLog(rook.id), oldRook, add, 1)
     as('recovery-key')
     const committed = await setRecoveryKey(emptyDeviceLog(rook.id), rook, key.id, 1)
     as('recover')
@@ -111,25 +103,13 @@ describe('what Pigeon signs', () => {
         'invite-card',
         'rekey',
         'chat-entry',
-        'chat-entry, before 0.8.4',
         'device-entry',
-        'device-entry, before 0.8.4',
         'recovery-key',
         'recover',
       ].sort(),
     )
     const unmarked = [...shapes].filter(([, shape]) => marker(shape) === undefined)
-    expect(unmarked.map(([kind]) => kind).sort()).toEqual([
-      'chat-entry, before 0.8.4',
-      'device-entry, before 0.8.4',
-    ])
-    // The two unmarked shapes can't be taken for each other.
-    const [chat, device] = [
-      shapes.get('chat-entry, before 0.8.4'),
-      shapes.get('device-entry, before 0.8.4'),
-    ]
-    if (chat === undefined || device === undefined) throw new Error('not recorded')
-    expect(keys(chat)).not.toBe(keys(device))
+    expect(unmarked.map(([kind]) => kind)).toEqual([])
     // And every marker names one kind only.
     const named = [...shapes.values()].flatMap((shape) => {
       const field = marker(shape)

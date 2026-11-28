@@ -167,19 +167,17 @@ export interface SentAsk {
   readonly reply: string
   readonly expires: number
   /**
-   * The device that made the link, which the link names: only its answers are taken. Missing
-   * from a request sent through a link from before links named their maker, which adds nobody now.
+   * The device that made the link, which the link names: only its answers are taken.
    */
-  readonly maker?: PeerId | undefined
+  readonly maker: PeerId
   readonly at: number
   /**
    * `added` once they added you: kept, and its answers still looked for, until a while after
    * the link expires, so the maker's `added`, put again until this device's receipt reaches it,
    * is answered with a receipt again if the first was lost. Only the maker's answers are read: a
-   * `closed` from it whose log holds merges that log into the friend's. Not shown. `retired`:
-   * sent through a link from before links named their maker, which adds nobody now.
+   * `closed` from it whose log holds merges that log into the friend's. Not shown.
    */
-  readonly state: 'waiting' | 'declined' | 'closed' | 'busy' | 'added' | 'retired'
+  readonly state: 'waiting' | 'declined' | 'closed' | 'busy' | 'added'
   /**
    * Their device log: the card's when the request was sent, merged with the newest an answer
    * carried and what you knew. Missing from a request sent before cards' logs were kept.
@@ -197,10 +195,7 @@ export type OpenedLink =
     }
   | {
       readonly ok: false
-      /**
-       * `retired`: a link from before links named their maker and end, which no longer opens.
-       * `too-long`: one that says it ends further off than any link lasts.
-       */
+      /** `too-long`: a link that says it ends further off than any link lasts. */
       readonly error:
         | 'malformed'
         | 'not-found'
@@ -208,7 +203,6 @@ export type OpenedLink =
         | 'expired'
         | 'own'
         | 'friend'
-        | 'retired'
         | 'too-long'
     }
 
@@ -347,14 +341,12 @@ const isAsk = (value: unknown): value is SentAsk => {
     Array.isArray(a.lighthouses) &&
     a.lighthouses.every(isLighthouseAddress) &&
     typeof a.expires === 'number' &&
-    (a.maker === undefined || (typeof a.maker === 'string' && isPeerId(a.maker))) &&
-    ['waiting', 'declined', 'closed', 'busy', 'added', 'retired'].includes(a.state) &&
+    typeof a.maker === 'string' &&
+    isPeerId(a.maker) &&
+    ['waiting', 'declined', 'closed', 'busy', 'added'].includes(a.state) &&
     (a.log === undefined || (isDeviceLog(a.log) && a.log.identity === a.identity))
   )
 }
-
-/** A link made before links named their maker and end (`#a/`), which no longer opens. */
-const isOldLink = (link: OwnLink) => link.url.includes('#a/')
 
 /** One of the presets, so a link is only ever one of them. */
 function preset(value: number, presets: readonly number[], fallback: number): number {
@@ -373,17 +365,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     : []
   const storedAsks = await store.get(KEYS.asks)
   const [asks, setAsksSignal] = createSignal<readonly SentAsk[]>(
-    // A request still waiting that names no maker went through a link from before links named
-    // theirs, which adds nobody now: it stops waiting, and says the link has retired.
-    Array.isArray(storedAsks)
-      ? storedAsks
-          .filter(isAsk)
-          .map((ask) =>
-            ask.state === 'waiting' && ask.maker === undefined
-              ? { ...ask, state: 'retired' as const }
-              : ask,
-          )
-      : [],
+    Array.isArray(storedAsks) ? storedAsks.filter(isAsk) : [],
   )
 
   // One change to the lists at a time, so a request arriving never undoes an approval. Nothing
@@ -827,7 +809,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     if (ask.state !== 'waiting') return true
     // Only the device the link names adds anyone through it: another device of theirs, one taken
     // off their list included, holds the link's secret and may have read the request too.
-    if (ask.maker === undefined || letter.from !== ask.maker) return true
+    if (letter.from !== ask.maker) return true
     if (!isPairSecret(body.secret)) return true
     const speaks = await speakerIdentity(
       crypto,
@@ -863,13 +845,10 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
   }
 
   // Adds Pigeon closed in the middle of: finished once it's running.
-  // Not on a link made before links named their maker and end: nobody is added through one.
   const unfinished = links().flatMap((link) =>
-    isOldLink(link)
-      ? []
-      : link.requests
-          .filter((request) => request.state === 'adding')
-          .map((request) => [link.secret, request.identity] as const),
+    link.requests
+      .filter((request) => request.state === 'adding')
+      .map((request) => [link.secret, request.identity] as const),
   )
 
   const api = {
@@ -882,25 +861,9 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
       if (!deps.active()) return
       for (const [secret, identity] of unfinished)
         await finishAdding(secret, identity).catch(() => undefined)
-      // A link made before links named their maker and end, which nobody can ask through any
-      // more: an add Pigeon closed in the middle of is left unfinished, and the link closed, so
-      // whoever asked hears so and nobody is added on this side alone.
+      // A link whose last place was taken just before Pigeon closed: closed now.
       for (const link of links())
-        if (isOldLink(link) && link.requests.some((request) => request.state === 'adding'))
-          await serial(() =>
-            updateLink(link.secret, (other) => ({
-              ...other,
-              requests: other.requests.map((request) =>
-                request.state === 'adding'
-                  ? { ...request, state: 'waiting' as const, pairSecret: undefined }
-                  : request,
-              ),
-            })),
-          )
-      // A link whose last place was taken just before Pigeon closed: closed now. So is one made
-      // before links named their maker and end.
-      for (const link of links())
-        if (link.open && (link.used >= link.uses || isOldLink(link))) await api.cancel(link.secret)
+        if (link.open && link.used >= link.uses) await api.cancel(link.secret)
       await api.catchUp()
     },
 
@@ -1007,7 +970,6 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
         const request = link?.requests.find((other) => other.identity === identity)
         if (link === undefined || request?.state !== 'waiting') return undefined
         if (!link.open || link.expires <= now() || link.used >= link.uses) return undefined
-        if (isOldLink(link)) return undefined
         const used = link.used + 1
         // Kept before anything else, so a tab that closes now finishes it when it opens.
         await updateLink(secret, (other) => ({
@@ -1048,8 +1010,7 @@ export async function loadInviteLinks(deps: InviteLinksDeps) {
     /** Looks up someone's link: their card, checked, or why there's nothing to ask. */
     async open(text: string): Promise<OpenedLink> {
       const decoded = decodeInviteLink(text)
-      if (!decoded.ok)
-        return { ok: false, error: decoded.error === 'old' ? 'retired' : 'malformed' }
+      if (!decoded.ok) return { ok: false, error: 'malformed' }
       const link = decoded.value
       if (inviteLinkTooLong(link, now())) return { ok: false, error: 'too-long' }
       if (inviteLinkEnded(link, now())) return { ok: false, error: 'expired' }

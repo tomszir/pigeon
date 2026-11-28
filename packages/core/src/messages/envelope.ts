@@ -9,7 +9,6 @@ import type { Crypto, Signer } from '../identity/crypto.ts'
 import { isPeerId, type PeerId } from '../identity/identity.ts'
 import { isLighthouseAddress, type LighthouseAddress } from '../lighthouse/address.ts'
 import { isSealingKey, type SealingKey } from '../mail/mail.ts'
-import { isPairSecret } from '../pairing/pair-rooms.ts'
 import { err, ok, type Result } from '../result/result.ts'
 import { isFingerprint } from '../transport/transport.ts'
 
@@ -146,10 +145,6 @@ export type Body =
   | { readonly type: 'pair-accept'; readonly sealed: string }
   /** The inviter said no. */
   | { readonly type: 'pair-decline' }
-  /** Moving friends paired before pair secrets: the lower id gives the secret, in the old room. */
-  | { readonly type: 'pair-secret'; readonly secret: string }
-  /** The other side has the secret too: both leave the old room. */
-  | { readonly type: 'pair-secret-ok' }
   /** The existing device's key confirmation, and whose it is. */
   | ({ readonly type: 'link-offer'; readonly mac: string; readonly handle: string } & Speaker)
   /** The new device's sealing key, which what it's handed is sealed to. */
@@ -265,8 +260,6 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   'pair-request': (b) => isHandleText(b['handle']) && isSealingKey(b['sealing']) && isSpeaker(b),
   'pair-accept': (b) => isString(MAX_SEALED_PART_LENGTH)(b['sealed']),
   'pair-decline': () => true,
-  'pair-secret': (b) => isPairSecret(b['secret']),
-  'pair-secret-ok': () => true,
   'link-offer': (b) =>
     isString(MAX_PAKE_LENGTH)(b['mac']) && isHandleText(b['handle']) && isSpeaker(b),
   'link-request': (b) => isSealingKey(b['sealing']),

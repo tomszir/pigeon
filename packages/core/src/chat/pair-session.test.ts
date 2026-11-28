@@ -6,7 +6,6 @@ import { pairRoom } from '../identity/identity.ts'
 import type { LighthouseAddress } from '../lighthouse/address.ts'
 import { bindSealingKey, type SealingKey } from '../mail/mail.ts'
 import { type Body, openEnvelope, sealEnvelope } from '../messages/envelope.ts'
-import { encodePairSecret, PAIR_SECRET_BYTES } from '../pairing/pair-rooms.ts'
 import {
   createMemoryNetwork,
   fakeCrypto,
@@ -242,8 +241,6 @@ const presence = (side: Side) =>
   kinds(side).filter((kind) => kind === 'online' || kind === 'offline')
 
 describe('several rooms', () => {
-  const secret = encodePairSecret(new Uint8Array(PAIR_SECRET_BYTES).fill(3))
-
   it('is one friend across rooms, and offline only once every room is left', async () => {
     const network = createMemoryNetwork()
     const rookTransport = network.transport()
@@ -255,8 +252,8 @@ describe('several rooms', () => {
     expect(presence(a)).toEqual(['online'])
     expect(a.events.filter((event) => event.type === 'met')).toHaveLength(2)
 
-    const legacy = await pairRoom(fakeCrypto, rook.id, mika.id)
-    await b.session.removeRoom(legacy)
+    const first = await pairRoom(fakeCrypto, rook.id, mika.id)
+    await b.session.removeRoom(first)
     await flush()
     expect(a.session.online()).toBe(true)
     await b.session.send('still here')
@@ -267,50 +264,6 @@ describe('several rooms', () => {
     await flush()
     expect(presence(a)).toEqual(['online', 'offline'])
     expect(b.session.rooms()).toEqual([])
-  })
-
-  it('passes the pair secret and its confirmation along', async () => {
-    const network = createMemoryNetwork()
-    const a = await open(network.transport(), rook, mika)
-    const b = await open(network.transport(), mika, rook)
-    await flush()
-    await a.session.sendSecret(secret)
-    await flush()
-    expect(b.events).toContainEqual({ type: 'secret', secret })
-    await b.session.confirmSecret()
-    await flush()
-    expect(kinds(a)).toContain('secret-ok')
-  })
-
-  it('takes the pair secret and its confirmation only in the old room', async () => {
-    const network = createMemoryNetwork()
-    const rookTransport = network.transport()
-    const a = await open(rookTransport, rook, mika)
-    a.session.addRoom(await rookTransport.join('pair:today', { password: 'p' }))
-    // Mika's session is in today's room only, told it's the old one, so what it says for the old
-    // room goes there.
-    const legacy = await pairRoom(fakeCrypto, rook.id, mika.id)
-    const today = await network.transport().join('pair:today', { password: 'p' })
-    const b = startPairSession({
-      crypto: fakeCrypto,
-      signer: mika,
-      friend: rook.id,
-      chat: legacy,
-      rooms: [{ ...today, name: legacy }],
-      handle: () => 'Mika',
-      presence: () => ({ status: 'online', message: '' }),
-      log: emptyLog(legacy),
-      now: () => 1,
-      random,
-      onEvent: () => undefined,
-    })
-    await flush()
-    expect(a.session.online()).toBe(true)
-    await b.sendSecret(secret)
-    await b.confirmSecret()
-    await flush()
-    expect(kinds(a)).not.toContain('secret')
-    expect(kinds(a)).not.toContain('secret-ok')
   })
 
   it('says nothing when it closes', async () => {
