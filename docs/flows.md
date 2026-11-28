@@ -96,9 +96,8 @@ Two friends meet in a room named from their pair secret and the UTC date ([Rooms
                                      tomorrow's room joined too
 
   In both rooms at once, an envelope still names the chat's id
-  (the old pair room's name) as its room, so the friend takes
-  buzz and unfriend only once. pair-secret and pair-secret-ok
-  count only in the old pair room itself.
+  (the name from both ids) as its room, so the friend takes
+  buzz and unfriend only once.
 ```
 
 ## Replacing a secret

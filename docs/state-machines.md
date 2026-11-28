@@ -220,7 +220,7 @@ One person's request through it, kept per identity:
 The asker's side of one request:
 
 ```text
-     opens the link: refused if it's an `#a/` link, has ended, or ends
+     opens the link: refused if it has ended, or ends
      more than 7 days and a day from now; at the official Lighthouses and
      the one the link names, up to 16 claimed cards under its card tag,
      then up to 100 of everything there, newest first; of the cards that
