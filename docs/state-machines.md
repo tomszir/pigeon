@@ -1,6 +1,6 @@
 # State machines
 
-Pairing, linking, recovery and waiting for mail at a Lighthouse as the states each side goes through, what moves it on, and what it checks first, drawn in ASCII beside the message sequences in flows.md.
+Pairing, linking, a friendship on your devices, recovery and waiting for mail at a Lighthouse as the states each side goes through, what moves it on, and what it checks first, drawn in ASCII beside the message sequences in flows.md.
 
 [flows.md](flows.md) draws the same handshakes as messages between two sides, and the device log's own states; [protocol.md](protocol.md) wins where either differs from it. [threat-model.md](threat-model.md) lists every message with the checks it gets. Boxes are states; an arrow is labelled with what moves it on, and anything not drawn leaves the state as it is.
 
@@ -253,6 +253,33 @@ The asker's side of one request:
                              again; only the maker's answers are read, and a
                              `closed` log from it is merged into the friend's
 ```
+
+## A friendship on your devices
+
+One friendship with one friend, as each of your devices works it out from your shared log (protocol.md, Your shared log). It's the same on every device once each holds the same entries.
+
+```text
+   (no friendship)
+       |
+       | pairing, an invite link or an `added` on any device:
+       | `add` with a new incarnation id
+       v
+   LIVE ---- a newer `add` with the same friend, from another
+     |       device pairing again at once ----> both LIVE, the newer shown
+     |                                                 |
+     |                     a device sees the friend in one (a bound hello in
+     |                     its rooms, or a letter from one of the friend's
+     |                     devices): `tomb` for each other one
+     |                                                 |
+     | unfriend, or block, on any device:              v
+     | `tomb` (and `block`)                     LIVE, the friend's own
+     v
+   ENDED for good: each device deletes the friend and the chat. Nothing
+   undoes it, not a device back from weeks away nor an `add` arriving later;
+   only pairing again, which is a new friendship from the top.
+```
+
+A `tomb` from a device that was removed counts only if stamped before its removal's own `at`, so a removed device can't end a friendship once your devices know of its removal.
 
 ## Linking a device
 

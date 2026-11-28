@@ -211,8 +211,20 @@ export function MuteFriend(props: FriendDialogProps) {
   )
 }
 
+/**
+ * Where removing someone reaches: every device of yours, but one on a Pigeon from before your
+ * devices kept your data in step, which hears it once it updates.
+ */
+export function everywhere(older: readonly string[]): string {
+  if (older.length === 0) return 'on all your devices'
+  const names =
+    older.length === 1 ? older[0] : `${older.slice(0, -1).join(', ')} and ${older.at(-1)}`
+  return `on all your devices except ${names}, which ${older.length === 1 ? 'needs' : 'need'} updating`
+}
+
 export function RemoveFriend(props: FriendDialogProps) {
   const [block, setBlock] = createSignal(false)
+  const where = () => everywhere(props.messenger.notInStep())
   const remove = () =>
     void props.messenger.remove(props.friend, { block: block() }).then(props.onClose)
   return (
@@ -229,15 +241,14 @@ export function RemoveFriend(props: FriendDialogProps) {
             when={view().removedYouAt === undefined}
             fallback={
               <p>
-                {view().name} has already removed you. Remove them too, and delete your chat from
-                this browser?
+                {view().name} has already removed you. Remove them too, and delete your chat{' '}
+                {where()}?
               </p>
             }
           >
             <p>
-              Remove <strong>{view().name}</strong> from your friends? Your chat with them is
-              deleted from this browser, and their Pigeon is told, now or the next time you're both
-              online.
+              Remove <strong>{view().name}</strong> from your friends {where()}? Your chat with them
+              is deleted on each, and their Pigeon is told, now or the next time you're both online.
             </p>
           </Show>
           <div class={styles.choice}>

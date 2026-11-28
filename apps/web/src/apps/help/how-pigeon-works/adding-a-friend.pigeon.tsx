@@ -229,14 +229,16 @@ export const ADDING_A_FRIEND = (
 
     <h2>Removing and blocking</h2>
     <p>
-      Removing a friend deletes them and your chat from this browser and tells their Pigeon, now or
-      the next time they're online. Their Pigeon keeps the chat to read, marks you as having removed
-      them, and stops talking to you. You can become friends again by pairing again.
+      Removing a friend removes them on all your devices, and deletes your chat on each, and tells
+      their Pigeon, now or the next time they're online. A device on an older Pigeon hears it once
+      it's updated. Their Pigeon keeps the chat to read, marks you as having removed them, and stops
+      talking to you. You can become friends again by pairing again.
     </p>
     <p>
       Blocking someone also keeps them out: their requests through your codes never show, and an
-      invite of theirs you open is refused. The names you give friends and the friends you mute are
-      yours alone and never leave this browser.
+      invite of theirs you open is refused, on every device of yours. The names you give friends and
+      the friends you mute are the same on all your devices, the newest change winning, and are
+      never sent to your friends.
     </p>
   </>
 )

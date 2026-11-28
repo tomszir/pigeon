@@ -5,6 +5,7 @@
 import {
   type ChatLog,
   isHandle,
+  isIncarnation,
   isLighthouseAddress,
   isLiveCode,
   isPairSecret,
@@ -32,6 +33,11 @@ export interface FriendRecord {
   /** The name they chose, as last seen in their signed hello. */
   readonly handle: string
   readonly addedAt: number
+  /**
+   * The friendship's id in your shared log, made when it began. None for a friend from before
+   * your devices shared a log, whose id is derived from theirs.
+   */
+  readonly inc?: string | undefined
   /** What you call them, shown instead of their handle. */
   readonly petname?: string | undefined
   /** No balloons and no shaking from them until then (`Infinity` stored as -1: until unmuted). */
@@ -175,6 +181,7 @@ export function isFriendRecord(record: unknown): record is FriendRecord {
     isPeerId(record['id']) &&
     typeof record['handle'] === 'string' &&
     typeof record['addedAt'] === 'number' &&
+    (record['inc'] === undefined || isIncarnation(record['inc'])) &&
     (record['petname'] === undefined || typeof record['petname'] === 'string') &&
     (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
     (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number') &&
@@ -306,6 +313,7 @@ const importedFriend = (record: FriendRecord): FriendRecord | undefined => {
     id: record.id,
     handle: record.handle,
     addedAt: record.addedAt,
+    ...(record.inc === undefined ? {} : { inc: record.inc }),
     ...(record.petname === undefined ? {} : { petname: record.petname }),
     ...(record.mutedUntil === undefined ? {} : { mutedUntil: record.mutedUntil }),
     ...(record.removedYouAt === undefined ? {} : { removedYouAt: record.removedYouAt }),

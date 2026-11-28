@@ -1,0 +1,16 @@
+defect: a re-pair race is settled by the friendship each device paired, so a device can end the one the friend is in
+test: apps/web src/apps/messenger/service/data-sync.test.ts
+expect: ends neither just because this device paired one of them
+
+diff --git i/apps/web/src/apps/messenger/service/data-sync.ts w/apps/web/src/apps/messenger/service/data-sync.ts
+index decff1e..cea7c3c 100644
+--- i/apps/web/src/apps/messenger/service/data-sync.ts
++++ w/apps/web/src/apps/messenger/service/data-sync.ts
+@@ -131,6 +131,7 @@ export function createDataSync(deps: DataSyncDeps) {
+      */
+     async began(id: PeerId, inc: string, name: string) {
+       await shared.write([{ kind: 'add', friend: id, inc, name: name.slice(0, MAX_HANDLE_LENGTH) }])
++      await shared.write(settleOps(shared.log(), shared.context(), id, inc))
+     },
+     /** This device saw the friend in the friendship it holds: any other with them ends. */
+     async seen(id: PeerId) {

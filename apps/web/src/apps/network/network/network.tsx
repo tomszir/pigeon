@@ -155,8 +155,8 @@ function RelaySetting(props: NetworkProps & { short?: boolean }) {
           props.relayOnly === undefined
             ? 'Available once Pigeon Messenger has started.'
             : props.short === true
-              ? 'Friends never see your IP address, and mail goes only to Lighthouses you chose. Slower, and needs the relay.'
-              : "Friends never see your IP address. Mail goes only to your own and the official Lighthouses, so a friend who uses only theirs gets your messages when you're both online. Connecting is slower, and needs the relay to be reachable."
+              ? 'On all your devices: friends never see your IP address, and mail goes only to Lighthouses you chose. Slower, and needs the relay.'
+              : "On all your devices. Friends never see your IP address. Mail goes only to your own and the official Lighthouses, so a friend who uses only theirs gets your messages when you're both online. Connecting is slower, and needs the relay to be reachable."
         }
       />
       <Show when={props.onHearAtOnce}>
