@@ -676,8 +676,9 @@ export async function createMessenger(deps: MessengerDeps) {
     // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
     await inviteLinks?.catchUp().catch(() => undefined)
     const all = [...sources, ...(inviteLinks?.sources() ?? [])]
-    const heard = await mailbox.fetch(lighthouses(), all, mailWaits.counting(takeLetter), lookAt)
-    mailWaits.lookDone()
+    const heard = await mailWaits.look((count) =>
+      mailbox.fetch(lighthouses(), all, count.take(takeLetter), lookAt, count.answered),
+    )
     // Old secrets with no replacement under way yet, now that any proposal waiting for this
     // device has been taken.
     await replaceOldSecrets()
@@ -690,13 +691,13 @@ export async function createMessenger(deps: MessengerDeps) {
         await farewellHeard(id)
   }
 
-  /** Waits at this Pigeon's own Lighthouses after each look, so mail comes in seconds. */
   const mailWaits = createMailWaits({
     clock,
     random: deps.random,
     client: lighthouseClient,
     on: () => settings().hearAtOnce !== false && !settings().relayOnly,
     visible: deps.visible ?? (() => true),
+    listed: (address) => lighthouses().some((other) => other.url === address.url),
     cue: () => mailSchedule.lookSoon(0),
     nextLook: () => mailSchedule.nextLookIn(),
     closed: () => closed,
@@ -2375,7 +2376,6 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed || settings().relayOnly === relayOnly) return
     setSettings({ ...settings(), relayOnly })
     await store.set(KEYS.settings, settings())
-    // Nothing waits at a Lighthouse while relay-only is on: it would go on learning you're here.
     if (relayOnly) mailWaits.stop()
     // A connection open to a Lighthouse relay-only now refuses closes, so it isn't kept up.
     for (const [key, address] of clientAddresses)

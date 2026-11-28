@@ -127,6 +127,8 @@ export interface TestLighthouse {
   lastSeq(): number
   /** The lease of every wait sent to it, in seconds, in the order they came. */
   leases(): readonly number[]
+  /** Waits standing at it now: sent, unanswered, on a connection still open. */
+  standing(): number
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
@@ -162,9 +164,12 @@ export function testLighthouse(
     defer: (run) => queueMicrotask(run),
   })
   let n = 0
+  let sockets = 0
   let isDown = false
   const leases: number[] = []
   const open = new Set<() => void>()
+  /** Each standing wait, as its connection and request number. */
+  const waiting = new Set<string>()
   return {
     down(value) {
       isDown = value
@@ -176,6 +181,7 @@ export function testLighthouse(
     connect: (address) => lighthouse.connect(address),
     lastSeq: () => stored,
     leases: () => leases,
+    standing: () => waiting.size,
     address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
@@ -188,7 +194,13 @@ export function testLighthouse(
             void Promise.resolve().then(() => events.onClose())
             return { send: () => undefined, close: () => undefined }
           }
+          const socket = ++sockets
+          const answered = (frame: string) => {
+            const req = (JSON.parse(frame) as { req?: unknown }).req
+            waiting.delete(`${socket} ${req}`)
+          }
           const close = () => {
+            for (const key of [...waiting]) if (key.startsWith(`${socket} `)) waiting.delete(key)
             if (open.delete(close)) events.onClose()
           }
           const connection = lighthouse.connect(
@@ -196,7 +208,10 @@ export function testLighthouse(
             undefined,
             options.waits === true
               ? {
-                  push: (frame) => events.onMessage(frame),
+                  push: (frame) => {
+                    answered(frame)
+                    events.onMessage(frame)
+                  },
                   close: () => close(),
                   heard: () => clock.now(),
                 }
@@ -206,17 +221,21 @@ export function testLighthouse(
           void Promise.resolve().then(events.onOpen)
           return {
             send: (text) => {
-              const sent = JSON.parse(text) as { request?: { type?: string; seconds?: number } }
-              if (sent.request?.type === 'wait') leases.push(sent.request.seconds ?? 0)
-              void connection
-                .receive(text)
-                .then((reply) =>
-                  reply === undefined
-                    ? close()
-                    : reply === null
-                      ? undefined
-                      : events.onMessage(reply),
-                )
+              const sent = JSON.parse(text) as {
+                req?: number
+                request?: { type?: string; seconds?: number }
+              }
+              if (sent.request?.type === 'wait') {
+                leases.push(sent.request.seconds ?? 0)
+                waiting.add(`${socket} ${sent.req}`)
+              }
+              void connection.receive(text).then((reply) => {
+                if (reply === undefined) close()
+                else if (reply !== null) {
+                  answered(reply)
+                  events.onMessage(reply)
+                }
+              })
             },
             close,
           }

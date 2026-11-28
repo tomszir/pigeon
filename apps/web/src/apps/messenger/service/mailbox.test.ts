@@ -193,10 +193,15 @@ describe('the mailbox', () => {
     await mika.mailbox.fetch([address], [fromRook], take)
     expect(take).toHaveBeenCalledOnce()
 
-    // Rook fetches the receipt, and stops waiting.
+    // Rook fetches the receipt, and stops waiting: news, though nothing was taken.
     const fromMika: Source = { sender: toMika.identity, secret, kinds: ['receipt'] }
-    await rook.mailbox.fetch([address], [fromMika], async () => true)
+    const answered = vi.fn()
+    await rook.mailbox.fetch([address], [fromMika], async () => true, undefined, answered)
     expect(await rook.mailbox.waitingOn()).toEqual([])
+    expect(answered).toHaveBeenCalledOnce()
+    // Fetched again: no receipt is news twice.
+    await rook.mailbox.fetch([address], [fromMika], async () => true, undefined, answered)
+    expect(answered).toHaveBeenCalledOnce()
   })
 
   it('keeps a letter sent during a fetch before it’s put, and puts it at the next start', async () => {

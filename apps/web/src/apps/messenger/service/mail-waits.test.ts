@@ -14,7 +14,14 @@ const flush = async () => {
 type Answer = Awaited<ReturnType<LighthouseClient['request']>>
 
 /** A clock that moves only when told, a client that holds each wait until it's answered. */
-function harness(options: { on?: () => boolean; visible?: () => boolean } = {}) {
+function harness(
+  options: {
+    on?: () => boolean
+    visible?: () => boolean
+    listed?: () => boolean
+    nextLook?: () => number
+  } = {},
+) {
   let now = NOON
   const sleeping: { at: number; wake: () => void }[] = []
   const waits: { request: LighthouseRequest; answer: (answer: Answer) => void }[] = []
@@ -37,15 +44,21 @@ function harness(options: { on?: () => boolean; visible?: () => boolean } = {}) 
     client: () => client,
     on: options.on ?? (() => true),
     visible: options.visible ?? (() => true),
+    listed: options.listed ?? (() => true),
     cue: () => {
       cues += 1
     },
-    nextLook: () => 7 * 60 * 1000,
+    nextLook: options.nextLook ?? (() => 7 * 60 * 1000),
     closed: () => false,
   })
   return {
     waits,
     waitsFor,
+    /** A look that takes something that counts, or nothing. */
+    looks: (took: boolean) =>
+      waitsFor.look(async (count) => {
+        if (took) await count.take(async () => true)()
+      }),
     cues: () => cues,
     closed: () => closed,
     async pass(ms: number) {
@@ -110,7 +123,7 @@ describe('waiting at a Lighthouse', () => {
     expect([...off.waits, ...unfinished.waits]).toEqual([])
   })
 
-  it('asks for a look a moment after mail, and does nothing at the end of its lease', async () => {
+  it('asks for a look a moment after mail, and never at the end of its lease', async () => {
     const h = harness()
     h.waitsFor.looked(lighthouse, looked())
     await flush()
@@ -119,7 +132,7 @@ describe('waiting at a Lighthouse', () => {
     expect(h.cues()).toBe(0)
     h.waitsFor.looked(lighthouse, looked())
     await flush()
-    h.waits[1]?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+    h.waits.at(-1)?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
     await flush()
     // A random moment first, at most two seconds.
     expect(h.cues()).toBe(0)
@@ -139,10 +152,7 @@ describe('waiting at a Lighthouse', () => {
       await h.pass(after - 1)
       const early = h.cues() > before
       await h.pass(1)
-      if (h.cues() > before) {
-        if (took) await h.waitsFor.counting(async () => true)()
-        h.waitsFor.lookDone()
-      }
+      if (h.cues() > before) await h.looks(took)
       return { early, cued: h.cues() > before }
     }
     expect(await junk(0, false, 2000)).toEqual({ early: false, cued: true })
@@ -160,7 +170,7 @@ describe('waiting at a Lighthouse', () => {
     for (let second = 0; second < 30 * 60; second++) {
       if (h.cues() > looks) {
         looks = h.cues()
-        h.waitsFor.lookDone()
+        await h.looks(false)
       }
       const standing = h.waits.length
       if (second === 0 || looks > 0) h.waitsFor.looked(lighthouse, looked())
@@ -172,6 +182,44 @@ describe('waiting at a Lighthouse', () => {
     // At once, then after one, two, four, eight and ten minutes: the schedule's own pace.
     expect(h.cues()).toBeGreaterThanOrEqual(5)
     expect(h.cues()).toBeLessThanOrEqual(7)
+  })
+
+  it('waits again to the next look when a lease ends well before it', async () => {
+    // An invite's 30-second tick sets the first lease; the invite is answered, and the next look
+    // is the schedule's, minutes away.
+    let next = 30_000
+    const h = harness({ nextLook: () => next })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    expect(h.waits[0]?.request).toMatchObject({ seconds: 30 })
+    next = 9 * 60 * 1000
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+    await flush()
+    expect(h.waits[1]?.request).toMatchObject({ type: 'wait', cursor: 41, seconds: 540 })
+  })
+
+  it('waits again to the next look after a lease cut to a moment as a timer’s look began', async () => {
+    // A cue's look reads the Lighthouse just as the timer's look comes due and joins it: the lease
+    // is a second. Once that look is under way the next is the schedule's, ten minutes on.
+    let next = 0
+    const h = harness({ nextLook: () => next })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    expect(h.waits[0]?.request).toMatchObject({ seconds: 1 })
+    next = 10 * 60 * 1000
+    await h.pass(1000)
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+    await flush()
+    expect(h.waits[1]?.request).toMatchObject({ type: 'wait', seconds: 600 })
+  })
+
+  it('doesn’t wait again when the next look is about to come', async () => {
+    const h = harness({ nextLook: () => 2000 })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+    await flush()
+    expect(h.waits).toHaveLength(1)
   })
 
   it('asks a Lighthouse from before waits nothing more for a while', async () => {
@@ -216,6 +264,56 @@ describe('waiting at a Lighthouse', () => {
     room.waitsFor.looked(lighthouse, looked())
     await flush()
     expect(room.waits).toHaveLength(2)
+  })
+
+  it('waits at no Lighthouse a look read after it was taken off your list', async () => {
+    let listed = true
+    const h = harness({ listed: () => listed })
+    // The look began with it on the list; it was removed before the look said what it read.
+    listed = false
+    h.waitsFor.retain([])
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    expect(h.waits).toEqual([])
+  })
+
+  it('counts a receipt for waiting mail as something taken, so a reply after it isn’t held back', async () => {
+    const h = harness()
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+    await flush()
+    await h.pass(2000)
+    // The cue's look brings only the receipt for a letter of yours.
+    await h.waitsFor.look(async (count) => count.answered())
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waits.at(-1)?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+    await flush()
+    await h.pass(2000)
+    expect(h.cues()).toBe(2)
+  })
+
+  it('counts a look that failed as one that took nothing', async () => {
+    const h = harness()
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+    await flush()
+    await h.pass(2000)
+    expect(h.cues()).toBe(1)
+    await h.waitsFor
+      .look(async () => {
+        throw new Error('the store failed')
+      })
+      .catch(() => undefined)
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    h.waits[1]?.answer({ ok: true, value: { type: 'waited', why: 'mail' } })
+    await flush()
+    await h.pass(2000)
+    // Held back like any cue after a look that took nothing.
+    expect(h.cues()).toBe(1)
   })
 
   it('ends the wait at a Lighthouse taken off your list, and never opens it again', async () => {

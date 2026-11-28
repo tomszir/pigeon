@@ -3,12 +3,12 @@ test: apps/web src/apps/messenger/service/hear-at-once.test.ts
 expect: leaves every wait standing until the next scheduled look
 
 diff --git i/apps/web/src/apps/messenger/service/service.ts w/apps/web/src/apps/messenger/service/service.ts
-index 199fd99..4cf80ba 100644
+index cda8cd5..56491b5 100644
 --- i/apps/web/src/apps/messenger/service/service.ts
 +++ w/apps/web/src/apps/messenger/service/service.ts
-@@ -697,7 +697,7 @@ export async function createMessenger(deps: MessengerDeps) {
-     on: () => settings().hearAtOnce !== false && !settings().relayOnly,
+@@ -699,7 +699,7 @@ export async function createMessenger(deps: MessengerDeps) {
      visible: deps.visible ?? (() => true),
+     listed: (address) => lighthouses().some((other) => other.url === address.url),
      cue: () => mailSchedule.lookSoon(0),
 -    nextLook: () => mailSchedule.nextLookIn(),
 +    nextLook: () => (mailSchedule.lookedAt() ?? clock.now()) + 10 * 60 * 1000 - clock.now(),
