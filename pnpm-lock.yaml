@@ -195,25 +195,6 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))
 
-  apps/lighthouse-worker:
-    dependencies:
-      '@pigeon/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@pigeon/lighthouse':
-        specifier: workspace:*
-        version: link:../../packages/lighthouse
-    devDependencies:
-      '@types/node':
-        specifier: 24.19.2
-        version: 24.19.2
-      vitest:
-        specifier: 5.0.5
-        version: 5.0.5(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))
-      wrangler:
-        specifier: 4.151.3
-        version: 4.151.3(@types/node@24.19.2)
-
   apps/web:
     dependencies:
       '@hpke/core':
