@@ -45,6 +45,9 @@ export interface NetworkProps {
   official: readonly LighthouseAddress[]
   relayOnly: boolean | undefined
   onRelayOnly: (on: boolean) => void
+  /** Hear about mail at once; undefined until the Messenger has started. */
+  hearAtOnce?: boolean | undefined
+  onHearAtOnce?: (on: boolean) => void
   onClose: () => void
 }
 
@@ -156,6 +159,21 @@ function RelaySetting(props: NetworkProps & { short?: boolean }) {
               : "Friends never see your IP address. Mail goes only to your own and the official Lighthouses, so a friend who uses only theirs gets your messages when you're both online. Connecting is slower, and needs the relay to be reachable."
         }
       />
+      <Show when={props.onHearAtOnce}>
+        {(onChange) => (
+          <Check
+            label="&Hear about mail at once"
+            checked={props.hearAtOnce === true}
+            disabled={props.hearAtOnce === undefined || props.relayOnly === true}
+            onChange={onChange()}
+            description={
+              props.relayOnly === true
+                ? 'Off while you go through the relay: your Lighthouses would learn when you’re here.'
+                : 'While Pigeon is open, your Lighthouses tell it the moment mail comes, so it arrives in seconds. They learn you’re here, to the second.'
+            }
+          />
+        )}
+      </Show>
     </GroupBox>
   )
 }

@@ -71,6 +71,11 @@ export interface FarewellRecord {
 export interface MessengerSettings {
   /** Connect to friends through the TURN relay only, so they never learn your IP address. */
   readonly relayOnly: boolean
+  /**
+   * Hear about mail at once: wait at your own Lighthouses while Pigeon is open, so mail arrives
+   * in seconds. On unless turned off.
+   */
+  readonly hearAtOnce?: boolean | undefined
 }
 
 /** Someone you've blocked: their invite requests and answers are refused. */
@@ -224,7 +229,11 @@ export function isFarewells(value: unknown): value is readonly (PeerId | Farewel
 export const splitFarewells = (value: unknown) => splitRecords(value, isFarewell)
 
 export function isMessengerSettings(value: unknown): value is MessengerSettings {
-  return isObject(value) && typeof value['relayOnly'] === 'boolean'
+  return (
+    isObject(value) &&
+    typeof value['relayOnly'] === 'boolean' &&
+    (value['hearAtOnce'] === undefined || typeof value['hearAtOnce'] === 'boolean')
+  )
 }
 
 export function isBlockedRecord(record: unknown): record is BlockedRecord {
@@ -353,7 +362,10 @@ export function importedProfile(value: unknown): Profile | undefined {
 }
 
 export function importedSettings(value: unknown): MessengerSettings | undefined {
-  return isMessengerSettings(value) ? { relayOnly: value.relayOnly } : undefined
+  if (!isMessengerSettings(value)) return undefined
+  return value.hearAtOnce === undefined
+    ? { relayOnly: value.relayOnly }
+    : { relayOnly: value.relayOnly, hearAtOnce: value.hearAtOnce }
 }
 
 /** A plain copy of a round: what's read from the Solid store is a proxy, which storage can't clone. */

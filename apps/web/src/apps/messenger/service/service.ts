@@ -98,6 +98,7 @@ import {
 } from './invite-links.ts'
 import { createLetters, type Letters } from './letters.ts'
 import { createMailSchedule, MAIL_AFTER_SEND_MS } from './mail-schedule.ts'
+import { createMailWaits } from './mail-waits.ts'
 import {
   createMailbox,
   type Mailbox,
@@ -169,6 +170,8 @@ export interface MessengerDeps {
    * only the timers and sending look.
    */
   readonly wake?: Wake | undefined
+  /** Whether Pigeon is on screen: a wait for mail whose connection drops is opened again only then. */
+  readonly visible?: (() => boolean) | undefined
   readonly random: (length: number) => Uint8Array
   /** The key exchange live codes run: SPAKE2, in the browser. */
   readonly pake: Pake
@@ -411,6 +414,7 @@ export async function createMessenger(deps: MessengerDeps) {
               ? []
               : ((await recipient(id, friendMailSecret(id)))?.lighthouses ?? []),
           listOf: (letter) => listNow(letter),
+          onRead: (lighthouse, looked) => mailWaits.looked(lighthouse, looked),
           onReceipt: (sender, id) => void letters?.receipted(sender, id).catch(() => undefined),
           onStored: (to, id, where) => void letters?.stored(to, id, where).catch(() => undefined),
         })
@@ -606,6 +610,7 @@ export async function createMessenger(deps: MessengerDeps) {
     )
     lighthousesChangedAt = changedAt
     setLighthousesSignal(unique)
+    mailWaits.retain(unique)
     await store.set(KEYS.lighthouses, unique)
     await store.set(KEYS.lighthousesChangedAt, changedAt)
     for (const session of sessions.values()) session.announce()
@@ -671,7 +676,8 @@ export async function createMessenger(deps: MessengerDeps) {
     // Invite cards that didn't reach a Lighthouse last time are put there again, as mail is.
     await inviteLinks?.catchUp().catch(() => undefined)
     const all = [...sources, ...(inviteLinks?.sources() ?? [])]
-    const heard = await mailbox.fetch(lighthouses(), all, takeLetter, lookAt)
+    const heard = await mailbox.fetch(lighthouses(), all, mailWaits.counting(takeLetter), lookAt)
+    mailWaits.lookDone()
     // Old secrets with no replacement under way yet, now that any proposal waiting for this
     // device has been taken.
     await replaceOldSecrets()
@@ -683,6 +689,18 @@ export async function createMessenger(deps: MessengerDeps) {
       if (farewells().some((record) => record.id === id && record.mailed === true))
         await farewellHeard(id)
   }
+
+  /** Waits at this Pigeon's own Lighthouses after each look, so mail comes in seconds. */
+  const mailWaits = createMailWaits({
+    clock,
+    random: deps.random,
+    client: lighthouseClient,
+    on: () => settings().hearAtOnce !== false && !settings().relayOnly,
+    visible: deps.visible ?? (() => true),
+    cue: () => mailSchedule.lookSoon(0),
+    nextLook: () => mailSchedule.nextLookIn(),
+    closed: () => closed,
+  })
 
   const mailSchedule = createMailSchedule({
     clock,
@@ -2357,6 +2375,8 @@ export async function createMessenger(deps: MessengerDeps) {
     if (closed || settings().relayOnly === relayOnly) return
     setSettings({ ...settings(), relayOnly })
     await store.set(KEYS.settings, settings())
+    // Nothing waits at a Lighthouse while relay-only is on: it would go on learning you're here.
+    if (relayOnly) mailWaits.stop()
     // A connection open to a Lighthouse relay-only now refuses closes, so it isn't kept up.
     for (const [key, address] of clientAddresses)
       if (!mayReach(address)) lighthouseClients.get(key)?.close()
@@ -2375,9 +2395,17 @@ export async function createMessenger(deps: MessengerDeps) {
     if (showingLink && !closed && linkCancels === cancels) await startLink()
   }
 
+  async function setHearAtOnce(on: boolean): Promise<void> {
+    if (closed || (settings().hearAtOnce !== false) === on) return
+    setSettings({ ...settings(), hearAtOnce: on })
+    await store.set(KEYS.settings, settings())
+    if (!on) mailWaits.stop()
+  }
+
   /** Stops everything: no rooms, no sessions, no link or invite hosting. */
   async function close() {
     closed = true
+    mailWaits.stop()
     stopWaking?.()
     // A relay-only change halfway through would host rooms again after they're stopped.
     await relayChange
@@ -2720,6 +2748,7 @@ export async function createMessenger(deps: MessengerDeps) {
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
     setRelayOnly,
+    setHearAtOnce,
     /**
      * Work in flight that a reload would cut short or repeat: a chat saved to storage a moment
      * ago and not yet written, and a letter being sealed and put. What else is going on survives

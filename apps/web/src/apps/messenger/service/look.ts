@@ -6,6 +6,17 @@
 // was still reading.
 import { MAX_LIST_TAGS } from '@pigeon/core'
 
+/** What one look read at one Lighthouse, and the tags it listed there. */
+export interface Looked {
+  readonly at: number
+  /** Every list was read to its end: a wait may follow. */
+  readonly complete: boolean
+  /** The cursor that look saved, or the one it started from. */
+  readonly cursor: number
+  /** Each tag listed, its day, and whether it's yours or an invite's, which a wait keeps first. */
+  readonly tags: readonly { readonly tag: string; readonly date: string; readonly first: boolean }[]
+}
+
 export interface ListedPage {
   readonly items: readonly { readonly id: string; readonly tag: string; readonly size: number }[]
   readonly cursor: number

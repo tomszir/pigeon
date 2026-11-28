@@ -1,0 +1,17 @@
+defect: a Pigeon waits after a look that didn't read its Lighthouse to the end, so mail past its cursor answers it at once and cues another look
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: doesn’t follow a look that didn’t finish
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index fa852ee..8b8892c 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -150,7 +150,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+       state.heldOff = false
+       // Only after a look that read every list: otherwise mail past its cursor would answer it
+       // at once, and the cue would bring another look that doesn't finish either.
+-      if (!looked.complete || state.unsupportedUntil > clock.now()) return
++      if (state.unsupportedUntil > clock.now()) return
+       const tags = waitTags(looked.at, looked.tags)
+       if (tags.length === 0) return
+       state.tags = tags

@@ -32,7 +32,7 @@ import {
   utcDate,
 } from '@pigeon/core'
 import type { Store } from '../../../platform/storage/storage.ts'
-import { readLighthouse } from './look.ts'
+import { type Looked, readLighthouse } from './look.ts'
 import { createOutbox, letterKey, type Outgoing, type Recipient, type TagScheme } from './outbox.ts'
 
 export type { Recipient, TagScheme } from './outbox.ts'
@@ -107,6 +107,8 @@ export interface MailboxDeps {
    * letter put after it was sealed; undefined for one whose list this Pigeon doesn't keep, which
    * goes to the devices it was sealed to.
    */
+  /** What a look read at one of this device's Lighthouses, for a wait to follow it there. */
+  readonly onRead?: ((lighthouse: LighthouseAddress, looked: Looked) => void) | undefined
   readonly listOf?:
     | ((letter: {
         readonly kind: MailKind
@@ -581,6 +583,16 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
           if (deps.stopped()) return completed
           // One that didn't finish saves nothing, keeping its days: the next reads them again.
           if (read.complete) reached[lighthouse.id] = { cursor: read.cursor, at }
+          deps.onRead?.(lighthouse, {
+            at,
+            complete: read.complete,
+            cursor: read.complete ? read.cursor : last.cursor,
+            tags: [...tags].map(([tag, where]) => ({
+              tag,
+              date: where.date,
+              first: where.source.sender === deps.self || where.source.sender === undefined,
+            })),
+          })
         }
         if (deps.stopped()) return completed
         await look?.(opened.map(({ source, letter }) => ({ source, letter })))

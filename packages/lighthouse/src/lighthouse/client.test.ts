@@ -6,6 +6,7 @@ import {
   fakeCrypto,
   fakeSigner,
   flush,
+  KEEPALIVE_MS,
   type LighthouseAddress,
   MAX_WAITING,
   type OpenSocket,
@@ -204,5 +205,113 @@ describe('the Lighthouse client', () => {
     expect(await c.request({ type: 'get', id: key(1) })).toEqual({ ok: false, error: 'busy' })
     c.close()
     expect((await Promise.all(waiting)).every((answer) => !answer.ok)).toBe(true)
+  })
+})
+
+describe('a wait through the client', () => {
+  /** A Lighthouse whose connections can push a wait's answer, and a socket that keeps what's sent. */
+  function waiting() {
+    const lighthouse = createLighthouse({
+      signer,
+      crypto: fakeCrypto,
+      store: createMemoryStore(),
+      now: () => 1_000,
+      name: 'Test',
+      software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+      defer: (run) => run(),
+    })
+    const sent: string[] = []
+    let closeWith: ((code?: number) => void) | undefined
+    const open: OpenSocket = (_url, events) => {
+      closeWith = events.onClose
+      const connection = lighthouse.connect('203.0.113.7', undefined, {
+        push: (frame) => events.onMessage(frame),
+        close: (code) => events.onClose(code),
+        heard: () => 1_000,
+      })
+      void Promise.resolve().then(events.onOpen)
+      return {
+        send(text) {
+          sent.push(text)
+          if (text === 'ping') return
+          void connection.receive(text).then((reply) => {
+            if (typeof reply === 'string') events.onMessage(reply)
+          })
+        },
+        close: () => events.onClose(),
+      }
+    }
+    const timers: { ms: number; wake: () => void }[] = []
+    let n = 0
+    const client = createLighthouseClient({
+      address,
+      crypto: fakeCrypto,
+      open,
+      random: (length) => new Uint8Array(length).fill(++n),
+      sleep: (ms) => new Promise<void>((wake) => timers.push({ ms, wake })),
+    })
+    const putter = lighthouse.connect('198.51.100.9')
+    return {
+      client,
+      sent,
+      lighthouse,
+      putter,
+      closeWith: (code?: number) => closeWith?.(code),
+      /** Wakes every sleep of `ms` or less. */
+      passTime: async (ms = Number.POSITIVE_INFINITY) => {
+        for (const timer of timers.filter((one) => one.ms <= ms)) {
+          timers.splice(timers.indexOf(timer), 1)
+          timer.wake()
+        }
+        await flush()
+      },
+    }
+  }
+
+  it('is answered when mail comes, however long that takes, with keepalives meanwhile', async () => {
+    const { client, sent, putter, passTime } = waiting()
+    const tag = key(9)
+    const answer = client.request({ type: 'wait', tags: [tag], cursor: 0, seconds: 600 })
+    await flush()
+    // Long past the time any other request is given: still waiting, and keeping alive.
+    await passTime(KEEPALIVE_MS)
+    await passTime(KEEPALIVE_MS)
+    expect(sent.filter((text) => text === 'ping').length).toBeGreaterThan(0)
+    await putter.receive(
+      JSON.stringify({ req: 1, request: { type: 'hello', protocol: 1, nonce: key(3) } }),
+    )
+    await putter.receive(
+      JSON.stringify({
+        req: 2,
+        request: { type: 'put', tag, blob: 'AQID', expires: 1_000 + 60_000, drops: [key(4)] },
+      }),
+    )
+    await flush()
+    expect(await answer).toEqual({ ok: true, value: { type: 'waited', why: 'mail' } })
+  })
+
+  it('never lets waits fill the connection: each ends the one before, and gives up past its lease', async () => {
+    const { client, passTime } = waiting()
+    const answers: Promise<unknown>[] = []
+    for (let n = 0; n < 40; n++) {
+      answers.push(client.request({ type: 'wait', tags: [key(9)], cursor: 0, seconds: 600 }))
+      await flush()
+    }
+    // Every earlier one ended as it was replaced; lists still go through.
+    expect(await Promise.all(answers.slice(0, -1))).toEqual(
+      Array.from({ length: 39 }, () => ({ ok: true, value: { type: 'waited', why: 'lease' } })),
+    )
+    expect((await client.request({ type: 'list', tags: [key(9)], cursor: 0 })).ok).toBe(true)
+    // The last, unanswered past its lease and grace, gives up.
+    await passTime()
+    expect(await answers.at(-1)).toEqual({ ok: false, error: 'timeout' })
+  })
+
+  it('hears that the Lighthouse closed it for room', async () => {
+    const { client, closeWith } = waiting()
+    const answer = client.request({ type: 'wait', tags: [key(9)], cursor: 0, seconds: 600 })
+    await flush()
+    closeWith(1013)
+    expect(await answer).toEqual({ ok: false, error: 'room' })
   })
 })

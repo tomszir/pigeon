@@ -9,6 +9,7 @@ import { err, ok, type Result } from '../result/result.ts'
 import type { LighthouseAddress } from './address.ts'
 import {
   encodeRequest,
+  KEEPALIVE,
   LIGHTHOUSE_PROTOCOL,
   type LighthouseReply,
   type LighthouseRequest,
@@ -25,9 +26,22 @@ export interface LighthouseSocket {
 export interface SocketEvents {
   readonly onOpen: () => void
   readonly onMessage: (text: string) => void
-  /** Closed, or failed to open: either way, it's gone. */
-  readonly onClose: () => void
+  /** Closed, or failed to open: either way, it's gone. The close code, when there was one. */
+  readonly onClose: (code?: number) => void
 }
+
+/** The close code a Lighthouse closes a waiting connection with to make room for a newcomer. */
+export const ROOM_CLOSE = 1013
+
+/** How often a connection with a wait standing sends a keepalive: well inside two minutes. */
+export const KEEPALIVE_MS = 50_000
+
+/**
+ * How long past its lease a wait is given before it's taken as answered: a Lighthouse may answer
+ * a lease late (the Worker, when something next wakes it), and an answer lost on the way must
+ * never hold one of a connection's request slots for good.
+ */
+export const WAIT_GRACE_MS = 30_000
 
 export type OpenSocket = (url: string, events: SocketEvents) => LighthouseSocket
 
@@ -44,6 +58,8 @@ export type ClientError =
   | 'bad-reply'
   /** As many requests as a Lighthouse takes from one connection are already waiting. */
   | 'busy'
+  /** The Lighthouse closed the connection to make room for another: wait for the next look. */
+  | 'room'
 
 export interface ClientOptions {
   readonly address: LighthouseAddress
@@ -69,8 +85,15 @@ interface Connection {
   /** Requests sent and waiting, by number, with the frame each was sent as. */
   readonly waiting: Map<
     number,
-    { readonly sent: string; readonly settle: (answer: Answer) => void }
+    {
+      readonly sent: string
+      readonly settle: (answer: Answer) => void
+      /** A `wait`, which has no time limit, and keeps the connection alive while it stands. */
+      readonly held: boolean
+    }
   >
+  /** A keepalive loop is running. */
+  keeping: boolean
   next: number
   closed: boolean
   /** Requests in a row that got no answer. */
@@ -91,12 +114,15 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
   const timeoutMs = options.timeoutMs ?? 15_000
   let current: Connection | undefined
 
-  /** Closes a connection for good: what waits on it is unreachable, the next call opens anew. */
-  function drop(connection: Connection) {
+  /**
+   * Closes a connection for good: what waits on it is unreachable (or was closed for room), the
+   * next call opens anew.
+   */
+  function drop(connection: Connection, why: ClientError = 'unreachable') {
     if (connection.closed) return
     connection.closed = true
     if (current === connection) current = undefined
-    for (const { settle } of [...connection.waiting.values()]) settle(err('unreachable'))
+    for (const { settle } of [...connection.waiting.values()]) settle(err(why))
     connection.waiting.clear()
     connection.opened()
     try {
@@ -128,6 +154,7 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
       waiting: new Map(),
       next: 1,
       closed: false,
+      keeping: false,
       timeouts: 0,
       opened: () => opened(),
       ready: Promise.resolve(err('unreachable')),
@@ -158,7 +185,7 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
           opened()
         },
         onMessage: (text) => void receive(connection, text),
-        onClose: () => drop(connection),
+        onClose: (code) => drop(connection, code === ROOM_CLOSE ? 'room' : 'unreachable'),
       })
     } catch {
       drop(connection)
@@ -207,16 +234,44 @@ export function createLighthouseClient(options: ClientOptions): LighthouseClient
     })
   }
 
+  /** Sends `ping` every so often while a wait stands on the connection, so it isn't idle. */
+  async function keepAlive(connection: Connection) {
+    if (connection.keeping) return
+    connection.keeping = true
+    while (!connection.closed && [...connection.waiting.values()].some((entry) => entry.held)) {
+      await options.sleep(KEEPALIVE_MS)
+      if (connection.closed || ![...connection.waiting.values()].some((entry) => entry.held)) break
+      try {
+        connection.socket?.send(KEEPALIVE)
+      } catch {
+        drop(connection)
+      }
+    }
+    connection.keeping = false
+  }
+
   function send(connection: Connection, request: LighthouseRequest): Promise<Answer> {
     if (connection.closed) return Promise.resolve(err('unreachable'))
     if (connection.waiting.size >= MAX_WAITING) return Promise.resolve(err('busy'))
     const req = connection.next
     connection.next += 1
     const sent = encodeRequest({ req, request })
+    // A wait is answered when mail comes or its lease ends, not within the usual time.
+    const held = request.type === 'wait'
+    // A new wait ends the one standing (the Lighthouse answers it `lease`): it's settled so here
+    // too, so a connection never holds more than one, whatever becomes of that answer.
+    if (held)
+      for (const entry of [...connection.waiting.values()])
+        if (entry.held) entry.settle(ok({ type: 'waited', why: 'lease' }))
     return new Promise<Answer>((resolve) => {
       const settle = settler(connection, req, resolve)
-      connection.waiting.set(req, { sent, settle })
-      timer(connection, req, request.type === 'hello', settle)
+      connection.waiting.set(req, { sent, settle, held })
+      if (request.type === 'wait') {
+        void keepAlive(connection)
+        void options.sleep(request.seconds * 1000 + WAIT_GRACE_MS).then(() => {
+          if (connection.waiting.has(req)) settle(err('timeout'))
+        })
+      } else timer(connection, req, request.type === 'hello', settle)
       try {
         connection.socket?.send(sent)
       } catch {

@@ -81,6 +81,7 @@ export async function startMessenger(
     transport: createBrowserTransport(undefined, onNoRelay),
     clock: browserClock,
     wake: createBrowserWake(),
+    visible: () => document.visibilityState === 'visible',
     random: randomBytes,
     pake: createWasmPake(),
     inviteBase: `${location.origin}${location.pathname}`,

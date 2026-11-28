@@ -125,10 +125,19 @@ export interface TestLighthouse {
   connect(address: string): LighthouseConnection
   /** The `seq` of the last blob it stored: a cursor past everything it holds now. */
   lastSeq(): number
+  /** The lease of every wait sent to it, in seconds, in the order they came. */
+  leases(): readonly number[]
 }
 
 /** A real Lighthouse in memory, reached over a socket that carries frames straight to it. */
-export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLighthouse {
+export function testLighthouse(
+  clock: Clock,
+  name = 'test-lighthouse',
+  options: {
+    /** Its connections can hold a wait and answer it later, as a runner's do. */
+    readonly waits?: boolean
+  } = {},
+): TestLighthouse {
   const signer = fakeSigner(name)
   const url = name === 'test-lighthouse' ? 'wss://lighthouse.test/' : `wss://${name}.test/`
   const inner = createMailStore()
@@ -149,9 +158,12 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
     now: clock.now,
     name: 'Test Lighthouse',
     software: { name: 'pigeon-lighthouse', version: '0.0.0' },
+    // A put's wakes as soon as its reply is out, which a test's fake clock never holds back.
+    defer: (run) => queueMicrotask(run),
   })
   let n = 0
   let isDown = false
+  const leases: number[] = []
   const open = new Set<() => void>()
   return {
     down(value) {
@@ -163,6 +175,7 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
     },
     connect: (address) => lighthouse.connect(address),
     lastSeq: () => stored,
+    leases: () => leases,
     address: { id: signer.id, name: 'Test Lighthouse', url },
     client: () =>
       createLighthouseClient({
@@ -172,17 +185,29 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
         sleep: () => new Promise(() => undefined),
         open: (_url, events) => {
           if (isDown) {
-            void Promise.resolve().then(events.onClose)
+            void Promise.resolve().then(() => events.onClose())
             return { send: () => undefined, close: () => undefined }
           }
-          const connection = lighthouse.connect('203.0.113.7')
           const close = () => {
             if (open.delete(close)) events.onClose()
           }
+          const connection = lighthouse.connect(
+            '203.0.113.7',
+            undefined,
+            options.waits === true
+              ? {
+                  push: (frame) => events.onMessage(frame),
+                  close: () => close(),
+                  heard: () => clock.now(),
+                }
+              : undefined,
+          )
           open.add(close)
           void Promise.resolve().then(events.onOpen)
           return {
-            send: (text) =>
+            send: (text) => {
+              const sent = JSON.parse(text) as { request?: { type?: string; seconds?: number } }
+              if (sent.request?.type === 'wait') leases.push(sent.request.seconds ?? 0)
               void connection
                 .receive(text)
                 .then((reply) =>
@@ -191,7 +216,8 @@ export function testLighthouse(clock: Clock, name = 'test-lighthouse'): TestLigh
                     : reply === null
                       ? undefined
                       : events.onMessage(reply),
-                ),
+                )
+            },
             close,
           }
         },

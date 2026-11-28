@@ -101,7 +101,12 @@ export type {
   OpenSocket,
   SocketEvents,
 } from './lighthouse/client.ts'
-export { createLighthouseClient, MAX_WAITING } from './lighthouse/client.ts'
+export {
+  createLighthouseClient,
+  KEEPALIVE_MS,
+  MAX_WAITING,
+  ROOM_CLOSE,
+} from './lighthouse/client.ts'
 export type {
   LighthouseError,
   LighthouseFrame,

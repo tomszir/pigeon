@@ -375,3 +375,16 @@ One connection at a Lighthouse, as the Lighthouse keeps it. A connection has one
 - **A put** works out its reply and its store without looking at any wait, sends its reply, then answers `mail` to each standing wait it's news to, never the putter's own. A waiting connection not heard from for the idle time is closed instead.
 - **Node** answers a lease within a second of its end. **The Worker** answers it when something next wakes it, first thing. Waking with its memory lost, it rebuilds its waits from its sockets, then wakes those a put may have left unwoken by a reset, from the seq it wrote down.
 - **No room.** A new connection that finds the total, its range or its /48 full closes idle connections, then the standing wait that began first among those counted against every full limit (1013, `room`).
+
+The Pigeon's side, at each of its own Lighthouses:
+
+```
+  look ──▶ read every list to its end? ──no──▶ (no wait; the schedule looks again)
+             │yes, waiting on, relay-only off
+             ▼
+           wait ──`mail`──▶ a random 0–2 s, then a look through the scheduler
+             │──`lease`──▶ (nothing; the next look waits again)
+             │──closed for room (1013)──▶ held off until the next look
+             │──dropped, on screen──▶ wait again after 5 s, doubling to 5 min
+             └──waiting turned off, or relay-only on──▶ connection closed
+```
