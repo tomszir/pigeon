@@ -4,6 +4,26 @@
      `---'       version, newest first
 ==============================================
 
+0.8.4, 28 November 2026
+----------------------------------------------
+  * Messages are now drawn as chat panels with
+    subtle Mailed and Received ticks, and
+    unread letters arrive in an envelope you
+    click to open.
+  * Incoming chat panels now fit each
+    message's width cleanly.
+  * Pigeon hears about new Lighthouse mail in
+    seconds while it is open.
+  * Friends, blocks, petnames, mutes and
+    settings stay in sync across your linked
+    devices.
+  * Invite answers are bound to the request
+    they answer, and re-asking works cleanly.
+  * Chat and device-log entries are signed
+    with their entry type.
+  * Older pre-0.8.4 links and keys are no
+    longer supported.
+
 0.8.3, 27 November 2026
 ----------------------------------------------
   * Messages written on your phone show on
