@@ -1,172 +1,943 @@
 # Protocol
 
-How peers identify themselves, find each other, and exchange messages, letters and pages. Identity, envelopes, chat logs, pair sessions and pairing are implemented in `@pigeon/core` and run in the browser over Trystero. Sealing mail, the Lighthouse that holds it ([lighthouse.md](lighthouse.md)) and letters are built; files and pages are specified here but not built yet.
+How peers identify themselves, find each other, and exchange messages, letters and pages.
+
+- Identity, envelopes, chat logs, pair sessions and pairing live in `@pigeon/core` and run in the browser over Trystero.
+- Mail sealing, the Lighthouse that holds it ([lighthouse.md](lighthouse.md)) and letters are built.
+- Files and pages are specified here but not built yet.
 
 ## Identity
 
-- A peer is a WebCrypto signing keypair plus an ECDH P-256 keypair for sealing. `PeerId` is the base32 public Ed25519 signing key. A browser without Ed25519 (older than Chrome and Edge 137, Firefox 129, Safari 17) is told it's too old to make an identity, and nothing is stored.
-- The keypair is made on the first visit and kept in IndexedDB; the private key is non-extractable, so not even the page can read it. Clearing site data is a new identity.
-- A `PeerId` is 52 base32 characters: a raw Ed25519 key (32 bytes). Core never holds keys: it signs through a `Signer` and verifies and hashes through `Crypto`, which the platform implements.
-- Signatures, in envelopes, chat and device logs, mail and Lighthouse replies, are lowercase base32. One written in capitals is refused even though its bytes verify, as is one whose last character carries bits past the end, so each signature has one spelling. Device logs and chat entries compare, chain and order signatures by the bytes they decode to, never by their text; a tie between two recovers is settled in the order of those bytes' base32 spelling, the order Pigeons have always used. An Ed25519 signature has one spelling when its S is below the group order, as RFC 8032 requires, and every `Crypto` checks that before verifying.
-- Every signature says what it's for: its signed bytes carry a `v` naming its kind and version (`pigeon/letter/v1`, `pigeon/sealing-key/v1`, ...), or in a device log's recovery key and recovers a `type`, so nothing signed for one purpose verifies as another. Device-log and chat entries are signed with `v: "pigeon/device-entry/v1"` (and `epoch` even in epoch 0) or `v: "pigeon/chat-entry/v1"` (below). Only that typed form is taken: the verifier builds the bytes itself from the entry's fields.
-- A device-log entry's signed bytes are fixed by every released Pigeon, which builds them from exactly `identity`, `epoch`, `seq`, `prev`, `kind`, `device`, `name` and `at` (and `v`). A new signed field fails on every released Pigeon, friends' included, and a field left unsigned can be stripped by whoever relays the log. So entries can't gain a field in one release: a new form (a new `v`) has to be taken by a released Pigeon before any Pigeon signs it, as the typed form was taken from 0.8.2 and signed from 0.8.4. Chat entries are the same, over `log`, `author`, `seq`, `lamport`, `at` and `text`.
-- Handles are self-chosen, not unique, at most 32 characters. A name you choose may not hold control characters (line breaks among them), line or paragraph separators, or the marks that reorder text (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069). A name that arrives with them, in `hello`, a profile, pairing, a device link, your devices' mail or an invite, has them taken out once its signature is checked; a name with nothing else left shows as "Friend", as does a friend's saved one; an invite or a profile change naming nobody is refused, and a saved name of yours with nothing left is asked for again. An older Pigeon may have let such a name through, so taking them out rather than refusing keeps that person reachable, and a stored name of yours, a friend's or a petname is shown with them taken out too. Petnames are what you call a contact. Pairing shows a 16-hex-character fingerprint (the first 8 bytes of the id's SHA-256, spelled in fours) to compare.
-- Everyone's picture is a pixel pigeon drawn from their id ([design.md](design.md#avatars)). `hello` says which version of the drawing to use, so a newer version never changes the bird of someone who already has one.
-- Each device gets a sealing (ECDH P-256) keypair, announced in `hello` and bound to the device by its own signature, so mail, invites and letters can be sealed to devices, with HPKE (RFC 9180) to a device that says it opens it. `@pigeon/core` seals and opens mail, and `hello` carries the key as `sealing`, signed by the device, which a friend takes only from that same device.
+- A peer is a WebCrypto signing keypair plus an ECDH P-256 keypair for sealing. `PeerId` is the base32 public Ed25519 signing key.
+- A browser without Ed25519 (older than Chrome and Edge 137, Firefox 129, Safari 17) is told it's too old to make an identity. Nothing is stored.
+- The keypair is made on the first visit and kept in IndexedDB. The private key is non-extractable, so not even the page can read it. Clearing site data is a new identity.
+- A `PeerId` is 52 base32 characters: a raw Ed25519 key (32 bytes).
+- Core never holds keys. It signs through a `Signer` and verifies and hashes through `Crypto`, which the platform implements.
+
+### Signatures
+
+- Signatures (envelopes, chat and device logs, mail, Lighthouse replies) are lowercase base32 with one spelling:
+  - Capitals are refused even when the bytes verify.
+  - A last character carrying bits past the end is refused.
+  - An Ed25519 signature's S must be below the group order (RFC 8032). Every `Crypto` checks this before verifying.
+- Device logs and chat entries compare, chain and order signatures by their decoded bytes, never by text. A tie between two recovers is settled in the order of those bytes' base32 spelling.
+- Every signature says what it's for. Its signed bytes carry a `v` naming its kind and version (`pigeon/letter/v1`, `pigeon/sealing-key/v1`, ...), or a `type` for a device log's recovery key and recovers. Nothing signed for one purpose verifies as another.
+- Device-log entries are signed with `v: "pigeon/device-entry/v1"` (with `epoch`, even in epoch 0). Chat entries use `v: "pigeon/chat-entry/v1"` (see Logs). Only the typed form is taken: the verifier builds the bytes itself from the entry's fields.
+- Signed fields are frozen per `v`:
+  - Device-log entry: exactly `identity`, `epoch`, `seq`, `prev`, `kind`, `device`, `name`, `at` (and `v`).
+  - Chat entry: `log`, `author`, `seq`, `lamport`, `at`, `text` (and `v`).
+  - A new signed field fails on every released Pigeon. A field left unsigned can be stripped by any relay.
+  - So a new form needs a new `v`, taken by a released Pigeon before any Pigeon signs it (the typed form was taken from 0.8.2 and signed from 0.8.4).
+
+### Names and pictures
+
+- Handles are self-chosen, not unique, at most 32 characters.
+- A name may not hold control characters (line breaks included), line or paragraph separators, or text-reordering marks (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069).
+- A name arriving with them (`hello`, profile, pairing, device link, your devices' mail, invite) has them stripped once its signature is checked:
+  - Nothing left: shown as "Friend", for a live or a saved friend's name.
+  - An invite or profile change naming nobody is refused.
+  - Your own saved name with nothing left is asked for again.
+  - Stripping instead of refusing keeps people reachable whose older Pigeon let such a name through. Stored names, friends' names and petnames are shown stripped too.
+- Petnames are what you call a contact.
+- Pairing shows a 16-hex-character fingerprint to compare: the first 8 bytes of the id's SHA-256, spelled in fours.
+- Everyone's picture is a pixel pigeon drawn from their id ([design.md](design.md#avatars)). `hello` names the drawing version, so a newer version never changes an existing bird.
+
+### Sealing keys
+
+- Each device has a sealing (ECDH P-256) keypair, so mail, invites and letters can be sealed to devices. HPKE (RFC 9180) is used for a device that says it opens it.
+- `hello` carries the key as `sealing`, signed by the device. A friend takes it only from that same device.
+- `@pigeon/core` seals and opens mail.
 
 ## Devices
 
-One person can use Pigeon on several devices. Each device has its own non-extractable key, and an identity is a device log (`devices/device-log.ts`). The first device's key starts the log and stays the identity's `PeerId`, so friends, fingerprints and avatars never change; it's on the list without an entry.
+One person can use Pigeon on several devices.
 
-One device writes the log at a time: the first device, until a recovery key names another (below). Entries `{ seq, prev, kind, device, name?, at, sig }` are signed by the writer over `{ v: "pigeon/device-entry/v1", identity, epoch, seq, prev, kind, device, name?, at }`, `epoch` even in epoch 0 each naming the signature of the one before: `add` puts a device on, named; `remove` takes one off for good within its epoch (its key can't be added again, and the writer can't be removed); `name` renames one. With one writer each epoch's entries are a single chain, and a copy further along it replaces a shorter one; a copy that disagrees on an entry both have is ignored. Two copies of an entry agree when their signed content and their signatures' bytes are the same. A log holds at most 100 entries across all its epochs. When a merge would hold more, the oldest epochs lose their last entries first, and the current epoch is never cut. No other device can change the list, so a stolen second device can do nothing to it.
+- Each device has its own non-extractable key. An identity is a device log (`devices/device-log.ts`).
+- The first device's key starts the log and stays the identity's `PeerId`, so friends, fingerprints and avatars never change. It's on the list without an entry.
 
-A recovery key outranks every device. It's an Ed25519 key whose public half the first device commits to once, as `recovery: { key, at, sig }`, signed over `{ identity, type: "recovery-key", key, at }`. Where two copies of a log name different keys, the one you had first stays. A recovery is an item of `epochs`: `{ recover, entries }`, where `recover` is `{ epoch, writer, keep: [{ device, name }], next, at, sig }`, signed by the key current before it (`recovery.key` for epoch 1, the previous `next` after) over `{ identity, type: "recover", ... }`. Its `keep` (up to 8 devices, the writer among them) is the list from then on, and every other device is removed as of its `at`. The writer signs that epoch's entries. Each epoch stands on its own: its recover's signature and its own chain decide whether it holds, and the list comes from the latest epoch alone. An older epoch's entries only say who was once yours and until when, so a stolen device that writes more of them after a recovery changes nothing and can't make a log fail. Where two copies disagree on an epoch's recover, the one you hold stays if you hold a later epoch on top of it, so a used and replaced key can't start its epoch again. At your latest epoch the lower signature wins, with everything after it. Copies that agree take the one with more epochs, and within an epoch the longer copy of the same chain wins. Committing a key also signs a `name` entry for the first device, so a Pigeon from before, which takes a log only when it has more entries and then keeps it whole, keeps the commitment too. Epoch 0's entries and their bytes are unchanged, so Pigeons from before read them and ignore `recovery` and `epochs`. A log holds up to 8 epochs.
+### The device log
 
-A recovered device's log is a tail: `from` is its first epoch, `by` the key that signed its recover, and it has nothing before that. Only a Pigeon that already has your earlier epochs takes a tail, by checking it follows on from them, and the tail's own device takes a whole log only if that log's key for its first epoch is `by`. Pairing checks whoever answers against the log you already keep for them, loaded from storage if need be. That turns away a tail from anyone you don't know, an old copy that would undo a recovery you've seen, and a device (a stolen first device, say) that speaks for itself when your copy of its log says a recovery took it off the list. A friend who keeps a log with epochs sends it back to its owner in their pair room, so a recovered device gets its whole log from the first friend it pairs with again. That friend's Pigeon knows them already, so pairing again keeps the chat and petname, takes the new pair secret and moves to its rooms.
+- One device writes the log at a time: the first device, until a recovery key names another.
+- Entries are `{ seq, prev, kind, device, name?, at, sig }`, signed by the writer over `{ v: "pigeon/device-entry/v1", identity, epoch, seq, prev, kind, device, name?, at }`. `prev` names the signature of the entry before.
 
-Envelopes and chat entries are signed by a device. In a pair room a friend takes envelopes from any device active on your log, as theirs is to you, and chat log authors are devices, so sequence numbers never collide; presence shows the newest sent. A removed device's entries from before its removal (by their time, which is the device's own word) still count, so a device linked later catches up with no gaps; nothing later is taken from it. A device that finds itself removed stops talking. Your own other devices in the same pair room catch the chat up with each other (`log-sync`, `log-entries`) but aren't the friend. An identity with a log sends it as `device-log` before `hello`, in every pair room and again whenever it changes; friends keep it under `devices:<id>`. `hello` carries `devices: true`, and a friend whose `hello` lacks it is on a Pigeon from before device logs: it hears only your first device, and a second device's chat says so until they update.
+| Kind     | Effect                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| `add`    | puts a device on, named                                                                            |
+| `remove` | takes one off for good within its epoch: its key can't be added again; the writer can't be removed |
+| `name`   | renames one                                                                                        |
 
-A copied browser profile holds the same device key as the original. Every `hello` carries `instance`, 10 random bytes in base32 made each time the Messenger starts, and a device that hears a hello signed by its own key, bound to the connection it came on, with another `instance` knows it's open in another browser too. Only one tab per browser runs the Messenger, so a second tab is never mistaken for a copy.
+- With one writer each epoch is a single chain:
+  - A copy further along replaces a shorter one.
+  - A copy that disagrees on an entry both have is ignored.
+  - Two copies of an entry agree when their signed content and signature bytes match.
+- At most 100 entries across all epochs. When a merge would hold more, the oldest epochs lose their last entries first. The current epoch is never cut.
+- No other device can change the list, so a stolen second device can do nothing to it.
 
-Linking is in person, from the device that writes your list: the first device, unless a recovery named another. It hosts a live code like an invite's (see Live codes) in `link/v2:<nameplate>` and the link's own room, for 10 minutes, and shows it in letters and as the link `#l/<secret><fingerprint>` in a QR code, with this Pigeon's fingerprint. The new device, which must have no friends or devices of its own (a Pigeon that has them can leave first, telling its friends and forgetting everything), opens it (from the link, it first asks you to choose Link, since anyone can send one) and runs the live-code handshake; the existing device's `link-offer` carries its key confirmation and whose it is (and its device log, if it isn't the first device). From a link, an offer whose fingerprint isn't the link's is refused; from a typed code, the new device shows the identity's fingerprint to compare with the one Link a Device shows, and asks only after Continue. It asks with `link-request`, carrying its device's sealing key, which must be a key mail can be sealed to. Both then show the new device's fingerprint, which the handshake covered, so the device asking is the one in your hand; Not This Device refuses it and leaves the code open for yours. A code with a request showing at its 10 minutes ends when that request is answered or goes. Confirming on that device signs `add` and sends `link-accept` with a bundle sealed to that key (refused beforehand, with nothing signed, when it wouldn't fit one sealed letter, 44 KB; nothing is signed for a device that has already left, and one that leaves after the `add` stays on the list, to be handed everything if it's linked again or removed in My Devices, since a removal is final): the identity, the device log, the self secret, the profile, the friends (with their pair secrets), the blocked list and friends' device logs. Chats aren't in it; they catch up through pair rooms. The new device keeps it all and starts again as that identity. It reads the bundle's friends one by one, holding each to what an import holds it to: a record it can't read (one a newer Pigeon wrote, say) or whose name or petname is over 32 characters is kept aside and counted, as an unreadable saved friend is, and every other friend comes through with only the fields described here. The profile is copied then; afterwards your device log and your name and personal message are kept in step through the self room and the self mailbox, and your Lighthouse list through the self mailbox; the rest of your own data isn't kept in step between devices.
+### Recovery
 
-Your devices meet in `self:<base32 HMAC-SHA256(self secret, "pigeon/self/v1/" + UTC date)>`, locked with HKDF of the self secret (info `pigeon/self/password`) and renamed daily like pair rooms. Device logs travel there, so a removal reaches your other devices with no friend online, and so does `profile`, your name and personal message with when they last changed; a device takes one newer than its own. A device that finds itself removed stops talking and says so.
+- A recovery key outranks every device. It's an Ed25519 key whose public half the first device commits to once as `recovery: { key, at, sig }`, signed over `{ identity, type: "recovery-key", key, at }`.
+- Where two copies name different keys, the one you had first stays.
+- Committing a key also signs a `name` entry for the first device, so an older Pigeon (which takes a log only when it has more entries, then keeps it whole) keeps the commitment too.
+- A recovery is an item of `epochs`: `{ recover, entries }`.
+  - `recover` is `{ epoch, writer, keep: [{ device, name }], next, at, sig }`, signed over `{ identity, type: "recover", ... }` by the key current before it (`recovery.key` for epoch 1, the previous `next` after).
+  - `keep` (up to 8 devices, the writer among them) is the list from then on. Every other device is removed as of its `at`.
+  - The writer signs that epoch's entries.
+- Each epoch stands on its own:
+  - Its recover's signature and its own chain decide whether it holds.
+  - The list comes from the latest epoch alone.
+  - An older epoch's entries only say who was once yours and until when. A stolen device writing more of them after a recovery changes nothing and can't make a log fail.
+- Settling copies:
+  - Disagreeing on an epoch's recover: the one you hold stays if you hold a later epoch on top of it, so a used and replaced key can't restart its epoch.
+  - At your latest epoch the lower signature wins, with everything after it.
+  - Copies that agree take the one with more epochs. Within an epoch the longer copy of the same chain wins.
+- Epoch 0's entries and bytes are unchanged, so older Pigeons read them and ignore `recovery` and `epochs`.
+- A log holds up to 8 epochs.
 
-The self mailbox carries the same to a device that's offline, and your Lighthouse list too: a `mail:self` letter, sealed to each of your other devices still on your list, under the self secret's tags, at every Lighthouse on this device's list and on the list your other devices last said in the self room. Its body is a snapshot, `{ log, keys, profile?, lighthouses?, invites?, reads? }`: your device log, the sealing keys this device knows for your devices (its own included), and your name and your Lighthouse list (`{ list, changedAt }`), each with when it last changed, the invite links this device made (see Invite links), and the kinds of mail this device reads beyond what every Pigeon does (`sync`, see Your shared log). It's sent when a change is made on this device (the list, a device's name, the recovery key, a link, your name or your Lighthouses) and when a device's sealing key is heard for the first time, so a device linked while another was away can be written to. A new one takes the place of an older one still waiting on the same devices, so a device that's away has one snapshot waiting, not one per change. A device fetching mail opens everything at all its Lighthouses before acting on any of it, and merges the device log of every `mail:self` letter first, whoever it came from, since a log is signed by whoever wrote it; the rest of a letter counts only from a device on the list that results, so a removal counts whichever letter was listed first. Each key counts only when signed by its own device and that device is on the list; the name and the list are taken when newer than this device's own and no more than a day ahead of its clock. A Lighthouse list kept from before devices shared theirs counts as changed when the Pigeon first starts with this, and is sent then. A device a removal takes off the list, or a recovery leaves off, is sent a letter of its own holding only the device log, so it hears and stops talking even if it never meets another of your devices.
+### Recovered devices
+
+- A recovered device's log is a tail: `from` is its first epoch, `by` the key that signed its recover, with nothing before.
+- Only a Pigeon that already has your earlier epochs takes a tail, by checking it follows on from them.
+- The tail's own device takes a whole log only if that log's key for its first epoch is `by`.
+- Pairing checks whoever answers against the log you keep for them (loaded from storage if needed). That refuses:
+  - a tail from anyone you don't know
+  - an old copy that would undo a recovery you've seen
+  - a device (a stolen first device, say) speaking for itself when your copy says a recovery took it off
+- A friend who keeps a log with epochs sends it back to its owner in their pair room. A recovered device gets its whole log from the first friend it pairs with again.
+- That friend already knows them, so re-pairing keeps the chat and petname, takes the new pair secret and moves to its rooms.
+
+### Devices in pair rooms
+
+- Envelopes and chat entries are signed by a device.
+- A friend takes envelopes from any device active on your log. Chat log authors are devices, so sequence numbers never collide. Presence shows the newest sent.
+- A removed device's entries from before its removal (by its own `at`) still count, so a later-linked device catches up with no gaps. Nothing later is taken from it.
+- A device that finds itself removed stops talking.
+- Your own devices in the same pair room catch the chat up with each other (`log-sync`, `log-entries`) but aren't the friend.
+- An identity with a log sends `device-log` before `hello`, in every pair room and whenever it changes. Friends keep it under `devices:<id>`.
+- `hello` carries `devices: true`. A friend without it is on a Pigeon from before device logs: it hears only your first device, and a second device's chat says so until they update.
+
+### Copied profiles
+
+- A copied browser profile holds the same device key as the original.
+- Every `hello` carries `instance`: 10 random bytes in base32, made each time the Messenger starts.
+- A device that hears a hello signed by its own key, bound to its connection, with another `instance` knows it's open in another browser too.
+- Only one tab per browser runs the Messenger, so a second tab is never mistaken for a copy.
+
+### Linking
+
+Linking is in person, from the device that writes your list (the first device, unless a recovery named another).
+
+- The writer hosts a live code (see Live codes) in `link/v2:<nameplate>` and the link's own room for 10 minutes. It shows it in letters and as `#l/<secret><fingerprint>` in a QR code, with this Pigeon's fingerprint.
+- The new device must have no friends or devices of its own. A Pigeon that has them can leave first, telling its friends and forgetting everything.
+- From a link, the new device first asks you to choose Link, since anyone can send one. It then runs the live-code handshake.
+- `link-offer` carries the key confirmation and whose it is (plus its device log, if not the first device).
+  - From a link: an offer whose fingerprint isn't the link's is refused.
+  - From a typed code: the new device shows the identity's fingerprint to compare with Link a Device's, and asks only after Continue.
+- `link-request` carries the new device's sealing key, which must be a key mail can be sealed to.
+- Both sides then show the new device's fingerprint (covered by the handshake), so the device asking is the one in your hand. Not This Device refuses it and leaves the code open.
+- A code with a request showing at its 10 minutes ends when that request is answered or goes.
+- Confirming signs `add` and sends `link-accept` with a bundle sealed to that key:
+  - Refused beforehand, with nothing signed, when it wouldn't fit one sealed letter (44 KB).
+  - Nothing is signed for a device that has already left. One that leaves after the `add` stays on the list, to be handed everything if linked again or removed in My Devices (a removal is final).
+  - The bundle holds the identity, device log, self secret, profile, friends (with pair secrets), blocked list and friends' device logs. Chats catch up through pair rooms.
+- The new device keeps it all and restarts as that identity.
+  - It reads friends one by one, held to the import rules. A record it can't read (from a newer Pigeon, say) or with a name or petname over 32 characters is kept aside and counted.
+  - Every other friend comes through with only the fields described here.
+- After linking:
+  - Device log, name and personal message stay in sync through the self room and the self mailbox.
+  - The Lighthouse list stays in sync through the self mailbox.
+  - The rest of your own data syncs through the shared log (see Your shared log).
+
+### The self room
+
+- Your devices meet in `self:<base32 HMAC-SHA256(self secret, "pigeon/self/v1/" + UTC date)>`, locked with HKDF of the self secret (info `pigeon/self/password`) and renamed daily like pair rooms.
+- Device logs travel there, so a removal reaches your other devices with no friend online.
+- `profile` travels there too: your name and personal message with when they last changed. A device takes one newer than its own.
+- A device that finds itself removed stops talking and says so.
+
+### The self mailbox
+
+- A `mail:self` letter carries the same to an offline device:
+  - sealed to each of your other devices still on the list
+  - under the self secret's tags
+  - at every Lighthouse on this device's list and on the list your other devices last said in the self room
+- Body: a snapshot `{ log, keys, profile?, lighthouses?, invites?, reads? }`.
+
+| Field         | Holds                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `log`         | your device log                                                                       |
+| `keys`        | the sealing keys this device knows for your devices, its own included                 |
+| `profile`     | your name, with when it last changed                                                  |
+| `lighthouses` | your Lighthouse list, `{ list, changedAt }`                                           |
+| `invites`     | the invite links this device made (see Invite links)                                  |
+| `reads`       | the kinds of mail this device reads beyond the baseline (`sync`, see Your shared log) |
+
+- Sent when a change is made on this device (list, a device's name, recovery key, a link, your name, your Lighthouses) and when a device's sealing key is first heard, so a device linked while another was away can be written to.
+- A new snapshot replaces an older one still waiting on the same devices. An away device has one snapshot waiting, not one per change.
+- Fetching:
+  - A device opens everything at all its Lighthouses before acting on any of it.
+  - It merges every `mail:self` letter's device log first, whoever sent it, since a log is signed by its writer.
+  - The rest of a letter counts only from a device on the resulting list, so a removal counts whichever letter was listed first.
+  - Each key counts only when signed by its own device and that device is on the list.
+  - Name and Lighthouse list are taken when newer than this device's own and no more than a day ahead of its clock.
+- A Lighthouse list kept from before devices shared theirs counts as changed on first start, and is sent then.
+- A device a removal or recovery takes off the list gets a letter holding only the device log, so it stops talking even if it never meets another of your devices.
 
 ## Your data in a file
 
-Export My Data writes a `.txt` whose sealed line is `pigeon-sealed:v2:<memory>:<passes>:<lanes>:<salt>:<iv>:<sealed>`: the first three are plain decimal numbers (no sign, spaces or leading zero), the rest base64 (standard alphabet, padded, spelled exactly as Pigeon writes it; any other spelling of the same bytes is refused). The key is Argon2id (RFC 9106, version 0x13, a 32-byte output, no secret or associated data) of the passphrase, in UTF-8 after Unicode NFC normalisation, and the 16-byte salt, with `memory` KiB of memory, `passes` passes and `lanes` lanes. Pigeon writes 65,536 KiB (64 MiB), 3 passes and 4 lanes, RFC 9106's second recommended option, which takes about a second on a phone. `sealed` is the data under AES-256-GCM with that key, a 12-byte `iv` and its 16-byte tag, nothing else authenticated: any change to the parameters or salt gives another key. The parameters are the file's writer's, so a reader refuses a line before deriving anything when `memory` is over 131,072 KiB (128 MiB) or under 8 KiB per lane, `passes` is over 6, `lanes` is over 4, a count is 0, the salt isn't 16 bytes or the `iv` 12, or the line has any other number of fields. The recovery key's file holds the same line, with the recovery code as its data. Inside it is the canonical JSON `{ kind: "pigeon-export", v: 1, at, self, profile, friends, blocked, friendDevices, logs, settings }`, where `logs` maps each friend to their chat log as stored. It also holds each friend's pair secret, so whoever has the file and its passphrase can find and enter your pair rooms and fetch the sealed mail under your mail tags: there they learn when a friend is online, their name, profile and devices, and their IP address unless they always go through the relay, though without a device key they can't read or send messages. It holds no private keys, and not your own device log or self secret. Import holds the file to what live input holds: a handle, petname or blocked person's name over 32 characters makes the whole file unreadable; a profile whose name isn't one you could choose (1 to 32 characters, none a name may not hold) or whose message is over 120 characters is not taken; characters a name may not hold in a friend's name are taken out when it's shown, as for any saved name. Only the fields described here are kept; any other key in a friend, block, profile or the settings is dropped. Import refuses a file whose `self` isn't this device's identity, merges each chat's entries with the same checks a catch-up uses, adds friends and blocks this device lacks (keeping its own where both have one), takes the profile and settings only on a device with no name yet, and starts the Messenger again.
+Export My Data writes a `.txt` whose sealed line is `pigeon-sealed:v2:<memory>:<passes>:<lanes>:<salt>:<iv>:<sealed>`.
+
+- `memory`, `passes`, `lanes`: plain decimal (no sign, spaces or leading zero).
+- `salt`, `iv`, `sealed`: base64, standard alphabet, padded, spelled exactly as Pigeon writes it. Any other spelling of the same bytes is refused.
+- Key: Argon2id (RFC 9106, version 0x13, 32-byte output, no secret or associated data) of the passphrase (UTF-8 after NFC) and the 16-byte salt, with `memory` KiB, `passes` passes and `lanes` lanes.
+- Pigeon writes 65,536 KiB (64 MiB), 3 passes, 4 lanes: RFC 9106's second recommended option, about a second on a phone.
+- `sealed` is AES-256-GCM under that key with a 12-byte `iv` and 16-byte tag, nothing else authenticated. Any change to the parameters or salt gives another key.
+- A reader refuses a line before deriving anything when:
+  - `memory` is over 131,072 KiB (128 MiB) or under 8 KiB per lane
+  - `passes` is over 6, `lanes` is over 4, or any count is 0
+  - the salt isn't 16 bytes or the `iv` isn't 12
+  - the line has any other number of fields
+- The recovery key's file holds the same line, with the recovery code as its data.
+
+### Contents
+
+- Canonical JSON `{ kind: "pigeon-export", v: 1, at, self, profile, friends, blocked, friendDevices, logs, settings }`. `logs` maps each friend to their chat log as stored.
+- It holds each friend's pair secret. Whoever has the file and passphrase can enter your pair rooms and fetch sealed mail under your tags. They learn when a friend is online, their name, profile, devices and IP address (unless relay-only), but without a device key can't read or send messages.
+- It holds no private keys, and not your own device log or self secret.
+
+### Import
+
+- Held to what live input holds:
+  - A handle, petname or blocked name over 32 characters makes the whole file unreadable.
+  - A profile whose name isn't one you could choose (1 to 32 characters, none a name may not hold), or whose message is over 120 characters, is not taken.
+  - Characters a name may not hold in a friend's name are stripped when shown.
+  - Only the fields described here are kept. Any other key in a friend, block, profile or settings is dropped.
+- Refuses a file whose `self` isn't this device's identity.
+- Merges each chat's entries with the same checks a catch-up uses.
+- Adds friends and blocks this device lacks, keeping its own where both have one.
+- Takes the profile and settings only on a device with no name yet, then restarts the Messenger.
 
 ## Your shared log
 
-Your devices keep the changes you make on any of them in a shared log (`shared-log/`): each device appends signed entries of its own, and passes every device what it lacks, so all of them hold the same entries and work out the same view from them, whatever order they came in.
+Your devices keep the changes you make on any of them in a shared log (`shared-log/`). Each device appends signed entries of its own and passes every device what it lacks, so all hold the same entries and derive the same view, whatever the arrival order.
 
-- **An entry** is `{ v: "pigeon/your-data/v1", identity, device, n, stamp, kind, ...fields, sig }`: whose log, the device that wrote it, its number among that device's entries from 1, its stamp, its kind and the kind's fields, signed by the device over the canonical JSON of everything but `sig`. So an entry's kind, log, device and number are in its signed bytes, and it can't pass as anything else Pigeon signs. At most 1 KB, and each device's entries are numbered up to 10,000; past either, an entry is refused and not passed on. An entry counts only from a device that is or was on your device log; one from any other key is refused.
-- **Kinds.** `add` `{ friend, inc, name? }` begins a friendship, `inc` being 16 random bytes in base32 that name it from pairing to its end and `name` what the friend was called then, for a device that doesn't hold them; `tomb` `{ friend, inc }` ends that friendship for good; `pet` `{ friend, name }`, where an empty name goes back to theirs; `mute` `{ friend, until }`, a time, `-1` for until you unmute, or `null`; `block` `{ friend, on, name? }`; and `setting` `{ key: "relay", value }`. A known kind with any other field, or a field that doesn't hold, is unreadable, and a kind is known only when it is one of these names exactly, so one named like a property every object has (`constructor`, `__proto__`) reads as unknown too. The same goes for every name another device controls that a device looks up by: device ids in a summary, friend and incarnation ids and setting keys are read by their own keys only, never through what every object inherits. An entry of a kind a device can't read (from a newer Pigeon, say) is still checked, kept and passed on, and skipped when working out what to show.
-- **Stamps.** A device stamps a new entry later than its own clock and than every entry about the same friend or setting that counts on it, so a change made after seeing another beats it; an entry that doesn't count (a removed device's from its removal on, or one above the cap) never raises a stamp. A stamp only orders: it is never refused for being ahead of the receiving device's clock, and no device's clock follows it. The cap is 2^53 − 2^32: an entry stamped above it is kept, passed on and counted in summaries, so it is never sent again, but counts for nothing, and a device's own stamps stop at it.
-- **What it shows.** A friendship is live from its `add` until a `tomb` names it; nothing brings it back, only pairing again, which makes a new one. A petname, a mute, a block and the setting each take the entry with the highest stamp, then device, then number. A block hides every friendship added at or before it. Of two live friendships with one friend, the newer `add` shows.
-- **Two entries under one number**, which only the device that signed both can make: every device keeps the one with the lower signature, comparing the decoded signature bytes, so all end on the same one.
-- **A removed device.** Its entries stamped at or after its removal count for nothing on a device that knows of the removal. They're measured against the removal's own `at` in the device log: the device that removes it (the epoch's writer, or the writer a recovery named) signs the `remove`, or the `recover` that leaves it off, with an `at` later than its clock and than every entry it holds from that device that counts, so what that device had already delivered keeps counting however fast its clock ran. An entry above the cap doesn't count and is skipped, and the `at` never goes past the cap, so a device that stamps at the top of the safe integers while listed can still be removed; no device-log entry is ever signed at a time that isn't a safe integer. Being in the device log, the threshold reaches your devices and friends with the removal itself. So a removal's `at` can be later than when it was made. A device on the latest epoch's list is never discounted. What a removed device stamped before is its own word, as a chat entry's time is.
-- **Passing it on.** A summary carries, per device, the highest number held and a digest of every entry held from it, gaps included (a device can sign numbers out of order or skip some): the SHA-256 of the canonical JSON array of their signatures as base32, in number order. A device whose entries up to the other's highest number match the other's digest is sent only those above it; one whose entries there differ (two under one number, or a gap one side has filled) is sent all of that device's entries; one ahead checks that range itself, so two devices holding the same entries send each other nothing. In the self room, on a connection proven by another of your devices, each side sends `sync-summary` `{ summary }` after its hello and whenever its log changes, and answers one with `sync-entries` `{ entries }` holding what the other lacks, at most 48 entries a message, and with its own `sync-summary` when the other holds something it lacks, so a change made on one reaches the other at once. In the self mailbox, a `mail:sync` letter `{ log, summary, entries, pad }` carries the sender's device log, its summary, up to 200 entries its recipients aren't known to hold (each device's in turn, your devices on the list before any other, so one device's many entries never crowd out the rest), and spaces that bring its JSON to 4, 16 or 40 KB. It goes 5 seconds after the last change (a stored `sync-owed` mark keeps it owed across a reload until a letter is queued), and after a mail check that took something, sealed to your other active devices on the list, when one of them lacks an entry no earlier letter carried to it or this device's summary has news for one not known to hold the same; a page too big for one letter goes on in the next. No letter takes another's place: each carries only what earlier ones didn't, and the outbox puts each again until it's taken. What earlier letters carried is worked out again only when a device's summary holds less than its last. A device that takes a letter whose summary shows the sender holds more than it now does answers with its own summary, so the sender learns what it lacks. Whoever opens a `mail:sync` merges its device log first, with every other log the fetch brought, and takes the rest only if `from` is on the list that results. Each entry is read on its own: one that doesn't hold never stops the rest.
+### Entries
+
+- An entry is `{ v: "pigeon/your-data/v1", identity, device, n, stamp, kind, ...fields, sig }`:
+  - `identity`: whose log. `device`: the writer. `n`: its number among that device's entries, from 1.
+  - `sig`: the device's signature over the canonical JSON of everything but `sig`. Kind, log, device and number are all signed, so it can't pass as anything else Pigeon signs.
+- At most 1 KB. Each device's entries are numbered up to 10,000. Past either, an entry is refused and not passed on.
+- An entry counts only from a device that is or was on your device log. Any other key is refused.
+
+| Kind      | Fields                    | Meaning                                                                                                                                                          |
+| --------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add`     | `{ friend, inc, name? }`  | begins a friendship. `inc` is 16 random bytes in base32 naming it from pairing to its end. `name` is the friend's name then, for a device that doesn't hold them |
+| `tomb`    | `{ friend, inc }`         | ends that friendship for good                                                                                                                                    |
+| `pet`     | `{ friend, name }`        | petname. An empty name goes back to theirs                                                                                                                       |
+| `mute`    | `{ friend, until }`       | a time, `-1` for until you unmute, or `null`                                                                                                                     |
+| `block`   | `{ friend, on, name? }`   | block or unblock                                                                                                                                                 |
+| `setting` | `{ key: "relay", value }` | relay-only                                                                                                                                                       |
+
+- A known kind with any other field, or a field that doesn't hold, is unreadable.
+- A kind is known only when it is one of these names exactly. Names like `constructor` or `__proto__` read as unknown.
+- Every name another device controls (device ids in a summary, friend and incarnation ids, setting keys) is read by own keys only, never through inherited object properties.
+- An entry of a kind a device can't read (from a newer Pigeon) is still checked, kept and passed on, and skipped when building the view.
+
+### Stamps
+
+- A new entry's stamp is later than the device's clock and every counting entry about the same friend or setting, so a change made after seeing another beats it.
+- An entry that doesn't count (a removed device's from its removal on, or one above the cap) never raises a stamp.
+- A stamp only orders. It's never refused for being ahead of the receiving clock, and no clock follows it.
+- Cap: 2^53 − 2^32. An entry stamped above it is kept, passed on and counted in summaries (so never sent again) but counts for nothing. A device's own stamps stop at it.
+
+### The view
+
+- A friendship is live from its `add` until a `tomb` names it. Nothing brings it back. Only pairing again makes a new one.
+- Petname, mute, block and the setting each take the entry with the highest stamp, then device, then number.
+- A block hides every friendship added at or before it.
+- Of two live friendships with one friend, the newer `add` shows.
+- Two entries under one number (only their signer can make that): every device keeps the one with the lower decoded signature bytes.
+
+### Removed devices
+
+- Entries stamped at or after a device's removal count for nothing on a device that knows of the removal.
+- They're measured against the removal's `at` in the device log:
+  - The remover (the epoch's writer, or the writer a recovery named) signs the `remove`, or the `recover` leaving it off, with an `at` later than its clock and every counting entry it holds from that device. What the device had already delivered keeps counting however fast its clock ran.
+  - An entry above the cap doesn't count. The `at` never goes past the cap, so a device stamping at the top of the safe integers can still be removed.
+  - No device-log entry is signed at a time that isn't a safe integer.
+- The threshold is in the device log, so it reaches your devices and friends with the removal. A removal's `at` can be later than when it was made.
+- A device on the latest epoch's list is never discounted.
+- What a removed device stamped before is its own word, as a chat entry's time is.
+
+### Sync
+
+- A summary carries, per device, the highest number held and a digest of every entry held from it, gaps included (a device can sign numbers out of order or skip some). The digest is SHA-256 of the canonical JSON array of their base32 signatures, in number order.
+- Comparing a summary per device:
+  - Entries up to the other's highest match its digest: send only those above it.
+  - They differ (two under one number, or a gap one side filled): send all of that device's entries.
+  - This side is ahead: the other side checks that range itself.
+  - Two devices holding the same entries send each other nothing.
+
+#### In the self room
+
+- On a connection proven by another of your devices, each side sends `sync-summary` `{ summary }` after its hello and whenever its log changes.
+- It answers a summary with `sync-entries` `{ entries }` (what the other lacks, at most 48 a message), and with its own `sync-summary` when the other holds something it lacks.
+
+#### In the self mailbox
+
+- A `mail:sync` letter is `{ log, summary, entries, pad }`:
+  - `log`: the sender's device log. `summary`: its summary.
+  - `entries`: up to 200 entries its recipients aren't known to hold, each device's in turn (your devices on the list first), so one device's entries never crowd out the rest.
+  - `pad`: spaces bringing its JSON to 4, 16 or 40 KB.
+- Sent 5 seconds after the last change (a stored `sync-owed` mark keeps it owed across a reload until queued), and after a mail check that took something.
+- Sealed to your other active devices on the list, when one lacks an entry no earlier letter carried to it, or this device's summary has news for one not known to hold the same.
+- A page too big for one letter goes on in the next.
+- No letter replaces another. Each carries only what earlier ones didn't, and the outbox puts each again until taken.
+- What earlier letters carried is recomputed only when a device's summary holds less than its last.
+- A device whose summary is behind a letter's summary answers with its own summary.
+- The opener merges the letter's device log first (with every other log the fetch brought) and takes the rest only if `from` is on the resulting list.
+- Each entry is read on its own. One that doesn't hold never stops the rest.
 
 ## Rooms
 
-All traffic goes through the `Transport` interface. Messages to one peer arrive in the order they were sent, whatever their size.
+- All traffic goes through the `Transport` interface. Messages to one peer arrive in send order, whatever their size.
+- Inside a room the transport names connections (`ConnectionId`), which are not identities. A connection becomes a friend only by sending an envelope signed by that friend's key, starting with `hello`.
 
-Inside a room the transport names connections (`ConnectionId`); those are not identities. A connection becomes a friend only by sending an envelope signed by that friend's key, starting with `hello`.
+### Channel binding
 
-A room also says which channel each connection is: `binding(peer)` gives `{ local, remote }`, SHA-256 certificate fingerprints as lowercase hex with no colons. `local` is from this side's own description's `a=fingerprint`; `remote` is the SHA-256 of the certificate the data channel's DTLS transport checked (`getRemoteCertificates()`), not the remote description, since a peer can send a new description after the handshake that some browsers show as current while the old channel runs on. It's nothing when there's no direct peer connection (a peer carried through other peers), the channel isn't connected, the browser can't say which certificate DTLS checked, a description names anything but exactly one certificate (any `a=fingerprint` line that isn't `sha-256` in that form, or two different ones), or the remote description names another certificate than DTLS checked; then the connection can't be bound. Whoever writes into the channel holds the key of the certificate DTLS checked.
+- `binding(peer)` gives `{ local, remote }`: SHA-256 certificate fingerprints, lowercase hex, no colons.
+  - `local`: from this side's own description's `a=fingerprint`.
+  - `remote`: SHA-256 of the certificate the data channel's DTLS transport checked (`getRemoteCertificates()`), not the remote description. A peer can send a new description after the handshake that some browsers show as current while the old channel runs on.
+- `binding` is nothing (the connection can't be bound) when:
+  - there's no direct peer connection (a peer carried through other peers)
+  - the channel isn't connected
+  - the browser can't say which certificate DTLS checked
+  - a description names anything but exactly one certificate (any non-`sha-256` `a=fingerprint` line, or two different ones)
+  - the remote description names another certificate than DTLS checked
+- Whoever writes into the channel holds the key of the certificate DTLS checked.
 
-In pair and self rooms a connection counts as a device only once that device has signed its channel. On every new connection each side sends its device logs and then `nonce`, 16 random bytes in base32, answering a nonce signed by a key it takes there (the friend's devices, your own, or this device's own key), and each one once (at most 8 on a connection), since a peer that reconnects keeping its id greets again. The answer is `hello` with `binding: { nonce, local, remote }`, the nonce and the fingerprints as the sender sees them, its own first; the receiver takes it only when the nonce is the one it sent on that connection and the fingerprints are its own view swapped, compared as bytes. A hello forwarded or replayed from another connection names another channel and is ignored. Everything else counts only on a connection proven that way, and only from the device that proved it, so a replay has no connection to count on; presence, profile and `log-sync` go to a connection once it has proved itself, and nothing more goes to it once it has left, not even what was queued for it before. What it sent before it left still counts when it's read later (its last messages, an `unfriend`), its hello included, which still proves what came after it; but nothing that would answer it or change who it is (`bye`, `log-sync`), and nothing sent under its id afterwards counts as it. A Pigeon from before binding sends hellos without it and never answers a nonce: the two show each other offline and meet only through Lighthouses (letters, farewells, the self mailbox) until it updates. A friend with an updated device online gets no letters, so their devices not yet updated catch up once they are ([flows.md](flows.md#saying-hello)).
+### Proving a connection
 
-- `pair:<base32 HMAC-SHA256(secret, "pigeon/pair/v2/" + UTC date)>`: where two friends meet, named from the 256-bit pair secret only they hold, so it's a new name each UTC day (`2026-11-24`) and knowing their ids says nothing. Chat, buzz, typing, files, letters. It's joined with a Trystero password, base32 HKDF-SHA256 of the secret (no salt, info `pigeon/pair/password`, 32 bytes), so offers can't be read and the room can't be entered without it. In the last hour of a UTC day tomorrow's room is joined too, and in the first hour yesterday's, so clocks less than an hour apart still meet; one pair session spans the rooms (`pairing/pair-rooms.ts`).
-- `pair:<hash of both ids>`: base32 SHA-256 of `pigeon/pair/v1`, then the two ids sorted, newline-separated. Anyone who knows both ids can compute it, so no room by that name is joined; it is the chat's id: pair envelopes and chat entries are signed for it in every pair room.
-- `self:<daily name>`: where your own devices meet, from the self secret (see Devices).
+In pair and self rooms a connection counts as a device only once that device has signed its channel.
+
+- On every new connection each side sends its device logs, then `nonce` (16 random bytes in base32).
+- A side answers each nonce signed by a key it takes there (the friend's devices, your own, or its own key) once, at most 8 per connection, since a peer reconnecting with its id greets again.
+- The answer is `hello` with `binding: { nonce, local, remote }`, fingerprints as the sender sees them, its own first.
+- The receiver takes it only when the nonce is the one it sent on that connection and the fingerprints are its own view swapped, compared as bytes.
+- A hello forwarded or replayed from another connection names another channel and is ignored.
+- Everything else counts only on a proven connection and only from the device that proved it, so a replay has no connection to count on.
+- Presence, profile and `log-sync` go to a connection once it's proven. Nothing more goes once it has left, not even what was queued.
+- What it sent before leaving still counts when read later (last messages, an `unfriend`), its hello included. But nothing that would answer it or change who it is (`bye`, `log-sync`) counts, nor anything sent under its id afterwards.
+- A Pigeon from before binding sends unbound hellos and never answers a nonce. The two show each other offline and meet only through Lighthouses (letters, farewells, the self mailbox) until it updates.
+- A friend with an updated device online gets no letters, so their not-yet-updated devices catch up once updated.
+
+### Room names
+
+- `pair:<base32 HMAC-SHA256(secret, "pigeon/pair/v2/" + UTC date)>`: where two friends meet.
+  - Named from the 256-bit pair secret only they hold, new each UTC day (`2026-11-24`). Knowing their ids says nothing.
+  - Carries chat, buzz, typing, files, letters.
+  - Joined with a Trystero password: base32 HKDF-SHA256 of the secret (no salt, info `pigeon/pair/password`, 32 bytes). Offers can't be read and the room can't be entered without it.
+  - In the last hour of a UTC day tomorrow's room is joined too, and in the first hour yesterday's, so clocks less than an hour apart still meet. One pair session spans the rooms (`pairing/pair-rooms.ts`).
+- `pair:<hash of both ids>`: base32 SHA-256 of `pigeon/pair/v1`, then the two ids sorted, newline-separated. Anyone knowing both ids can compute it, so it's never joined. It is the chat's id: pair envelopes and chat entries are signed for it in every pair room.
+- `self:<daily name>`: where your own devices meet, from the self secret (see The self room).
 - While a secret is replaced, the old secret's pair or self rooms too, until the other side is seen holding the new one (see Replacing a secret).
-- `link/v2:<nameplate>` and `link/v2:<hash of the link's secret>`: one pair per device-link code, used once (see Devices and Live codes).
-- `invite/v2:<nameplate>` and `invite/v2:<hash of the link's secret>`: one pair per live invite code, used once for pairing (see Live codes).
+- `link/v2:<nameplate>` and `link/v2:<hash of the link's secret>`: one pair per device-link code, used once (see Linking and Live codes).
+- `invite/v2:<nameplate>` and `invite/v2:<hash of the link's secret>`: one pair per live invite code, used once (see Live codes).
 - `page:<owner id>`: one per homepage. Snapshot requests and guestbook entries.
 - `lobby`: opt-in public presence.
 
 ## Messages
 
-Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical JSON (keys sorted), at most 64 KB (files are chunked). `sig` is `from`'s base32 signature over the envelope without `sig`, so naming the room stops an envelope being replayed into another one; in pair and self rooms a bound `hello` (see Rooms) ties a connection to its device, which stops one being replayed on another connection. In pair rooms `room` is the chat's id (the name from both ids) whichever daily room carried it, so a friend in two rooms at once sends the same envelope to both; `buzz`, `unfriend`, `pair-secret` and `pair-secret-ok` are taken once. Unsigned, oversized, malformed, wrong-room or blocked-sender messages are dropped, as is anything in a pair room from a key other than the friend's.
+- Every message is an envelope `{ v: 1, from, room, at, body, sig }` in canonical JSON (keys sorted), at most 64 KB (files are chunked).
+- `sig` is `from`'s base32 signature over the envelope without `sig`. Naming the room stops replay into another room.
+- In pair and self rooms a bound `hello` ties a connection to its device, which stops replay on another connection.
+- In pair rooms `room` is the chat's id whichever daily room carried it, so a friend in two rooms sends the same envelope to both. `buzz` and `unfriend` are taken once.
+- Dropped: unsigned, oversized, malformed, wrong-room, blocked-sender, and anything in a pair room from a key other than the friend's.
 
-| Type                                                        | Room         | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ----------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `hello`                                                     | any          | handle, the version your bird is drawn with (`avatar`, 1 when left out), `devices: true` from a Pigeon that knows device logs, and `instance`, this run's random id; sent again after a rename, and a friend takes a later `hello`'s handle as your new name; `sealing`, this device's sealing key bound to it, which a friend takes only from the device it names; and `lighthouses`, up to 4 addresses where friends leave this Pigeon's mail. Pigeons that don't know these leave them out and ignore them. In pair and self rooms, `binding`: the nonce it answers and the channel's fingerprints, without which it counts for nothing there |
-| `nonce`                                                     | pair, self   | 16 random bytes, sent first on every new connection, which the other side's `hello` must sign with the channel's fingerprints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `device-log`                                                | pair, self   | your device log, before `hello` and whenever it changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `pake-start`, `pake-reply`, `pake-prove`, `pake-wrong`      | invite, link | a live code's handshake: both SPAKE2 messages, the opener's key confirmation, and "wrong" when it doesn't hold                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `link-offer`, `link-request`, `link-accept`                 | link         | linking a new device: whose it is (with its key confirmation), the new device's sealing key, then the bundle sealed to it, in at most 4 parts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `pair-offer`, `pair-request`, `pair-accept`, `pair-decline` | invite       | the invite: who the inviter is (with its key confirmation), who asks and their sealing key, then the pair secret sealed to it, or no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `presence`                                                  | pair, lobby  | status and personal message                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `profile`                                                   | self         | your name, personal message and `changedAt`, when either last changed; the newest wins on your devices                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `log-sync`, `log-entries`                                   | pair, page   | catch up on a signed log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `typing`, `buzz`                                            | pair         | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bye`                                                       | pair         | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `unfriend`                                                  | pair         | you removed them; resent until it's delivered                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `file-offer`, `file-chunk`, `file-ack`                      | pair         | chunked transfer with back-pressure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair         | store and forward                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `page-request`, `page-snapshot`                             | page         | fetch the newest signed snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Type                                                        | Room         | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hello`                                                     | any          | handle; `avatar` (drawing version, 1 when left out); `devices: true` from a Pigeon that knows device logs; `instance`, this run's random id; `sealing`, this device's bound sealing key (taken only from the device it names); `lighthouses`, up to 4 addresses where friends leave this Pigeon's mail. Sent again after a rename (a later `hello`'s handle is your new name). Unknown fields are left out and ignored. In pair and self rooms, `binding` (the nonce it answers and the channel's fingerprints), without which it counts for nothing there |
+| `nonce`                                                     | pair, self   | 16 random bytes, sent first on every new connection, which the other side's `hello` must sign with the channel's fingerprints                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `device-log`                                                | pair, self   | your device log, before `hello` and whenever it changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `pake-start`, `pake-reply`, `pake-prove`, `pake-wrong`      | invite, link | a live code's handshake: both SPAKE2 messages, the opener's key confirmation, and "wrong" when it doesn't hold                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `link-offer`, `link-request`, `link-accept`                 | link         | linking a new device: whose it is (with its key confirmation), the new device's sealing key, then the bundle sealed to it, in at most 4 parts                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `pair-offer`, `pair-request`, `pair-accept`, `pair-decline` | invite       | the invite: who the inviter is (with its key confirmation), who asks and their sealing key, then the pair secret sealed to it, or no                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `presence`                                                  | pair, lobby  | status and personal message                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `profile`                                                   | self         | your name, personal message and `changedAt`; the newest wins on your devices                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `log-sync`, `log-entries`                                   | pair, page   | catch up on a signed log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `typing`, `buzz`                                            | pair         | ephemeral, never stored; typing is resent every 3 s and lapses after 6 s                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `bye`                                                       | pair         | sent as a tab closes (`pagehide`), signed in advance; otherwise the timeout decides                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `unfriend`                                                  | pair         | you removed them; resent until delivered                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `file-offer`, `file-chunk`, `file-ack`                      | pair         | chunked transfer with back-pressure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `letter-offer`, `letter-deliver`, `letter-receipt`          | pair         | store and forward                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `page-request`, `page-snapshot`                             | page         | fetch the newest signed snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## Pairing
 
-An invite is either a live code, below, or an invite link through Lighthouses (see Invite links). A live code pairs once and is hosted for 30 minutes, also across reloads.
+An invite is either a live code or an invite link through Lighthouses. A live code pairs once and is hosted for 30 minutes, across reloads too.
 
 ### Live codes
 
-Invite codes and device-link codes work the same way. A code is 10 base32 characters, shown `K7RT-VP2-BXQ`: the first 4 are the nameplate, the last 6 the password. The nameplate names the room, `invite/v2:<nameplate>` or `link/v2:<nameplate>`, and is public: the relays see the room's name. The password only goes into SPAKE2, so nothing the relays see can test a guess. Typing accepts either case, with or without the dashes, and reads 0, 1 and 8 as o, l and b. A code is also shown as a link, `https://pigeon.tomszir.com/#i/<secret><fingerprint>` (`#l/` for a device link): a random 16-byte secret in base32 that takes the password's place, and the 8-byte fingerprint of the identity that made it, 39 characters after `i/`. A link meets in a room of its own, `invite/v2:` (or `link/v2:`) and the first 16 bytes, in base32, of SHA-256 of `pigeon/invite/v2/room/<secret>` (`pigeon/link/v2/room/...`), so nobody without the link can find it; the side that made the code waits in both rooms, each taking only its own kind of secret. The QR code is the link. Opening a link takes it out of the address bar.
+Invite codes and device-link codes work the same way.
 
-The side that opened the code (`a`) and the side that made it (`b`) run SPAKE2 (RustCrypto's `spake2` crate, Ed25519 group, built to WebAssembly) on each connection in the room. The password is `code:<password>` or `link:<secret>` as UTF-8, and the identities are `pigeon/invite/v2/a/<room>` and `pigeon/invite/v2/b/<room>` (`pigeon/link/v2/...` for device links). `a` sends `pake-start` (`via`: `code` or `link`, and its message), `b` answers `pake-reply`, and both get a key. Each side's confirmation is HMAC-SHA256, under HKDF-SHA256 of that key (info `pigeon/invite/v2/confirm/a` or `/b`), over the transcript in canonical JSON: `{ v: "pigeon/invite/v2", room, via, a, b, aDevice, bDevice, aDtls, bDtls }`, both SPAKE2 messages in base64, both device keys (each the signer of that side's envelopes), and both DTLS fingerprints from `binding(peer)`. `a` sends its confirmation in `pake-prove`; `b` checks it first, and a wrong one is a wrong try, answered `pake-wrong`; so is a run not proven within 30 seconds, or whose connection leaves before proving. Five wrong tries stop the code, counted across both rooms and across reloads, and once they're used no confirmation that came at the same time is checked. `b` keeps at most 16 runs going in a room at once. `a` runs at most 4 at once and 8 in all each time it opens a code, a stalled one giving way after 15 seconds, since whoever answers `a` can test one guess against its confirmation. `pake-wrong` isn't proof of anything, so a Pigeon that gets it says the one that answered calls the code wrong. `b`'s confirmation comes in its offer. Someone in the middle shows each side a certificate of their own, so the transcripts differ and neither confirmation holds; every later message must come over the same connection, signed by the same device. A transport that can't say a connection's fingerprints can't run it.
+#### Codes and links
 
-The inviter's `pair-offer` carries its confirmation and name; from a device that isn't its identity's first, it also carries `identity` and its device log, so the friend is saved as the identity and the fingerprint shown (and checked against a link's) is the identity's. The invitee is shown the name and fingerprint: from a link, an offer whose fingerprint doesn't match the link's is refused; from a typed code, they're warned to compare it with their friend's screen. Only when they choose Ask to Be Friends does `pair-request` go back, with their name, device log and their device's sealing key, signed by that device. The inviter sees each request in Add a Friend, with the name, fingerprint and bird (and a balloon when Add a Friend isn't the window in front), and chooses Add or Decline. Add makes a 32-byte pair secret and answers `pair-accept`: a `mail:pair` letter sealed to that sealing key, its body `{ session, value }`, `session` the SHA-256 of the transcript in hex and `value` the secret, so it counts only on that connection. Then the inviter stops hosting the code. Decline answers `pair-decline` and leaves the code open. Both then save each other as friends, with the secret, and meet only in the secret's rooms, never the old room named from their ids. Pigeons from before live codes went through SPAKE2 can't pair or link with ones after: they meet in other rooms. A current Pigeon tells an older one's 8-character code, and its `#i/` or `#l/` link of 21 characters, from a mistyped one, and says to have the other side reload Pigeon for a new code; anything else that doesn't read as a code is just refused.
+- A code is 10 base32 characters, shown `K7RT-VP2-BXQ`: 4 nameplate characters, then a 6-character password.
+- The nameplate names the room (`invite/v2:<nameplate>` or `link/v2:<nameplate>`) and is public: relays see room names.
+- The password only goes into SPAKE2, so nothing relays see can test a guess.
+- Typing accepts either case, with or without dashes, and reads 0, 1 and 8 as o, l and b.
+- A code is also a link, `https://pigeon.tomszir.com/#i/<secret><fingerprint>` (`#l/` for a device link): a random 16-byte secret in base32 replacing the password, then the maker identity's 8-byte fingerprint. 39 characters after `i/`.
+- A link meets in a room of its own: `invite/v2:` (or `link/v2:`) plus the first 16 bytes, in base32, of SHA-256 of `pigeon/invite/v2/room/<secret>` (`pigeon/link/v2/room/...`). Nobody without the link can find it.
+- The maker waits in both rooms, each taking only its own kind of secret.
+- The QR code is the link. Opening a link takes it out of the address bar.
 
-All rooms, pair and invite alike, can go through the TURN relay only (File, Always Go Through the Relay in the Messenger, or Connection in Settings; `iceTransportPolicy: "relay"`), so friends never see your IP address; it's slower and needs the relay to be reachable. With it on, mail goes only to Lighthouses you chose (see Lighthouses you didn't choose), since a friend's own Lighthouse would see the IP the relay hides. Turning it on or off joins every room Pigeon hosts again under the new setting: friends', the code you host, your own devices' room, and a device link being shown, which gets a new code. A device link another device has already answered is left to finish, and an invite or link you're opening keeps the setting it was opened with until it ends, as both have already reached the other side. It fails closed: with no relay to be had, Pigeon doesn't fall back to connecting directly, and a balloon (at most once a minute) says the relay can't be reached and where to turn the setting off.
+#### Handshake
 
-While it waits, the invitee's Add a Friend shows each real step as it happens (`openInvite`'s `onStep`): reaching the relays (the room is joined), finding whoever made the code (a peer connected and was sent `pake-start`), and asking who they are (until `pair-offer`), then, after Ask to Be Friends, waiting for the inviter to add them. A paper plane glides one way along a dotted path from you to your friend, its tip on the dots, fading in and out; the bar keeps moving, a countdown shows when it gives up (45 seconds for an answer, 3 minutes for the inviter to add you), and a hint says what to check when a step stalls (`apps/messenger/connecting/`). Once paired, both sides go straight to the conversation, which opens with "Toms and Mika became friends on November 24 at 6:38 PM.", drawn from the friend's `addedAt`, so it stays on every visit.
+- The opener (`a`) and the maker (`b`) run SPAKE2 (RustCrypto's `spake2` crate, Ed25519 group, built to WebAssembly) on each connection in the room.
+  - Password: `code:<password>` or `link:<secret>` as UTF-8.
+  - Identities: `pigeon/invite/v2/a/<room>` and `pigeon/invite/v2/b/<room>` (`pigeon/link/v2/...` for device links).
+- `a` sends `pake-start` (`via`: `code` or `link`, plus its message). `b` answers `pake-reply`. Both derive a key.
+- Each side's confirmation is HMAC-SHA256 under HKDF-SHA256 of that key (info `pigeon/invite/v2/confirm/a` or `/b`) over the canonical JSON transcript `{ v: "pigeon/invite/v2", room, via, a, b, aDevice, bDevice, aDtls, bDtls }`:
+  - `a`, `b`: both SPAKE2 messages in base64
+  - `aDevice`, `bDevice`: both device keys (each the signer of that side's envelopes)
+  - `aDtls`, `bDtls`: both DTLS fingerprints from `binding(peer)`
+- `a` sends its confirmation in `pake-prove`. `b` checks it first.
+- Wrong tries, answered `pake-wrong`:
+  - a confirmation that doesn't hold
+  - a run not proven within 30 seconds
+  - a run whose connection leaves before proving
+- Five wrong tries stop the code, counted across both rooms and across reloads. Once used, no confirmation that came at the same time is checked.
+- Limits:
+  - `b` keeps at most 16 runs at once per room.
+  - `a` runs at most 4 at once and 8 in all per opening, a stalled run giving way after 15 seconds, since whoever answers `a` can test one guess against its confirmation.
+- `pake-wrong` proves nothing, so a Pigeon receiving it says the one that answered calls the code wrong.
+- `b`'s confirmation comes in its offer.
+- A relay in the middle shows each side its own certificate, so the transcripts differ and neither confirmation holds. Every later message must come over the same connection, signed by the same device.
+- A transport that can't report a connection's fingerprints can't run it.
+
+#### Offer, request, accept
+
+- `pair-offer` carries the inviter's confirmation and name. From a non-first device it also carries `identity` and its device log, so the friend is saved as the identity and the fingerprint shown (and checked against a link's) is the identity's.
+- The invitee is shown the name and fingerprint:
+  - From a link: an offer whose fingerprint doesn't match the link's is refused.
+  - From a typed code: they're warned to compare it with their friend's screen.
+- Only after Ask to Be Friends does `pair-request` go back: their name, device log and device sealing key, signed by that device.
+- The inviter sees each request in Add a Friend (name, fingerprint, bird, and a balloon when Add a Friend isn't in front) and chooses Add or Decline.
+- Add:
+  - makes a 32-byte pair secret
+  - answers `pair-accept`: a `mail:pair` letter sealed to that sealing key, body `{ session, value }`, `session` being the transcript's SHA-256 in hex and `value` the secret, so it counts only on that connection
+  - stops hosting the code
+- Decline answers `pair-decline` and leaves the code open.
+- Both save each other as friends with the secret and meet only in the secret's rooms, never the room named from their ids.
+- Pigeons from before SPAKE2 live codes can't pair or link with current ones: they meet in other rooms. A current Pigeon recognises an older 8-character code, or its 21-character `#i/` or `#l/` link, and says to have the other side reload for a new code. Anything else that doesn't read as a code is refused.
+
+#### Relay only
+
+- All rooms, pair and invite alike, can go through the TURN relay only (File, Always Go Through the Relay in the Messenger, or Connection in Settings; `iceTransportPolicy: "relay"`). Friends never see your IP address. It's slower and needs the relay reachable.
+- With it on, mail goes only to Lighthouses you chose (see Lighthouses you didn't choose), since a friend's own Lighthouse would see the IP the relay hides.
+- Toggling rejoins every room Pigeon hosts under the new setting: friends', the code you host, your devices' room, and a device link being shown (which gets a new code).
+- A device link already answered is left to finish. An invite or link you're opening keeps the setting it opened with until it ends.
+- It fails closed: with no relay, Pigeon doesn't fall back to direct. A balloon (at most once a minute) says the relay can't be reached and where to turn the setting off.
+
+#### Progress
+
+- While waiting, the invitee's Add a Friend shows each real step (`openInvite`'s `onStep`):
+  1. reaching the relays (the room is joined)
+  2. finding whoever made the code (a peer connected and was sent `pake-start`)
+  3. asking who they are (until `pair-offer`)
+  4. after Ask to Be Friends, waiting for the inviter to add them
+- A paper plane glides along a dotted path from you to your friend. The bar keeps moving. A countdown shows the give-up time (45 seconds for an answer, 3 minutes for the inviter to add you). A hint says what to check when a step stalls (`apps/messenger/connecting/`).
+- Once paired, both go straight to the conversation, which opens with "Toms and Mika became friends on November 24 at 6:38 PM.", drawn from the friend's `addedAt`.
 
 ### Invite links
 
-An invite link waits at the inviter's Lighthouses, so it works while the inviter is offline, and lets in as many people as it was made for. It is `https://pigeon.tomszir.com/#b/<secret><fingerprint><maker><end>`: a random 16-byte secret, the first 16 bytes of the SHA-256 of the inviter's identity, the first 16 bytes of the SHA-256 of the device that made the link, each base32 (26 characters), and the time the link ends, in whole seconds since 1970, as five bytes big-endian in base32 (8 characters, with no bits left over): 86 characters, all lowercase, the one spelling a link is read in (capitals, or a look-alike that lowercases to a letter of it, are refused), then `?l=<pigeon://lighthouse address>` when the inviter's list has none of the official Lighthouses. A link lasts 1 hour, 1 day or 7 days and is for 1, 5, 10 or 25 people, chosen when it's made. A link from an older Pigeon, `#a/<secret><fingerprint>`, names neither its maker nor its end, and no longer opens: Pigeon says it was made by an older Pigeon and to ask for a new one, and closes your own such links when it starts, which tells whoever waits on them, so they leave Your Links; an add Pigeon closed in the middle of on one is left unfinished. Opening one in the address bar takes it out of the address. A link previews in a chat app as the site itself does, since nothing after the `#` reaches a server; it never names the inviter.
+An invite link waits at the inviter's Lighthouses, so it works while the inviter is offline, and lets in as many people as it was made for.
 
-Making a link puts its card at each of the inviter's Lighthouses that has no pass, under `HMAC-SHA256(secret, "pigeon/invite/v1/card")` until it expires, with one drop hash, the link's own drop value's. The drop value never leaves that device. Each link also has a 32-byte random claim key, which never leaves that device either, and every card for it is put claimed (see Lighthouses and mail), at each Lighthouse with `HMAC-SHA256(claim key, "pigeon/invite/v1/claim/" + Lighthouse id)`, a value of its own at each one so a Lighthouse can't use what it was given at another. The first card is put before the link is shown, and the link is shown only once its card is held at a Lighthouse every opener reads (the inviter's official ones, or the one the link names), so the device that made the link holds the claim at one of those from the start. A put refused as `taken`, which only a tag someone claimed first can meet, is put again unclaimed. A link made before cards were claimed gets a claim key at the next start or mail check, and its card is put again with it. The card is `{ v: "pigeon/invite-card/v1", identity, deviceLog, keys, name, lighthouses, expires, open, from, tag, sig }`, `tag` being its own card tag, signed by the device that made the link, which must be active on the device log it carries, and sealed with AES-256-GCM under HKDF of the secret (info `pigeon/invite/key`). Whenever the inviter's device log, name or Lighthouses change, each open link's card is put again, and the old one dropped by its id at each Lighthouse; closing a link (cancelled, or used up) puts a card with `open` false. Where a put doesn't get through (the Lighthouse is out of reach or refuses it), the card already there stays, and the new one is put there again at each start and mail check until it does.
+#### The link
 
-Opening a link lists the card tag at the official Lighthouses and the one the link names (when this Pigeon may reach it: see Lighthouses you didn't choose). At each, it first lists the tag's claimed blobs and opens up to 16 of them, then lists everything under the tag and opens up to 100 more of at most 32 KB, newest first, skipping any it opened already. The second read is for a Lighthouse from before claims, which refuses `list-claimed` as malformed, and a link whose card isn't claimed yet. Before reading anything, a link that has ended is refused as run out, and one whose end is more than 7 days and a day from now (the day for clocks that disagree) is refused as lasting longer than any link can. Every card it opens is checked the same way: the identity's long fingerprint must be the link's, the signer active on the log (merged into the one this device keeps for that identity, if any), and each sealing key signed by its own device and active. Only a card signed by the device the link names counts, and an open one only if its `expires` is no later than the link's end. Of those, the one with the newest log wins (epoch, then entries), a closed one over an open one on the same log. It shows the name and fingerprint; asking, refused once the link has ended, puts a `mail:invite` letter sealed to the inviter's devices on the card, once, under `HMAC-SHA256(secret, "pigeon/invite/v1/ask/" + UTC date)` at the card's Lighthouses. Its body is the asker's name, device log, devices' sealing keys, at most two Lighthouses without passes (a Pigeon with none can't ask), `reply`, a random 16-byte secret, kept when asking again through the same link only while the request before still waits, and new otherwise, so whoever read an answered request can't answer the next, and `link`, the link's card tag.
+- `https://pigeon.tomszir.com/#b/<secret><fingerprint><maker><end>`, 86 characters, all lowercase:
 
-The device that made the link fetches requests under its ask tags (at most 16 KB each, 200 a check), and keeps each that names this link, from a device active on the log it carries and with keys signed by their devices: one per person, with each of their devices' reply secrets, until the inviter adds or declines it. With 50 waiting, another is answered `{ answer: "busy" }`, to ask again later. Requests from someone blocked are dropped; a request through a link that's closed or expired is answered `{ answer: "closed", deviceLog }`, `deviceLog` being the inviter's log as the answering device has it (older Pigeons send none), at most 20 times a link counting `busy`, and so is everyone still waiting when it closes; a device of someone already added gets the same `added` answer. An inviter who adds someone is their friend at once, so if the answer never reaches them (they stopped waiting, or stayed away past the link's end and two days more) the friend never shows up there. Adding keeps a new pair secret with the request first, so a Pigeon closed in between finishes it on its next start, then adds them as a friend with the request's device log, keys and Lighthouses, and puts, for each device that asked, a `mail:invite-answer` letter sealed to their devices under `HMAC-SHA256(reply, "pigeon/invite/v1/answer/" + UTC date)` at their Lighthouses: `{ answer: "added", secret, name, deviceLog }`, put again every 3 days until that device's receipt comes under the new pair secret. Declining puts `{ answer: "declined" }` once. The asker's device fetches its answer tags while the request waits, takes `added` only from the device the link names, which must be active on the log it carries merged with every log of the inviter's it has: the card's, which the request keeps (merged with what a request before through the same link kept), the one it keeps for them, and any a `closed` answer carried. It saves the inviter as a friend with that secret and that merged log, so an answer carrying an older or stripped log can't bring back a device they took off or drop their recovery key; both then meet in the secret's rooms. Every other answer, `declined`, `busy` or `closed`, counts only from the device the link names too, with no exception: any answer from another device is dropped and the request goes on waiting, even a `closed` whose log takes the maker off the list, which a device a recovery took off can sign on its old epoch. An older Pigeon on the inviter's list that closes a removed device's link is no longer heard either: that link goes silent. A `closed` answer's log counts when its device is active on it, merged the same way; once a request is answered `closed`, no `added` for it is taken. A request through an `#a/` link, kept from before, no longer waits: it shows that the link was made by an older Pigeon. After `added`, the asker goes on fetching that request's answer tags until two days after the link ends, without showing it, so the maker's `added`, put again until a receipt reaches it, is answered with a receipt again if the first was lost. Only the maker's answers are read there too: its `added` again changes nothing, and a `closed` from it carrying a log that holds merges that log into the friend's. A request sent through an `#a/` link before this version took no maker with it, and no `added` for it is taken. While a link of yours is open or a request of yours waits, mail is looked for every 30 seconds instead of every 10 minutes.
+| Part          | Encoding                                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| `secret`      | random 16 bytes, base32 (26 characters)                                                                   |
+| `fingerprint` | first 16 bytes of SHA-256 of the inviter's identity, base32 (26 characters)                               |
+| `maker`       | first 16 bytes of SHA-256 of the device that made the link, base32 (26 characters)                        |
+| `end`         | when the link ends, whole seconds since 1970, 5 bytes big-endian, base32 (8 characters, no leftover bits) |
 
-Only the device that made a link answers through it, and only its cards and its answers count. It tells your other devices its links (`{ secret, owner, expires, uses, used, open }`) in the self mailbox, only so the Invite Links tab can say how many are open elsewhere; nothing about a removal reads that list. Removing a device closes no link. Every device on the list, and one taken off it, holds the secret of each link it heard of and can put cards under it, signed on the log from before, but whoever opens another device's link takes none of them and none of its answers, so a removed device can do nothing through those, and they go on working. A removed device's own links are the device the link names, so it can still answer through them as you until each one ends, at most 7 days after it was made, plus the two days an asker who asked before the end goes on taking answers; it can't make one outlast its end, since the end is in the link. A removed device that is honest stops answering, so its links go silent: whoever opens one sees its card and gets no answer. Which removals a device has acted on is kept in `removalsSeen`, written after the marks to renew secrets are, and checked at each start, so a removal kept in the log just before a tab closed is acted on when it opens.
+- Lowercase is the only spelling read. Capitals, or look-alikes that lowercase to a letter of it, are refused.
+- `?l=<pigeon://lighthouse address>` follows when the inviter's list has none of the official Lighthouses.
+- A link lasts 1 hour, 1 day or 7 days and is for 1, 5, 10 or 25 people, chosen when made.
+- Opening one in the address bar takes it out of the address.
+- A chat app previews it as the site itself, since nothing after `#` reaches a server. It never names the inviter.
+
+#### Cards
+
+- Making a link puts its card at each of the inviter's Lighthouses that has no pass:
+  - tag `HMAC-SHA256(secret, "pigeon/invite/v1/card")`, until it expires
+  - one drop hash, the link's own drop value's. The drop value never leaves that device.
+- Each link has a 32-byte random claim key that never leaves that device. Every card is put claimed (see Lighthouses and mail), at each Lighthouse with `HMAC-SHA256(claim key, "pigeon/invite/v1/claim/" + Lighthouse id)`, a different value per Lighthouse.
+- The first card is put before the link is shown. The link is shown only once its card is held at a Lighthouse every opener reads (the official ones, or the one the link names), so the maker holds the claim there from the start.
+- A put refused as `taken` (only a tag someone claimed first can meet it) is put again unclaimed.
+- A link made before cards were claimed gets a claim key at the next start or mail check, and its card is put again with it.
+- Card: `{ v: "pigeon/invite-card/v1", identity, deviceLog, keys, name, lighthouses, expires, open, from, tag, sig }`.
+  - `tag` is its own card tag.
+  - Signed by the device that made the link, which must be active on the device log it carries.
+  - Sealed with AES-256-GCM under HKDF of the secret (info `pigeon/invite/key`).
+- When the inviter's device log, name or Lighthouses change, each open link's card is put again and the old one dropped by id at each Lighthouse.
+- Closing a link (cancelled, or used up) puts a card with `open` false.
+- Where a put doesn't get through, the card already there stays, and the new one is retried at each start and mail check.
+
+#### Opening a link
+
+- Lists the card tag at the official Lighthouses and the one the link names (when this Pigeon may reach it: see Lighthouses you didn't choose).
+- At each Lighthouse:
+  1. lists the tag's claimed blobs and opens up to 16
+  2. lists everything under the tag and opens up to 100 more of at most 32 KB, newest first, skipping any already opened
+- The second read covers Lighthouses from before claims (which refuse `list-claimed` as malformed) and cards not yet claimed.
+- Before reading anything:
+  - A link that has ended is refused as run out.
+  - A link whose end is more than 7 days plus a day away (the day for clock skew) is refused as too long.
+- Every card is checked:
+  - The identity's long fingerprint must be the link's.
+  - The signer must be active on the log, merged into the one this device keeps for that identity.
+  - Each sealing key must be signed by its own device and active.
+  - Only a card signed by the device the link names counts, and an open one only if its `expires` is no later than the link's end.
+  - A card from a device that any log the asker has heard of that identity says was taken off is neither opened nor asked through.
+- Of the cards that count, the newest log wins (epoch, then entries), a closed one over an open one on the same log.
+- It shows the name and fingerprint.
+
+#### Asking
+
+- Refused once the link has ended.
+- Puts a `mail:invite` letter once, sealed to the inviter's devices on the card, under `HMAC-SHA256(secret, "pigeon/invite/v1/ask/" + UTC date)` at the card's Lighthouses.
+- Body:
+
+| Field         | Holds                                                                 |
+| ------------- | --------------------------------------------------------------------- |
+| `name`        | the asker's name                                                      |
+| `deviceLog`   | the asker's device log                                                |
+| `keys`        | the asker's devices' sealing keys                                     |
+| `lighthouses` | at most two Lighthouses without passes (a Pigeon with none can't ask) |
+| `reply`       | a random 16-byte reply secret, fresh on every ask                     |
+| `link`        | the link's card tag                                                   |
+
+- Re-asking draws a fresh `reply`, so an answer to an earlier request can't end this one, and whoever read that request can't answer this one.
+- The asker keys each pending ask by `(secret, identity, maker)` as decoded bytes: the link's secret, the identity its card names, and the device the link names.
+  - Asking again through the same link replaces the pending ask.
+  - A link with the same secret naming anyone else (one someone else made with that secret) is a separate ask and never replaces one.
+- Device logs heard across requests to the same person are folded together: each request's, what answers carried, and the one kept for them.
+
+#### Answering
+
+- The maker fetches requests under its ask tags (at most 16 KB each, 200 a check).
+- It keeps each request that names this link, from a device active on the log it carries, with keys signed by their devices: one per person, with each of their devices' reply secrets, until the inviter adds or declines.
+- With 50 waiting, another is answered `busy`, to ask again later.
+- Requests from someone blocked are dropped.
+- A request through a closed or expired link is answered `closed` (at most 20 times a link, counting `busy`). So is everyone still waiting when it closes.
+- A device of someone already added gets the same `added` answer.
+- Adding:
+  - keeps a new pair secret with the request first, so a Pigeon closed in between finishes on its next start
+  - adds them as a friend with the request's device log, keys and Lighthouses
+  - puts, for each device that asked, a `mail:invite-answer` letter sealed to their devices under `HMAC-SHA256(reply, "pigeon/invite/v1/answer/" + UTC date)` at their Lighthouses, again every 3 days until that device's receipt comes under the new pair secret
+- The inviter is their friend at once. If the answer never reaches them (they stopped waiting, or stayed away past the link's end plus two days), the friend never shows up there.
+- Declining puts `declined` once.
+
+| Answer     | Body                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `added`    | `{ answer: "added", secret, name, deviceLog, reply, link }`                                                        |
+| `declined` | `{ answer: "declined", reply, link }`                                                                              |
+| `busy`     | `{ answer: "busy", reply, link }`                                                                                  |
+| `closed`   | `{ answer: "closed", deviceLog, reply, link }`, `deviceLog` being the inviter's log as the answering device has it |
+
+- Every `invite-answer` signs `{ reply, link }`: the reply secret of the device it's for and the link's card tag. Both are required. An unbound answer is rejected.
+
+#### Taking an answer
+
+- The asker fetches its answer tags while the request waits.
+- An answer counts for a request only when its `reply` and `link` are that request's, compared as decoded bytes. One naming another request (a copy put under this reply tag by a removed device or a Lighthouse) is left untaken, so it ends nothing and can't stand in for the real answer, whose letter id it shares.
+- Every answer counts only from the device the link names, with no exception. Any answer from another device is dropped and the request keeps waiting, even a `closed` whose log takes the maker off (a device a recovery took off can sign on its old epoch).
+- `added` is taken only when that device is active on the log it carries merged with every inviter log the asker has: the card's (kept with the request), every other request's to that identity, the one kept for them, and any a `closed` answer carried.
+- The inviter is saved as a friend with that secret and merged log, so an older or stripped log can't bring back a removed device or drop the recovery key. Both then meet in the secret's rooms.
+- A `closed` answer's log counts when its device is active on it, merged the same way. Once a request is answered `closed`, no `added` for it is taken.
+- An older Pigeon on the inviter's list closing a removed device's link isn't heard: that link goes silent.
+- After `added`, the asker keeps fetching that request's answer tags until two days after the link ends, without showing it, so a repeated `added` gets a fresh receipt if the first was lost.
+  - Only the maker's answers are read there.
+  - A repeated `added` changes nothing.
+  - A `closed` from the maker with a log that holds merges that log into the friend's.
+- While a link of yours is open or a request of yours waits, mail is checked every 30 seconds instead of every 10 minutes.
+
+#### Your devices and links
+
+- Only the device that made a link answers through it, and only its cards and answers count.
+- It tells your other devices its links (`{ secret, owner, expires, uses, used, open }`) in the self mailbox, only so the Invite Links tab can count links open elsewhere. Nothing about a removal reads that list.
+- Removing a device closes no link.
+- Every device on the list, and one taken off, holds the secret of each link it heard of and can put cards under it, signed on the old log. Whoever opens another device's link takes none of those cards or answers, so a removed device can do nothing through them.
+- A removed device's own links name it as maker, so it can still answer through them as you until each ends (at most 7 days after made), plus the two days an asker keeps taking answers. It can't extend a link, since the end is in the link.
+- An honest removed device stops answering, so its links go silent: openers see the card and get no answer.
+- Removals a device has acted on are kept in `removalsSeen`, written after the renew marks and checked at each start, so a removal stored just before a tab closed is acted on when it reopens.
 
 ### Replacing a secret
 
-Whoever knows a pair secret can find and enter that friend's pair rooms and see that mail waits under its tags; binding keeps them from passing for anyone, but they see when the two are online, and their IP addresses unless they go through the relay only. The self secret gives the same view of your own devices. So a secret that may be known beyond the devices that should hold it is replaced, with one that only ever travels sealed to devices. That's every secret kept from before codes went through SPAKE2, when someone watching the relays could crack a typed code, or the code behind an `#i/` or `#l/` link, and sit in the middle of the pairing or link, reading the pair secret in `pair-accept` or the link bundle with the self secret and every pair secret. And it's every secret a device held when it's removed from your list: it keeps what it was given.
+Whoever knows a pair secret can find and enter that friend's pair rooms and see that mail waits under its tags. Binding stops them passing for anyone, but they see when the two are online, and their IP addresses unless relay-only. The self secret gives the same view of your own devices.
 
-- **Which.** A friend's record carries `sealed: true` once its pair secret was made on this device or reached it sealed: pairing by live code or invite link, a link bundle, or a replacement. The self secret has the same in `selfSecretState`, which holds the secret too, so the two are stored in one write; `selfSecret` is still written after it, for a Pigeon that reads only that. A secret without it is from before. A self secret that never left this device (its device log never had another device) is marked sealed and kept; one whose other devices are all gone is replaced on this device alone.
-- **The proposal.** A `mail:rekey` letter whose body is `{ v: "pigeon/rekey/v1", replaces, secret, at, by, sig, logs }`: `replaces` names the old secret as base32 HMAC-SHA256(old secret, `pigeon/rekey/v1/replaces`), `secret` is a new random 32-byte secret, `at` is when it was proposed, `by` the device that proposed it, `sig` that device's signature, base32, over `{ v: "pigeon/rekey/v1/proposal", replaces, secret, at, by }`, so a device that passes a proposal on can't change who made it or when, and `logs` the newest device logs the sender knows for both sides (at most 2). For a friend it's sealed to their devices still on their list, by their signed sealing keys, and put at their Lighthouses under the old pair secret's tags, the only ones a friend who hasn't moved looks under; a copy with `friend` (their id) goes to your own other devices under the self secret's tags. For the self secret it's sealed to your other devices still on your list, under the old self secret's tags. It never goes in a pair or self room, where whoever knows the old secret can sit.
-- **Who starts.** Either side. Each mail check, once what's waiting has been taken, a Pigeon proposes for every secret from before that has nobody's proposal yet and someone to seal to; with nobody to seal to yet, it tries again at the next check.
-- **After a removal.** The device that removes one of your devices, the one that writes your list or the one a recovery that leaves devices off makes the writer, marks the self secret and every friend's pair secret `renew: true` (kept with the record, and with `selfSecretState`) and checks mail at once. At that check and each one after until it can, it begins a new round for each marked secret, for the secret it holds now: a proposal whose `replaces` names that secret, not the one the last round replaced, so it isn't measured against that round's winner, which the removed device may hold. It's sealed to the devices still on the lists, under the tags of the secret the other side is on, and a self secret with no other device of yours left is just replaced here. The round under way becomes the round before, kept as `prior` beside `replacing`, and what it proposed as `begun`. Until a round begins from `begun`, a winner this device takes that isn't `begun` (a proposal for the same secret from the other side, made before it heard of the removal, can be earlier) marks the secret `renew` again, so it begins a new round from that winner at the same check; a round that began from `begun` is taken as it is, and `begun` is dropped. A friend added from an export file is marked the same way, since whoever had the file, or the device it came from, may know its secret.
-- **Rounds.** A device takes a proposal for its round under way as above, and one whose `replaces` names the secret it holds as a new round, when its `by` counts: it moves to it, and its round becomes the round before. A letter for a new round also carries `prior`, the round before's winning proposal (`{ replaces, secret, at, by, sig }`, signed by its own maker, the `secret` being what the new round's `replaces` names), whose signature is checked. With it a device still in that round follows, whatever it chose there, and a device in a rival new round begun from another proposal of the round before compares the two as proposals in one round are compared, so the earliest wins. A proposal for the round before, with nothing to take the device further, is answered with the winner and `prior`, also under the tags of the secret it proposed. A device keeps the round before's rooms and mail too while neither round's new secret has been seen held by the other side, and fetches under the round before's old secret until its own round is let go. Only the round before is kept, so a device two or more rounds behind gets nothing it can follow, and stays apart until it's paired again. A round the device it went to took without being able to read (a Pigeon from before new rounds takes `mail:rekey` and gives its receipt) is sent again when a device of the other side is met in the old rooms while none has been seen with the new one, once for each device and winner: the round's `resent` lists the devices sent it, each added once a Lighthouse took the letter.
-- **Settling.** Proposals for the same old secret are ordered by `at`, then `by`, then `secret`, the last two compared as decoded bytes, and the first wins everywhere. A device keeps the winner it has seen. A proposal that loses is answered with the winner, sent back to whoever sent it (the friend's devices, or your own). When a device's winner changes, it sends the new winner to both sides, the friend's devices and your own, so a device the proposer couldn't seal to still hears it from another, and the proposer hears it's held. Those letters, and a device's own proposals, are in its outbox before the new winner is kept: a tab that closes in between puts them at its next start, and one that closes before either takes again the letter that brought the winner, which it hasn't receipted, or proposes again. When they can't be kept there, neither is the winner, and the letter that brought it doesn't count, so it's looked at again. Whatever order letters arrive in, all of them end on the earliest. A proposal counts only with a `sig` that verifies against its `by`, whichever device's letter carries it. A letter counts only from a device active on its sender's list (the friend's, for theirs; your own other devices, for copies and the self secret), only for the secret this device holds or is replacing, and once per sender and id, as all mail is. The logs in it are merged first, those in every letter fetched before any is acted on, and a proposal whose `by` is no longer on its side's list never wins: one that was winning gives way to any that counts, and with none, this device proposes again. So a removed device can't choose where the two sides end up. While a friend hasn't heard of the removal, a proposal from it can move that friend for a while, out of the old rooms too, until a letter from a device that knows of the removal arrives; with the rest of that side not yet updated, that lasts until one of them updates.
-- **Moving.** A device with a winner joins the new secret's rooms at once and keeps the old secret's, and mails under the old one, until it sees a device on the other side holding the new one: a `mail:rekey` from it naming it, or a bound hello from it in one of its rooms. Then it leaves the old rooms and mails under the new secret. It goes on fetching under the old secret's tags until every device on the other side's list has been seen that way, so one that was away, however long, still finds the old secret's mail answered: it proposes, loses, and is sent the winner. Then it lets the old secret go but keeps which proposal won, so one that beats it and comes later, from a device on its own side whose letter was held up, still moves it. A device whose winner changes sends the new one under the old secret's tags and also under those of the replacement it held before, where devices that let the old secret go still look; a copy for your own devices goes under the self secret's tags as always. A device that had let the old secret go and is moved this way doesn't go back to the old rooms or mail under the old secret, since the other side was already seen moving off it. Only a proposal that wins before the old secret is let go is made again when its proposer is removed. A proposal whose `secret` is the old secret itself is ignored.
-- **Older Pigeons.** A Pigeon from before this doesn't fetch `mail:rekey` and leaves it at the Lighthouse. While none of its side's devices has moved, it stays in the old rooms where the updated side still is, so the two keep talking, and mail between them goes under the old tags. Once one of its side's devices has moved, the other side leaves the old rooms, and a device still not updated hears nothing new until it updates. Then it finds the proposal, which is put again every 3 days for 30 days, or, if that expired, makes its own, which loses to the earlier one and is answered with it. A Pigeon that replaces secrets from before but not after a removal ignores a new round and stays on the secret it holds, where the other side waits for it in the same way, and is sent the round again once it has updated and is met there.
-- **Linking meanwhile.** A link bundle carries each friend's replacement under way and the round before, and the self secret's as `selfReplacing` and `selfPrior`, so a device linked meanwhile carries on where the one that linked it is. It says too whether the self secret is from before, as `selfSealed`, so the new device replaces it if the one that linked it never gets to; a bundle without `selfSealed` is taken as sealed.
-- **Your devices.** Once the self secret from before of an identity that ever had another device is replaced (proposed here, taken from another device, or replaced here alone), My Devices asks you to check that every device on the list is yours, until you say they are. A device someone else linked in the middle is on the list, and is sealed the new secret like the rest; removing it replaces the secrets again, without it. A replacement after a removal asks nothing: it was sealed to the list as it is.
+A secret that may be known beyond the devices that should hold it is replaced with one that only ever travels sealed to devices:
+
+- every secret from before codes went through SPAKE2, when a relay watcher could crack a typed code (or the code behind an `#i/` or `#l/` link), sit in the middle, and read the pair secret in `pair-accept` or the link bundle with the self secret and every pair secret
+- every secret a device held when it's removed from your list, since it keeps what it was given
+
+#### Which
+
+- A friend's record carries `sealed: true` once its pair secret was made on this device or reached it sealed (live code, invite link, link bundle, or a replacement).
+- The self secret has the same in `selfSecretState`, which holds the secret too, so both are stored in one write. `selfSecret` is still written after it, for a Pigeon that reads only that.
+- A secret without the mark is from before.
+- A self secret that never left this device (its log never had another device) is marked sealed and kept. One whose other devices are all gone is replaced on this device alone.
+
+#### The proposal
+
+- A `mail:rekey` letter with body `{ v: "pigeon/rekey/v1", replaces, secret, at, by, sig, logs }`:
+
+| Field      | Holds                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `replaces` | base32 HMAC-SHA256(old secret, `pigeon/rekey/v1/replaces`)                                                                                |
+| `secret`   | a new random 32-byte secret                                                                                                               |
+| `at`       | when it was proposed                                                                                                                      |
+| `by`       | the proposing device                                                                                                                      |
+| `sig`      | `by`'s base32 signature over `{ v: "pigeon/rekey/v1/proposal", replaces, secret, at, by }`, so a relaying device can't change who or when |
+| `logs`     | the newest device logs the sender knows for both sides (at most 2)                                                                        |
+
+- For a friend: sealed to their devices still on their list (by their signed sealing keys) at their Lighthouses, under the old pair secret's tags (the only ones a friend who hasn't moved looks under). A copy with `friend` (their id) goes to your own other devices under the self secret's tags.
+- For the self secret: sealed to your other devices still on your list, under the old self secret's tags.
+- Never sent in a pair or self room, where whoever knows the old secret can sit.
+
+#### Who starts
+
+- Either side. At each mail check, once waiting mail is taken, a Pigeon proposes for every secret from before that has no proposal yet and someone to seal to. With nobody to seal to, it retries at the next check.
+
+#### After a removal
+
+- The remover (the list's writer, or the writer a recovery names) marks the self secret and every pair secret `renew: true` (kept with the record and with `selfSecretState`) and checks mail at once.
+- At that check, and each one after until it can, it begins a new round for each marked secret, from the secret it holds now:
+  - The proposal's `replaces` names that secret, not the one the last round replaced, so it isn't measured against that round's winner, which the removed device may hold.
+  - It's sealed to the devices still on the lists, under the tags of the secret the other side is on.
+  - A self secret with no other device left is just replaced here.
+- The round under way becomes the round before, kept as `prior` beside `replacing`, and what it proposed as `begun`.
+- Until a round begins from `begun`, a winner this device takes that isn't `begun` marks the secret `renew` again, so a new round begins from it at the same check. (A proposal from the other side made before it heard of the removal can be earlier.) A round that began from `begun` is taken as is, and `begun` is dropped.
+- A friend added from an export file is marked the same way, since whoever had the file, or its source device, may know its secret.
+
+#### Rounds
+
+- A device takes a proposal for its round under way as below. One whose `replaces` names the secret it holds is a new round, taken when its `by` counts: it moves to it, and its round becomes the round before.
+- A new-round letter also carries `prior`: the round before's winning proposal (`{ replaces, secret, at, by, sig }`, signed by its maker, `secret` being what the new round's `replaces` names). Its signature is checked.
+  - A device still in that round follows it, whatever it chose there.
+  - A device in a rival new round begun from another proposal of the round before compares the two as proposals in one round, so the earliest wins.
+- A proposal for the round before, with nothing to move the device further, is answered with the winner and `prior`, also under the tags of the secret it proposed.
+- A device keeps the round before's rooms and mail while neither round's new secret has been seen held by the other side, and fetches under the round before's old secret until its own round is let go.
+- Only the round before is kept. A device two or more rounds behind gets nothing it can follow and stays apart until paired again.
+- A round taken by a device that couldn't read it (a Pigeon from before new rounds takes `mail:rekey` and receipts it) is sent again when a device of the other side is met in the old rooms while none has been seen with the new one. Once per device and winner: the round's `resent` lists devices sent it, each added once a Lighthouse took the letter.
+
+#### Settling
+
+- Proposals for the same old secret are ordered by `at`, then `by`, then `secret` (the last two as decoded bytes). The first wins everywhere.
+- A device keeps the winner it has seen. A losing proposal is answered with the winner, sent back to the sender (the friend's devices, or your own).
+- When a device's winner changes, it sends the new winner to both sides, so a device the proposer couldn't seal to still hears it, and the proposer hears it's held.
+- Durability:
+  - Those letters, and a device's own proposals, are in its outbox before the new winner is kept. A tab closing in between puts them at its next start.
+  - A tab closing before either retakes the unreceipted letter that brought the winner, or proposes again.
+  - When they can't be stored, neither is the winner, and the letter that brought it doesn't count, so it's looked at again.
+- Whatever order letters arrive in, all end on the earliest.
+- Validity:
+  - A proposal counts only with a `sig` that verifies against its `by`, whichever letter carries it.
+  - A letter counts only from a device active on its sender's list (the friend's for theirs, your own for copies and the self secret), only for the secret this device holds or is replacing, and once per sender and id.
+  - Its logs are merged first: those in every fetched letter before any is acted on.
+  - A proposal whose `by` is no longer on its side's list never wins. One that was winning gives way to any that counts. With none, this device proposes again.
+- So a removed device can't choose where the two sides end up.
+- While a friend hasn't heard of the removal, a proposal from the removed device can move that friend for a while (out of the old rooms too), until a letter from a device that knows of the removal arrives. With the rest of that side not yet updated, that lasts until one of them updates.
+
+#### Moving
+
+- A device with a winner joins the new secret's rooms at once and keeps the old secret's (and mails under the old one) until it sees a device on the other side holding the new one: a `mail:rekey` from it naming it, or a bound hello from it in one of its rooms.
+- Then it leaves the old rooms and mails under the new secret.
+- It keeps fetching under the old secret's tags until every device on the other side's list has been seen that way. One away for any length of time still finds the old secret's mail answered: it proposes, loses, and is sent the winner.
+- Then it lets the old secret go but keeps which proposal won, so a later, earlier-ordered proposal from a delayed device on its own side still moves it.
+- A device whose winner changes sends it under the old secret's tags and under the replacement it held before (where devices that let the old secret go still look). A copy for your own devices goes under the self secret's tags.
+- A device that had let the old secret go and is moved this way doesn't return to the old rooms or mail under the old secret.
+- Only a proposal that wins before the old secret is let go is made again when its proposer is removed.
+- A proposal whose `secret` is the old secret itself is ignored.
+
+#### Older Pigeons
+
+- A Pigeon from before this doesn't fetch `mail:rekey` and leaves it at the Lighthouse.
+- While none of its side's devices has moved, it stays in the old rooms where the updated side still is, and mail between them uses the old tags.
+- Once one of its side's devices has moved, the other side leaves the old rooms, and a non-updated device hears nothing new until it updates.
+- Then it finds the proposal (put again every 3 days for 30 days) or, if expired, makes its own, which loses to the earlier one and is answered with it.
+- A Pigeon that replaces secrets from before but not after a removal ignores a new round and stays on its secret, where the other side waits. It's sent the round again once updated and met there.
+
+#### Linking meanwhile
+
+- A link bundle carries each friend's replacement under way and the round before, and the self secret's as `selfReplacing` and `selfPrior`, so a device linked meanwhile carries on where its linker is.
+- `selfSealed` says whether the self secret is from before, so the new device replaces it if the linker never gets to. A bundle without `selfSealed` is taken as sealed.
+
+#### Your devices
+
+- Once a pre-SPAKE2 self secret of an identity that ever had another device is replaced (proposed here, taken from another device, or replaced alone), My Devices asks you to confirm every device on the list is yours, until you do.
+- A device someone else linked in the middle is on the list and gets the new secret like the rest. Removing it replaces the secrets again, without it.
+- A replacement after a removal asks nothing: it was sealed to the list as it is.
 
 ## Removing and blocking
 
-Removing a friend deletes them and your chat from this browser and sends `unfriend` in your pair room. If they're offline, the id (and the pair secret) waits in `farewells` and a session of its own sends it the next time they're there. It's also left in their mailbox, as a `farewell` letter sealed to their devices still on their list, at their Lighthouses (the official ones if they never said): their Pigeon takes it the next time it fetches, only from a device on your list, and its receipt ends the wait as meeting them would. Their Pigeon keeps the chat read-only, marks them "removed you", and stops its session; removing them too deletes it. Pairing again makes you friends once more. Blocking also keeps their id in `blocked`: your codes leave their `pair-request` unanswered and never show it, and an invite of theirs you open is refused before anything is agreed. Petnames and mutes are yours alone and never leave the browser.
+- Removing a friend deletes them and your chat from this browser and sends `unfriend` in your pair room.
+- If they're offline:
+  - The id (and pair secret) waits in `farewells`, and a session of its own sends it the next time they're there.
+  - It's also left as a `farewell` letter sealed to their devices still on their list, at their Lighthouses (the official ones if they never said). Their Pigeon takes it at its next fetch, only from a device on your list. Its receipt ends the wait as meeting them would.
+- Their Pigeon keeps the chat read-only, marks them "removed you" and stops its session. Removing them too deletes it.
+- Pairing again makes you friends once more.
+- Blocking also keeps their id in `blocked`:
+  - Your codes leave their `pair-request` unanswered and never show it.
+  - An invite of theirs you open is refused before anything is agreed.
+- Petnames and mutes are yours alone and never leave the browser.
 
 ## Logs
 
-Chats and guestbooks are signed append-only logs: each author appends entries with a sequence number (1, 2, 3...) and a Lamport timestamp; each entry is signed over `{ v: "pigeon/chat-entry/v1", log, author, seq, lamport, at, text }`, where `log` is the log's id, which for a chat is the name from both ids (see Rooms). On `hello` peers exchange `log-sync` summaries (per author, the highest sequence held with no gaps) and answer with `log-entries` batches of what the other lacks. Merging is a sorted union by (Lamport, author, sequence); an entry that doesn't verify, or isn't by one of the pair, is dropped, and the first entry seen for a sequence wins. Any entry that verifies is taken, whatever its Lamport time, as long as it's a safe integer; a time past that is never offered in a catch-up. A new entry's time is one past the highest held that is no more than 2^20 times its rank (how many entries sort at or below it), and never past the largest safe integer (2^53 - 1): a made-up time far ahead is held and shown, but the clock doesn't follow it, so it can't push later messages past what peers take. A message is at most 4000 characters. A message written while the friend is offline goes by letter (see Letters), and also reaches them the next time you're both online. Receipts and deletions are entries too.
+Chats and guestbooks are signed append-only logs.
+
+- Each author appends entries with a sequence number (1, 2, 3...) and a Lamport timestamp.
+- Each entry is signed over `{ v: "pigeon/chat-entry/v1", log, author, seq, lamport, at, text }`. `log` is the log's id, for a chat the name from both ids (see Room names).
+- On `hello` peers exchange `log-sync` summaries (per author, the highest sequence held with no gaps) and answer with `log-entries` batches of what the other lacks.
+- Merging is a sorted union by (Lamport, author, sequence).
+  - An entry that doesn't verify, or isn't by one of the pair, is dropped.
+  - The first entry seen for a sequence wins.
+- Lamport times:
+  - Any verifying entry is taken whatever its Lamport time, as long as it's a safe integer. A time past that is never offered in a catch-up.
+  - A new entry's time is one past the highest held that is no more than 2^20 times its rank (how many entries sort at or below it), and never past 2^53 − 1.
+  - A made-up time far ahead is held and shown, but the clock doesn't follow it, so it can't push later messages past what peers take.
+- A message is at most 4000 characters.
+- A message written while the friend is offline goes by letter (see Letters) and also reaches them the next time both are online.
+- Receipts are entries too.
 
 ## Lighthouses and mail
 
-A Lighthouse is a peer with an Ed25519 key, reached over WebSocket at an address `pigeon://lighthouse/<id>?url=...`; its `hello` carries `protocol` and `software`, shown as its own claim. A client's `hello` carries only `protocol` and a `nonce` chosen for the connection. Requests are numbered (`req`, from 1) and unsigned; each reply `{ v: 2, from, at, req, nonce, request, reply, sig }` is signed by the Lighthouse over the connection's nonce and `request`, the SHA-256 of the exact request frame it answers.
+### Connections
 
-Each device's sealing key is bound to it as `{ device, key, sig, hpke }`: the raw P-256 public key in base64, signed by the device over `{ v: "pigeon/sealing-key/v1", device, key }`, and `hpke`, a second signature by the device over `{ v: "pigeon/sealing-key/hpke/v1", device, key }`, saying it opens HPKE mail. Pigeons from before HPKE send no `hpke` and ignore it; a key whose `hpke` doesn't hold is refused, and a copy of a kept key without its `hpke` doesn't replace the one with it. Mail is a letter `{ v: "pigeon/letter/v1", room: "mail:<kind>", sender, to, date, id, head: { epoch, seq }, from, at, body, sig }`, signed by the device `from` of the identity `sender` (kinds so far: `farewell`, `self`, `receipt`, `invite`, `invite-answer`, `letter`, `rekey`, and `pair` and `link`, a live code's answer, handed over the connection and never left at a Lighthouse; `id` 8 to 64 characters, taken once per sender). It's sealed with a random 32-byte content key (AES-256-GCM, nonce first), and the content key and that device's 32-byte drop value are wrapped for each recipient device. The blob is `{ v, wraps: [{ e, w }], commit, content }` in canonical JSON: the wraps shuffled and naming no device, so a device tries each; `e` only as an uncompressed 65-byte point; `commit` HKDF-SHA256 of the content key (no salt; info `pigeon/mail/commit` in `v: 1`, and naming the kind in `v: 2`), which every device checks, so all of them open the same letter. A wrap is one of two forms, the same for the whole blob:
+- A Lighthouse is a peer with an Ed25519 key, reached over WebSocket at `pigeon://lighthouse/<id>?url=...`.
+- Its `hello` carries `protocol` and `software`, shown as its own claim.
+- A client's `hello` carries only `protocol` and a `nonce` for the connection.
+- Requests are numbered (`req`, from 1) and unsigned.
+- Each reply `{ v: 2, from, at, req, nonce, request, reply, sig }` is signed by the Lighthouse over the connection's nonce and `request`, the SHA-256 of the exact request frame it answers.
 
-- `v: 2`, when every recipient device's key has `hpke`: RFC 9180 HPKE in base mode, single-shot, with DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM, to the device's sealing key. `e` is HPKE's encapsulated key and `w` its ciphertext; the info is `pigeon/mail/v2` in UTF-8 and the aad the 32 bytes of `commit`, whose HKDF info here is `pigeon/mail/v2/commit/<kind>`. A device opens each wrap once, finds the kind by checking `commit` under each kind the mailbox it fetched from holds, and refuses a letter whose kind isn't that one.
-- `v: 1`, otherwise, which every Pigeon opens: AES-256-GCM (nonce first) under HKDF-SHA256 (no salt, info `pigeon/mail/wrap/<e>/<device key>`, both in base64) of ECDH between a fresh P-256 key `e` and the device's key.
+### Sealing keys
 
-A device opens a letter only for its own identity, of a kind and date the mailbox it fetched from holds. A device whose sealing key isn't a usable point is left out of a blob, never the rest. Drop hashes go to `put` sorted. It's put under a tag, `HMAC-SHA256(pair or self secret, "pigeon/mail/v1/" + recipient identity + "/" + UTC date)`, with one drop hash per recipient device, for at most 30 days, at every Lighthouse on the recipient's list (said in `hello` as `lighthouses`, the official ones when unknown). Operations: `put`, `list` (exact tags and a cursor, answering id, tag and size), `list-claimed` (the same, for claimed blobs only), `get` (one blob), `drop`, and `wait { tags, cursor, seconds }` (1 to 128 distinct tags, a lease of 1 to 600 seconds), answered once, by `waited { why }`, signed like every reply over the connection's nonce and the hash of the wait's frame: `mail` as soon as a blob is put under one of its tags past its cursor by another connection, or at once if one is already there; `lease` when its lease ends, or another `wait` on the connection replaces it. It names no tag, id or size. A connection has one wait at most, a wait counts as a read, and a Lighthouse from before waits calls it `malformed`. A put's reply, and whether it succeeds, never depend on waits, and goes before any wait it wakes is answered; a put never wakes the connection that made it, or a wait whose lease has passed. The text frame `ping` is a keepalive, answered `pong`, neither signed nor a request; a connection that keeps sending it isn't closed as idle. A `put` may carry a `claim`, 32 bytes in base32: the Lighthouse keeps the claim's SHA-256 with the blob as its owner, never tells it to anyone, and refuses the put as `taken` while a claimed blob under the same tag that hasn't expired has another owner. So a tag's claimed blobs come only from whoever claimed it first, until all of them are dropped or expire; ordinary puts under the tag, and `list`, are as they were. Claims are for invite cards, whose tag anyone holding the link knows; a Lighthouse from before claims ignores the field and keeps the blob unclaimed. A blob's id is the SHA-256 of its tag, blob and drops, and for a claimed blob its owner too, so the same bytes put unclaimed by someone else never stand in for it. Each device that takes mail in drops its copy and puts a signed `receipt` back; senders put again until each device's receipt comes. Mail counts only from a device active on the sender's newest log, and a farewell from a device since removed is undone.
+- Bound as `{ device, key, sig, hpke }`:
+  - `key`: the raw P-256 public key in base64
+  - `sig`: the device's signature over `{ v: "pigeon/sealing-key/v1", device, key }`
+  - `hpke`: a second device signature over `{ v: "pigeon/sealing-key/hpke/v1", device, key }`, saying it opens HPKE mail
+- Pigeons from before HPKE send no `hpke` and ignore it.
+- A key whose `hpke` doesn't hold is refused. A copy of a kept key without `hpke` doesn't replace one with it.
+
+### Letters on the wire
+
+- A letter is `{ v: "pigeon/letter/v1", room: "mail:<kind>", sender, to, date, id, head: { epoch, seq }, from, at, body, sig }`, signed by device `from` of identity `sender`.
+- `id` is 8 to 64 characters, taken once per sender.
+
+| Kind            | Use                                                                          |
+| --------------- | ---------------------------------------------------------------------------- |
+| `farewell`      | removing a friend while they're offline                                      |
+| `self`          | the self mailbox snapshot                                                    |
+| `sync`          | the shared log                                                               |
+| `receipt`       | a device has taken a letter                                                  |
+| `invite`        | a request through an invite link                                             |
+| `invite-answer` | the maker's answer                                                           |
+| `letter`        | chat entries                                                                 |
+| `rekey`         | replacing a secret                                                           |
+| `pair`, `link`  | a live code's answer, handed over the connection, never left at a Lighthouse |
+
+### Sealing
+
+- Sealed with a random 32-byte content key (AES-256-GCM, nonce first). The content key and that device's 32-byte drop value are wrapped for each recipient device.
+- The blob is `{ v, wraps: [{ e, w }], commit, content }` in canonical JSON:
+  - Wraps are shuffled and name no device, so a device tries each.
+  - `e` is only an uncompressed 65-byte point.
+  - `commit` is HKDF-SHA256 of the content key (no salt). Every device checks it, so all open the same letter.
+- One wrap form for the whole blob:
+
+| `v` | When                                    | Wrap                                                                                                                                                                                                     | `commit` info                  |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 2   | every recipient device's key has `hpke` | RFC 9180 HPKE, base mode, single-shot: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-256-GCM. `e` is the encapsulated key, `w` the ciphertext. Info `pigeon/mail/v2` (UTF-8), aad the 32 bytes of `commit` | `pigeon/mail/v2/commit/<kind>` |
+| 1   | otherwise (every Pigeon opens it)       | AES-256-GCM (nonce first) under HKDF-SHA256 (no salt, info `pigeon/mail/wrap/<e>/<device key>`, both base64) of ECDH between a fresh P-256 key `e` and the device's key                                  | `pigeon/mail/commit`           |
+
+- For `v: 2`, a device opens each wrap once, finds the kind by checking `commit` under each kind the fetched mailbox holds, and refuses a letter whose kind isn't that one.
+- A device opens a letter only for its own identity, of a kind and date the fetched mailbox holds.
+- A device whose sealing key isn't a usable point is left out of a blob, never the rest.
+
+### Tags and storage
+
+- Put under tag `HMAC-SHA256(pair or self secret, "pigeon/mail/v1/" + recipient identity + "/" + UTC date)`, with one drop hash per recipient device, sorted, for at most 30 days.
+- Put at every Lighthouse on the recipient's list (said in `hello` as `lighthouses`, the official ones when unknown).
+- A blob's id is SHA-256 of its tag, blob and drops (and owner, for a claimed blob), so the same bytes put unclaimed by someone else never stand in for it.
+- Each device that takes mail drops its copy and puts a signed `receipt` back. Senders put again until each device's receipt comes.
+- Mail counts only from a device active on the sender's newest log. A farewell from a device since removed is undone.
+
+### Operations
+
+| Operation      | Does                                                                             |
+| -------------- | -------------------------------------------------------------------------------- |
+| `put`          | stores a blob, optionally with a `claim`                                         |
+| `list`         | exact tags and a cursor; answers id, tag and size                                |
+| `list-claimed` | the same, for claimed blobs only                                                 |
+| `get`          | one blob                                                                         |
+| `drop`         | removes a blob                                                                   |
+| `wait`         | `{ tags, cursor, seconds }`: 1 to 128 distinct tags, a lease of 1 to 600 seconds |
+
+- `wait` is answered once by `waited { why }`, signed like every reply over the connection's nonce and the hash of the wait's frame:
+  - `mail`: a blob is put under one of its tags past its cursor by another connection, or one is already there
+  - `lease`: the lease ends, or another `wait` on the connection replaces it
+  - It names no tag, id or size.
+- A connection has one wait at most. A wait counts as a read. A Lighthouse from before waits calls it `malformed`.
+- A put's reply and success never depend on waits, and go before any wait it wakes is answered.
+- A put never wakes its own connection, or a wait whose lease has passed.
+- The text frame `ping` is a keepalive answered `pong`, neither signed nor a request. A connection that keeps sending it isn't closed as idle.
+
+### Claims
+
+- A `put` may carry a `claim`, 32 bytes in base32. The Lighthouse keeps its SHA-256 with the blob as owner and never reveals it.
+- A put is refused as `taken` while an unexpired claimed blob under the same tag has another owner. A tag's claimed blobs come only from the first claimer until all are dropped or expire.
+- Ordinary puts under the tag, and `list`, are unchanged.
+- Claims are for invite cards, whose tag anyone holding the link knows.
+- A Lighthouse from before claims ignores the field and keeps the blob unclaimed.
 
 ### Lighthouses you didn't choose
 
-A Lighthouse sees the IP address of whoever connects to it, and connecting points your browser at its host. Lighthouses you chose are on your list, on the list your other devices last said, or official; any other comes from someone else: a friend's `hello`, an invite link's `?l=`, the card behind a link, or a request through one. Pigeon connects to one someone else named only when its URL is `wss://` to a public host, and never while Always Go Through the Relay is on. Checking a Lighthouse in Network, one on your list or one you're adding, reaches it whatever its address, since you're the one choosing it. A host isn't public when it's loopback, private, link-local, shared (100.64.0.0/10), multicast or another special-use address, IPv4 or IPv6 (IPv4-mapped and NAT64 forms included), `localhost`, a single-label name, or a name under `.local`, `.localdomain`, `.internal`, `.intranet`, `.home.arpa`, `.home`, `.lan`, `.corp`, `.private`, `.test`, `.invalid`, `.example`, `.onion` or `.alt`; an IPv4 host is read as a browser reads it, so `127.1` or `2130706433` is 127.0.0.1. An address someone else names counts as one you chose only when its URL is exactly the same as yours: another path on the same host can be some other service behind it, run by someone else. A name is taken as written, so one whose DNS answers with a private address (`127.0.0.1.nip.io`, say) isn't caught. Only some browsers check that themselves (recent Chrome asks before a public page reaches the local network; Firefox and Safari don't for WebSockets), so with relay-only off a friend can still point a `wss://` connection at your network that way; it opens with TLS, so a service there sees a TLS handshake, not a WebSocket frame. Mail for a friend goes to the Lighthouses of theirs Pigeon may reach; with none, it waits until you meet, and the chat says so, while your other devices still get their copy of what you wrote. Receipts are mail too: one for a friend's letter goes only where Pigeon may reach, so with relay-only on and a friend who uses only their own Lighthouse, their chat doesn't hear you have it, and their Pigeon puts the letter again every 3 days until you meet or 30 days pass. Turning relay-only on closes any connection open to a Lighthouse it now refuses. A request through a link that none of the card's Lighthouses Pigeon may reach can take isn't sent, and Add a Friend says it couldn't be left. On the inviter's side, adding someone whose Lighthouses it may not reach adds them, but the answer waits: it's put again every 3 days, so they hear once relay-only is off, or never if it stays on.
+A Lighthouse sees the IP address of whoever connects, and connecting points your browser at its host.
 
-A Pigeon looks for mail when it starts and every 10 minutes while it runs, and sooner when you come back to it (its tab shows again, its window gets focus, the network returns) and 10 seconds after you send a message. However many of these come together they are one look: it is never within 5 seconds of the last, so one asked for sooner waits, and one asked for while another runs goes after it, never beside it. In a look, at each of its Lighthouses, for every day since it last looked (30 at most), and tomorrow in the last two hours of today, it lists the tags each friend's mail to it, and your other devices', would be under, in lists of at most 512 tags, from its cursor; the cursor moves only past what it could get, or what turned out to be gone (a blob listed and then dropped or expired before it asked answers `unknown`), which it skips without stopping the rest of that Lighthouse's list; a Lighthouse that can't be reached ends its list until the next look. With more than one list, the cursor it saves is the least over them, a finished list counting as far as anything had been listed before its last page was asked for (one that finished before the others got that far is asked once more), so a blob put while it reads is never passed by; a look that didn't finish there saves nothing, and lists the same days again next time.
+- Chosen: on your list, on the list your other devices last said, or official.
+- Named by someone else: a friend's `hello`, an invite link's `?l=`, the card behind a link, or a request through one.
+- Pigeon connects to one named by someone else only when its URL is `wss://` to a public host, and never while relay-only is on.
+- Checking a Lighthouse in Network (on your list, or being added) reaches it whatever its address, since you chose it.
+- A host isn't public when it's:
+  - loopback, private, link-local, shared (100.64.0.0/10), multicast or other special-use, IPv4 or IPv6 (IPv4-mapped and NAT64 forms included)
+  - `localhost` or a single-label name
+  - under `.local`, `.localdomain`, `.internal`, `.intranet`, `.home.arpa`, `.home`, `.lan`, `.corp`, `.private`, `.test`, `.invalid`, `.example`, `.onion` or `.alt`
+- An IPv4 host is parsed as a browser does, so `127.1` or `2130706433` is 127.0.0.1.
+- A named address counts as chosen only when its URL exactly matches yours: another path on the same host can be another service.
+- Known gaps:
+  - A name is taken as written, so one whose DNS answers privately (`127.0.0.1.nip.io`) isn't caught.
+  - Only some browsers check this themselves (recent Chrome asks before a public page reaches the local network; Firefox and Safari don't for WebSockets). With relay-only off a friend can still point a `wss://` connection at your network that way. It opens with TLS, so a service there sees a TLS handshake, not a WebSocket frame.
+- Mail for a friend goes to their Lighthouses Pigeon may reach. With none, it waits until you meet, and the chat says so. Your other devices still get their copy.
+- Receipts are mail too. With relay-only on and a friend using only their own Lighthouse, their chat doesn't hear you have it, and their Pigeon re-puts the letter every 3 days until you meet or 30 days pass.
+- Turning relay-only on closes any connection to a Lighthouse it now refuses.
+- A request through a link none of whose card's Lighthouses Pigeon may reach isn't sent. Add a Friend says it couldn't be left.
+- On the inviter's side, adding someone whose Lighthouses it may not reach adds them, but the answer waits, re-put every 3 days until relay-only is off (never, if it stays on).
 
-After a look that read one of its own Lighthouses to the end (nothing refused, failed or held back), with Hear About Mail at Once on in Network (the default) and relay-only off, a Pigeon leaves a `wait` there: the tags that look listed for today, for yesterday in the first two hours of the UTC day and for tomorrow in the last two, its own and invites' first, at most 128; the cursor that look saved; and a lease to its next scheduled look, at most 600 seconds. It never waits at a Lighthouse a friend or a link named, nor at one taken off your list while the look was under way (the same Lighthouse is the same key, address and pass). `waited { mail }` is only a cue: a random 0 to 2 seconds later it asks the scheduler for a look, which keeps looks 5 seconds apart. After a cue whose look took nothing that counted, or failed, the next cue waits a minute, then two, doubling to the schedule's ten, until a look takes something (a receipt counts when it's the first from its device for a letter still waiting on that device; one again, or for nothing, doesn't), so someone holding one of its tags can't keep it looking by putting junk there. A wait never moves a cursor or takes anything. `lease` brings no look; when it comes at the lease's end (a second early at most) and the next scheduled look is more than 5 seconds off (a lease cut to an invite's 30-second look that has since stopped, or to a moment as a timer's look began), the same wait is sent again with a lease to that look; so it is when no answer has come 30 seconds past the lease, as from a Worker with nothing to wake it. One that comes earlier isn't followed by another wait, so a Lighthouse that answers at once can't keep a Pigeon sending them, and nor is one after a look there that didn't finish, whose cursor mail would answer at once. While a wait stands its connection sends `ping` every 50 seconds, and the wait has no time limit of its own; one still unanswered 30 seconds past its lease, or one a newer wait replaced, is taken as ended, so a lost answer never holds one of the connection's 16 request slots. A connection that drops while it waits is opened again, and the same wait sent with what's left of its lease, while Pigeon is on screen, after 5 seconds doubling to 5 minutes, half of each delay random so connections a Lighthouse dropped together don't return together (starting again once a wait has stood a minute or been answered); one the Lighthouse closed for room (1013) waits for the next look. A Lighthouse that calls a wait `malformed`, one from before waits, isn't asked again for an hour. Turning Hear About Mail at Once off, or relay-only on, closes every connection with a wait standing, and taking a Lighthouse off your list closes the one there. It opens each letter, takes each (sender, id) once, drops its copy and puts a receipt back, again each time the same letter is put again, in case the last receipt was lost. A letter from a device it doesn't know on its sender's list is left, to be looked at again when it's put again. Every letter it sends goes into its outbox before it's put, even while a look is under way, so one whose tab closed before the put goes at the next start. Each put, the first and every one after, is sealed to the recipient's devices on their list as this device knows it then (your own other devices, or a friend's), under the same id, and what was put before is left to expire: a device removed since it was written isn't sealed to or waited on, one linked since is, and a letter nobody on the list is left to hear is dropped; with no key known for a device it waits on, it waits, never sealed to a key from before. A letter that tells devices just taken off your list that they were goes to them alone, and one that sends a secret's winner again to one device goes to that device alone while it's on the list. It stays there, put again every 3 days, until every recipient device's receipt comes or 30 days pass; a letter that only expired was never heard, so a farewell goes on being said in person. Puts ask for an hour less than the most a Lighthouse keeps, so a clock that runs ahead of the Lighthouse's still fits.
+### Polling
+
+- A Pigeon checks for mail:
+  - on start
+  - every 10 minutes while running
+  - when you come back (tab shown, window focused, network returns)
+  - 10 seconds after you send a message
+- Triggers coalesce into one look, never within 5 seconds of the last. One asked for sooner waits. One asked for during a look runs after it, never beside it.
+- In a look, at each Lighthouse, for every day since the last look (30 at most), plus tomorrow in the last two hours of today, it lists the tags each friend's mail and your other devices' mail would be under, in lists of at most 512 tags, from its cursor.
+- The cursor moves only past what it could get, or what turned out gone (a blob listed then dropped or expired answers `unknown`), which it skips without stopping that Lighthouse's list.
+- An unreachable Lighthouse ends its list until the next look.
+- With more than one list, the saved cursor is the least over them. A finished list counts as far as anything was listed before its last page was asked for (one that finished early is asked once more), so a blob put mid-read is never passed.
+- A look that didn't finish saves nothing and lists the same days next time.
+
+### Waiting for mail
+
+- After a look that read one of its own Lighthouses to the end (nothing refused, failed or held back), with Hear About Mail at Once on in Network (the default) and relay-only off, a Pigeon leaves a `wait` there:
+  - tags: today's, plus yesterday's in the first two hours of the UTC day and tomorrow's in the last two, its own and invites' first, at most 128
+  - cursor: the one that look saved
+  - lease: until its next scheduled look, at most 600 seconds
+- It never waits at a Lighthouse a friend or link named, nor at one taken off your list during the look (same key, address and pass).
+- `waited { mail }` is only a cue: a random 0 to 2 seconds later it asks the scheduler for a look (still 5 seconds apart).
+- Back-off: after a cue whose look took nothing that counted, or failed, the next cue waits a minute, then two, doubling to ten, until a look takes something. A receipt counts only when it's the first from its device for a letter still waiting on that device. So someone holding a tag can't keep it looking with junk.
+- A wait never moves a cursor or takes anything.
+- `lease` brings no look. The same wait is re-sent with a lease to the next look when:
+  - `lease` arrives at the lease's end (a second early at most) and the next look is more than 5 seconds off
+  - no answer has come 30 seconds past the lease (a quiet Lighthouse with nothing to wake it)
+- No re-send follows an early `lease` (so a Lighthouse answering at once can't drive a loop), nor a look there that didn't finish (mail would answer at once).
+- While a wait stands its connection sends `ping` every 50 seconds. The wait has no time limit of its own.
+- A wait unanswered 30 seconds past its lease, or replaced, is taken as ended, so a lost answer never holds one of the connection's 16 request slots.
+- Reconnects:
+  - A connection that drops while waiting is reopened and the wait re-sent with what's left of its lease, while Pigeon is on screen.
+  - Delay: 5 seconds doubling to 5 minutes, half of each delay random, reset once a wait has stood a minute or been answered.
+  - A connection the Lighthouse closed for room (1013) waits for the next look.
+- A Lighthouse that calls a wait `malformed` isn't asked again for an hour.
+- Turning Hear About Mail at Once off, or relay-only on, closes every connection with a wait. Taking a Lighthouse off your list closes its one.
+
+### Taking and sending
+
+- It opens each letter, takes each (sender, id) once, drops its copy and puts a receipt back, again each time the letter is re-put, in case a receipt was lost.
+- A letter from a device it doesn't know on the sender's list is left, to be looked at again when re-put.
+- Every outgoing letter goes into the outbox before it's put, even during a look, so one whose tab closed before the put goes at the next start.
+- Each put, first and every later one, is sealed to the recipient's devices on their list as known then, under the same id. What was put before is left to expire:
+  - A device removed since isn't sealed to or waited on. One linked since is.
+  - A letter nobody on the list is left to hear is dropped.
+  - With no key known for a device it waits on, it waits, never sealed to an older key.
+- A letter telling devices just taken off your list goes to them alone. One re-sending a secret's winner to one device goes to that device alone while it's on the list.
+- It's re-put every 3 days until every recipient device's receipt comes or 30 days pass. A letter that only expired was never heard, so a farewell keeps being said in person.
+- Puts ask for an hour less than the most a Lighthouse keeps, so a clock ahead of the Lighthouse's still fits.
 
 ## Letters
 
-A message written while none of the friend's devices is connected goes by letter: a `mail:letter` sealed to their devices still on their list, under the pair secret's tag, at every Lighthouse on their list (the official ones when unknown). Its body is `{ log, entries }`: the chat's id and a batch of at most 50 (and 40 KB) of this device's own signed chat entries, the ones the friend isn't known to have. Each device keeps how far the friend has its entries: up to the last one sent while they stayed connected for 3 seconds after, all of them once one of their devices has synced (its `log-sync` is answered with whatever it lacks), or what receipted letters carried, one after another from the start (a receipt for a later letter doesn't vouch for an earlier one). A letter waits 5 seconds after the last message, so a burst goes as one; a friend going offline with entries they weren't seen to have sends those too, and so does each mail check, Pigeon's first included, for anything written before a close (one that comes while a run of letters is being put mails what it found once that run ends, one more run and no more); a letter that expired unreceipted has its entries mailed again. One device of theirs syncing counts as all of them having it. That decides what is mailed; the chat's Received is only on their word: a receipt for the letter that carried the message, or a sync of theirs whose summary holds it (the highest sequence of each author's entries that any device of theirs has said it has, no higher than the chat held of that author then, is kept with the friend's letters), so a message that went straight to a friend who was online isn't called received until one of their syncs says so. Each letter waits for every recipient device's receipt and is put again every 3 days for at most 30 days, as all mail is; one no Lighthouse took yet is put again at each mail check and when you press Try Again. A letter put again goes to the Lighthouses the friend's mail goes to now, as this Pigeon knows them and may reach them (see Lighthouses you didn't choose), and still to where it was put before, until the receipts come, so a friend who moved their mail doesn't leave it at Lighthouses they no longer read. It is the same letter under the same id, sealed again to their devices as they are then, so a device that has it takes it once, and no message or field is added. At most 50 wait per friend, counting only those not yet receipted, overtaken by a sync or expired. at most 50 wait per friend, counting only those not yet receipted, overtaken by a sync or expired. A Pigeon remembers its last 200 letters to a friend and the last 500 messages that came by letter, for the chat to say.
+A message written while none of the friend's devices is connected goes by letter.
 
-A Pigeon takes a letter from a device on the sender's list and only into the chat with them (one that comes before that chat is running is left, to be taken when it's put again), merging its entries with the checks `log-sync` uses (signed for this chat, by an author that counts, the first seen for a sequence winning), so a letter and a sync never disagree and arrival order doesn't matter; new entries count as unread. Each message remembers its way, which the chat shows as a mark on its panel: sealing, mailed (left at which Lighthouses), not mailed yet when no Lighthouse took it (tried again at each check), received (once a receipt or a sync says so), or waiting until the friend is online when it can't be mailed; a message that came by letter remembers through which Lighthouse, and the unread ones that came together are folded into one envelope that names it ([design.md](design.md)). Letters carry only the sending device's own entries. Each goes with a copy for your other devices: the same `mail:letter`, from and to your own identity, with `friend` in its body, sealed to your other devices still on your list under the self secret's tags, at the Lighthouses self mail goes to. A device takes a copy only from another of your devices, into the chat with that friend if it has one, as its own words: not as unread, and with no "came by letter" line. Pigeons from before letters don't fetch them and get the messages when you're both online. Letters are sealed to devices' long-term sealing keys: there are no one-time prekeys yet.
+### Sending
+
+- A `mail:letter` sealed to their devices still on their list, under the pair secret's tag, at every Lighthouse on their list (official ones when unknown).
+- Body `{ log, entries }`: the chat's id and at most 50 (and 40 KB) of this device's own signed chat entries the friend isn't known to have.
+- How far the friend has this device's entries:
+  - up to the last one sent while they stayed connected for 3 seconds after
+  - all of them once one of their devices has synced (its `log-sync` is answered with what it lacks)
+  - what receipted letters carried, in order from the start (a receipt for a later letter doesn't vouch for an earlier one)
+- One device of theirs syncing counts as all of them having it.
+- Triggers:
+  - 5 seconds after the last message, so a burst goes as one
+  - a friend going offline with entries they weren't seen to have
+  - each mail check, the first included, for anything written before a close. One during a run of puts mails what it found once that run ends (one more run, no more)
+  - a letter that expired unreceipted has its entries mailed again
+
+### Received
+
+- The chat's Received is only on their word:
+  - a receipt for the letter that carried the message, or
+  - a sync of theirs whose summary holds it. Per author, the highest sequence any of their devices has said it has (no higher than the chat held of that author then) is kept with the friend's letters.
+- A message that went straight to an online friend isn't called received until one of their syncs says so.
+
+### Re-putting
+
+- Each letter waits for every recipient device's receipt and is re-put every 3 days for at most 30 days.
+- One no Lighthouse took yet is re-put at each mail check and on Try Again.
+- A re-put goes to the friend's Lighthouses as known now (and reachable, see Lighthouses you didn't choose), and still to where it went before until receipts come, so a friend who moved their mail isn't left with it at Lighthouses they no longer read.
+- It's the same letter and id, sealed again to their devices as they are then. A device that has it takes it once. No message or field is added.
+- At most 50 wait per friend, counting only those not yet receipted, overtaken by a sync or expired.
+- A Pigeon remembers its last 200 letters to a friend and the last 500 messages that came by letter, for the chat to say.
+
+### Taking
+
+- Taken only from a device on the sender's list, and only into the chat with them. One arriving before that chat runs is left, to be taken when re-put.
+- Entries merge with the checks `log-sync` uses (signed for this chat, by an author that counts, first seen per sequence wins), so letters and syncs never disagree and arrival order doesn't matter.
+- New entries count as unread.
+- Each message remembers its way, shown as a mark on its panel:
+  - sealing
+  - mailed (left at which Lighthouses)
+  - not mailed yet, when no Lighthouse took it (retried at each check)
+  - received (once a receipt or sync says so)
+  - waiting until the friend is online, when it can't be mailed
+- A message that came by letter remembers through which Lighthouse. Unread ones that came together fold into one envelope naming it ([design.md](design.md)).
+
+### Copies to your devices
+
+- Letters carry only the sending device's own entries.
+- Each goes with a copy for your other devices: the same `mail:letter`, from and to your own identity, with `friend` in its body, sealed to your other devices on the list under the self secret's tags, at the Lighthouses self mail goes to.
+- A device takes a copy only from another of your devices, into the chat with that friend if it has one, as its own words: not unread, no "came by letter" line.
+
+### Limits
+
+- Pigeons from before letters don't fetch them and get the messages when both are online.
+- Letters are sealed to devices' long-term sealing keys. There are no one-time prekeys yet.
 
 ## pigeon:// addresses
 
-`pigeon://<name>/<path>`. The name resolves petname → handle seen signed by the Lighthouse directory → raw `PeerId`; ambiguity shows a picker. Explorer joins `page:<owner>`, accepts the highest-versioned snapshot with a valid owner signature, sanitizes it with [PigeonHTML](pigeonhtml.md), and renders it. No answer: the "page not hosted" screen.
+- `pigeon://<name>/<path>`.
+- The name resolves petname → handle seen signed by the Lighthouse directory → raw `PeerId`. Ambiguity shows a picker.
+- Explorer joins `page:<owner>`, accepts the highest-versioned snapshot with a valid owner signature, sanitizes it with [PigeonHTML](pigeonhtml.md), and renders it.
+- No answer: the "page not hosted" screen.

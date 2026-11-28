@@ -14,7 +14,7 @@ A pair room is `pair:<hash of both ids>`, and the transport joins it with no Try
 - Pairing makes a 256-bit random pair secret. The inviter sends it in the signed `pair-accept`, over the invite room's WebRTC channel today and sealed in M7's mailbox once invites go async.
 - The pair room is named from the secret, not the ids: `pair:<base32 HMAC-SHA256(secret, "pigeon/pair/v2/" + UTC date)>`, a new name each UTC day. Around midnight (the last and first hour of a day) both rooms are joined, so clocks a little apart still meet.
 - The transport joins it with a Trystero `password` derived from the secret (HKDF, `pigeon/pair/password`), so offers can't be read and the room can't be entered without it.
-- Existing friends move once: the next time both are online in the old room, the one with the lower id sends a `pair-secret`, the other confirms it, and both switch. A friend who never returns stays on the old room until they do.
+- Existing friends move once: the next time both are online in the old room, the one with the lower id sends a new pair secret, the other confirms it, and both switch. A friend who never returns stays on the old room until they do.
 - Pigeon asks the browser to keep its storage (`navigator.storage.persist()`) when the identity is made, and on an iPhone tells you in-world to add Pigeon to the Home Screen, where Safari's 7-day storage cap doesn't delete the identity.
 - An "Always go through the relay" setting connects through TURN only (`iceTransportPolicy: "relay"`), so friends never learn your IP address.
 

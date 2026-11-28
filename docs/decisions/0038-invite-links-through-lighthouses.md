@@ -2,7 +2,7 @@
 
 An invite link leaves a sealed card at the inviter's Lighthouses, so friends can use it while the inviter is offline; each link has its own time limit and number of uses, and everyone who asks through it waits for the inviter's approval.
 
-- Status: accepted; superseded in part by [0053](0053-claimed-invite-cards.md): cards are put claimed, and whoever opens a link reads the claimed ones first, so someone else holding it can no longer bury the card; and by [0060](0060-invite-links-bound-to-their-maker-for-a-week.md): a link is `#b/`, naming the device that made it and its end, lasts at most 7 days, and only that device's cards and answers count, so your other devices no longer close a removed device's invites, and `#a/` links no longer open
+- Status: accepted; superseded in part by [0053](0053-claimed-invite-cards.md): cards are put claimed, and whoever opens a link reads the claimed ones first, so someone else holding it can no longer bury the card; and by [0060](0060-invite-links-bound-to-their-maker-for-a-week.md): a link is `#b/`, naming the device that made it and its end, lasts at most 7 days, and only that device's cards and answers count, so your other devices no longer close a removed device's invites, and `a/` links no longer open
 - Date: 2026-11-25
 
 ## Context
@@ -15,12 +15,12 @@ A link that works while you're offline can't rely on you answering to prove who 
 
 ### The link
 
-- **Each invite has a 16-byte random secret.** Its link is `https://pigeon.tomszir.com/#a/<secret><fingerprint>`, both in base32: the secret, then the first 16 bytes of the SHA-256 of the inviter's identity. That's 52 characters after `#a/`, one line in a chat and one QR code. The fingerprint is longer than an `#i/` link's because a link may be in other people's hands for 30 days, time enough to try matching a shorter one.
+- **Each invite has a 16-byte random secret.** Its link fragment is `a/<secret><fingerprint>` on `https://pigeon.tomszir.com/`, both in base32: the secret, then the first 16 bytes of the SHA-256 of the inviter's identity. That's 52 characters after `a/`, one line in a chat and one QR code. The fingerprint is longer than an `#i/` link's because a link may be in other people's hands for 30 days, time enough to try matching a shorter one.
 - **Where it's left.** The card goes to every Lighthouse on the inviter's list that has no pass. A Pigeon opening a link looks at the official Lighthouses and at the one the link names, if any. A link names one, as `?l=<pigeon://lighthouse address>`, only when the inviter's list has none of the official ones. A list with only pass-protected Lighthouses can't make links: a pass in a link would be a pass for everyone who has it.
 - **Limits** are chosen from presets when the link is made: 1 hour, 1 day, 7 days (the default) or 30 days, and 1 (the default), 5, 10 or 25 uses. Nothing lasts past 30 days, since no Lighthouse keeps mail longer; a 30-day card asks for an hour less, as all puts do.
 - **Several invites at once.** Add a Friend lists your open invites, with the time and uses left, and who's waiting on each, and lets you cancel any.
 - **Typed codes stay as they are**: live, single-use, 30 minutes. A code is too short to carry a secret that keeps a card hidden for days.
-- **Older Pigeons** don't know `#a/` and say the link isn't an invite. `#i/` links and typed codes still work both ways.
+- **Older Pigeons** don't know `a/` links and say the link isn't an invite. `#i/` links and typed codes still work both ways.
 
 ### The card
 

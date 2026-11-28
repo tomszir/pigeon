@@ -148,7 +148,7 @@ Today an address is resolved by joining the owner's page room, which needs a liv
 A public WebRTC room shows every visitor's IP address to every other visitor, which the mailbox design ruled out for good reason. Live public features (shoutboxes, chat rooms, "who's here") and strangers fetching chunks from each other's tabs both run into it.
 
 - **A. TURN only for public rooms.** Hides addresses from other visitors, but every public byte goes through a paid relay, and the signaling relays still see who joins which public room.
-- **B. A `watch` operation on Lighthouses**: subscribe to a log or channel and have new entries pushed, plus `say` for ephemeral lines that aren't stored. Visitors see each other's personas, never addresses. Hibernating WebSockets on the Worker Lighthouse suit it.
+- **B. A `watch` operation on Lighthouses**: subscribe to a log or channel and have new entries pushed, plus `say` for ephemeral lines that aren't stored. Visitors see each other's personas, never addresses. Hibernating WebSockets suit it.
 - **Leaning B**, with per-channel rate limits. Strangers fetch chunks from Lighthouses; only friends serve each other from their tabs.
 
 ### 4. Spam, when keys cost nothing

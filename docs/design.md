@@ -40,13 +40,85 @@ The desktop shows Pigeon Messenger, Network, Read Me.txt, Changelog.txt, Letters
 
 The Messenger's File menu has Always Go Through the Relay, a check item that reconnects everything through the TURN relay and says so in a balloon; Network shows the same setting, so it isn't only in the Messenger. With it on and no relay to be had, Pigeon doesn't connect directly; a balloon says the relay can't be reached and where to turn the setting off.
 
-Balloons come from the tray, one at a time, and close themselves after 10 seconds. A balloon that does something, such as "Pigeon was updated to 0.4.0. See what's new?", does it when clicked anywhere but its close button, and its text is a button for the keyboard. On the Pocket a balloon also closes when a window comes to the front, so it never covers that window's buttons. A tab that stays open keeps running the version it loaded, so it updates itself (`apps/web/src/app/update-check.ts`, `update-reload.ts`, `unsaved-work.ts`). It fetches the site's `/version.json`, which holds the same version as `__PIGEON_VERSION__`, when it comes back into view (at most every 5 minutes) and every hour; a file that can't be fetched or read, or that names the same or an older version, changes nothing. When it names a later one the tab reloads, but only when nothing would be lost and nobody is looking. Something would be lost while an Add a Friend, Link a Device, Link to My Other Device, recovery key or Export/Import window is open (a pairing, a link or a secret is under way); while text has been typed in any field and not sent or saved (the app's own text fields mark that themselves, so a rename or profile dialog counts even when its field isn't focused, and one that was only filled in by the app doesn't; Explorer's address bar opts out; a field of any other kind counts when it's multi-line, or one-line and focused); while a chat has just been written to storage and the write isn't finished; while a letter is waiting its few seconds or being sealed and put; and while forgetting this Pigeon to link it elsewhere is under way. Hidden or idle doesn't change that. What else is going on, such as the outbox, mail already fetched, a removal still to be acted on or a pair secret being replaced, is kept as it goes and picked up on the next start, as when a tab is closed, so it doesn't hold the update back; a window left open does, and the tab updates once it is closed and the tab has been left alone for 30 seconds. Nobody is looking when the tab is hidden or has had no click, key or touch for 30 seconds. Until both hold, the tab looks again every 5 seconds and when it is hidden. The reload happens once per version: the tab keeps the version it reloaded for in session storage, and if the same version is still out afterwards (the browser served the old code again, or a dev server was started before the version changed) it doesn't reload again, and if session storage can't be written it doesn't reload either. A tab whose browser keeps nothing between visits never reloads by itself, since that forgets the person; it shows a balloon, once per version, saying an update is out and that reloading forgets this Pigeon, and clicking it opens a box with Reload and Not Now. The tab waiting behind "Pigeon is open in another tab" also updates, having nothing to lose. After the reload, the What's new balloon below says "Pigeon was updated to 0.9.0. See what's new?". The first time Pigeon opens in a browser (no identity there yet) it opens Read Me.txt and a "Welcome to Pigeon" balloon; after that it opens straight to the desktop. On the Pocket, a conversation's toolbar shows only what works (Buzz!), and Explorer's One Column keeps a marquee on one line.
+Balloons come from the tray, one at a time, and close themselves after 10 seconds.
+
+- A balloon that does something ("Pigeon was updated to 0.4.0. See what's new?") does it when clicked anywhere but its close button. Its text is a button for the keyboard.
+- On the Pocket a balloon also closes when a window comes to the front, so it never covers that window's buttons.
+
+Updating an open tab (`apps/web/src/app/update-check.ts`, `update-reload.ts`, `unsaved-work.ts`):
+
+- A tab keeps running the version it loaded, so it updates itself.
+- It fetches `/version.json` (same version as `__PIGEON_VERSION__`) when it comes back into view (at most every 5 minutes) and every hour. A file that can't be fetched or read, or names the same or an older version, changes nothing.
+- When it names a later one, the tab reloads only when nothing would be lost and nobody is looking.
+- Something would be lost while:
+  - an Add a Friend, Link a Device, Link to My Other Device, recovery key or Export/Import window is open
+  - text is typed in any field and not sent or saved. The app's own fields mark this themselves (a rename or profile dialog counts unfocused, a field only the app filled doesn't). Explorer's address bar opts out. Other fields count when multi-line, or one-line and focused
+  - a chat write to storage isn't finished
+  - a letter is waiting its few seconds or being sealed and put
+  - forgetting this Pigeon to link it elsewhere is under way
+- Hidden or idle doesn't change that.
+- Other work (the outbox, fetched mail, a removal still to act on, a pair secret being replaced) is kept as it goes and resumed on the next start, so it doesn't block the update.
+- An open window does block it. The tab updates once the window is closed and the tab is left alone for 30 seconds.
+- Nobody is looking when the tab is hidden or has had no click, key or touch for 30 seconds. Until both hold, it rechecks every 5 seconds and when hidden.
+- Once per version: the tab keeps the version it reloaded for in session storage. If the same version is still out afterwards (old code served again, or a dev server started before the version changed) it doesn't reload again. If session storage can't be written, it doesn't reload.
+- A tab whose browser keeps nothing between visits never reloads by itself, since that forgets the person. It shows a balloon once per version saying an update is out and that reloading forgets this Pigeon. Clicking opens a box with Reload and Not Now.
+- The tab waiting behind "Pigeon is open in another tab" also updates, having nothing to lose.
+- After the reload, the What's new balloon says "Pigeon was updated to 0.9.0. See what's new?".
+
+First run and the Pocket:
+
+- The first time Pigeon opens in a browser (no identity yet) it opens Read Me.txt and a "Welcome to Pigeon" balloon. After that it opens straight to the desktop.
+- On the Pocket, a conversation's toolbar shows only what works (Buzz!), and Explorer's One Column keeps a marquee on one line.
 
 ## Devices
 
-Add a Friend has three tabs, on the desktop and on the Pocket alike, where they share the width and are a finger tall: Invite Links, Quick Code and Have an Invite? (Have One? on the Pocket). Invite Links lists first, under Waiting for You (with the count, which the tab's label shows too), each request with the asker's bird, name and fingerprint, a reminder that anyone with the link can use any name, a red note when the name matches a friend's or another request's, and Add and Decline. New Link has Lasts (1 hour, 1 day or 7 days, 7 days by default) and For (1 to 25 people, 1 by default), labelled beside them on the desktop and above them on the Pocket, and Make Link, which copies the new link. Copying a link copies a line saying who it's from with the link on the next, ready to paste into a chat ("Toms invites you to Pigeon!", then the link), and Have an Invite? opens that whole message as well as the bare link. Your Links shows each open link short (a link made by an older Pigeon, `#a/`, is closed when Pigeon starts and so isn't there), as a link that copies itself when clicked ("localhost:5533/#b/2n22…c5zpde", the whole address in its tooltip), with how many places and how long are left, Copy Link and Delete, which closes it for good (its card says so, and whoever is waiting is told). Links have no QR code: Quick Code is the one to scan, the live code in big letters beside its QR code, with when it changes next, Copy Code and New Code; it's made when the tab shows, and made again by itself after each use and every 30 minutes. Have an Invite? takes a code or either kind of link; a link shows whose it is, with Ask to Be Friends, or why it can't be used (run out, closed, made by an older Pigeon, or saying it lasts longer than any link can), and requests you sent are listed under it with what came back (waiting, declined, closed, busy) and Stop Waiting or OK (`apps/messenger/add-friend/`, `apps/messenger/invite-links/`).
+Add a Friend has three tabs (`apps/messenger/add-friend/`, `apps/messenger/invite-links/`): Invite Links, Quick Code and Have an Invite? (Have One? on the Pocket). On the desktop and the Pocket alike they share the width and are a finger tall.
 
-The Messenger's File menu has My Devices..., Link a Device... (on the first device only, since only it changes the list) and Link to My Other Device... (`apps/messenger/link-device/`, `join-device/` and `my-devices/`), which on a Pigeon that already has friends or devices says so and offers Leave This Pigeon and Link..., forgetting it here after telling its friends who are online, when nothing else has this Pigeon, while Add a Friend's progress shows how many have heard and Don't Wait goes on without the rest; a recovered Pigeon waiting for its list doesn't offer it. Link a Device shows a QR code and the code in big letters, like an invite, then "Is this your device?" with the new device's fingerprint in larger letters and a name for it (the browser and system, "Firefox on Linux", until changed), with Link, Not This Device and Cancel, and a warning in red after a wrong code is typed ("Someone typed a wrong code once"), or after five that the code was stopped. The new device shows its own fingerprint and waits; once linked it says so and starts again as you. My Devices lists each device by its name and its own fingerprint, the first half of the device key's ("Firefox on Linux · 3f9a 21c0"), the same on every one of your devices and never a browser fingerprint, with "(this device)" and when it was linked, or that it's the first device; on the first device each other one has Remove..., which asks once more, and elsewhere a line says devices are linked and removed on the device that manages your list (the first device, unless the recovery key moved that) and to keep it safe.
+Invite Links:
+
+- Waiting for You lists first, with the count (also on the tab's label). Each request shows the asker's bird, name and fingerprint, and Add and Decline.
+  - A reminder says anyone with the link can use any name.
+  - A red note shows when the name matches a friend's or another request's.
+- New Link:
+  - Lasts: 1 hour, 1 day or 7 days (default 7 days).
+  - For: 1 to 25 people (default 1).
+  - Labels sit beside the controls on the desktop, above them on the Pocket.
+  - Make Link copies the new link.
+- Copying a link copies a line saying who it's from, then the link ("Toms invites you to Pigeon!"), ready to paste. Have an Invite? opens that whole message as well as the bare link.
+- Your Links shows each open link:
+  - short, as a link that copies itself when clicked ("localhost:5533/#b/2n22…c5zpde", the whole address in its tooltip)
+  - how many places and how long are left
+  - Copy Link, and Delete, which closes it for good (its card says so, and whoever is waiting is told)
+- Links have no QR code. Quick Code is the one to scan.
+
+Quick Code:
+
+- The live code in big letters beside its QR code, with when it changes next, Copy Code and New Code.
+- Made when the tab shows, and made again after each use and every 30 minutes.
+
+Have an Invite?:
+
+- Takes a code or either kind of link.
+- A link shows whose it is with Ask to Be Friends, or why it can't be used (run out, closed, or lasting longer than any link can).
+- Requests you sent are listed under it with what came back (waiting, declined, closed, busy), and Stop Waiting or OK.
+
+The Messenger's File menu has My Devices..., Link a Device... and Link to My Other Device... (`apps/messenger/link-device/`, `join-device/`, `my-devices/`).
+
+- Link a Device... is on the first device only, since only it changes the list.
+- Link to My Other Device..., on a Pigeon that already has friends or devices, says so and offers Leave This Pigeon and Link...:
+  - It forgets this Pigeon here after telling online friends, when nothing else has this Pigeon.
+  - Add a Friend's progress shows how many have heard. Don't Wait goes on without the rest.
+  - A recovered Pigeon waiting for its list doesn't offer it.
+- Link a Device shows a QR code and the code in big letters, like an invite, then "Is this your device?":
+  - the new device's fingerprint in larger letters, and a name for it (browser and system, "Firefox on Linux", until changed)
+  - Link, Not This Device and Cancel
+  - a red warning after a wrong code ("Someone typed a wrong code once"), or after five that the code was stopped
+- The new device shows its own fingerprint and waits. Once linked it says so and starts again as you.
+- My Devices lists each device by name and its own fingerprint, the first half of the device key's ("Firefox on Linux · 3f9a 21c0"):
+  - the same on every one of your devices, never a browser fingerprint
+  - "(this device)" and when it was linked, or that it's the first device
+  - on the first device, each other one has Remove..., which asks once more
+  - elsewhere, a line says devices are linked and removed on the device that manages your list (the first device, unless the recovery key moved that) and to keep it safe
 
 Make a Recovery Key... (File menu, on the first device until it has one; it also opens right after a new Pigeon gets its name, with Later, and a balloon reminds you once on a later visit) explains what the key is for, then shows the code in groups of four, with Save as File... behind a passphrase and a warning that whoever has it can take over your Pigeon. The list commits to it only on I've Kept It. Recover My Pigeon... (on a Pigeon with nobody on it) and Use My Recovery Key... (on one that's already you and has its whole list, with Keep my other devices to untick after a theft) take the code or its file, say when a letter's wrong or the key was replaced, then show the next key to keep before anything is signed. A recovered device waits for an old friend to hand back its whole list: until then My Devices says so, Link a Device is greyed out, Link to My Other Device isn't offered, and Recover My Pigeon takes only the same code again. The windows say to keep the old code as well as the new one until a friend has paired again (`apps/messenger/recovery/`).
 
@@ -111,19 +183,107 @@ Everyone's picture is a pixel pigeon drawn from their id (`packages/core/src/ava
 
 That is about 90 billion birds. They're drawn at 32×32 by the custom-icon rules (lit from the upper left, outlined in a darker shade, a soft shadow down and to the right), shown as an SVG with `crispEdges`, with a sentence for alt text ("A slate pigeon with a copper neck, wearing a flat cap and a scarf, on a wire").
 
-Today, the Pocket's home, has the date and greeting on the wallpaper with your programs under them as 48px tiles, four to a row: Messenger, Explorer, Add Friend, Network, Read Me, Help, Settings and Letters, Messenger and Add Friend carrying how many wait in them as an orange badge on the tile's corner. Under the wallpaper: Choose Your Name until you have one; While You Were Away, a row per friend with unread messages (their bird, name, last message, and the time with the count under it), one for people waiting for you to add them (opening Invite Links), and one for each friend who added you in the last day ("Mika is your friend now"), newest first, with Clear All, which takes what's there off the list (it stays unread in its chat); then Online Now, each friend online as their bird with their name under it, which opens your chat. With none of these, it's one light row: Invite Your First Friend (opening Add a Friend's Invite Links) while you have no friends, or a quiet "All caught up" line; the buddy list's No Friends Yet isn't repeated. On the Pocket the Messenger has no Add a Friend link under the list: the left soft key is Add Friend. On the desktop the same list is behind a bell in the tray, which carries the count: it opens a flyout above the tray, Notifications with Clear All on a blue band, closed by Escape, a click outside or opening a row (`apps/messenger/notifications/`). Message balloons come at most one every 10 seconds; what arrives meanwhile is folded into one ("Mika and Ren: 3 new messages. Click to read."), there's none for a chat in front, and a friend coming online has none: Today and the buddy list show it.
+Today, the Pocket's home:
+
+- The date and greeting on the wallpaper, with your programs under them as 48px tiles, four to a row: Messenger, Explorer, Add Friend, Network, Read Me, Help, Settings and Letters.
+- Messenger and Add Friend carry how many wait in them as an orange badge on the tile's corner.
+- Under the wallpaper:
+  - Choose Your Name, until you have one.
+  - While You Were Away, newest first, with Clear All (takes rows off the list; messages stay unread in their chat):
+    - a row per friend with unread messages (bird, name, last message, time with the count under it)
+    - one for people waiting for you to add them (opens Invite Links)
+    - one for each friend who added you in the last day ("Mika is your friend now")
+  - Online Now: each online friend's bird with their name under it, opening your chat.
+- With none of these, one light row: Invite Your First Friend (opens Add a Friend's Invite Links) while you have no friends, or a quiet "All caught up". The buddy list's No Friends Yet isn't repeated.
+- On the Pocket the Messenger has no Add a Friend link under the list: the left soft key is Add Friend.
+
+On the desktop the same list is behind a bell in the tray, which carries the count (`apps/messenger/notifications/`):
+
+- It opens a flyout above the tray, Notifications with Clear All on a blue band.
+- Escape, a click outside or opening a row closes it.
+
+Message balloons:
+
+- At most one every 10 seconds. What arrives meanwhile folds into one ("Mika and Ren: 3 new messages. Click to read.").
+- None for a chat in front.
+- None for a friend coming online: Today and the buddy list show it.
 
 A chat's messages are panels (`ui/transcript/`), not lines of text. Yours sit on the right in Luna blue and theirs on the left in warm grey, each with the era's 1px frame, a white inner highlight and a hard 1px shadow and corners of 8px and 3px, never a pill, on a pale blue-grey chat area (the tokens `--pg-chat-area`, `--pg-grad-panel-own`, `--pg-grad-panel-friend`, `--pg-panel-own-border`, `--pg-panel-highlight` and `--pg-panel-shadow`, which the canvas doesn't have). A run is one sender's panels in a row; it ends at anything else in the chat, another sender, or ten quiet minutes. The friend's bird (32px) sits beside the last panel of their run, and a screen reader hears "Rook says:" once for the run. The time is small in the corner of the last panel of each minute, with the full date in its tooltip. A day line ("Today", "Yesterday", or the date) divides days, drawn as the etched rule of a group box with the words in it, and the lines for a buzz, a coming or going and the like are drawn the same way, centred. "Rook is writing a message..." is a faint italic panel of theirs.
 
-A message of yours says how it is getting there with a mark in its panel's corner, bitmaps drawn whole and never scaled. Only the newest message of yours and any that isn't received yet carry a mark, so a conversation settles into plain panels; a received one in the middle shows its time and nothing else. The marks are a pair of blue arrows for sealing, one grey tick for Mailed (a Lighthouse took it; the tooltip says where: "Left at Loft and Dovecote for when Jo's back"), two blue ticks for Received, and a warning triangle for one no Lighthouse took yet. The ticks are in `assets/brand/` as `tick-mailed` and `tick-received`. A screen reader hears the word after the message ("bring the sunset pic Mailed."), where the mark itself is decoration. Two lines can sit under a panel, always shown: "Waiting for Jo to be online", quiet, for a message with nowhere to be left, and, in red, "Not mailed yet. Pigeon tries again at the next mail check." with a Try Again link, which puts what's unsent to that friend at once and says what happened: "Trying to mail it..." while it runs, then the mark the message earned, or "Not mailed yet. No Lighthouse answered. Pigeon tries again at the next mail check." with Try Again again. It tries the letters of that one friend only; the mail check still puts them again by itself. Only "Not mailed yet" is red, and a failure always keeps its warning.
+A message of yours says how it's getting there with a mark in its panel's corner, bitmaps drawn whole and never scaled.
+
+- Only the newest message of yours and any not yet received carry a mark, so a conversation settles into plain panels. A received one in the middle shows only its time.
+
+| Mark             | Meaning                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| two blue arrows  | sealing                                                                                |
+| one grey tick    | Mailed: a Lighthouse took it (tooltip: "Left at Loft and Dovecote for when Jo's back") |
+| two blue ticks   | Received                                                                               |
+| warning triangle | no Lighthouse took it yet                                                              |
+
+- The ticks are in `assets/brand/` as `tick-mailed` and `tick-received`.
+- A screen reader hears the word after the message ("bring the sunset pic Mailed."). The mark itself is decoration.
+- Two lines can sit under a panel, always shown:
+  - "Waiting for Jo to be online", quiet, for a message with nowhere to be left.
+  - In red, "Not mailed yet. Pigeon tries again at the next mail check." with a Try Again link.
+- Try Again puts what's unsent to that friend at once:
+  - "Trying to mail it..." while it runs, then the mark the message earned.
+  - Or "Not mailed yet. No Lighthouse answered. Pigeon tries again at the next mail check." with Try Again again.
+  - It tries only that friend's letters. The mail check still re-puts them by itself.
+- Only "Not mailed yet" is red, and a failure always keeps its warning.
 
 Received is said only when the friend has said so: a receipt for the letter that carried the message, or a sync of theirs that holds it (the `log-sync` each of their devices sends when it connects, whose summary says how far it has each author's entries; the chat keeps the highest it has been told, no higher than the chat held of that author when it was said, so a claim of more than there was never covers a message written after it). Staying connected for a few seconds, or being answered a sync, counts for what is mailed but not for this word. So a message that went straight to a friend who was online shows no mark, not even as the newest, until a later sync of theirs holds it. A message from one of your other devices can be received the same way.
 
-Messages from a friend that came by letter and that you hadn't read when the chat opened are one panel from them, "Rook left 3 messages while you were away", with "By letter, through Loft" and "Click to open", and a pixel-art airmail envelope (`letter-opening-32`, five 32px frames shown at 2x). Clicking it plays the frames, stepped and about a second and a half in all (at once under reduced motion): the flap lifts and a sheet slides up. The panel then folds away and the messages come in one after another as ordinary panels, under a small etched line with the 16px envelope, "3 messages by letter, through Loft" ("1 message" for one; every Lighthouse they came through is named). The envelope is a button named "Open the letter from Rook, 3 messages by letter, through Loft" with `aria-expanded`; the messages are in the page while it is shut, so a screen reader reads them in order without a click, and opening moves focus to them. Once opened it stays open while that window is, even when an earlier message joins it, and a letter that arrives while the window is open shows opened, with no envelope to click; the next time the chat opens it has settled, and the messages are ordinary panels with no envelope and no line. A run ends at anything that isn't a friend's message that came by letter: one of yours, one that came straight, a day line, a buzz, or a coming or going. Its row in While You Were Away says "By letter, through Loft". There's no Seal Letter: a message to a friend who's offline goes by letter by itself, and their chat's status bar says what you write waits at their Lighthouses.
+Unread messages from a friend that came by letter are one panel when the chat opens: "Rook left 3 messages while you were away", with "By letter, through Loft", "Click to open", and a pixel-art airmail envelope (`letter-opening-32`, five 32px frames at 2x).
 
-The buddy list puts each friend's last message under their name (yours as "You: ..."), in bold while it's unread, or "typing..." in green, and at the row's end a column of its own with when the last message was ("21:03" today, "Mon" this week, "Nov 3" before) and under it the unread count as an orange badge, so a badge never moves the time; friends with the latest chat come first in each group. People you asked through their invite link sit in Asked, Not Added Yet, an empty dashed frame where their bird will be, until they add you; opening one shows Add a Friend's Have an Invite? tab. When someone is waiting for you to add them, a strip above the list says so ("Sam asks to be friends", or how many) and opens Invite Links. With no friends and nobody asked, the list says No Friends Yet and why (there's no directory), with Make an Invite Link, Show a Quick Code and I Have an Invite, each opening Add a Friend on that tab, in the middle of the list; on the Pocket the two buttons share a row. Under Add a Friend, the buddy list has Check Now (a refresh icon, also on the Pocket) with a line below it saying when Pigeon last finished looking for mail ("Looked for mail at 6:38 PM", "Not looked for mail yet" before the first look), and Actions has Check for Mail Now. Check Now goes through the same scheduler as a tab shown or a message sent, so it never runs beside another look and never starts within 5 seconds of the last one: pressed inside that gap it waits out what's left, the bar says "Looking for mail in a moment...", and Check Now is greyed until the look is done ("Looking for mail..." while it runs); pressed during a look, it is followed by one more. There's no sample conversation: everything in the Messenger is real.
+- Clicking plays the frames, stepped, about a second and a half in all (at once under reduced motion): the flap lifts and a sheet slides up.
+- The panel folds away and the messages come in one after another as ordinary panels, under a small etched line with the 16px envelope: "3 messages by letter, through Loft" ("1 message" for one; every Lighthouse they came through is named).
+- Accessibility:
+  - The envelope is a button named "Open the letter from Rook, 3 messages by letter, through Loft", with `aria-expanded`.
+  - The messages are in the page while it's shut, so a screen reader reads them in order without a click.
+  - Opening moves focus to them.
+- Once opened it stays open while that window is, even when an earlier message joins it. A letter arriving while the window is open shows opened, with no envelope.
+- The next time the chat opens it has settled: ordinary panels, no envelope, no line.
+- A run ends at anything that isn't a friend's message by letter: one of yours, one that came straight, a day line, a buzz, or a coming or going.
+- Its row in While You Were Away says "By letter, through Loft".
+- There's no Seal Letter. A message to an offline friend goes by letter by itself, and their chat's status bar says what you write waits at their Lighthouses.
 
-Where it shows: `ui/avatar` draws a bird in a white display-picture frame, and the Messenger works out the traits (`avatarOf`, `apps/messenger/friend-avatar/`). The buddy list shows each friend's bird at 24px before their name, in line with your own in the band straight above it (no gap between them), standing in for the presence figure: a lit dot in its corner says online (green), away (amber), busy (red) or offline (grey, with the bird greyed too). Yours, in the same frame and with your own dot, takes the logo's place at the top. The dot, 8px, sits on the frame's bottom-right corner, 2px past it. Every bird's frame has the same rounded corners (`--pg-radius-avatar`, 4px): the list, chats, profiles, the Pigeon menu and balloons. Rows take a light blue wash under the pointer, except on touch screens, where it would stick; a conversation shows the friend's before its "To:" line, with how they're reached on the line below; their profile shows it at 64px beside the facts, with its description as the alt text and tooltip; Blocked People shows each person's bird at 24px beside their name; the Pigeon menu's header greets you by name beside your bird, as XP's did ("Pigeon" and the logo until you choose a name); Add a Friend shows the bird of whoever answered at 64px, centred on top of everything (a message box's `picture`, at the top of the page on the Pocket), with the icon and their name and fingerprint centred below it, never instead of it; while it waits, both ends of the paper plane's path are framed alike, your bird and a placeholder for theirs, and the paper plane flies from your bird to theirs; on the Pocket, Today shows a friend's on their row in While You Were Away and at 64px in Online Now; and every balloon about a friend (online, a message, removed you) carries their bird. A balloon keeps its icon on the left, with the title and, under it, the text beside the icon. At 32px and its multiples a bird is drawn sharp, every pixel square; at other sizes (the list's 24px) it's drawn smoothly, so pixels blend instead of jumping unevenly.
+The buddy list:
+
+- Each friend's last message sits under their name (yours as "You: ..."), bold while unread, or "typing..." in green.
+- A column at the row's end shows when the last message was ("21:03" today, "Mon" this week, "Nov 3" before), with the unread count as an orange badge under it, so a badge never moves the time.
+- Friends with the latest chat come first in each group.
+- Asked, Not Added Yet: people you asked through their invite link, with an empty dashed frame where their bird will be, until they add you. Opening one shows Add a Friend's Have an Invite? tab.
+- When someone waits for you to add them, a strip above the list says so ("Sam asks to be friends", or how many) and opens Invite Links.
+- With no friends and nobody asked, the list says No Friends Yet and why (there's no directory), with Make an Invite Link, Show a Quick Code and I Have an Invite, each opening Add a Friend on that tab. On the Pocket the two buttons share a row.
+
+Checking for mail:
+
+- Under Add a Friend: Check Now (a refresh icon, also on the Pocket), with a line saying when Pigeon last finished looking ("Looked for mail at 6:38 PM", or "Not looked for mail yet").
+- Actions has Check for Mail Now.
+- Check Now uses the same scheduler as a tab shown or a message sent, so it never runs beside another look or within 5 seconds of the last:
+  - Pressed inside that gap, it waits out the rest, the bar says "Looking for mail in a moment...", and Check Now is greyed until done ("Looking for mail..." while it runs).
+  - Pressed during a look, one more follows.
+
+There's no sample conversation: everything in the Messenger is real.
+
+Where it shows: `ui/avatar` draws a bird in a white display-picture frame, and the Messenger works out the traits (`avatarOf`, `apps/messenger/friend-avatar/`).
+
+- Frames:
+  - Every frame has the same rounded corners (`--pg-radius-avatar`, 4px).
+  - The presence dot, 8px, sits on the frame's bottom-right corner, 2px past it: online (green), away (amber), busy (red) or offline (grey, with the bird greyed too).
+- Buddy list: each friend's bird at 24px before their name, standing in for the presence figure, in line with your own in the band straight above it (no gap). Yours, with its own dot, takes the logo's place at the top.
+- Rows take a light blue wash under the pointer, except on touch screens, where it would stick.
+- Conversation: the friend's bird before its "To:" line, with how they're reached on the line below.
+- Profile: 64px beside the facts, with its description as alt text and tooltip.
+- Blocked People: each bird at 24px beside the name.
+- Pigeon menu header: greets you by name beside your bird, as XP's did ("Pigeon" and the logo until you choose a name).
+- Add a Friend:
+  - The bird of whoever answered at 64px, centred on top (a message box's `picture`, at the top of the page on the Pocket), with the icon, name and fingerprint centred below it, never instead of it.
+  - While waiting, both ends of the paper plane's path are framed alike (your bird and a placeholder for theirs), and the plane flies from yours to theirs.
+- Pocket Today: a friend's bird on their While You Were Away row and at 64px in Online Now.
+- Balloons: every balloon about a friend (online, a message, removed you) carries their bird. The icon sits on the left, with the title and the text under it beside the icon.
+- Rendering: at 32px and its multiples a bird is drawn sharp, every pixel square. At other sizes (the list's 24px) it's drawn smoothly, so pixels blend instead of jumping unevenly.
 
 The generated bird is the only avatar: nobody can wear someone else's face, and there is nothing to upload, store, sync or moderate. A bird is only about 32 bits, so anyone could grind keys until one matches, which is why it sits beside the fingerprint and never stands in for it.
 
@@ -137,4 +297,25 @@ The art is drawn for Pigeon in code; it copies no one's, including Pigeon's own 
 
 ## Network
 
-Network (`apps/network/`, a desktop icon and in the Pigeon menu's tools) is how this Pigeon connects, kept out of Display Properties, which is about the display alone. On the desktop it has two tabs. Lighthouses lists where friends leave mail for you: each one's 22px server icon (faded when it isn't answering or is off), its name in bold, with an Official label on the official ones, its host and fingerprint, and a status line in green or red ("Answering. Says it runs pigeon-lighthouse 0.7.1.", "Not answering. Mail is still left at the others."), checked when Network opens and every minute while it's open. One you added has Remove; an official one has Disable and Enable instead, since finding its address again would be hard, and stays listed while it's off ("Turned off: friends don't leave your mail here."). The last one on can't be removed or turned off. A line under the list says what each says it runs is its own word, and its key is what's checked. Add a Lighthouse takes an address (`pigeon://lighthouse/...`) beside an Add button, and adds it only once it answers as the key in it; What a Lighthouse sees says plainly what it can and can't learn. Connection holds Always go through the relay and Right now: relays reachable, friends connected, Lighthouses answering. On the Pocket it's one page: the Lighthouses with a 32px icon, a short status, and a 44px remove key or Disable and Enable, the address and a full-width Add Lighthouse, the relay setting, and What a Lighthouse sees opening in place.
+Network (`apps/network/`, a desktop icon and in the Pigeon menu's tools) is how this Pigeon connects, kept out of Display Properties, which is about the display alone.
+
+On the desktop it has two tabs.
+
+Lighthouses lists where friends leave mail for you:
+
+- Each row: a 22px server icon (faded when not answering or off), the name in bold, an Official label on official ones, host and fingerprint.
+- A status line in green or red ("Answering. Says it runs pigeon-lighthouse 0.7.1.", "Not answering. Mail is still left at the others."), checked when Network opens and every minute while open.
+- One you added has Remove. An official one has Disable and Enable instead, since finding its address again would be hard, and stays listed while off ("Turned off: friends don't leave your mail here.").
+- The last one on can't be removed or turned off.
+- A line under the list says what each says it runs is its own word, and its key is what's checked.
+- Add a Lighthouse takes an address (`pigeon://lighthouse/...`) beside an Add button, and adds it only once it answers as the key in it.
+- What a Lighthouse sees says plainly what it can and can't learn.
+
+Connection holds Always go through the relay, and Right now: relays reachable, friends connected, Lighthouses answering.
+
+On the Pocket it's one page:
+
+- the Lighthouses with a 32px icon, a short status, and a 44px remove key or Disable and Enable
+- the address and a full-width Add Lighthouse
+- the relay setting
+- What a Lighthouse sees, opening in place
