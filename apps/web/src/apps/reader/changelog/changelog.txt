@@ -4,6 +4,45 @@
      `---'       version, newest first
 ==============================================
 
+0.8.4, 28 November 2026
+----------------------------------------------
+  * Size incoming chat panels to their
+    content.
+  * Bind invite answers to the request they
+    answer.
+  * Settle friends your devices disagreed on
+    at the update.
+  * Keep friends, blocks and settings in step
+    everywhere.
+  * Keep friends, blocks and settings in step
+    everywhere.
+  * Keep a signed log of your changes in step
+    on your devices.
+  * Sign chat and device-log entries saying
+    what they are.
+  * Renew a wait a quiet Worker leaves
+    unanswered.
+  * Count each receipt once, and renew only a
+    lease that ran.
+  * Keep each wait to the next look, and count
+    its receipts.
+  * Hear about mail in seconds while Pigeon is
+    open.
+  * Answer a waiting Pigeon as soon as its
+    mail comes.
+  * Never skip mail put while a look reads
+    several lists.
+  * Mail what a check finds missing during a
+    letter run.
+  * Put mail again to the devices on the list
+    then.
+  * Send a replaced pair secret even if the
+    tab closes first.
+  * Link a new device even when one friend
+    can't be read.
+  * Show messages as panels with Mailed and
+    Received marks.
+
 0.8.3, 27 November 2026
 ----------------------------------------------
   * Messages written on your phone show on
