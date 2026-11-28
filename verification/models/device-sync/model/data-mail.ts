@@ -10,6 +10,7 @@ import {
   type DataConfig,
   type DataState,
   type Dev,
+  ENTRY_CAP,
   type Entry,
   entryKey,
   everKnown,
@@ -125,6 +126,11 @@ export function takeEntries(
   let changed = false
   for (const e of incoming) {
     const at = out.findIndex((h) => entryKey(h) === entryKey(e))
+    // Past the per-author cap, refused and not passed on.
+    const full = cfg.rules.capByNumber
+      ? e.n > ENTRY_CAP
+      : out.filter((h) => h.by === e.by).length >= ENTRY_CAP
+    if (at < 0 && full) continue
     if (at < 0) {
       out.push(e)
       changed = true

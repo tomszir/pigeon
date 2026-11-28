@@ -1,7 +1,7 @@
 // The invariants of the your-data model, each named as verification/specs/device-sync.md names it.
 import { canon } from './canon.ts'
 import { counts, fieldOf, valueIn, viewOf, winners } from './data-fold.ts'
-import { listFor } from './data-mail.ts'
+import { listFor, sealTo, summaryOf, takeEntries, toSend } from './data-mail.ts'
 import { friendSecret, secretOf } from './data-secrets.ts'
 import {
   type DataConfig,
@@ -13,6 +13,7 @@ import {
   knowsRemoval,
   REMOVED,
   STAMP_CAP,
+  WRITER,
 } from './data-state.ts'
 import type { Invariant, StepInvariant } from './explore.ts'
 
@@ -44,7 +45,11 @@ const noNewSecretToRemoved = (): Check => ({
   id: 'P2 no new secret to a removed device',
   check: (s) => {
     const x = s.devs[REMOVED]
-    const leaked = x?.learned.filter((id) => s.secrets[id]?.knew && s.secrets[id]?.by !== REMOVED)
+    // A removal no device log took counts as made: what was made after it mustn't reach X either.
+    const after = (id: string) => s.removalRefused !== undefined && !s.removalRefused.includes(id)
+    const leaked = x?.learned.filter(
+      (id) => (s.secrets[id]?.knew || after(id)) && s.secrets[id]?.by !== REMOVED,
+    )
     return leaked?.length ? `${REMOVED} holds ${leaked.join(',')}` : undefined
   },
 })
@@ -340,6 +345,17 @@ const neverOnRemoved = (cfg: DataConfig): Check => ({
   },
 })
 
+/** R6: the writer can always remove a device: the removal's stamp fits, at or below the cap. */
+const removalFits = (): Check => ({
+  id: 'R6 a removal can always be made',
+  check: (s) =>
+    s.removalRefused
+      ? `no device log takes ${WRITER}'s removal of ${REMOVED}, so it stays on the list`
+      : s.removalSt > STAMP_CAP
+        ? `${REMOVED}'s removal is stamped ${s.removalSt}, above the cap`
+        : undefined,
+})
+
 /** P2b: once mail settles after a removal, no live friendship is on a secret the removed device read. */
 const notOnRead = (cfg: DataConfig): Check => ({
   id: 'P2b no friendship on a secret a removed device read',
@@ -383,6 +399,23 @@ const notOnRemoved = (cfg: DataConfig): Check => ({
   },
 })
 
+/**
+ * Settled, a device sends another whatever that one's summary says it lacks at every mail check, not
+ * only when something changes. If the other refuses all of it, that repeats for ever.
+ */
+function resentForEver(cfg: DataConfig, s: DataState): string | undefined {
+  for (const d of honestDevs(cfg, s))
+    for (const r of sealTo(cfg, s, d)) {
+      const mine = s.devs[d]
+      const theirs = s.devs[r]
+      if (!mine || !theirs || (r === REMOVED && cfg.hostile)) continue
+      const sent = toSend(cfg, mine.entries, summaryOf(cfg, theirs.entries))
+      if (sent.length > 0 && !takeEntries(cfg, theirs.entries, sent).changed)
+        return `${d} sends ${r} ${sent.map((e) => `${e.by}${e.n}`).join(',')} at every check, and ${r} refuses them`
+    }
+  return undefined
+}
+
 export function dataChecks(cfg: DataConfig) {
   return {
     safety: [
@@ -396,13 +429,16 @@ export function dataChecks(cfg: DataConfig) {
       neverOnRemoved(cfg),
       renewalsBounded(),
       friendTakesNothingLate(),
+      removalFits(),
     ],
     stepChecks: [tombsHold(cfg)],
     settled: [
       {
         id: 'S0 settling ends',
         check: (s: DataState) =>
-          s.unsettled ? 'settling ran out of rounds without reaching a fixed point' : undefined,
+          s.unsettled
+            ? 'settling ran out of rounds without reaching a fixed point'
+            : resentForEver(cfg, s),
       },
       converge(cfg),
       unfriendStays(cfg),

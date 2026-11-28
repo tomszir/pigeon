@@ -9,6 +9,13 @@ export const WRITER: Dev = 'A'
 
 /** The highest stamp an entry may carry; one past it is refused, and a device's own stop there. */
 export const STAMP_CAP = 100
+/**
+ * The highest whole number a device-log entry's `at` may be; one past it is refused by every
+ * Pigeon. It stands for 2^53 − 1, the largest safe integer, as the cap stands for 2^53 − 2^32.
+ */
+export const LOG_CEIL = 110
+/** The highest entry number taken from any one author; it stands for 10,000. */
+export const ENTRY_CAP = 6
 export const REMOVED: Dev = 'X'
 
 /** F is a friend from the start; G is a friend a device of yours may add. */
@@ -187,6 +194,11 @@ export interface DataState {
   nextLetter: number
   /** Ghost: the entries of X the writer held when it removed X, which must keep counting. */
   heldAtRemoval: string[]
+  /**
+   * The writer tried to remove X and no device log would take the removal's stamp, so X stays on
+   * the list: the pair secrets made by then.
+   */
+  removalRefused?: string[]
   /** What a hostile removed device last sent each device, so it doesn't send the same again. */
   xSent: Record<string, string>
   /** Ghost: the friendships live on the writer when it removed X. */
@@ -230,6 +242,12 @@ export interface DataRules {
   readonly outbox: boolean
   /** Two different entries with one author and number: the lower signature wins everywhere. */
   readonly lowerSigWins: boolean
+  /**
+   * The per-author cap is on entry numbers: an entry numbered above it is refused everywhere, so
+   * every device refuses the same ones. Off: a device refuses once it holds the cap's worth of an
+   * author's entries, whichever numbers they carry.
+   */
+  readonly capByNumber: boolean
   /** A summary carries a digest per author, so two entries with one number are both sent. */
   readonly forkDigest: boolean
   /** Pair-secret state belongs to a friendship (an incarnation). Off: to the friend. */
@@ -311,6 +329,12 @@ export interface DataRules {
   readonly settleRepairs: boolean
   /** A removal's stamp is later than every entry the writer holds from that device. */
   readonly removalAfterHeld: boolean
+  /**
+   * A removal's stamp follows only the entries held from that device that count, and stops at the
+   * cap. Off: it follows every entry held, so one stamped at the device log's ceiling leaves the
+   * removal no stamp any device log takes.
+   */
+  readonly removalWithinCap: boolean
 }
 
 export const DESIGN: DataRules = {
@@ -324,6 +348,7 @@ export const DESIGN: DataRules = {
   perEntry: true,
   outbox: true,
   lowerSigWins: true,
+  capByNumber: true,
   forkDigest: true,
   secretPerIncarnation: true,
   chainRules: true,
@@ -346,6 +371,7 @@ export const DESIGN: DataRules = {
   relayCarriesLogs: true,
   settleRepairs: true,
   removalAfterHeld: true,
+  removalWithinCap: true,
 }
 
 export interface DataConfig {
@@ -358,17 +384,20 @@ export interface DataConfig {
   /** Which devices may spend each budget; any of them when left out. */
   readonly who?: Partial<Record<Budget, readonly Dev[]>>
   /**
-   * What a hostile removed device forges, in order: an entry at an early or a current stamp, or a
-   * pair-secret proposal of its own for F, claiming a high round.
+   * What a hostile removed device forges, in order: an entry at an early or a current stamp (or,
+   * while still on the list, at the device log's ceiling, above the cap), or a pair-secret proposal
+   * of its own for F, claiming a high round.
    */
   readonly forges?: readonly (
     | {
         readonly op: Op
-        readonly stamp: 'early' | 'current' | 'ahead' | 'cap'
+        readonly stamp: 'early' | 'current' | 'ahead' | 'cap' | 'over'
         /** Signed under a number one past the next, leaving a gap no device can fill. */
         readonly skip?: boolean
       }
     | { readonly proposal: true }
+    /** Twice the cap's worth of entries no Pigeon reads, numbered on from its last. */
+    | { readonly flood: true }
     | { readonly root: FriendId; readonly at?: 'removal' }
   )[]
   /** People change petnames only on devices that have heard of the removal (one scenario). */
@@ -377,6 +406,8 @@ export interface DataConfig {
   readonly xSendsLatest?: boolean
   /** The devices of yours a hostile removed device mails, besides the friends; all when left out. */
   readonly xMails?: readonly Dev[]
+  /** A hostile device sends the writer only its entries numbered up to the cap, and the others only those above. */
+  readonly xSplits?: boolean
   /** Which friends a person may pair with (again, after an unfriend); G when left out. */
   readonly adds?: readonly FriendId[]
   /** Which friends people change; any when left out. */

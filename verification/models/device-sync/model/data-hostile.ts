@@ -9,7 +9,9 @@ import { countsOn, winner } from './data-secrets.ts'
 import {
   type DataConfig,
   type DataState,
+  ENTRY_CAP,
   honest,
+  LOG_CEIL,
   type LogEvent,
   propKey,
   REMOVED,
@@ -47,6 +49,13 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     next.secrets[p.id] = { by: REMOVED, knew: next.removalSt > 0 }
     return [['X forges a pair-secret proposal of its own for F, claiming round 50', next]]
   }
+  if ('flood' in forge) {
+    const from = dev.nextN
+    dev.nextN = from + 2 * ENTRY_CAP
+    for (let n = from; n < dev.nextN; n++)
+      dev.entries = [...dev.entries, { by: REMOVED, n, st: n, op: { k: 'future' }, sig: `X${n}a` }]
+    return [[`X signs entries ${from} to ${dev.nextN - 1}, of a kind no Pigeon reads`, next]]
+  }
   if ('root' in forge) {
     // A second first secret for a friendship it has read the first of, stamped as early as can be.
     const inc = `${forge.root}1`
@@ -70,6 +79,8 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
     ) + 1
   // At the cap: once removed, one below the highest stamp an entry may carry.
   if (forge.stamp === 'cap' && next.removalSt === 0) return []
+  // At the device log's ceiling, above the cap, while still on the list.
+  if (forge.stamp === 'over' && next.removalSt !== 0) return []
   // Skipping a number leaves a gap no device can fill.
   const n = forge.skip ? dev.nextN + 1 : dev.nextN
   dev.nextN = n + 1
@@ -81,12 +92,18 @@ function forgeStep(cfg: DataConfig, state: DataState): Step[] {
         ? top + 10
         : forge.stamp === 'cap'
           ? STAMP_CAP - 1
-          : top
+          : forge.stamp === 'over'
+            ? LOG_CEIL
+            : top
   const late = next.allKnew ? { late: true as const } : {}
   dev.entries = [...dev.entries, { by: REMOVED, n, st, op: forge.op, sig: `X${n}a`, ...late }]
-  const when = { early: 'an early', ahead: 'a far-ahead', cap: 'the capped', current: 'a current' }[
-    forge.stamp
-  ]
+  const when = {
+    early: 'an early',
+    ahead: 'a far-ahead',
+    cap: 'the capped',
+    over: 'the device log\u2019s highest',
+    current: 'a current',
+  }[forge.stamp]
   const gap = forge.skip ? ', skipping a number,' : ''
   return [[`X forges ${canon(forge.op)}${gap} at ${when} stamp`, next]]
 }
@@ -115,7 +132,9 @@ export function hostileSteps(cfg: DataConfig, state: DataState): Step[] {
       // A second entry under one number goes to the writer one way and to the others the other.
       const variant = r === WRITER ? 'a' : 'b'
       const picked = own.filter(
-        (e) => e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n),
+        (e) =>
+          (e.sig.endsWith(variant) || !own.some((o) => o !== e && o.n === e.n)) &&
+          (!cfg.xSplits || e.n <= ENTRY_CAP === (r === WRITER)),
       )
       const latest = Math.max(...picked.map((e) => e.n))
       const pick = cfg.xSendsLatest ? picked.filter((e) => e.n === latest) : picked

@@ -32,6 +32,7 @@ import {
   type FriendId,
   honest,
   knowsRemoval,
+  LOG_CEIL,
   newDevice,
   type Op,
   onList,
@@ -281,13 +282,28 @@ function writerSteps(cfg: DataConfig, state: DataState): Step[] {
       // What X stamped from here on is discounted: from later than everything the writer holds
       // from X, so what X had already delivered keeps counting however fast its clock ran. The
       // writer's own clock doesn't follow.
-      const held = writer.entries.filter((e) => e.by === REMOVED)
+      // Only what counts: one stamped above the cap counts for nothing, and the removal stops at the
+      // cap, so it always fits in the device log.
+      const held = writer.entries.filter(
+        (e) =>
+          e.by === REMOVED && (!cfg.rules.removalWithinCap || counts(next, cfg.rules, WRITER, e)),
+      )
       writer.clock += 1
-      writer.log = uniq([...writer.log, 'rmX'])
-      writer.dirty = true
-      next.removalSt = cfg.rules.removalAfterHeld
+      const after = cfg.rules.removalAfterHeld
         ? Math.max(writer.clock, ...held.map((e) => e.st + 1))
         : writer.clock
+      const st = cfg.rules.removalWithinCap ? Math.min(STAMP_CAP, after) : after
+      if (st > LOG_CEIL) {
+        next.removalRefused = Object.keys(next.secrets)
+        out.push([
+          `${WRITER} tries to remove ${REMOVED}; no device log takes the stamp`,
+          finish(cfg, next),
+        ])
+        return out
+      }
+      writer.log = uniq([...writer.log, 'rmX'])
+      writer.dirty = true
+      next.removalSt = st
       next.removalAt = writer.clock
       next.heldAtRemoval = held.map((e) => e.sig)
       next.liveAtRemoval = Object.keys(viewOf(next, cfg.rules, WRITER).live)

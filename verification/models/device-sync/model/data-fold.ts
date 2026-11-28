@@ -94,26 +94,33 @@ export function winners(
   return win
 }
 
-/** The kinds fold reads; any other name is a kind it can't read, skipped as unreadable. */
-const KINDS: Readonly<Record<string, true>> = {
-  add: true,
-  tomb: true,
-  pet: true,
-  block: true,
-  relay: true,
+/** What fold does with each kind it reads; any other name is a kind it can't read, skipped. */
+const READERS: Readonly<Record<string, (e: Entry) => void>> = {
+  add: () => {},
+  tomb: () => {},
+  pet: () => {},
+  block: () => {},
+  relay: () => {},
 }
 
-/** Whether an entry's kind name would fail a lookup that doesn't check its table owns the name. */
-function failsLookup(rules: DataRules, e: Entry): boolean {
-  if (rules.kindsOwnOnly || e.op.k !== 'future') return false
-  const name = e.op.name ?? 'future'
-  return name in KINDS && !Object.hasOwn(KINDS, name)
+/**
+ * The reader for a kind name: only one the table itself holds. The defect looks through inherited
+ * names too, so `__proto__` finds `Object.prototype`, which isn't a function, and calling it throws.
+ */
+function readerFor(rules: DataRules, name: string): ((e: Entry) => void) | undefined {
+  if (rules.kindsOwnOnly) return Object.hasOwn(READERS, name) ? READERS[name] : undefined
+  return READERS[name]
 }
 
 export function viewOf(state: DataState, rules: DataRules, d: Dev): View {
   const entries = state.devs[d]?.entries ?? []
-  if (entries.some((e) => failsLookup(rules, e)))
+  try {
+    for (const e of entries)
+      readerFor(rules, e.op.k === 'future' ? (e.op.name ?? 'future') : e.op.k)?.(e)
+  } catch {
+    // A fold that throws stops the device taking anything more: what C2 refuses.
     return { live: {}, pet: {}, blocked: {}, relay: false, failed: true }
+  }
   const win = winners(state, rules, d, entries)
   const counting = entries.filter((e) => counts(state, rules, d, e))
   const ended = new Set(counting.flatMap((e) => (e.op.k === 'tomb' ? [e.op.inc] : [])))

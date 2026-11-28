@@ -2,7 +2,8 @@
 // is meant to reach, and each planted defect is caught by the invariant it names.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { DEFECTS, dataModel, SCENARIOS, withDefect } from './data-model.ts'
+import { DEFECTS, withDefect } from './data-defects.ts'
+import { dataModel, SCENARIOS } from './data-model.ts'
 import { DESIGN } from './data-state.ts'
 import { explore, summary, walk } from './explore.ts'
 import { MAX_STATES, WALK_LENGTH, WALKS } from './limits.ts'
@@ -27,6 +28,8 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   gaps: ['devices hold different entries of one author', 'settled:relay on'],
   gap: ['settled:every device knew of the removal', 'forged entry taken'],
   capped: ['settled:petname set', 'forged entry taken'],
+  flood: ['forged entry taken', 'settled:petname set'],
+  overcap: ['settled:removed', 'settled:G live on B', 'forged entry taken'],
   skewpair: ['settled:threshold later than the removal', 'settled:G live on A'],
   hostilepair: ['settled:threshold later than the removal', 'a friend took a forged proposal'],
   held: ["the friends' mail held", 'a friend took a forged proposal'],
