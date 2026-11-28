@@ -311,12 +311,16 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
     return kept
   }
 
-  /** A receipt from one of `sender`'s devices for letter `id`; true when that was the last. */
+  /**
+   * A receipt from one of `sender`'s devices for letter `id`: `none` when the letter wasn't waiting
+   * on that device (a receipt again, or for nothing), `all` when it was the last it waited on.
+   */
   async function received(sender: PeerId, device: PeerId, id: string) {
     let heard: 'none' | 'some' | 'all' = 'none'
     await outbox.change((letters) =>
       letters.flatMap((letter) => {
         if (letter.id !== id || letter.to.identity !== sender) return [letter]
+        if (!letter.waiting.includes(device)) return [letter]
         const waiting = letter.waiting.filter((other) => other !== device)
         heard = waiting.length > 0 ? 'some' : 'all'
         return waiting.length > 0 ? [{ ...letter, waiting }] : []
@@ -612,7 +616,7 @@ export function createMailbox(deps: MailboxDeps): Mailbox {
             const fresh = taken[key] === undefined && typeof body?.for === 'string'
             const heard = fresh ? await received(letter.sender, letter.from, `${body.for}`) : 'none'
             if (heard === 'all') completed.push(letter.sender)
-            // A receipt for mail that waited for it is news, as a letter is; one for nothing isn't.
+            // A receipt that ends a wait is news, as a letter is; one again, or for nothing, isn't.
             if (heard !== 'none') answered?.()
             if (taken[key] === undefined && typeof body?.for === 'string')
               deps.onReceipt?.(letter.sender, body.for, letter.from)

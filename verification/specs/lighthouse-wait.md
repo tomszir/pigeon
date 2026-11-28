@@ -48,7 +48,7 @@ Conventions. `P` is docs/protocol.md, `TM` docs/threat-model.md, `LH` docs/light
              │yes
              ▼
            wait ──waited{mail}──▶ cue: a look within 0–2 s, through the scheduler ──▶ look
-             │──waited{lease}──▶ (nothing; the next look waits again)
+             │──waited{lease}, its lease run──▶ wait again, leased to the next look (none if it's under 5 s off)
              │──closed for room (1013)──▶ held off until the next scheduled look
              │──dropped otherwise, on screen──▶ reopen after 5 s, doubling to 5 min, and wait again
              └──waiting turned off──▶ connection closed
@@ -56,7 +56,7 @@ Conventions. `P` is docs/protocol.md, `TM` docs/threat-model.md, `LH` docs/light
 
 - It waits only at Lighthouses on its own list, only with waiting on and relay-only off, and only after a look that read its lists there to their end: nothing refused, nothing failed, nothing a source's limit held back. Its cursor is the one that look saved.
 - Its tags are taken from that look's own: today's, yesterday's in the first two hours of the UTC day and tomorrow's in the last two, by the look's clock. So they are always a subset of what that look listed. Past 128 it keeps its own and its invites' tags and those of the friends it heard from most recently. Sent again after a drop, it names the same tags, with the lease that's left.
-- Its lease runs to its next scheduled look, at most 600 seconds.
+- Its lease runs to its next scheduled look, at most 600 seconds. A lease cut shorter than that (to an invite's quick look that has since stopped, or to a moment as a timer's look began) is renewed: once it has run its course, the same wait, same tags and same cursor, is sent again with a lease to the next scheduled look, unless that is 5 seconds off or less. A `lease` that comes before the lease's end (more than a second early, since leases are whole seconds) isn't renewed, so a Lighthouse that answers at once can't keep the Pigeon sending waits; and each lease sent again is longer than 5 seconds, so it's one wait per few seconds at most.
 - A `waited` only asks for a look; it never moves the cursor, takes, opens or drops anything.
 - Turning waiting off, or relay-only on, closes every connection with a wait standing.
 - A connection closed for room isn't reopened to wait until the next scheduled look; other drops are reopened while Pigeon is on screen, and the backoff starts again once a wait has stood a minute or been answered.
@@ -121,6 +121,7 @@ Each has the id the model's checks use (`model/checks.ts`, `model/wait-model.ts`
 - **C5. Off means off.** No wait stands for a Pigeon that turned waiting off, beyond a connection already gone quiet, which the idle time closes.
 - **C6. No churn.** A Pigeon closed for room doesn't reopen to wait before its next look.
 - **C7. Nothing new revealed.** Every tag a wait names was listed by the look before it.
+- **C8. Waits until the next look.** A Pigeon that's on, connected, and has waited since a look that read its Lighthouse to the end always has a wait standing there, or about to be sent again (its lease just ran its course), or a cue for a look, until that next look.
 
 ### One look
 

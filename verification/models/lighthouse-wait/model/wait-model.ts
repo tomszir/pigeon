@@ -159,6 +159,15 @@ const clientChecks = (limits: WaitLimits): Invariant<Sys>[] => [
       s.reopenedEvicted ? 'a client closed for room reopened before its next look' : undefined,
   },
   {
+    id: 'C8 waits until the next look',
+    check: (s) => {
+      for (const [who, c] of Object.entries(s.clients))
+        if (c.on && c.waiting && c.conn !== null && !c.cue && c.waitReq === null && !c.renewDue)
+          return `${who}'s wait ended before its next look, and nothing waits in its place`
+      return undefined
+    },
+  },
+  {
     id: 'C7 nothing new revealed',
     check: (s) =>
       s.strayTag !== null ? `a wait named ${s.strayTag}, which its look didn't list` : undefined,
@@ -327,6 +336,13 @@ export const DEFECTS: readonly Defect[] = [
     catches: 'C6 no churn',
   },
   {
+    name: 'no wait again after a lease that ended before the next look',
+    client: { renewsAfterLease: false },
+    scenario: 'cycle',
+    variant: 'node',
+    catches: 'C8 waits until the next look',
+  },
+  {
     name: 'a cue moves the cursor',
     client: { cueOnly: false },
     scenario: 'cycle',
@@ -360,6 +376,7 @@ export function waitModel(
       ...(s.ghost.owed.length > 0 ? ['a wake owed across a reset'] : []),
       ...(s.reopenedEvicted ? ['reopened after eviction'] : []),
       ...(Object.values(s.clients).some((c) => c.evicted) ? ['evicted'] : []),
+      ...(Object.values(s.clients).some((c) => c.renewDue) ? ['a lease ran its course'] : []),
     ],
   }
 }

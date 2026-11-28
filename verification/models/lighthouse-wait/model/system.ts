@@ -1,5 +1,6 @@
 // Pigeons and a Lighthouse together: clients that look for mail, wait after each look, hear
-// `waited`, look again on its cue, lose and reopen their connections, and turn waiting off; a
+// `waited`, look again on its cue, wait again when a lease ends, lose and reopen their
+// connections, and turn waiting off; a
 // sender that puts mail for them; and the Lighthouse, Node or Worker, from `lighthouse.ts`.
 // Every event the clients cause goes through `step`, and through `checkEvent`, which records
 // what it finds in the state for the explorer to report.
@@ -28,6 +29,8 @@ export interface ClientRules {
   readonly holdsOffAfterEviction: boolean
   /** `waited { mail }` only asks for a look; it never moves the cursor. */
   readonly cueOnly: boolean
+  /** A wait whose lease ran its course is sent again, with the tags it named, until the next look. */
+  readonly renewsAfterLease: boolean
 }
 
 export const CLIENT_RULES: ClientRules = {
@@ -36,6 +39,7 @@ export const CLIENT_RULES: ClientRules = {
   closesOnSwitch: true,
   holdsOffAfterEviction: true,
   cueOnly: true,
+  renewsAfterLease: true,
 }
 
 export interface Client {
@@ -59,6 +63,10 @@ export interface Client {
   readonly cue: boolean
   /** Its waiting connection was closed for room since its last look. */
   readonly evicted: boolean
+  /** It has waited since its last look, which read its Lighthouse to the end, and wasn't refused. */
+  readonly waiting: boolean
+  /** Its wait's lease ran its course: it's sent again. */
+  readonly renewDue: boolean
 }
 
 export interface Budget {
@@ -140,6 +148,8 @@ export function initial(setup: Setup): Sys {
       req: 1,
       cue: false,
       evicted: false,
+      waiting: false,
+      renewDue: false,
     }
   return {
     lh: emptyLighthouse(setup.variant),
@@ -220,7 +230,8 @@ function hear(s: MSys, o: Output, rules: ClientRules) {
     if (o.body.why === 'mail') {
       setClient(s, who, { cue: true })
       if (!rules.cueOnly) setClient(s, who, { cursor: s.lh.seq })
-    }
+    } else if (rules.renewsAfterLease && s.lh.now >= c.waitUntil)
+      setClient(s, who, { renewDue: true })
     return
   }
   if (o.kind === 'close' || o.kind === 'refuse') {
@@ -230,7 +241,8 @@ function hear(s: MSys, o: Output, rules: ClientRules) {
     setClient(s, who, {
       conn: null,
       waitReq: null,
-      ...(o.kind === 'close' && o.why === 'room' ? { evicted: true } : {}),
+      renewDue: false,
+      ...(o.kind === 'close' && o.why === 'room' ? { evicted: true, waiting: false } : {}),
     })
   }
 }
@@ -283,15 +295,21 @@ function sendWait(
   if (c === undefined) return
   if (tags.some((t) => !c.lookTags.includes(t)))
     s.strayTag = tags.find((t) => !c.lookTags.includes(t)) ?? null
-  setClient(s, who, { waitTags: [...tags], waitUntil: s.lh.now + seconds })
+  setClient(s, who, {
+    waitTags: [...tags],
+    waitUntil: s.lh.now + seconds,
+    waiting: true,
+    renewDue: false,
+  })
   const body = ask(s, who, { type: 'wait', tags, cursor: c.cursor, seconds }, setup, rules, client)
   // A refusal, or `malformed` from a Lighthouse that doesn't wait, is all it hears.
-  if (body !== undefined && body.type === 'error') setClient(s, who, { waitReq: null })
+  if (body !== undefined && body.type === 'error')
+    setClient(s, who, { waitReq: null, waiting: false })
 }
 
 /** One look at the Lighthouse: lists from the cursor to the end, takes and drops what's new. */
 function look(s: MSys, who: string, setup: Setup, rules: Rules, client: ClientRules) {
-  setClient(s, who, { cue: false, evicted: false })
+  setClient(s, who, { cue: false, evicted: false, waiting: false, renewDue: false })
   if (!connect(s, who, setup, rules, client)) return
   const tags = lookTagsFor(who, s.day, s.late)
   setClient(s, who, { lookTags: tags })
@@ -443,9 +461,16 @@ export function steps(
         const tags = client.reusesLookTags ? c.waitTags : waitTagsFor(who, s.day, s.late)
         sendWait(s, who, tags, c.waitUntil - s.lh.now, setup, rules, client)
       })
+    // Its lease ran its course before the next look: the same wait again, with a lease to it. Time
+    // has to pass for each, so this needs no budget of its own.
+    if (c.renewDue && c.on && c.conn !== null)
+      take(`${who} waits again after its lease`, {}, (s) => {
+        const tags = client.reusesLookTags ? c.waitTags : waitTagsFor(who, s.day, s.late)
+        sendWait(s, who, tags, leaseFor(setup.limits), setup, rules, client)
+      })
     if (c.on && b.switches > 0)
       take(`${who} turns waiting off`, { switches: 1 }, (s) => {
-        setClient(s, who, { on: false })
+        setClient(s, who, { on: false, waiting: false, renewDue: false })
         if (client.closesOnSwitch && c.conn !== null) {
           setClient(s, who, { conn: null, waitReq: null })
           run(s, [{ kind: 'close', conn: c.conn }], setup, rules, client)
