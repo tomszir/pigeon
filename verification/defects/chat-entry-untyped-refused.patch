@@ -1,0 +1,20 @@
+defect: a chat entry signed untyped, as every one before 0.8.4 was, is refused
+test: packages/core src/devices/entry-signing.test.ts
+expect: signs each entry as the current release does, and takes exactly what it takes
+
+diff --git i/packages/core/src/chat/chat-log.ts w/packages/core/src/chat/chat-log.ts
+index 2c16d32..a69a43c 100644
+--- i/packages/core/src/chat/chat-log.ts
++++ w/packages/core/src/chat/chat-log.ts
+@@ -196,10 +196,7 @@ export function isLogEntry(value: unknown): value is LogEntry {
+ export async function verifyEntry(crypto: Crypto, log: string, entry: LogEntry): Promise<boolean> {
+   const sig = base32DecodeExact(entry.sig)
+   if (!sig.ok) return false
+-  return (
+-    (await crypto.verify(entry.author, sig.value, typedBytes(log, entry))) ||
+-    crypto.verify(entry.author, sig.value, untypedBytes(log, entry))
+-  )
++  return crypto.verify(entry.author, sig.value, typedBytes(log, entry))
+ }
+ 
+ /**

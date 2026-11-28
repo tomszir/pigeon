@@ -1,0 +1,18 @@
+defect: a device-log entry signed untyped, as every one before 0.8.4 was, is refused, and its log with it
+test: packages/core src/devices/entry-signing.test.ts
+expect: signs each entry as the current release does, and takes exactly what it takes
+
+diff --git i/packages/core/src/devices/device-log.ts w/packages/core/src/devices/device-log.ts
+index c38b66f..5c8a8fe 100644
+--- i/packages/core/src/devices/device-log.ts
++++ w/packages/core/src/devices/device-log.ts
+@@ -463,8 +463,7 @@ async function checkChain(
+       checkSig(crypto, state.writer, signature.value, bytes, fixed)
+     // The bytes entries are signed over now first, then the ones they were signed over before.
+     const holds =
+-      (await signed(typedEntryBytes(identity, epoch, entry))) ||
+-      (await signed(untypedEntryBytes(identity, epoch, entry)))
++      (await signed(typedEntryBytes(identity, epoch, entry))) || false
+     if (!holds) return false
+     if (apply(state, entry) !== undefined) return false
+     prev = signature.value

@@ -46,22 +46,20 @@ export function fakeSigner(name: string): Signer {
 }
 
 /**
- * `signer` as a Pigeon that signs entries over the bytes that say what they are: a device-log or
- * chat entry it's asked to sign, it signs with a `v` naming its kind and, in a device log, its
- * `epoch` even in epoch 0. Anything else it signs as it's given.
+ * `signer` as a Pigeon from before 0.8.4 signs entries: a device-log or chat entry it's asked to
+ * sign in the typed form, it signs with no `v`, and in a device log with no `epoch` in epoch 0.
+ * Anything else it signs as it's given.
  */
-export function typedSigner(signer: Signer): Signer {
-  const typed = (data: Uint8Array): Uint8Array => {
+export function untypedSigner(signer: Signer): Signer {
+  const untyped = (data: Uint8Array): Uint8Array => {
     const text = utf8Decode(data)
     if (!text.ok || !text.value.startsWith('{')) return data
-    const value = JSON.parse(text.value) as Record<string, Json>
-    if ('v' in value || 'type' in value) return data
-    if ('log' in value && 'lamport' in value)
-      return canonicalBytes({ v: 'pigeon/chat-entry/v1', ...value })
-    if (!('prev' in value && 'kind' in value)) return data
-    return canonicalBytes({ v: 'pigeon/device-entry/v1', epoch: 0, ...value })
+    const { v, epoch, ...rest } = JSON.parse(text.value) as Record<string, Json>
+    if (v === 'pigeon/chat-entry/v1') return canonicalBytes(rest)
+    if (v !== 'pigeon/device-entry/v1' || epoch === undefined) return data
+    return canonicalBytes(epoch === 0 ? rest : { epoch, ...rest })
   }
-  return { id: signer.id, sign: (data) => signer.sign(typed(data)) }
+  return { id: signer.id, sign: (data) => signer.sign(untyped(data)) }
 }
 
 /**
