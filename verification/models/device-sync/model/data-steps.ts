@@ -63,6 +63,13 @@ export function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry 
       (!cfg.rules.stampFollowsCounting || counts(state, cfg.rules, d, e)),
   )
   const st = Math.min(STAMP_CAP, Math.max(dev.clock, ...about.map((e) => e.st + 1)))
+  // Ghost for W2, whatever the rule: the highest stamp about the subject that counted here.
+  const top = Math.max(
+    0,
+    ...dev.entries
+      .filter((e) => subjectOf(e.op) === subjectOf(op) && counts(state, cfg.rules, d, e))
+      .map((e) => e.st),
+  )
   const field0 = fieldOf({ by: d, n: 0, st, op, sig: '' })
   const saw = state.actions
     .filter((a) => a.field === field0 && dev.entries.some((e) => e.by === a.by && e.n === a.n))
@@ -73,7 +80,7 @@ export function write(cfg: DataConfig, state: DataState, d: Dev, op: Op): Entry 
   dev.dirty = true
   const field = fieldOf(e)
   if (field !== undefined && !(d === REMOVED && cfg.hostile))
-    state.actions.push({ by: d, n, st: e.st, field, value: valueIn(e), saw })
+    state.actions.push({ by: d, n, st: e.st, field, value: valueIn(e), saw, top })
   return e
 }
 

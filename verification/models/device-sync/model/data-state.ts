@@ -123,6 +123,8 @@ export interface Action {
   readonly value: string
   /** The changes to the same field, by devices on the list, it was made after seeing. */
   readonly saw: readonly string[]
+  /** Ghost: the highest stamp, about the same subject, that counted on its device when it was made. */
+  readonly top: number
 }
 
 export type Budget =
@@ -440,7 +442,7 @@ export function initialState(cfg: DataConfig): DataState {
     },
     mail: [],
     secrets: { [first.id]: { by: WRITER, knew: false, root: 'F' } },
-    actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add', saw: [] }],
+    actions: [{ by: WRITER, n: 1, st: 1, field: 'inc:F1', value: 'add', saw: [], top: 0 }],
     tombs: [],
     left: { ...cfg.budgets },
     nextLetter: 1,

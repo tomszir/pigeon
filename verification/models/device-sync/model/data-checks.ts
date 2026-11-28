@@ -12,6 +12,7 @@ import {
   honest,
   knowsRemoval,
   REMOVED,
+  STAMP_CAP,
 } from './data-state.ts'
 import type { Invariant, StepInvariant } from './explore.ts'
 
@@ -235,7 +236,8 @@ const newestWins = (cfg: DataConfig): Check => ({
 /**
  * W2: once mail settles, no register holds a change that a later change, made after seeing it,
  * should have beaten: stamps must keep "a change made after seeing another beats it" true even
- * where a removed device stamped at the cap.
+ * where a removed device stamped at the cap, and no change is pushed to the cap by an entry that
+ * doesn't count.
  */
 const laterBeats = (cfg: DataConfig): Check => ({
   id: 'W2 a change made after seeing another beats it',
@@ -250,6 +252,12 @@ const laterBeats = (cfg: DataConfig): Check => ({
           return `${d} shows ${key} for ${field}, though ${later.by}${later.n} was made after seeing it`
       }
     }
+    // And no change sits at the cap unless something about its subject that counted on its device
+    // came within one of it (clocks in the model stay far below the cap): an entry that doesn't
+    // count, such as a removed device's past its removal, never pushes one there.
+    const pushed = s.actions.find((a) => a.st >= STAMP_CAP && a.top < STAMP_CAP - 1)
+    if (pushed)
+      return `${pushed.by}${pushed.n} is stamped at the cap, though nothing that counted came near it`
     return undefined
   },
 })
