@@ -1,0 +1,15 @@
+{
+  // The model's own check: `pnpm exec tsc -p verification/models/signed-entries`. It holds the
+  // model to the packages' strictest settings, so a package's tests can import its conformance check
+  // as it is.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "isolatedDeclarations": true,
+    "erasableSyntaxOnly": true,
+    "types": ["node"],
+    // The model has no packages of its own: Node's types come from the Node Lighthouse's.
+    "typeRoots": ["../../../apps/lighthouse/node_modules/@types"]
+  },
+  "include": ["model"]
+}

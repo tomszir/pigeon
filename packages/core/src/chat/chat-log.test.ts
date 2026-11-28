@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import { isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner, typedSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner, untypedSigner } from '../testing/testing.ts'
 import {
   appendMessage,
   batchEntries,
@@ -185,7 +185,7 @@ describe('mergeEntries', () => {
 })
 
 describe('an entry’s signed bytes', () => {
-  it('are signed as every Pigeon checks them, and taken saying they’re a chat entry too', async () => {
+  it('are signed saying they’re a chat entry, and taken as Pigeons before 0.8.4 signed them too', async () => {
     const signedBy = async (signer: typeof rook, bytes: (u: object) => Uint8Array) => {
       const { entry } = await appendMessage(emptyLog('pair:x'), signer, 'hi', 5)
       const { sig, ...unsigned } = entry
@@ -195,20 +195,20 @@ describe('an entry’s signed bytes', () => {
       const taken = await mergeEntries(fakeCrypto, emptyLog('pair:x'), [entry], both)
       return holds && taken.entries.length === 1
     }
-    // Signed with no `v`, so a Pigeon that checks only those bytes takes it.
+    // Signed saying what it is, and of which chat.
     expect(
       await signedBy(rook, (u) =>
-        canonicalBytes({ log: 'pair:x', ...(u as Record<string, Json>) }),
-      ),
-    ).toBe(true)
-    // A Pigeon that signs the bytes saying what it is, and of which chat, is taken too.
-    expect(
-      await signedBy(typedSigner(rook), (u) =>
         canonicalBytes({
           v: 'pigeon/chat-entry/v1',
           log: 'pair:x',
           ...(u as Record<string, Json>),
         }),
+      ),
+    ).toBe(true)
+    // One a Pigeon from before 0.8.4 signed, with no `v`, is taken too.
+    expect(
+      await signedBy(untypedSigner(rook), (u) =>
+        canonicalBytes({ log: 'pair:x', ...(u as Record<string, Json>) }),
       ),
     ).toBe(true)
   })

@@ -240,16 +240,19 @@ const entryFields = (identity: PeerId, entry: Unsigned) => ({
   at: entry.at,
 })
 
-/** The bytes that say an entry is one: what it's for, its identity and epoch, and the entry. */
+/**
+ * The bytes entries are signed over: what the entry is for, its identity and epoch (even epoch
+ * 0), and the entry. Every Pigeon from 0.8.2 takes them.
+ */
 const typedEntryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
   canonicalBytes({ v: ENTRY_CONTEXT, epoch, ...entryFields(identity, entry) } as Json)
 
 /**
- * The bytes entries are signed over, as every Pigeon checks them: the entry with no `v`, and no
- * `epoch` in epoch 0, as before recovery keys. An entry is taken over these or over `typedEntryBytes`.
- * Nothing else Pigeon signs has this shape, since every other kind carries a `v` or a `type` and
- * canonical JSON gives two different values different bytes, so no other signature verifies
- * over it.
+ * The bytes entries were signed over before 0.8.4, and still taken: the entry with no `v`, and no
+ * `epoch` in epoch 0. Nothing else Pigeon signs has this shape, since every other kind carries a
+ * `v` or a `type` and canonical JSON gives two different values different bytes, so no other
+ * signature verifies over it. It can't be retired: every entry but a log's last is fixed by the
+ * next one's `prev`, and a tab still on 0.8.3 or before signs it.
  */
 const untypedEntryBytes = (identity: PeerId, epoch: number, entry: Unsigned) =>
   canonicalBytes({ ...(epoch === 0 ? {} : { epoch }), ...entryFields(identity, entry) } as Json)
@@ -458,10 +461,10 @@ async function checkChain(
     const fixed = index < entries.length - 1
     const signed = async (bytes: Uint8Array) =>
       checkSig(crypto, state.writer, signature.value, bytes, fixed)
-    // The bytes entries are signed over first, then the ones that say what an entry is.
+    // The bytes entries are signed over now first, then the ones they were signed over before.
     const holds =
-      (await signed(untypedEntryBytes(identity, epoch, entry))) ||
-      (await signed(typedEntryBytes(identity, epoch, entry)))
+      (await signed(typedEntryBytes(identity, epoch, entry))) ||
+      (await signed(untypedEntryBytes(identity, epoch, entry)))
     if (!holds) return false
     if (apply(state, entry) !== undefined) return false
     prev = signature.value
@@ -574,8 +577,7 @@ export async function appendDeviceEntry(
   }
   if (apply(state, unsigned) !== undefined) return { ok: false, error: 'not-allowed' }
   const epoch = last?.recover.epoch ?? 0
-  // Signed over the bytes every Pigeon checks, so one without `typedEntryBytes` takes it too.
-  const sig = base32Encode(await signer.sign(untypedEntryBytes(log.identity, epoch, unsigned)))
+  const sig = base32Encode(await signer.sign(typedEntryBytes(log.identity, epoch, unsigned)))
   const entry = { ...unsigned, sig }
   if (last === undefined) return { ok: true, log: { ...log, entries: [...log.entries, entry] } }
   const grown = { ...last, entries: [...last.entries, entry] }

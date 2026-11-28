@@ -15,7 +15,7 @@ import type { Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import { canonicalSignature } from '../identity/signature.ts'
 import { flipS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeSigner, typedSigner } from '../testing/testing.ts'
+import { fakeSigner, untypedSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntry,
@@ -38,10 +38,11 @@ import {
 const crypto = p256Crypto()
 
 /**
- * How a device signed: low-S over the bytes that say what an entry is; an updated Pigeon, low-S
- * over the bytes every Pigeon checks; one from before low-S over those bytes too, either way.
+ * How a device signed: an updated Pigeon, low-S over the bytes that say what an entry is; one
+ * from 0.8.2 or 0.8.3, low-S over the untyped bytes; one from before low-S over those bytes too,
+ * either way.
  */
-type Spelling = 'typed' | 'updated' | 'old-low' | 'old-high'
+type Spelling = 'untyped' | 'updated' | 'old-low' | 'old-high'
 
 type Op =
   | {
@@ -105,11 +106,12 @@ const signerFor = (cast: Cast, id: PeerId, spelling: Spelling): Signer => {
         : cast.owner
       : cast.devices.find((device) => device.id === id)
   if (signer === undefined) throw new Error('no such device')
-  return spelling === 'typed' ? typedSigner(signer) : signer
+  // Every Pigeon before 0.8.4 signed entries untyped; an updated one signs them typed.
+  return spelling === 'updated' ? signer : untypedSigner(signer)
 }
 
 /** Whether a Pigeon signing this way reads its stored log low-S, as Pigeons since low-S do. */
-const sinceLowS = (spelling: Spelling) => spelling === 'typed' || spelling === 'updated'
+const sinceLowS = (spelling: Spelling) => spelling === 'untyped' || spelling === 'updated'
 
 // What a log says, whatever spelling it says it in: every signature decoded, either case, and
 // made low-S. Only the first device's key is P-256, so it's the one a twin spelling can come from.
@@ -408,7 +410,7 @@ async function build(cast: Cast, ops: readonly Op[], attack: Attack): Promise<Wo
   return { stored, sent, final, honest, forged, kept }
 }
 
-const spelling = fc.constantFrom<Spelling>('typed', 'updated', 'old-low', 'old-high')
+const spelling = fc.constantFrom<Spelling>('untyped', 'updated', 'old-low', 'old-high')
 // Removals are what most rules guard, and each needs an add before it, so they come up often.
 const change = fc.record({
   kind: fc.constantFrom<'add' | 'remove' | 'name'>('add', 'remove', 'add', 'remove', 'name'),

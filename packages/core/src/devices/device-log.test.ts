@@ -4,7 +4,7 @@ import { base32DecodeExact, base32Encode } from '../encoding/bytes.ts'
 import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Signer } from '../identity/crypto.ts'
 import { flipS, isHighS, p256Crypto, p256Signer } from '../testing/p256.ts'
-import { fakeCrypto, fakeSigner, typedSigner } from '../testing/testing.ts'
+import { fakeCrypto, fakeSigner, untypedSigner } from '../testing/testing.ts'
 import {
   appendDeviceEntry,
   type DeviceEntryKind,
@@ -164,7 +164,7 @@ describe('an entry’s signed bytes', () => {
     ],
   })
 
-  it('are signed as every Pigeon checks them, and taken saying they’re a device-log entry too', async () => {
+  it('are signed saying they’re a device-log entry, and taken as Pigeons before 0.8.4 signed them too', async () => {
     const { epoch: _, ...untyped } = fields
     const signature = async (signer: Signer) => {
       const result = await appendDeviceEntry(
@@ -177,19 +177,14 @@ describe('an entry’s signed bytes', () => {
       if (!result.ok) throw new Error(result.error)
       return decode(result.log.entries[0]?.sig ?? '')
     }
-    // Signed with no `v`, so a Pigeon that checks only those bytes takes it.
-    const plain = await signature(laptop)
-    expect(await fakeCrypto.verify(laptop.id, plain, canonicalBytes(untyped))).toBe(true)
-    // A Pigeon that signs the bytes saying what it is, of which identity and epoch, is taken too.
-    const typed = await signature(typedSigner(laptop))
+    // Signed saying what it is, of which identity and epoch, epoch 0 included.
+    const typed = await signature(laptop)
     const bytes = canonicalBytes({ v: 'pigeon/device-entry/v1', ...fields })
     expect(await fakeCrypto.verify(laptop.id, typed, bytes)).toBe(true)
-    expect(
-      await verifyDeviceLog(
-        fakeCrypto,
-        await signedOver({ v: 'pigeon/device-entry/v1', ...fields }),
-      ),
-    ).toBe(true)
+    // A Pigeon from before 0.8.4 signed with no `v`, and no `epoch` in epoch 0: taken too.
+    const plain = await signature(untypedSigner(laptop))
+    expect(await fakeCrypto.verify(laptop.id, plain, canonicalBytes(untyped))).toBe(true)
+    expect(await verifyDeviceLog(fakeCrypto, await signedOver(untyped))).toBe(true)
   })
 
   it('refuse a signature made for anything else, or in a shape no Pigeon signed', async () => {
@@ -232,7 +227,7 @@ describe('an entry’s signed bytes', () => {
   })
 
   it('are taken in either shape, mixed in one chain and across epochs', async () => {
-    const typed = typedSigner(laptop)
+    const before084 = untypedSigner(laptop)
     const step = async (log: DeviceLog, signer: Signer, kind: DeviceEntryKind, device: string) => {
       const result = await appendDeviceEntry(
         fakeCrypto,
@@ -244,13 +239,18 @@ describe('an entry’s signed bytes', () => {
       if (!result.ok) throw new Error(result.error)
       return result.log
     }
-    const before = await step(await step(start(), laptop, 'add', phone.id), typed, 'add', tablet.id)
-    // Back to the plain shape after a typed entry, as a tab on older code would sign it.
-    const now = await step(before, laptop, 'remove', tablet.id)
+    const before = await step(
+      await step(start(), before084, 'add', phone.id),
+      laptop,
+      'add',
+      tablet.id,
+    )
+    // Back to the untyped shape after a typed entry, as a tab still on 0.8.3 would sign it.
+    const now = await step(before, before084, 'remove', tablet.id)
     expect(await verifyDeviceLog(fakeCrypto, before)).toBe(true)
     expect(await verifyDeviceLog(fakeCrypto, now)).toBe(true)
     expect(await mergeDeviceLogs(fakeCrypto, before, now)).toBe(now)
-    // And in a later epoch, whose writer signs the typed shape.
+    // And in a later epoch, whose writer signs as before 0.8.4.
     const key = fakeSigner('typed-recovery')
     const committed = await setRecoveryKey(now, laptop, key.id, 2)
     if (committed === undefined) throw new Error('no key')
@@ -262,7 +262,7 @@ describe('an entry’s signed bytes', () => {
       3,
     )
     if (recovered === undefined) throw new Error('no recover')
-    const later = await step(recovered, typedSigner(phone), 'add', thief.id)
+    const later = await step(recovered, untypedSigner(phone), 'add', thief.id)
     expect(await verifyDeviceLog(fakeCrypto, later)).toBe(true)
     expect(
       deviceState(await mergeDeviceLogs(fakeCrypto, recovered, later)).active.has(thief.id),
