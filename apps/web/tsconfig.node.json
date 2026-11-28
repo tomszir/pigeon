@@ -6,8 +6,6 @@
   "include": [
     "vite.config.ts",
     "playwright.config.ts",
-    "pigeon-pages.ts",
-    "pigeon-pages.test.ts",
     "ports.ts",
     "site-headers.ts",
     "site-headers.test.ts",

@@ -1,9 +1,8 @@
 // PigeonHTML's allowlists (docs/pigeonhtml.md): HTML 4.01 Transitional's elements and
 // presentational attributes, and CSS 2.1's properties. Anything not named here is dropped.
 
-// The tables are literal (`as const`) so that `jsx/` can derive from them which elements and
-// attributes a page written in JSX may use; the Maps and Sets below are built from them for the
-// sanitizer, so the two can't disagree.
+// The tables are literal (`as const`); the Maps and Sets below are built from them for the
+// sanitizer.
 
 /** Attributes every kept element may carry. `style` goes through the CSS allowlist. */
 export const GLOBAL_ATTRIBUTE_TABLE = ['id', 'class', 'title', 'lang', 'dir', 'style'] as const

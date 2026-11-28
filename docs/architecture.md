@@ -66,11 +66,9 @@ packages/
                 secrets go in; long-lived keys stay in WebCrypto.
   pigeonhtml/   @pigeon/pigeonhtml: the PigeonHTML allowlists, sanitizer and validator.
                 Pure; used by the web app and the Lighthouse. allowlists.ts holds the
-                tables, as literals the sanitizer's Maps and Sets and the JSX types are
-                built from, sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
-                allowlist, urls.ts the scheme check, jsx/ the runtime that turns a page
-                written as JSX into text (exported as @pigeon/pigeonhtml/jsx-runtime and
-                jsx-dev-runtime) with its types in elements.ts, and testing/ the tests'
+                tables, as literals the sanitizer's Maps and Sets are built from,
+                sanitize.ts walks parse5's tree, css.ts is the CSS tokenizer and
+                allowlist, urls.ts the scheme check, and testing/ the tests'
                 re-parse audit and URL functions (docs/pigeonhtml.md).
 apps/
   web/          The site (Vite + Solid), served by a Cloudflare Worker.
@@ -140,18 +138,11 @@ apps/
                 order. Explorer's start page is PigeonHTML in a .html file, which Biome
                 leaves alone since it's written for 2003. help/ is
                 in-world Help, the PigeonHTML pages Explorer serves at
-                pigeon://help, with no window of its own, written as typed JSX in
-                *.pigeon.tsx files (docs/pigeonhtml.md): help-pages/ exports
-                HELP_PAGES, every page by address, which app/bundled-pages.ts lists
-                after the start page for Explorer, and Help in the Pigeon
-                menu opens; how-pigeon-works/ is the hand-written guide, frame.pigeon.tsx
-                its shared look and a file for each chapter;
-                protocol-spec/ builds "The Pigeon Protocol" from docs/protocol.md,
-                flows.md and glossary.md, imported with ?raw, so it can't drift;
-                markdown/ is the small converter it uses, which writes escaped strings
-                that the spec puts in with raw(), and page/ the parts
-                every page shares: the document and <Pre>, which keeps a diagram's
-                whitespace.
+                pigeon://help, with no window of its own: help-pages/ holds the
+                contents page and the "How Pigeon Works" guide as plain .html files
+                imported with ?raw, and exports HELP_PAGES, every page by address,
+                which app/bundled-pages.ts lists after the start page for Explorer,
+                and Help in the Pigeon menu opens.
       app/      The composition root: builds platform implementations, creates the
                 shell, and wires the desktop, menu and windows to the apps
                 (app/programs.tsx, which keeps the assembly and imports the files that
@@ -203,7 +194,7 @@ The shell reads the browser only through `ShellEnv` (viewport, reduced motion, c
 - **Solid branches that close themselves.** The callback of a `<Show>` or `<Match>` gets an accessor, and the accessor throws "stale value" once the branch has closed. A handler in the callback that closes its own branch (`setEditing(false)`) and then reads the accessor therefore throws, and what the handler was meant to do never happens. So a function inside such a callback reads the accessor first, into a const (`const current = messenger()`), before it changes state or awaits, and uses the const after. Where a component keeps using what it was given in handlers or after an await (a `messenger`, say), the branch is `keyed` instead, which hands the callback the value itself and not an accessor. A Biome plugin, `biome-plugins/solid-stale-accessor.grit`, enforces the first part: it reports a function in such a callback that reads the accessor anywhere but as its first statement. `scripts/solid-stale-accessor.test.ts` lints sample components to check what it refuses and allows. A read that is safe for another reason, such as a helper called only while the branch renders, takes a `biome-ignore lint/plugin: <reason>` comment.
 - **No import cycles.** Biome's `suspicious/noImportCycles` is an error, so a file never reaches itself through its imports; a shared type goes in a small file both sides import (`identity/peer-id.ts`, which `crypto.ts` and `identity.ts` share). The rule counts `import type` too, so a cycle made only of types is reported as well; `app/messenger-host.ts` holds the type `programs.tsx` and `messenger-windows.tsx` share for that reason.
 - **Packages name the type of every export.** Each `packages/*/tsconfig.json` sets `isolatedDeclarations`, so an exported function, constant or class says its return or value type (`export const MAX_BLOB_BYTES: number = 64 * 1024`) instead of leaving it to inference. A declaration file can then be made from one file at a time, and a package's public types don't shift when its implementation changes. Nothing is emitted: `declaration` is on only because the option needs it. The apps' `tsconfig.json` files don't set it.
-- **`.tsx` is Solid, except `*.pigeon.tsx`.** Solid's Vite plugin compiles every `.tsx` file to DOM code. A file named `*.pigeon.tsx` (or `*.pigeon.test.tsx`) is excluded from it and starts with `/** @jsxImportSource @pigeon/pigeonhtml */`, and a Vite plugin (`apps/web/pigeon-pages.ts`) refuses a `.tsx` file where the name and the pragma disagree: its JSX writes PigeonHTML text and is never a component (docs/pigeonhtml.md). Vite's `oxc.jsx` setting is the automatic runtime so that JSX Solid didn't compile is lowered, not preserved.
+- **`.tsx` is Solid.** Solid's Vite plugin compiles every `.tsx` file to DOM code. Pages bundled with Pigeon are plain `.html` files, not JSX (docs/pigeonhtml.md).
 - Content and numbers live in tables, not branches.
 - Kebab-case files, PascalCase components, no barrel files except each package's `index.ts` and `packages/core/src/testing/index.ts`.
 - **Test fakes stay in tests.** Non-test files may not import `@pigeon/core/testing`, `@pigeon/lighthouse/testing`, `@pigeon/lighthouse/wait-traces`, or `@pigeon/lighthouse/wait-conformance` (enforced via `noRestrictedImports` in `biome.json`).

@@ -1,0 +1,145 @@
+<html>
+<head>
+<title>Pigeon in One Picture - How Pigeon Works</title>
+<style>body { margin: 0; background-color: #ffffff; color: #000000; }
+body, td, th, p, li { font-family: Verdana, Tahoma, Arial, sans-serif; font-size: 12px; }
+pre, code, tt { font-family: "Courier New", Courier, monospace; font-size: 12px; }
+p { margin: 0 0 10px 0; line-height: 1.45; }
+ul, ol { margin-top: 0; margin-bottom: 10px; }
+li { margin-bottom: 4px; line-height: 1.4; }
+h1 { font-family: Arial, Helvetica, sans-serif; font-size: 22px; color: #1f3f73; margin: 0 0 6px 0; }
+h2 { font-family: Arial, Helvetica, sans-serif; font-size: 15px; color: #1f3f73; margin: 22px 0 8px 0; border-bottom: 1px solid #b8c7de; }
+pre { margin: 0; line-height: 1.2; }
+a:link { color: #0033aa; }
+a:visited { color: #5a2a8c; }
+a:hover { color: #cc3300; }
+.lead { font-size: 13px; color: #333333; }
+.trail { font-size: 11px; }
+.side { font-size: 11px; }
+.side td { font-size: 11px; }
+.caption { font-size: 11px; color: #333333; }
+.small { font-size: 11px; color: #555555; }</style>
+</head>
+<body bgcolor="#ffffff" text="#000000" link="#0033aa" vlink="#5a2a8c" alink="#cc3300">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td bgcolor="#1f3f73">
+<table width="100%" cellpadding="10" cellspacing="0" border="0">
+<tr>
+<td><font face="Arial, Helvetica, sans-serif" color="#ffffff" size="5"><b>How Pigeon Works</b></font><br>
+<font color="#c9d8f0" size="1">Plain answers about the messenger with nobody in the middle</font></td>
+<td align="right" valign="bottom"><font color="#c9d8f0" size="1">Chapter 1 of 7</font></td>
+</tr>
+</table></td>
+</tr>
+<tr>
+<td bgcolor="#dde6f3">
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr>
+<td class="trail"><a href="pigeon://help/">Help</a> &gt; How Pigeon Works</td>
+</tr>
+</table></td>
+</tr>
+</table>
+<table width="100%" cellpadding="12" cellspacing="0" border="0">
+<tr>
+<td width="180" valign="top" bgcolor="#f6f8fb">
+<table class="side" width="100%" cellpadding="5" cellspacing="1" border="0" bgcolor="#b8c7de">
+<tr>
+<td bgcolor="#2a5ba8"><font color="#ffffff"><b>In This Guide</b></font></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#ffffff"><b>1. Pigeon in One Picture</b></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/adding-a-friend">2. Adding a Friend</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/private-rooms">3. Your Private Rooms</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/your-devices">4. Your Devices</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/recovery-key">5. Your Recovery Key</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/saving-your-data">6. Saving Your Data</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/coming-soon">7. Coming Soon</a></td>
+</tr>
+</table><br>
+<table class="side" width="100%" cellpadding="5" cellspacing="1" border="0" bgcolor="#b8c7de">
+<tr>
+<td bgcolor="#2a5ba8"><font color="#ffffff"><b>See Also</b></font></td>
+</tr>
+<tr>
+<td bgcolor="#eef2f8"><a href="pigeon://help/">Help Contents</a></td>
+</tr>
+</table></td>
+<td valign="top">
+<h1>Pigeon in One Picture</h1>
+<p class="lead"><i>Pigeon is a messenger with nobody in the middle. Your computer talks straight to your friends&#39; computers. There is no sign-up, no account and no company keeping your messages.</i></p>
+<h2>Who you are</h2>
+<p>The first time you open Pigeon, your computer makes a <b>key</b> for you: a pair of long numbers, one kept secret and one you can show. The secret half stays in this browser, locked so tightly that not even Pigeon&#39;s own page can read it out. Everything you send is signed with it, so your friends know it was you.</p>
+<p>Your key also gives you two things your friends will see:</p>
+<ul>
+<li>a <b>fingerprint</b>, 16 characters such as <tt>3F2A 9C1B 77D0 E415</tt>, which you compare when you add someone;</li>
+<li>a <b>pigeon</b> of your own, drawn from your key, which looks the same on every friend&#39;s screen.</li>
+</ul>
+<p>Your name is whatever you choose, up to 32 characters. Names aren&#39;t unique, which is why the fingerprint matters.</p>
+<h2>How two computers find each other</h2>
+<table width="100%" cellpadding="10" cellspacing="0" border="1">
+<tr>
+<td bgcolor="#fffef2">
+<pre>     YOUR COMPUTER                                 MIKA&#39;S COMPUTER
+   +---------------+                             +---------------+
+   |  Pigeon       |                             |  Pigeon       |
+   |  your key     |                             |  Mika&#39;s key   |
+   |  your chats   |                             |  Mika&#39;s chats |
+   +---------------+                             +---------------+
+           |                                             |
+           |  1. &quot;I&#39;m in our room&quot;  +-----------+        |
+           +-----------------------&gt;|  public   |&lt;-------+  1. &quot;So am I&quot;
+                                    |  relays   |
+           +&lt;-----------------------|           |-------&gt;+
+           |  2. how to reach Mika  +-----------+        |  2. how to reach you
+           |                                             |
+   +---------------+                             +---------------+
+   |  you          |&lt;===========================&gt;|  Mika         |
+   +---------------+                             +---------------+
+                  3. messages, signed, go straight across,
+                     or through a TURN relay that can&#39;t read them</pre></td>
+</tr>
+<tr>
+<td bgcolor="#eeeeee" class="caption"><b>Figure 1.</b> Public relays only introduce the two of you. After that, your messages go straight across, or through a relay that passes them along sealed.</td>
+</tr>
+</table><br>
+<p>Computers on the open network can&#39;t simply call each other by name, so Pigeon uses a few <b>public relays</b> as a meeting point. Your Pigeon leaves word in a room only you and your friend can find, theirs does the same, and the relays pass along how to reach each other. Then the two computers connect directly and the relays drop out of the picture.</p>
+<p>Some networks block direct connections. Then a <b>TURN relay</b> carries your sealed packets between you. It can&#39;t read them and it stores nothing. You can also choose to go through it always; see <a href="pigeon://help/how/private-rooms">Your Private Rooms</a>.</p>
+<h2>Where your chats live</h2>
+<p>Your chats are kept in this browser, and your friend keeps the same chat in theirs. When you&#39;re both online, the two copies catch up with each other. A message you write while your friend is away is sealed so only their devices can open it and left at their Lighthouses, which hold it until they&#39;re back: neither of you has to be online at the same time.</p>
+<table width="100%" cellpadding="8" cellspacing="0" border="0" bgcolor="#fff6d5">
+<tr>
+<td><b>Good to know</b><br>
+Clearing this browser&#39;s data for Pigeon clears your key with it, and with it who you are. A <a href="pigeon://help/how/recovery-key">recovery key</a> is how you come back as yourself.</td>
+</tr>
+</table><br>
+<br>
+<hr size="1" noshade>
+<table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td align="left"> </td>
+<td align="right"><a href="pigeon://help/how/adding-a-friend">Next: Adding a Friend &gt;&gt;</a></td>
+</tr>
+</table></td>
+</tr>
+</table>
+<table width="100%" cellpadding="6" cellspacing="0" border="0">
+<tr>
+<td bgcolor="#dde6f3" align="center" class="small">How Pigeon Works is part of Pigeon&#39;s Help. It came with Pigeon and lives on this computer, so it opens with nobody online.</td>
+</tr>
+</table>
+</body>
+</html>

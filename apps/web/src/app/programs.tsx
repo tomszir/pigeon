@@ -8,7 +8,7 @@ import { HOME_ADDRESS } from '../apps/explorer/explorer/address.ts'
 import { Explorer } from '../apps/explorer/explorer/explorer.tsx'
 import { localPageFinder } from '../apps/explorer/local-pages/local-pages.ts'
 import type { KeptView } from '../apps/explorer/page-frame/view.ts'
-import { HELP_HOME } from '../apps/help/help-pages/help-pages.pigeon.tsx'
+import { HELP_HOME } from '../apps/help/help-pages/help-pages.ts'
 import type { AddFriendTab, IncomingInvite } from '../apps/messenger/add-friend/add-friend.tsx'
 import {
   createNotifications,

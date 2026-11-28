@@ -38,7 +38,7 @@ const fragmentNames = (fragment: string) => {
 
 describe('every page that comes with Pigeon', () => {
   it('is more than the start page', () => {
-    expect(pages.length).toBeGreaterThan(20)
+    expect(pages.length).toBe(9)
     expect(find('pigeon://home')).toBeDefined()
     expect(find('pigeon://help/')).toBeDefined()
   })

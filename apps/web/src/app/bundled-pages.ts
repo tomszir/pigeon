@@ -3,6 +3,6 @@
 // page checks can't differ.
 
 import { type LocalPages, START_PAGES } from '../apps/explorer/local-pages/local-pages.ts'
-import { HELP_PAGES } from '../apps/help/help-pages/help-pages.pigeon.tsx'
+import { HELP_PAGES } from '../apps/help/help-pages/help-pages.ts'
 
 export const BUNDLED_PAGES: readonly LocalPages[] = [START_PAGES, HELP_PAGES]

@@ -1,0 +1,153 @@
+<html>
+<head>
+<title>Your Private Rooms - How Pigeon Works</title>
+<style>body { margin: 0; background-color: #ffffff; color: #000000; }
+body, td, th, p, li { font-family: Verdana, Tahoma, Arial, sans-serif; font-size: 12px; }
+pre, code, tt { font-family: "Courier New", Courier, monospace; font-size: 12px; }
+p { margin: 0 0 10px 0; line-height: 1.45; }
+ul, ol { margin-top: 0; margin-bottom: 10px; }
+li { margin-bottom: 4px; line-height: 1.4; }
+h1 { font-family: Arial, Helvetica, sans-serif; font-size: 22px; color: #1f3f73; margin: 0 0 6px 0; }
+h2 { font-family: Arial, Helvetica, sans-serif; font-size: 15px; color: #1f3f73; margin: 22px 0 8px 0; border-bottom: 1px solid #b8c7de; }
+pre { margin: 0; line-height: 1.2; }
+a:link { color: #0033aa; }
+a:visited { color: #5a2a8c; }
+a:hover { color: #cc3300; }
+.lead { font-size: 13px; color: #333333; }
+.trail { font-size: 11px; }
+.side { font-size: 11px; }
+.side td { font-size: 11px; }
+.caption { font-size: 11px; color: #333333; }
+.small { font-size: 11px; color: #555555; }</style>
+</head>
+<body bgcolor="#ffffff" text="#000000" link="#0033aa" vlink="#5a2a8c" alink="#cc3300">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td bgcolor="#1f3f73">
+<table width="100%" cellpadding="10" cellspacing="0" border="0">
+<tr>
+<td><font face="Arial, Helvetica, sans-serif" color="#ffffff" size="5"><b>How Pigeon Works</b></font><br>
+<font color="#c9d8f0" size="1">Plain answers about the messenger with nobody in the middle</font></td>
+<td align="right" valign="bottom"><font color="#c9d8f0" size="1">Chapter 3 of 7</font></td>
+</tr>
+</table></td>
+</tr>
+<tr>
+<td bgcolor="#dde6f3">
+<table width="100%" cellpadding="4" cellspacing="0" border="0">
+<tr>
+<td class="trail"><a href="pigeon://help/">Help</a> &gt; <a href="pigeon://help/how/">How Pigeon Works</a> &gt; Your Private Rooms</td>
+</tr>
+</table></td>
+</tr>
+</table>
+<table width="100%" cellpadding="12" cellspacing="0" border="0">
+<tr>
+<td width="180" valign="top" bgcolor="#f6f8fb">
+<table class="side" width="100%" cellpadding="5" cellspacing="1" border="0" bgcolor="#b8c7de">
+<tr>
+<td bgcolor="#2a5ba8"><font color="#ffffff"><b>In This Guide</b></font></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/">1. Pigeon in One Picture</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/adding-a-friend">2. Adding a Friend</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#ffffff"><b>3. Your Private Rooms</b></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/your-devices">4. Your Devices</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/recovery-key">5. Your Recovery Key</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/saving-your-data">6. Saving Your Data</a></td>
+</tr>
+<tr>
+<td class="side" bgcolor="#eef2f8"><a href="pigeon://help/how/coming-soon">7. Coming Soon</a></td>
+</tr>
+</table><br>
+<table class="side" width="100%" cellpadding="5" cellspacing="1" border="0" bgcolor="#b8c7de">
+<tr>
+<td bgcolor="#2a5ba8"><font color="#ffffff"><b>See Also</b></font></td>
+</tr>
+<tr>
+<td bgcolor="#eef2f8"><a href="pigeon://help/">Help Contents</a></td>
+</tr>
+</table></td>
+<td valign="top">
+<h1>Your Private Rooms</h1>
+<p class="lead"><i>Every pair of friends has a room of their own on the relays. Only the two of you can find it, only the two of you can get in, and it moves every day.</i></p>
+<h2>A room named by a secret</h2>
+<p>When you add a friend, your two Pigeons agree on a <b>pair secret</b>: 32 random bytes that only you two hold. Your room&#39;s name is worked out from that secret and from the date, so:</p>
+<ul>
+<li>nobody else can work out where you meet, even if they know who you both are;</li>
+<li>the room has a new name every day, by the clock the whole world shares (UTC);</li>
+<li>the room is locked with a password made from the same secret, so nobody can get in or read how your computers reach each other.</li>
+</ul>
+<p>Chats, buzzes and &quot;is writing...&quot; all go through this room.</p>
+<h2>Around midnight</h2>
+<p>Two computers&#39; clocks are never quite the same, and a new day starts at midnight UTC wherever you are. So for the last hour of each day your Pigeon also waits in tomorrow&#39;s room, and for the first hour of the day in yesterday&#39;s. Friends whose clocks are less than an hour apart still meet.</p>
+<table width="100%" cellpadding="10" cellspacing="0" border="1">
+<tr>
+<td bgcolor="#fffef2">
+<pre>   UTC      22:00     23:00     00:00     01:00     02:00
+              |         |         |         |         |
+   Nov 24&#39;s room ===========================|
+   Nov 25&#39;s room        |===================================...
+                        |         |         |
+                        |         |         +-- yesterday&#39;s room left
+                        |         +-- the date changes
+                        +-- tomorrow&#39;s room joined too</pre></td>
+</tr>
+<tr>
+<td bgcolor="#eeeeee" class="caption"><b>Figure 3.</b> Today&#39;s room and tomorrow&#39;s overlap for two hours around midnight UTC.</td>
+</tr>
+</table><br>
+<h2>Going through the relay</h2>
+<p>Normally your computer connects straight to your friend&#39;s whenever it can. That&#39;s fastest, but it means your friend&#39;s computer learns your <b>IP address</b>, the number your network goes by. If you&#39;d rather it didn&#39;t, turn on the relay:</p>
+<table width="100%" cellpadding="7" cellspacing="2" border="0">
+<tr>
+<td width="30" align="center" valign="top" bgcolor="#2a5ba8"><font face="Arial, Helvetica, sans-serif" color="#ffffff" size="4"><b>1</b></font></td>
+<td valign="top" bgcolor="#f4f7fb">In Pigeon Messenger, open the <b>File</b> menu.</td>
+</tr>
+<tr>
+<td width="30" align="center" valign="top" bgcolor="#2a5ba8"><font face="Arial, Helvetica, sans-serif" color="#ffffff" size="4"><b>2</b></font></td>
+<td valign="top" bgcolor="#ffffff">Choose <b>Always Go Through the Relay</b>. A tick shows it is on. (It is also under <b>Connection</b> in Settings.)</td>
+</tr>
+<tr>
+<td width="30" align="center" valign="top" bgcolor="#2a5ba8"><font face="Arial, Helvetica, sans-serif" color="#ffffff" size="4"><b>3</b></font></td>
+<td valign="top" bgcolor="#f4f7fb">From now on every room, your private rooms and invites alike, goes through the relay only.</td>
+</tr>
+</table><br>
+<pre>   RELAY OFF:   you &lt;=====================================&gt; friend
+                     direct; your friend sees your address
+   RELAY ON:    you &lt;=========&gt; [ TURN relay ] &lt;==========&gt; friend
+                     sealed packets; your friend never sees your
+                     address, and the relay keeps nothing</pre><br>
+<table width="100%" cellpadding="8" cellspacing="0" border="0" bgcolor="#fff6d5">
+<tr>
+<td><b>Good to know</b><br>
+The relay is slower, and it has to be reachable. If it can&#39;t be reached, Pigeon <b>doesn&#39;t</b> quietly connect directly instead. It stays unconnected, and a balloon says the relay can&#39;t be reached and where to turn the setting off.</td>
+</tr>
+</table><br>
+<br>
+<hr size="1" noshade>
+<table class="nav" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td align="left"><a href="pigeon://help/how/adding-a-friend">&lt;&lt; Adding a Friend</a></td>
+<td align="right"><a href="pigeon://help/how/your-devices">Next: Your Devices &gt;&gt;</a></td>
+</tr>
+</table></td>
+</tr>
+</table>
+<table width="100%" cellpadding="6" cellspacing="0" border="0">
+<tr>
+<td bgcolor="#dde6f3" align="center" class="small">How Pigeon Works is part of Pigeon&#39;s Help. It came with Pigeon and lives on this computer, so it opens with nobody online.</td>
+</tr>
+</table>
+</body>
+</html>

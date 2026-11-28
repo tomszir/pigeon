@@ -27,7 +27,7 @@ Interactive bits are server-side-include comments that Explorer draws, so pages 
 
 ## Enforcement
 
-`@pigeon/pigeonhtml` holds the allowlists as tables in `src/allowlists.ts` and exposes `sanitize` and `validate`. The tables are literal (`as const`); the sanitizer's Maps and Sets are built from them, and so are the types of [pages written in JSX](#writing-a-page-in-jsx).
+`@pigeon/pigeonhtml` holds the allowlists as tables in `src/allowlists.ts` and exposes `sanitize` and `validate`. The tables are literal (`as const`); the sanitizer's Maps and Sets are built from them.
 
 - `sanitize(source, urls)` returns `{ html, title, bytes, removed }`: the page with everything off the lists dropped (never escaped and kept), its title, its size in UTF-8 bytes to hold against the 100 KB budget, and what was taken out. `urls` belongs to whoever shows the page. `urls.image(src)` gives the URL to load an image from and `urls.link(href)` the address a link goes to, and either can return nothing, which drops the image or the link (keeping its text).
 - `validate(source)` returns the problems, each with the line and column where it starts, and is empty for a valid page.
@@ -36,15 +36,10 @@ It parses with parse5, which reads a page as the browser that renders it will. T
 
 Modern engines won't reproduce IE6's exact bugs; quirks mode plus the subset gets the feel, and that is the goal.
 
-### Writing a page in JSX
+### Pages bundled with Pigeon
 
-Help's pages are written as typed JSX, which `@pigeon/pigeonhtml/jsx-runtime` turns into the same text anyone's page is. The start page is a plain `.html` file. A page file is named `*.pigeon.tsx` and starts with `/** @jsxImportSource @pigeon/pigeonhtml */`; nothing else about it differs from a `.tsx` file.
+The start page and Help's pages are plain PigeonHTML `.html` files, imported as text with `?raw`. Biome leaves them alone, since they're written for 2003.
 
-- **Types from the allowlists.** `JSX.IntrinsicElements` is derived from `ELEMENT_TABLE`, `GLOBAL_ATTRIBUTE_TABLE`, `BODY_ATTRIBUTE_TABLE` and `VOID_ELEMENT_TABLE`, so an element or attribute the sanitizer would drop doesn't compile: `<section>`, `<td onclick>` and `<img name>` are type errors, `<br>` takes no children, a standalone attribute (`noshade`, `nowrap`, `nohref`, `ismap`, `compact`) is a boolean, and a component has to return `Html`, so one that may return `null` is a type error. `<html>`, `<head>`, `<title>`, `<style>` and `<body>`, which the sanitizer writes itself, are typed too. TypeScript doesn't check a hyphenated attribute (`data-x`) or anything spread in, so the test over every bundled page, below, is what catches those.
-- **Escaping.** Every string or number child and every attribute value is escaped, and a JSX expression is an opaque `Html` value that only the runtime makes, so a string is always text. `raw(markup)` is the one way to write markup unescaped, for output a converter has already escaped (the Markdown behind Help's protocol spec); `render(html)` gives a page's text. A void element is written with no end tag. A `<style>` holds CSS, written as it is, and may not hold a `<`.
-- **The sanitizer is still the gate.** The runtime writes text and doesn't check the allowlists when it runs; it refuses only what would break its own output, by throwing when the page is built: an element or attribute name that isn't a name, children in a void element, an attribute value that isn't a string, number or boolean, a `<` in a `<style>` or a `<style>` child that isn't a string, and a child or a component's result that isn't `Html` (a string never stands in for it).
-- **Whitespace.** JSX collapses the whitespace of text written between tags, and Biome reflows it, so anything whose spaces and line breaks count, such as an ASCII diagram, goes in as a string, and Help's `<Pre text={...}>` writes it into a `<pre>` exactly, minus the blank lines around it.
-- **Next to Solid.** The web app's Solid plugin excludes `*.pigeon.tsx` (and `*.pigeon.test.tsx`, with or without a `?query` on the module's address), a small Vite plugin refuses a `.tsx` file whose name and `@jsxImportSource @pigeon/pigeonhtml` pragma disagree, either way round, and Vite's own transform lowers JSX in whatever Solid doesn't compile to the automatic runtime of the file's `@jsxImportSource`, since the tsconfig's `jsx: preserve` is Solid's. A page is a plain function of its inputs and never a Solid component.
 - **Checked as a whole.** One test, `app/bundled-pages.test.ts`, runs over every page Explorer serves from this computer, the start page and Help alike. Each must pass `validate`, lose nothing to `sanitize` (with the URL rules Explorer gives it, so a dead image or a link that goes nowhere in-world counts), fit the budget, and link only to pages that are bundled (apart from the one the start page names to show "page not hosted") and to names that are on the page (a `#fragment`).
 
 ### What the sanitizer does

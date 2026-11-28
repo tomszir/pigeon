@@ -135,13 +135,13 @@ test.describe('on the Pocket', () => {
     }
 
     await fits()
-    for (const to of ['pigeon://help/', 'pigeon://help/protocol/']) {
+    for (const to of ['pigeon://help/', 'pigeon://help/how/']) {
       await address.fill(to)
       await address.press('Enter')
       await fits()
     }
-    // A flows page, whose ASCII diagrams scroll inside their own box instead.
-    await frame.getByRole('link', { name: 'Linking a device' }).click()
+    // A guide page, whose ASCII diagrams scroll inside their own box instead.
+    await frame.getByRole('link', { name: '4. Your Devices' }).click()
     await fits()
     const diagram = await frame
       .locator('pre')
@@ -202,15 +202,15 @@ test.describe('on the Pocket', () => {
       .tap()
     const explorer = page.getByRole('region', { name: 'Pigeon Explorer' })
     const address = explorer.getByRole('textbox', { name: 'Address' })
-    await address.fill('pigeon://help/protocol/')
+    await address.fill('pigeon://help/how/')
     await address.press('Enter')
     const frame = page.frameLocator('iframe')
-    await frame.getByRole('link', { name: 'Devices' }).first().tap()
-    // The footer's three links, one under another: each a full row, none overlapping.
+    await frame.getByRole('link', { name: '4. Your Devices' }).tap()
+    // The footer's two links, one under another: each a full row, none overlapping.
     const rows = await frame
       .locator('table.nav a')
       .evaluateAll((links) => links.map((link) => link.getBoundingClientRect().toJSON()))
-    expect(rows.length).toBe(3)
+    expect(rows.length).toBe(2)
     for (const row of rows) expect(row.height).toBeGreaterThanOrEqual(44)
     for (let i = 1; i < rows.length; i++)
       expect(rows[i]?.top ?? 0).toBeGreaterThanOrEqual(rows[i - 1]?.bottom ?? 0)
