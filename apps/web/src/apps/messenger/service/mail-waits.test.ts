@@ -227,6 +227,36 @@ describe('waiting at a Lighthouse', () => {
     for (const wait of h.waits) expect(wait.request).toMatchObject({ seconds: 6 })
   })
 
+  it('waits again when a quiet Worker leaves an ended lease unanswered and the wait times out', async () => {
+    // The Worker answers an ended lease only when something wakes it, and keepalives don't: the
+    // client gives the wait up 30 seconds past its lease.
+    let next = 30_000
+    const h = harness({ nextLook: () => next })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    expect(h.waits[0]?.request).toMatchObject({ seconds: 30 })
+    next = 8 * 60 * 1000
+    await h.pass(60_000)
+    h.waits[0]?.answer({ ok: false, error: 'timeout' })
+    await flush()
+    expect(h.waits[1]?.request).toMatchObject({ type: 'wait', cursor: 41, seconds: 480 })
+  })
+
+  it('doesn’t wait again after a look there that didn’t finish', async () => {
+    let next = 30_000
+    const h = harness({ nextLook: () => next })
+    h.waitsFor.looked(lighthouse, looked())
+    await flush()
+    // A timer's look reads it while that wait stands, and doesn't finish.
+    next = 9 * 60 * 1000
+    h.waitsFor.looked(lighthouse, looked({ complete: false }))
+    await h.pass(30_000)
+    h.waits[0]?.answer({ ok: true, value: { type: 'waited', why: 'lease' } })
+    await flush()
+    await h.pass(60_000)
+    expect(h.waits).toHaveLength(1)
+  })
+
   it('asks a Lighthouse that answers `lease` before the lease ends nothing more', async () => {
     const h = harness({ nextLook: () => 9 * 60 * 1000 })
     h.waitsFor.looked(lighthouse, looked())

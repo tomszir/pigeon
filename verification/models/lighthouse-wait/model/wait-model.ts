@@ -99,6 +99,13 @@ export const SCENARIOS: Readonly<Record<string, ScenarioSetup>> = {
     clients: { a: { range: 'r1' } },
     budget: { ...NONE, silences: 1, reopens: 1, looks: 2, ticks: 2 },
   },
+  lull: {
+    name: 'a quiet Worker leaves an ended lease unanswered',
+    variants: ['worker'],
+    limits: LIMITS,
+    clients: { a: { range: 'r1' } },
+    budget: { ...NONE, puts: 1, looks: 1, ticks: 6 },
+  },
   shared: {
     name: 'three Pigeons behind one IPv4 address',
     limits: { ...LIMITS, tagsPerRange: 3, maxWaitedTags: 3 },
@@ -162,7 +169,7 @@ const clientChecks = (limits: WaitLimits): Invariant<Sys>[] => [
     id: 'C8 waits until the next look',
     check: (s) => {
       for (const [who, c] of Object.entries(s.clients))
-        if (c.on && c.waiting && c.conn !== null && !c.cue && c.waitReq === null && !c.renewDue)
+        if (c.on && c.waiting && c.conn !== null && !c.cue && c.waitReq === null)
           return `${who}'s wait ended before its next look, and nothing waits in its place`
       return undefined
     },
@@ -343,6 +350,20 @@ export const DEFECTS: readonly Defect[] = [
     catches: 'C8 waits until the next look',
   },
   {
+    name: 'a renewal that sends nothing',
+    client: { renewalSends: false },
+    scenario: 'cycle',
+    variant: 'node',
+    catches: 'C8 waits until the next look',
+  },
+  {
+    name: 'a wait given up past its lease taken as a drop',
+    client: { renewsAfterTimeout: false },
+    scenario: 'lull',
+    variant: 'worker',
+    catches: 'C8 waits until the next look',
+  },
+  {
     name: 'a cue moves the cursor',
     client: { cueOnly: false },
     scenario: 'cycle',
@@ -376,7 +397,8 @@ export function waitModel(
       ...(s.ghost.owed.length > 0 ? ['a wake owed across a reset'] : []),
       ...(s.reopenedEvicted ? ['reopened after eviction'] : []),
       ...(Object.values(s.clients).some((c) => c.evicted) ? ['evicted'] : []),
-      ...(Object.values(s.clients).some((c) => c.renewDue) ? ['a lease ran its course'] : []),
+      ...(s.renewed ? ['a wait sent again after its lease'] : []),
+      ...(s.timedOut ? ['a wait given up past its lease'] : []),
     ],
   }
 }

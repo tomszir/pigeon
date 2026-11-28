@@ -31,6 +31,13 @@ export interface ClientRules {
   readonly cueOnly: boolean
   /** A wait whose lease ran its course is sent again, with the tags it named, until the next look. */
   readonly renewsAfterLease: boolean
+  /** A renewal due is sent at once, in the same step as the lease's end. */
+  readonly renewalSends: boolean
+  /**
+   * A wait still unanswered GRACE past its lease (a Worker with nothing to wake it doesn't answer
+   * an ended lease) is taken as its lease ending, not as a drop.
+   */
+  readonly renewsAfterTimeout: boolean
 }
 
 export const CLIENT_RULES: ClientRules = {
@@ -40,7 +47,12 @@ export const CLIENT_RULES: ClientRules = {
   holdsOffAfterEviction: true,
   cueOnly: true,
   renewsAfterLease: true,
+  renewalSends: true,
+  renewsAfterTimeout: true,
 }
+
+/** How long past its lease a client gives up on a wait's answer, in the model's time. */
+const GRACE = 1
 
 export interface Client {
   readonly range: string
@@ -111,6 +123,10 @@ export interface Sys {
   /** A wait named a tag its client's last look didn't list; reopened while evicted. */
   readonly strayTag: string | null
   readonly reopenedEvicted: boolean
+  /** A client gave up on a wait's answer past its lease. */
+  readonly timedOut: boolean
+  /** A client sent a wait again after its lease ended. */
+  readonly renewed: boolean
   readonly broken: readonly (readonly [string, string])[]
 }
 
@@ -168,6 +184,8 @@ export function initial(setup: Setup): Sys {
     silent: [],
     strayTag: null,
     reopenedEvicted: false,
+    timedOut: false,
+    renewed: false,
     broken: [],
   }
 }
@@ -307,6 +325,31 @@ function sendWait(
     setClient(s, who, { waitReq: null, waiting: false })
 }
 
+/**
+ * What a client does once a step's events are through: a wait still unanswered GRACE past its
+ * lease is given up, and a wait whose lease ran its course is sent again at once, the same tags
+ * with a lease to the next look. Time has to pass for each, so it needs no budget of its own.
+ */
+function renew(s: MSys, setup: Setup, rules: Rules, client: ClientRules) {
+  for (const [who, c] of Object.entries(s.clients))
+    if (c.waitReq !== null && s.lh.now >= c.waitUntil + GRACE) {
+      s.timedOut = true
+      // Taken as a drop instead, it's reopened only once it's been seen closed, and its lease has
+      // passed: nothing waits until the next look.
+      setClient(s, who, { waitReq: null, renewDue: client.renewsAfterTimeout && c.on })
+    }
+  for (const who of Object.keys(s.clients)) {
+    // Read again for each: a wait sent for one client can close another's connection for room.
+    const c = s.clients[who]
+    if (c === undefined || !c.renewDue) continue
+    setClient(s, who, { renewDue: false })
+    if (!c.on || c.conn === null || !client.renewalSends) continue
+    const tags = client.reusesLookTags ? c.waitTags : waitTagsFor(who, s.day, s.late)
+    s.renewed = true
+    sendWait(s, who, tags, leaseFor(setup.limits), setup, rules, client)
+  }
+}
+
 /** One look at the Lighthouse: lists from the cursor to the end, takes and drops what's new. */
 function look(s: MSys, who: string, setup: Setup, rules: Rules, client: ClientRules) {
   setClient(s, who, { cue: false, evicted: false, waiting: false, renewDue: false })
@@ -360,6 +403,7 @@ export function steps(
     for (const [key, n] of Object.entries(spend)) budget[key] = (budget[key] ?? 0) - (n ?? 0)
     s.budget = budget as unknown as Budget
     act(s)
+    renew(s, setup, rules, client)
     out.push([label, s])
   }
   const joined = (who: string) => !sys.waitingToJoin.includes(who)
@@ -460,13 +504,6 @@ export function steps(
         if (!connect(s, who, setup, rules, client)) return
         const tags = client.reusesLookTags ? c.waitTags : waitTagsFor(who, s.day, s.late)
         sendWait(s, who, tags, c.waitUntil - s.lh.now, setup, rules, client)
-      })
-    // Its lease ran its course before the next look: the same wait again, with a lease to it. Time
-    // has to pass for each, so this needs no budget of its own.
-    if (c.renewDue && c.on && c.conn !== null)
-      take(`${who} waits again after its lease`, {}, (s) => {
-        const tags = client.reusesLookTags ? c.waitTags : waitTagsFor(who, s.day, s.late)
-        sendWait(s, who, tags, leaseFor(setup.limits), setup, rules, client)
       })
     if (c.on && b.switches > 0)
       take(`${who} turns waiting off`, { switches: 1 }, (s) => {

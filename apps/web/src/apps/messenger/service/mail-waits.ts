@@ -110,6 +110,8 @@ interface Waiting {
   heldOff: boolean
   /** It called a wait malformed: a Lighthouse from before waits, not asked again for an hour. */
   unsupportedUntil: number
+  /** The last look here finished: its wait may be sent again when its lease ends. */
+  renewable: boolean
 }
 
 const keyOf = (address: LighthouseAddress) => `${address.id} ${address.url} ${address.pass ?? ''}`
@@ -148,7 +150,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
 
   /**
    * Sends `state`'s wait and acts on its answer, sending it again while that's called for: after a
-   * lease that ended well before the next look, or a drop while on screen. A loop, not recursion,
+   * lease that ended well before the next look (answered, or timed out), or a drop while on screen. A loop, not recursion,
    * so a Lighthouse that answers at once costs a wait per RENEW_AFTER_MS at most, and no stack.
    */
   async function send(state: Waiting): Promise<void> {
@@ -170,23 +172,29 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
       // Replaced by a newer wait, or stopped: its answer is that one's business, or nobody's.
       if (gen !== state.gen) return
       state.standing = false
+      // Its lease ended: `lease` came, or no answer did by the client's grace past it, as when a
+      // Worker with nothing to wake it leaves an ended lease unanswered. Only once it ran its
+      // course: a Lighthouse that answers `lease` early isn't asked again.
+      const leaseEnded =
+        (answer.ok
+          ? answer.value.type === 'waited' && answer.value.why === 'lease'
+          : answer.error === 'timeout') && clock.now() >= state.until - LEASE_SLACK_MS
+      if (leaseEnded) {
+        state.backoff = 0
+        // Well before the next look (one cut to an invite's tick, which stopped, or worked out as
+        // a timer's look began), it's sent again, to last until that look; each lease sent again
+        // is longer than RENEW_AFTER_MS, so it's one wait per few seconds at most. Not after a
+        // look here that didn't finish, whose cursor would have it answered at once.
+        if (!state.renewable || deps.nextLook() <= RENEW_AFTER_MS) return
+        state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
+        continue
+      }
       if (answer.ok) {
         const reply = answer.value
         if (reply.type === 'waited') {
           state.backoff = 0
-          if (reply.why === 'mail') {
-            await cue()
-            return
-          }
-          // Its lease ended well before the next look (one cut to an invite's tick, which stopped,
-          // or worked out as a timer's look began): it's sent again, to last until that look. Only
-          // once it ran its course: a Lighthouse that answers `lease` early isn't asked again, and
-          // each lease sent again is longer than RENEW_AFTER_MS, so it's one wait per few seconds
-          // at most.
-          if (clock.now() < state.until - LEASE_SLACK_MS || deps.nextLook() <= RENEW_AFTER_MS)
-            return
-          state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
-          continue
+          if (reply.why === 'mail') await cue()
+          return
         }
         if (reply.type === 'error' && reply.error === 'malformed')
           state.unsupportedUntil = clock.now() + HOUR
@@ -224,12 +232,15 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
         backoff: 0,
         heldOff: false,
         unsupportedUntil: 0,
+        renewable: false,
       }
       waiting.set(key, state)
       // A look is when a connection closed for room may wait again.
       state.heldOff = false
       // Only after a look that read every list: otherwise mail past its cursor would answer it
-      // at once, and the cue would bring another look that doesn't finish either.
+      // at once, and the cue would bring another look that doesn't finish either. A wait still
+      // standing from before isn't sent again either, until a look here finishes.
+      state.renewable = looked.complete
       if (!looked.complete || state.unsupportedUntil > clock.now()) return
       const tags = waitTags(looked.at, looked.tags)
       if (tags.length === 0) return
