@@ -1,0 +1,17 @@
+defect: a petname, mute, block or setting takes the entry that arrived last, not the newest stamp
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: settings: every invariant holds
+
+diff --git i/packages/core/src/shared-log/fold.ts w/packages/core/src/shared-log/fold.ts
+index df578d1..67d22af 100644
+--- i/packages/core/src/shared-log/fold.ts
++++ w/packages/core/src/shared-log/fold.ts
+@@ -52,7 +52,7 @@ export interface SharedView {
+ 
+ /** Which of two entries is later: stamp, then device, then number. */
+ export const later = (a: SharedEntry, b: SharedEntry): boolean =>
+-  a.stamp !== b.stamp ? a.stamp > b.stamp : a.device !== b.device ? a.device > b.device : a.n > b.n
++  true || a.stamp !== b.stamp ? a.stamp > b.stamp : a.device !== b.device ? a.device > b.device : a.n > b.n
+ 
+ /** Every entry that counts, with what it says. */
+ export function counting(

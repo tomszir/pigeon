@@ -1,0 +1,17 @@
+defect: mail:sync is sealed to every device on the list, those on a Pigeon that never said it reads it too
+test: apps/web src/apps/messenger/service/shared-log.test.ts
+expect: mails a change only to your devices that said they read mail:sync
+
+diff --git i/apps/web/src/apps/messenger/service/shared-log.ts w/apps/web/src/apps/messenger/service/shared-log.ts
+index e894730..373222e 100644
+--- i/apps/web/src/apps/messenger/service/shared-log.ts
++++ w/apps/web/src/apps/messenger/service/shared-log.ts
+@@ -190,7 +190,7 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
+   /** Your other devices on the list now that read `mail:sync`. */
+   const reading = (): PeerId[] => {
+     const active = deviceState(deps.devices.own()).active
+-    return [...readers].filter((device) => device !== signer.id && active.has(device)).sort()
++    return [...active.keys()].filter((device) => device !== signer.id).sort()
+   }
+ 
+   let waiting = false

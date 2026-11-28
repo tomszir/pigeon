@@ -1,0 +1,24 @@
+defect: an entry's kind is looked up past the table's own keys, so a kind named `constructor` throws on every device that holds it
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: room: every invariant holds
+
+diff --git i/packages/core/src/shared-log/entry.ts w/packages/core/src/shared-log/entry.ts
+index 7c4add9..b6a3102 100644
+--- i/packages/core/src/shared-log/entry.ts
++++ w/packages/core/src/shared-log/entry.ts
+@@ -139,13 +139,8 @@ const isName = (value: unknown): value is string =>
+ export function readOp(entry: SharedEntry): SharedOp | undefined {
+   // A kind is a string from whoever signed the entry, so it's looked up only among the table's own
+   // keys: `constructor` or `toString` must read as a kind this Pigeon doesn't know, like any other.
+-  if (!Object.hasOwn(FIELDS, entry.kind)) return undefined
+-  // And nothing in one entry can stop the rest being read: one that throws reads as unknown.
+-  try {
+-    return readKnown(entry)
+-  } catch {
+-    return undefined
+-  }
++  if (FIELDS[entry.kind as SharedKind] === undefined) return undefined
++  return readKnown(entry)
+ }
+ 
+ function readKnown(entry: SharedEntry): SharedOp | undefined {

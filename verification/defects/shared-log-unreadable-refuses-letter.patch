@@ -1,0 +1,17 @@
+defect: one entry of a kind a device can’t read refuses the whole letter
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: newer: every invariant holds
+
+diff --git i/packages/core/src/shared-log/sync.ts w/packages/core/src/shared-log/sync.ts
+index aa82a5b..3e48f8a 100644
+--- i/packages/core/src/shared-log/sync.ts
++++ w/packages/core/src/shared-log/sync.ts
+@@ -45,6 +45,8 @@ export function readSyncBody(identity: PeerId, body: unknown): SyncBody | undefi
+   const entries = Array.isArray(fields['entries'])
+     ? fields['entries'].slice(0, MAX_SYNC_ENTRIES)
+     : []
++  if (entries.some((e) => !['add', 'tomb', 'pet', 'mute', 'block', 'setting', 'removal-threshold'].includes(String((e as { kind?: unknown }).kind))))
++    return undefined
+   return { log, summary: readSharedSummary(fields['summary']), entries }
+ }
+ 

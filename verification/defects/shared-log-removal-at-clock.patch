@@ -1,0 +1,17 @@
+defect: a removal is stamped by the writer’s clock alone, so what a fast-clocked device delivered before stops counting
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: skewremoval: every invariant holds
+
+diff --git i/packages/core/src/shared-log/changes.ts w/packages/core/src/shared-log/changes.ts
+index c161489..3993819 100644
+--- i/packages/core/src/shared-log/changes.ts
++++ w/packages/core/src/shared-log/changes.ts
+@@ -80,7 +80,7 @@ export function settleOps(
+ export function removalAt(log: SharedLog, removed: readonly PeerId[], now: number): number {
+   let at = Math.max(1, Math.floor(now))
+   for (const entry of log.entries)
+-    if (removed.includes(entry.device) && entry.stamp <= STAMP_CAP)
++    if (removed.includes(entry.device) && entry.stamp < 0)
+       at = Math.max(at, entry.stamp + 1)
+   return Math.min(at, STAMP_CAP)
+ }

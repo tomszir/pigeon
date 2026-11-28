@@ -1,0 +1,17 @@
+defect: a change is stamped past entries that no longer count, so a removed device’s stamp near the cap pushes later changes to it
+test: packages/core src/shared-log/shared-log.model.test.ts
+expect: capped: every invariant holds
+
+diff --git i/packages/core/src/shared-log/changes.ts w/packages/core/src/shared-log/changes.ts
+index 3d09bfc..083fa75 100644
+--- i/packages/core/src/shared-log/changes.ts
++++ w/packages/core/src/shared-log/changes.ts
+@@ -93,7 +93,7 @@ export function removalAt(log: SharedLog, removed: readonly PeerId[], now: numbe
+ export function stampFor(log: SharedLog, context: FoldContext, op: SharedOp, now: number): number {
+   const subject = subjectOf(op)
+   let stamp = Math.max(1, Math.floor(now))
+-  for (const { entry, op: held } of counting(log, context))
++  for (const { entry, op: held } of counting(log, { ...context, removals: new Map() }))
+     if (subjectOf(held) === subject) stamp = Math.max(stamp, entry.stamp + 1)
+   return Math.min(stamp, STAMP_CAP)
+ }
