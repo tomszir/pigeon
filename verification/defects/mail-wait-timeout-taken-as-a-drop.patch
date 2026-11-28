@@ -1,0 +1,17 @@
+defect: a wait a quiet Worker leaves unanswered, given up 30 seconds past its lease, is taken as a drop, so nothing waits until the next look
+test: apps/web src/apps/messenger/service/mail-waits.test.ts
+expect: waits again when a quiet Worker leaves an ended lease unanswered
+
+diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
+index 6c656ca..bfdf624 100644
+--- i/apps/web/src/apps/messenger/service/mail-waits.ts
++++ w/apps/web/src/apps/messenger/service/mail-waits.ts
+@@ -178,7 +178,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+       const leaseEnded =
+         (answer.ok
+           ? answer.value.type === 'waited' && answer.value.why === 'lease'
+-          : answer.error === 'timeout') && clock.now() >= state.until - LEASE_SLACK_MS
++          : false) && clock.now() >= state.until - LEASE_SLACK_MS
+       if (leaseEnded) {
+         state.backoff = 0
+         // Well before the next look (one cut to an invite's tick, which stopped, or worked out as

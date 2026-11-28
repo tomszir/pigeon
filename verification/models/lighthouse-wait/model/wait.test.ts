@@ -8,7 +8,7 @@ import { DEFECTS, SCENARIOS, waitModel, withDefect } from './wait-model.ts'
 
 /** What each scenario must reach, so it can't pass by never getting there. */
 const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
-  cycle: ['mail put', 'a wait stands', 'cued', 'a lease ran its course'],
+  cycle: ['mail put', 'a wait stands', 'cued', 'a wait sent again after its lease'],
   sleep: ['a wake owed across a reset', 'cued'],
   fault: ['a wait stands', 'cued'],
   reads: ['a wait stands', 'cued'],
@@ -17,6 +17,7 @@ const MUST_REACH: Readonly<Record<string, readonly string[]>> = {
   room: ['evicted'],
   quiet: ['a wait stands'],
   shared: ['a wait stands', 'cued'],
+  lull: ['a wait given up past its lease', 'a wait sent again after its lease', 'cued'],
 }
 
 describe('waiting for mail at a Lighthouse', () => {

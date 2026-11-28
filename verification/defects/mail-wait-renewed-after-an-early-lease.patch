@@ -3,15 +3,15 @@ test: apps/web src/apps/messenger/service/mail-waits.test.ts
 expect: asks a Lighthouse that answers `lease` before the lease ends nothing more
 
 diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
-index 5a75379..bc11333 100644
+index 6c656ca..02d7ec2 100644
 --- i/apps/web/src/apps/messenger/service/mail-waits.ts
 +++ w/apps/web/src/apps/messenger/service/mail-waits.ts
-@@ -183,7 +183,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
-           // once it ran its course: a Lighthouse that answers `lease` early isn't asked again, and
-           // each lease sent again is longer than RENEW_AFTER_MS, so it's one wait per few seconds
-           // at most.
--          if (clock.now() < state.until - LEASE_SLACK_MS || deps.nextLook() <= RENEW_AFTER_MS)
-+          if (deps.nextLook() <= RENEW_AFTER_MS)
-             return
-           state.until = clock.now() + Math.min(MAX_WAIT_SECONDS * 1000, deps.nextLook())
-           continue
+@@ -178,7 +178,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+       const leaseEnded =
+         (answer.ok
+           ? answer.value.type === 'waited' && answer.value.why === 'lease'
+-          : answer.error === 'timeout') && clock.now() >= state.until - LEASE_SLACK_MS
++          : answer.error === 'timeout')
+       if (leaseEnded) {
+         state.backoff = 0
+         // Well before the next look (one cut to an invite's tick, which stopped, or worked out as
