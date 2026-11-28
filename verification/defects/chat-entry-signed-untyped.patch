@@ -1,0 +1,17 @@
+defect: a chat entry is signed with no `v`, as before 0.8.4, so it doesn't say what it is
+test: packages/core src/devices/entry-signing.test.ts
+expect: signs each entry as the current release does, and takes exactly what it takes
+
+diff --git i/packages/core/src/chat/chat-log.ts w/packages/core/src/chat/chat-log.ts
+index 2c16d32..e6652fe 100644
+--- i/packages/core/src/chat/chat-log.ts
++++ w/packages/core/src/chat/chat-log.ts
+@@ -165,7 +165,7 @@ export async function appendMessage(
+   const seq = (summarize(log)[signer.id] ?? 0) + 1
+   const lamport = Math.min(clockOf(log) + 1, Number.MAX_SAFE_INTEGER)
+   const unsigned = { author: signer.id, seq, lamport, at, text }
+-  const sig = base32Encode(await signer.sign(typedBytes(log.id, unsigned)))
++  const sig = base32Encode(await signer.sign(untypedBytes(log.id, unsigned)))
+   const entry: LogEntry = { ...unsigned, sig }
+   return { log: { ...log, entries: [...log.entries, entry].sort(compare) }, entry }
+ }
