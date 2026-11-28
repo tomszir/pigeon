@@ -209,8 +209,11 @@ export function inTurn(
   first: ReadonlySet<PeerId>,
 ): readonly SharedEntry[] {
   const queues = new Map<PeerId, SharedEntry[]>()
-  for (const entry of entries)
-    queues.set(entry.device, [...(queues.get(entry.device) ?? []), entry])
+  for (const entry of entries) {
+    const queue = queues.get(entry.device)
+    if (queue === undefined) queues.set(entry.device, [entry])
+    else queue.push(entry)
+  }
   const devices = [...queues.keys()].sort()
   const out: SharedEntry[] = []
   for (const group of [devices.filter((d) => first.has(d)), devices.filter((d) => !first.has(d))])

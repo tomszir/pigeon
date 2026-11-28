@@ -229,15 +229,15 @@ export function RemoveFriend(props: FriendDialogProps) {
             when={view().removedYouAt === undefined}
             fallback={
               <p>
-                {view().name} has already removed you. Remove them too, and delete your chat from
-                this browser?
+                {view().name} has already removed you. Remove them too, and delete your chat on all
+                your devices?
               </p>
             }
           >
             <p>
-              Remove <strong>{view().name}</strong> from your friends? Your chat with them is
-              deleted from this browser, and their Pigeon is told, now or the next time you're both
-              online.
+              Remove <strong>{view().name}</strong> from your friends on all your devices? Your chat
+              with them is deleted on each, and their Pigeon is told, now or the next time you're
+              both online.
             </p>
           </Show>
           <div class={styles.choice}>

@@ -34,11 +34,6 @@ export interface SelfNews {
   readonly lighthouses?: LighthousesChange | undefined
   /** Invite links the sending device made, so your other devices can say how many are open. */
   readonly invites?: readonly OtherLink[] | undefined
-  /**
-   * The kinds of mail the sending device reads beyond those every Pigeon does: `sync` for your
-   * shared log, which is sealed only to devices that say so.
-   */
-  readonly reads?: readonly string[] | undefined
 }
 
 /** At most this many invite links from one device. */
@@ -54,7 +49,6 @@ export const selfNewsBody = (news: SelfNews): Json =>
     ...(news.profile === undefined ? {} : { profile: news.profile }),
     ...(news.lighthouses === undefined ? {} : { lighthouses: news.lighthouses }),
     ...(news.invites === undefined ? {} : { invites: news.invites }),
-    ...(news.reads === undefined ? {} : { reads: news.reads }),
   }) as unknown as Json
 
 /**
@@ -63,14 +57,13 @@ export const selfNewsBody = (news: SelfNews): Json =>
  */
 export function isRemovalNotice(body: unknown): boolean {
   if (typeof body !== 'object' || body === null) return false
-  const { keys, profile, lighthouses, invites, reads } = body as Record<string, unknown>
+  const { keys, profile, lighthouses, invites } = body as Record<string, unknown>
   return (
     Array.isArray(keys) &&
     keys.length === 0 &&
     profile === undefined &&
     lighthouses === undefined &&
-    invites === undefined &&
-    reads === undefined
+    invites === undefined
   )
 }
 
@@ -123,11 +116,6 @@ export function readSelfNews(identity: PeerId, body: unknown): SelfNews | undefi
     lighthouses: readLighthouses(fields['lighthouses']),
     invites: Array.isArray(fields['invites'])
       ? fields['invites'].filter(isOtherLink).slice(0, MAX_SELF_INVITES)
-      : undefined,
-    reads: Array.isArray(fields['reads'])
-      ? fields['reads']
-          .filter((kind): kind is string => typeof kind === 'string' && kind.length <= 32)
-          .slice(0, 16)
       : undefined,
   }
 }

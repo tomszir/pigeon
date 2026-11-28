@@ -81,7 +81,7 @@ export interface Letter {
 }
 
 /**
- * The letter due to `peers`, your other devices that read `mail:sync`, or undefined when none is.
+ * The letter due to `peers`, your other active devices, or undefined when none is.
  * Its entries are each device's in turn, those in `listed` (your devices on the list) first, up
  * to `limits`.
  */

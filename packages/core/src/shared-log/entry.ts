@@ -47,14 +47,13 @@ export type SettingKey = 'relay'
 export type SharedOp =
   /**
    * A friendship began: with `friend`, as incarnation `inc`; `name` is what they were called then,
-   * for a device that doesn't hold them; `before`: written at the update.
+   * for a device that doesn't hold them.
    */
   | {
       readonly kind: 'add'
       readonly friend: PeerId
       readonly inc: string
       readonly name?: string
-      readonly before?: true
     }
   /** The friendship `inc` with `friend` ended, for good. */
   | { readonly kind: 'tomb'; readonly friend: PeerId; readonly inc: string }
@@ -113,7 +112,7 @@ function isJson(value: unknown, depth = 0): value is Json {
 
 /** The fields each known kind has, besides the common ones: anything else makes it unreadable. */
 const FIELDS: Readonly<Record<SharedKind, readonly string[]>> = {
-  add: ['friend', 'inc', 'name', 'before'],
+  add: ['friend', 'inc', 'name'],
   tomb: ['friend', 'inc'],
   pet: ['friend', 'name'],
   mute: ['friend', 'until'],
@@ -151,17 +150,10 @@ function readKnown(entry: SharedEntry): SharedOp | undefined {
   const friend = entry['friend']
   switch (kind) {
     case 'add': {
-      const { before, name } = entry
+      const { name } = entry
       if (!isPeer(friend) || !isIncarnation(entry['inc'])) return undefined
-      if (before !== undefined && before !== true) return undefined
       if (name !== undefined && !isName(name)) return undefined
-      return {
-        kind,
-        friend,
-        inc: entry['inc'],
-        ...(name === undefined ? {} : { name }),
-        ...(before === true ? { before } : {}),
-      }
+      return { kind, friend, inc: entry['inc'], ...(name === undefined ? {} : { name }) }
     }
     case 'tomb':
       return isPeer(friend) && isIncarnation(entry['inc'])

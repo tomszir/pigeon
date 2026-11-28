@@ -23,8 +23,6 @@ export interface RecipientsDeps {
   readonly lighthouses: () => readonly LighthouseAddress[]
   /** The Lighthouses a friend who never said theirs gets mail at: the official ones. */
   readonly official: readonly LighthouseAddress[]
-  /** Whether a letter of `kind` may be sealed to `device`, one of your own. */
-  readonly reads: (kind: MailKind, device: PeerId) => boolean
 }
 
 export function createRecipients(deps: RecipientsDeps) {
@@ -75,7 +73,7 @@ export function createRecipients(deps: RecipientsDeps) {
 
   /**
    * A letter's recipient's devices as their list stands now, and the keys known for them: your
-   * other devices on your list (those that read its kind), or a friend's on theirs. Nothing for
+   * other devices on your list, or a friend's on theirs. Nothing for
    * any other (an invite's answer, a farewell to someone no longer a friend), nor for a notice
    * to devices just taken off your list kept from before such notices were marked: those go as
    * they were sealed.
@@ -90,11 +88,8 @@ export function createRecipients(deps: RecipientsDeps) {
     if (to.identity === self) {
       if (letter.kind === 'self' && isRemovalNotice(letter.body)) return undefined
       const book = await mailBook(self)
-      const reads = (device: PeerId) => deps.reads(letter.kind, device)
-      const keys = Object.values(book.keys).filter(
-        (key) => devices.isOwnOther(key.device) && reads(key.device),
-      )
-      return { devices: deps.theirDevices(self).filter(reads), keys }
+      const keys = Object.values(book.keys).filter((key) => devices.isOwnOther(key.device))
+      return { devices: deps.theirDevices(self), keys }
     }
     if (!deps.isFriend(to.identity)) return undefined
     // Their list as kept, never the empty one of a friend whose log isn't loaded yet.

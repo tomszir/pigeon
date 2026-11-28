@@ -4,11 +4,10 @@
 // letters in the self mailbox.
 //
 // A letter goes 5 seconds after the last change, so a burst goes as one, and after a mail check
-// that took something your other devices may lack. It's sealed only to your devices that said
-// they read `mail:sync` (in their self news or by sending a summary in the self room), so a
-// device on an older Pigeon isn't left letters it can't open. Each carries this device's device
-// log, its summary and the entries its recipients aren't known to hold, padded so a Lighthouse
-// sees one of three sizes.
+// that took something your other devices may lack. It's sealed to every other active device on
+// your device log. Each carries this device's device log, its summary and the entries its
+// recipients aren't known to hold, padded so a Lighthouse sees one of three sizes. What's owed is
+// stored until a letter is handed to the outbox, so a reload inside the wait still sends it.
 import {
   appendShared,
   batchShared,
@@ -24,7 +23,6 @@ import {
   type Json,
   type Letter,
   MAX_SYNC_BATCH,
-  type MailKind,
   missingShared,
   newPeer,
   type PeerId,
@@ -62,9 +60,6 @@ export const SYNC_PADS: readonly number[] = [4096, 16_384, 40_960]
 /** Entries' bytes in one `sync-entries` message, well inside one envelope. */
 const ROOM_ENTRY_BYTES = 40_000
 
-/** What a device that reads `mail:sync` says it reads, in its self news. */
-export const READS: readonly string[] = ['sync']
-
 export interface SharedLogDeps {
   readonly crypto: Crypto
   readonly signer: Signer
@@ -93,10 +88,6 @@ export interface SharedLogKeeper {
   readonly write: (ops: readonly SharedOp[]) => Promise<void>
   /** A `mail:sync` letter from another of your devices, its device log already merged. */
   readonly takeLetter: (letter: Letter) => Promise<boolean>
-  /** Another of your devices said which kinds of mail it reads. */
-  readonly heardReads: (device: PeerId, kinds: readonly string[]) => Promise<void>
-  /** Whether a letter of `kind` may be sealed to `device`: `mail:sync` only to one that reads it. */
-  readonly reads: (kind: MailKind, device: PeerId) => boolean
   /** The device log a `mail:sync` letter carries, to be merged before anything is taken. */
   readonly carried: (letter: Letter) => DeviceLog | undefined
   /** What the self room passes. */
@@ -124,6 +115,8 @@ const viewKey = (view: SharedView): string =>
     [...view.mutes].sort(),
     [...view.blocked.keys()].sort(),
     view.relay,
+    [...view.ended].sort(),
+    [...view.said].sort(),
   ])
 
 /** `body` with a `pad` that brings its JSON to the next of `SYNC_PADS`, or as it is past them. */
@@ -154,12 +147,6 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
           device,
           newPeer(readSharedSummary(summary)),
         ])
-      : [],
-  )
-  const storedReaders = await store.get(KEYS.syncReaders)
-  const readers = new Set<PeerId>(
-    Array.isArray(storedReaders)
-      ? storedReaders.filter((id): id is PeerId => typeof id === 'string')
       : [],
   )
 
@@ -194,16 +181,25 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
     await refresh()
   }
 
-  /** Your other devices on the list now that read `mail:sync`. */
-  const reading = (): PeerId[] => {
-    const active = deviceState(deps.devices.own()).active
-    return [...readers].filter((device) => device !== signer.id && active.has(device)).sort()
-  }
+  /** Your other devices on the list now. */
+  const others = (): PeerId[] =>
+    [...deviceState(deps.devices.own()).active.keys()]
+      .filter((device) => device !== signer.id)
+      .sort()
 
   let waiting = false
-  /** May hold something its other devices lack: worked out at the next send. */
-  let owed = false
+  /** May hold something its other devices lack: worked out at the next send, and stored. */
+  let owed = (await store.get(KEYS.syncOwed)) === true
+  /** Counts each `soon`, so a send clears only what was owed when it began. */
+  let owedAt = 0
+  async function settle(at: number) {
+    if (owedAt !== at) return
+    owed = false
+    await store.delete(KEYS.syncOwed)
+  }
   function soon() {
+    owedAt++
+    if (!owed) void store.set(KEYS.syncOwed, true).catch(() => undefined)
     owed = true
     if (waiting) return
     waiting = true
@@ -214,24 +210,21 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
   }
 
   /**
-   * Mails your other devices what's due to them (exchange.ts says what that is). A device is
-   * marked as sent to only once the letter is queued, so one that couldn't be sealed for now goes
-   * at the next mail check; a page that didn't fit goes after the next wait.
+   * Mails your other devices what's due to them (exchange.ts says what that is). What's owed is
+   * cleared only once a letter is queued or nothing is due, so one that couldn't be sealed for now
+   * goes at the next mail check; a page that didn't fit goes after the next wait.
    */
   async function flush(): Promise<void> {
     if (!owed || deps.stopped() || !active() || deps.mailbox === undefined) return
-    const to = reading()
+    const to = others()
     if (to.length === 0) return
-    owed = false
+    const at = owedAt
     const listed = new Set(deviceState(deps.devices.own()).active.keys())
     const due = new Map(to.map((device) => [device, peers.get(device) ?? newPeer()]))
     const letter = await planLetter(crypto, log, due, listed)
-    if (letter === undefined) return
+    if (letter === undefined) return settle(at)
     const recipient = await deps.recipient(to)
-    if (recipient === undefined) {
-      owed = true
-      return
-    }
+    if (recipient === undefined) return
     const body = syncBody({
       log: deps.devices.own(),
       summary: letter.summary,
@@ -241,15 +234,8 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
     // what earlier ones didn't, so none takes another's place.
     await deps.mailbox.send(SYNC_MAIL_KIND, recipient, padded(body), { pinned: true })
     for (const [device, peer] of letter.peers) peers.set(device, peer)
+    await settle(at)
     if (letter.more) soon()
-  }
-
-  async function markReader(device: PeerId) {
-    if (readers.has(device) || device === signer.id) return
-    readers.add(device)
-    await store.set(KEYS.syncReaders, [...readers])
-    // It may lack everything: what it lacks goes at the next send.
-    soon()
   }
 
   /** `device` said what it holds; `behind`, it holds more than this device does now. */
@@ -270,6 +256,9 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
 
   /** A device that sent from your list as it is now, merged with what it carried. */
   const counts = (device: PeerId) => syncCounts(deps.devices.own(), device, signer.id)
+
+  // Owed before a reload: sent after the wait, or at the next mail check.
+  if (owed) soon()
 
   return {
     view,
@@ -292,7 +281,6 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
       // Nothing that could ever be taken: dropped, so it isn't fetched again.
       if (body === undefined) return true
       if (deps.stopped() || !counts(letter.from)) return false
-      await markReader(letter.from)
       await take(body.entries)
       // It holds more than it carried, perhaps for what it thought this device held: it's
       // answered with this device's summary, so it learns what to send.
@@ -302,17 +290,12 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
       if (behind || (await missingShared(crypto, log, body.summary)).length > 0) soon()
       return true
     },
-    async heardReads(device, kinds) {
-      if (kinds.includes('sync') && counts(device)) await markReader(device)
-    },
-    reads: (kind, device) => kind !== SYNC_MAIL_KIND || readers.has(device),
     carried: (letter) =>
       letter.kind === SYNC_MAIL_KIND ? readSyncBody(self, letter.body)?.log : undefined,
     selfRoom: {
       summary: () => summarizeShared(crypto, log),
       async missing(device, summary) {
         if (!counts(device)) return []
-        await markReader(device)
         const theirs = readSharedSummary(summary)
         await heardSummary(device, theirs)
         const listed = new Set(deviceState(deps.devices.own()).active.keys())
@@ -331,7 +314,12 @@ export async function loadSharedLog(deps: SharedLogDeps): Promise<SharedLogKeepe
         counts(device) && behindShared(crypto, log, readSharedSummary(summary)),
     },
     flush,
-    deviceLogChanged: () => serial(refresh),
+    // A device just linked may lack everything: what's due to it goes at the next send.
+    deviceLogChanged: () =>
+      serial(async () => {
+        await refresh()
+        soon()
+      }),
     removalAt: (removed) => removalAt(log, removed, clock.now()),
   }
 }

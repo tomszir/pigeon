@@ -12,7 +12,7 @@ import type { PeerId } from '../identity/identity.ts'
 import type { SharedEntry } from './entry.ts'
 import { readSharedSummary, type SharedSummary } from './log.ts'
 
-/** The kind of mail your devices sync the log in; a device says it reads it before it's sent. */
+/** The kind of mail your devices sync the log in. */
 export const SYNC_MAIL_KIND = 'sync'
 
 /** Entries in one letter or one `sync-entries` message. */

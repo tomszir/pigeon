@@ -203,6 +203,7 @@ export interface MessengerFriends {
   /** Quiets a friend until `until` (a time, or MUTED_FOREVER); undefined unmutes. */
   mute(id: PeerId, until: number | undefined): Promise<void>
   muted(id: PeerId): boolean
+  /** Unfriends them, or blocks them, on every device of yours, deleting the chat on each. */
   remove: (id: PeerId, options: { block: boolean }) => Promise<void>
   blocked: Accessor<readonly BlockedRecord[]>
   unblock(id: PeerId): Promise<void>

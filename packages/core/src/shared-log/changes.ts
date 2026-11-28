@@ -1,9 +1,11 @@
 // The entries a person's change on one device becomes. Each is written as this device's next
 // entry and stamped by `stampFor`, so a change made after seeing another beats it.
 
+import { base32Encode } from '../encoding/bytes.ts'
 import type { Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import {
+  INCARNATION_BYTES,
   MAX_SHARED_ENTRIES_PER_DEVICE,
   type SharedEntry,
   type SharedOp,
@@ -100,21 +102,21 @@ export function stampFor(log: SharedLog, context: FoldContext, op: SharedOp, now
   return Math.min(stamp, STAMP_CAP)
 }
 
-/**
- * Writes `op` as this device's next entry, stamped by `stampFor`, or at `stamp` when given: the
- * update writes what a device held before at the lowest stamps, so any change since wins.
- */
+/** Writes `op` as this device's next entry, stamped by `stampFor`. */
 export async function appendShared(
   log: SharedLog,
   signer: Signer,
   op: SharedOp,
   now: number,
   context: FoldContext,
-  stamp?: number,
 ): Promise<{ readonly log: SharedLog; readonly entry: SharedEntry } | undefined> {
   const n = nextNumber(log, signer.id)
   if (n > MAX_SHARED_ENTRIES_PER_DEVICE) return undefined
-  const at = Math.min(stamp ?? stampFor(log, context, op, now), STAMP_CAP)
+  const at = stampFor(log, context, op, now)
   const entry = await signEntry(signer, log.identity, n, at, op)
   return { log: withEntry(log, entry), entry }
 }
+
+/** A new friendship's incarnation id: `INCARNATION_BYTES` random bytes. */
+export const newIncarnation = (random: (length: number) => Uint8Array): string =>
+  base32Encode(random(INCARNATION_BYTES))

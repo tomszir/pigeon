@@ -147,8 +147,8 @@ describe('an entry', () => {
     expect(readOp(extra)).toBeUndefined()
     expect(readOp(await raw(first, { kind: 'add', inc: inc(1), name: undefined }))).toBeDefined()
     expect(readOp(await raw(first, { kind: 'add', inc: 'short', name: undefined }))).toBeUndefined()
-    const before = await raw(first, { kind: 'add', inc: inc(1), name: undefined, before: false })
-    expect(readOp(before)).toBeUndefined()
+    const marked = await raw(first, { kind: 'add', inc: inc(1), name: undefined, before: true })
+    expect(readOp(marked)).toBeUndefined()
   })
 
   it('reads a kind named like an object property as one it doesn’t know, and folds the rest', async () => {

@@ -130,8 +130,10 @@ apps/
                 service/recipients.ts says who a letter goes to (createRecipients): a friend's
                 devices on their list or your own others, their sealing keys and Lighthouses;
                 service/shared-log.ts keeps your shared log on this device (loadSharedLog): the
-                entries, what each of your other devices said it holds and whether it reads
-                `mail:sync`, the view, and the letters and self-room messages that pass it on;
+                entries, what each of your other devices said it holds, the view, the letters and
+                self-room messages that pass it on, and a stored `sync-owed` mark until a letter is
+                queued; service/data-sync.ts applies that view to friends, petnames, mutes, blocks
+                and the relay setting, at start and on each change, and writes changes made here;
                 service/devices.ts keeps your device log and friends', and says who
                 a device is. service/mailbox.ts is mail through Lighthouses: an outbox
                 put again until each device's receipt comes, and fetching from a

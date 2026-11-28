@@ -5,6 +5,7 @@
 import {
   type ChatLog,
   isHandle,
+  isIncarnation,
   isLighthouseAddress,
   isLiveCode,
   isPairSecret,
@@ -32,6 +33,11 @@ export interface FriendRecord {
   /** The name they chose, as last seen in their signed hello. */
   readonly handle: string
   readonly addedAt: number
+  /**
+   * The friendship's id in your shared log, made when it began. None for a friend from before
+   * your devices shared a log, whose id is derived from theirs.
+   */
+  readonly inc?: string | undefined
   /** What you call them, shown instead of their handle. */
   readonly petname?: string | undefined
   /** No balloons and no shaking from them until then (`Infinity` stored as -1: until unmuted). */
@@ -145,8 +151,8 @@ export const KEYS = {
   sharedLog: 'shared-log',
   /** What each of your other devices last said its shared log holds: its summary. */
   sharedKnown: 'shared-known',
-  /** Your other devices that said they read `mail:sync`. */
-  syncReaders: 'sync-readers',
+  /** Shared-log changes not yet handed to the outbox, so a reload before the wait sends them. */
+  syncOwed: 'sync-owed',
   /** What a friend's devices (or your own, under your own id) said about their mail. */
   mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,
@@ -171,6 +177,7 @@ export function isFriendRecord(record: unknown): record is FriendRecord {
     isPeerId(record['id']) &&
     typeof record['handle'] === 'string' &&
     typeof record['addedAt'] === 'number' &&
+    (record['inc'] === undefined || isIncarnation(record['inc'])) &&
     (record['petname'] === undefined || typeof record['petname'] === 'string') &&
     (record['mutedUntil'] === undefined || typeof record['mutedUntil'] === 'number') &&
     (record['removedYouAt'] === undefined || typeof record['removedYouAt'] === 'number') &&
@@ -300,6 +307,7 @@ const importedFriend = (record: FriendRecord): FriendRecord | undefined => {
     id: record.id,
     handle: record.handle,
     addedAt: record.addedAt,
+    ...(record.inc === undefined ? {} : { inc: record.inc }),
     ...(record.petname === undefined ? {} : { petname: record.petname }),
     ...(record.mutedUntil === undefined ? {} : { mutedUntil: record.mutedUntil }),
     ...(record.removedYouAt === undefined ? {} : { removedYouAt: record.removedYouAt }),

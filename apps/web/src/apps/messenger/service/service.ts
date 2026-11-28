@@ -85,6 +85,7 @@ import { createStore, produce } from 'solid-js/store'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import type { Store } from '../../../platform/storage/storage.ts'
 import type { Wake } from '../../../platform/wake/wake.ts'
+import { createDataSync } from './data-sync.ts'
 import { DEVICE_KEYS, loadDevices } from './devices.ts'
 import { createFriends, type FriendStore, nameOf } from './friends.ts'
 import { createIdentityMoves } from './identity-moves.ts'
@@ -126,7 +127,7 @@ import {
   winner,
 } from './rekeys.ts'
 import { type LighthousesChange, readSelfNews, selfNewsBody } from './self-mail.ts'
-import { loadSharedLog, READS } from './shared-log.ts'
+import { loadSharedLog } from './shared-log.ts'
 import {
   bundleFriends,
   type FarewellRecord,
@@ -422,7 +423,6 @@ export async function createMessenger(deps: MessengerDeps) {
     theirDevices: (id) => theirDevices(id),
     isFriend: (id) => friend(id) !== undefined,
     official: deps.lighthouses ?? [],
-    reads: (kind, device) => sharedLog.reads(kind, device),
   })
 
   /**
@@ -449,6 +449,7 @@ export async function createMessenger(deps: MessengerDeps) {
       // Only from a device on their list, and only into a chat with them.
       if (friend(letter.sender) === undefined) return true
       if (devices.classify(letter.sender, letter.from) !== 'friend') return false
+      void dataSync.seen(letter.sender).catch(() => undefined)
       return letters.take(letter.sender, letter, through)
     }
     if (letter.kind === 'self') return source.sender === self && takeSelfNews(letter)
@@ -482,7 +483,7 @@ export async function createMessenger(deps: MessengerDeps) {
       const keys = await ownKeys()
       const to = await selfRecipient()
       if (to !== undefined) {
-        const news = { log, keys, profile, lighthouses: list, invites, reads: READS }
+        const news = { log, keys, profile, lighthouses: list, invites }
         await mailbox.send('self', to, selfNewsBody(news), { supersede: true })
       }
       const off = removed.filter((device) => !devices.isOwnOther(device))
@@ -515,7 +516,6 @@ export async function createMessenger(deps: MessengerDeps) {
     if (news.profile !== undefined) await takeProfile(news.profile)
     if (news.lighthouses !== undefined) await takeLighthouses(news.lighthouses)
     if (news.invites !== undefined) await inviteLinks?.takeShared(letter.from, news.invites)
-    if (news.reads !== undefined) await sharedLog.heardReads(letter.from, news.reads)
     return true
   }
 
@@ -730,6 +730,14 @@ export async function createMessenger(deps: MessengerDeps) {
     ...{ crypto, signer, store, clock, self, devices, mailbox, recipient: selfRecipient },
     stopped: () => closed,
     announce: () => selfSession?.announceSync(),
+    onChange: (view) => dataSync.apply(view),
+  })
+  /** Friends, petnames, mutes, blocks and the relay setting, in step through your shared log. */
+  const dataSync = createDataSync({
+    ...{ random: deps.random, shared: sharedLog, friend, setState, saveFriends },
+    ...{ blocked, block, unblock, rename, mute, removeFriend, setRelayOnly },
+    friends: friendList,
+    relayOnly: () => settings().relayOnly,
   })
   // Leaving this Pigeon waits for its farewells to be said.
   let farewellsSaid: (() => void)[] = []
@@ -831,7 +839,10 @@ export async function createMessenger(deps: MessengerDeps) {
       if (view !== undefined) events.onUnfriended?.(view)
     },
     met: () => undefined,
-    seen: (id, event) => void heardIn(id, event.room, event.device).catch(() => undefined),
+    seen: (id, event) => {
+      void heardIn(id, event.room, event.device).catch(() => undefined)
+      void dataSync.seen(id).catch(() => undefined)
+    },
     log: (id, event) => {
       const before = state.friends[id]?.log.entries ?? []
       const seen = new Set(before.map(entryKey))
@@ -1404,9 +1415,12 @@ export async function createMessenger(deps: MessengerDeps) {
       })
       return existing
     }
+    // A friendship that begins here, rather than one read back or brought by a link bundle.
+    const inc = record.inc ?? (log === undefined ? dataSync.newInc() : undefined)
     const room = await pairRoom(crypto, self, record.id)
     setState('friends', record.id, {
       ...record,
+      ...(inc === undefined ? {} : { inc }),
       handle: cleanHandle(record.handle),
       devices: 1,
       seesThisDevice: true,
@@ -1419,6 +1433,8 @@ export async function createMessenger(deps: MessengerDeps) {
       unread: 0,
       notes: [],
     })
+    if (inc !== undefined && record.inc === undefined)
+      await dataSync.began(record.id, inc, cleanHandle(record.handle))
     return state.friends[record.id] as FriendView
   }
 
@@ -1680,6 +1696,9 @@ export async function createMessenger(deps: MessengerDeps) {
       },
       stopped: () => closed,
     })
+  // What the shared log already holds, applied: entries kept before a reload or a crash, or an
+  // add and its tomb taken together, never show up as a change.
+  await dataSync.apply(sharedLog.view()).catch(() => undefined)
   /** A removed friend heard: in person, or by receipt for the farewell left in their mailbox. */
   async function farewellHeard(id: PeerId) {
     // Closed meanwhile, perhaps to be forgotten: the store may be another's now.
@@ -1730,7 +1749,7 @@ export async function createMessenger(deps: MessengerDeps) {
     await syncRooms(session)
   }
 
-  async function removeFriend(id: PeerId, options: { block: boolean }) {
+  async function removeFriend(id: PeerId, options: { block: boolean; quiet?: boolean }) {
     const view = friend(id)
     if (closed || view === undefined) return
     const session = sessions.get(id)
@@ -1746,6 +1765,8 @@ export async function createMessenger(deps: MessengerDeps) {
     await saveFriends()
     await store.delete(KEYS.log(id))
     await letters?.forget(id)
+    // Ended on another device of yours, which tells them.
+    if (options.quiet === true) return void (await devices.forgetFriend(id))
     // Who they are to mail, before their devices are forgotten: the farewell is sealed to them.
     const kept = secretState(view)
     const mailTo =
@@ -2584,15 +2605,15 @@ export async function createMessenger(deps: MessengerDeps) {
       if (state.friends[id]?.unread !== 0) setState('friends', id, 'unread', 0)
     },
     isFriend,
-    rename,
-    mute,
+    rename: dataSync.rename,
+    mute: dataSync.mute,
     muted,
-    remove: removeFriend,
+    remove: dataSync.remove,
     blocked,
-    unblock,
+    unblock: dataSync.unblock,
     settings,
     /** Turns relay-only connections on or off, and reconnects everything to match. */
-    setRelayOnly,
+    setRelayOnly: dataSync.setRelayOnly,
     setHearAtOnce,
     /**
      * Work in flight that a reload would cut short or repeat: a chat saved to storage a moment

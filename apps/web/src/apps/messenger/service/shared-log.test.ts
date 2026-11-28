@@ -1,5 +1,5 @@
 // Your shared log on a device: kept, passed between your devices in the self room and by
-// `mail:sync`, sealed only to devices that said they read it, and the threshold a removal's
+// `mail:sync`, sealed to your other active devices, and the threshold a removal's
 // writer owes.
 import {
   appendDeviceEntry,
@@ -105,13 +105,18 @@ async function exchange(
   return rounds
 }
 
-async function keeper(signer: Signer, log: DeviceLog, sealable = () => true) {
+async function keeper(
+  signer: Signer,
+  log: DeviceLog,
+  sealable = () => true,
+  store = createMemoryStore(),
+) {
   const clock = fakeClock(NOON)
   const sent: { body: Json; to: readonly PeerId[] }[] = []
   const shared = await loadSharedLog({
     crypto: fakeCrypto,
     signer,
-    store: createMemoryStore(),
+    store,
     clock,
     self: first.id,
     devices: { own: () => log, status: () => 'active' },
@@ -127,7 +132,7 @@ async function keeper(signer: Signer, log: DeviceLog, sealable = () => true) {
         ? ({ identity: first.id, keys: only.map((device) => ({ device })) } as unknown as Recipient)
         : undefined,
   })
-  return { shared, sent, clock }
+  return { shared, sent, clock, store }
 }
 
 const letterFrom = (from: PeerId, body: Json): Letter => ({
@@ -143,15 +148,12 @@ const letterFrom = (from: PeerId, body: Json): Letter => ({
 })
 
 describe('your shared log on a device', () => {
-  it('mails a change only to your devices that said they read mail:sync', async () => {
+  it('mails a change to your other devices on the list, once the wait is over', async () => {
     const log = await ownLog()
     const laptop = await keeper(first, log)
     await laptop.shared.write([{ kind: 'pet', friend, name: 'Mika' }])
-    await laptop.clock.tick(SYNC_WAIT_MS)
     await flush()
-    // The phone said nothing yet, as a Pigeon from before the shared log wouldn't.
     expect(laptop.sent).toEqual([])
-    await laptop.shared.heardReads(phone.id, ['sync'])
     await laptop.clock.tick(SYNC_WAIT_MS)
     await flush()
     expect(laptop.sent.map((letter) => letter.to)).toEqual([[phone.id]])
@@ -165,7 +167,6 @@ describe('your shared log on a device', () => {
     const log = await ownLog()
     const laptop = await keeper(first, log)
     const other = await keeper(phone, log)
-    await other.shared.heardReads(first.id, ['sync'])
     await other.shared.write([{ kind: 'pet', friend, name: 'Mika' }])
     await other.clock.tick(SYNC_WAIT_MS)
     await flush()
@@ -218,7 +219,6 @@ describe('a device that floods past a gap in its numbers', () => {
     for (let i = 0; i < entries.length; i += 48)
       await laptop.shared.selfRoom.take(phone.id, entries.slice(i, i + 48))
     expect(laptop.shared.log().entries).toHaveLength(300)
-    await laptop.shared.heardReads(phone.id, ['sync'])
     await laptop.shared.write([{ kind: 'block', friend, on: true }])
     await laptop.clock.tick(SYNC_WAIT_MS)
     await flush()
@@ -234,8 +234,6 @@ describe('a device that floods past a gap in its numbers', () => {
     const entries = await flood(5)
     await laptop.shared.selfRoom.take(phone.id, entries)
     await other.shared.selfRoom.take(first.id, entries)
-    await laptop.shared.heardReads(phone.id, ['sync'])
-    await other.shared.heardReads(first.id, ['sync'])
     await laptop.shared.write([{ kind: 'mute', friend, until: -1 }])
     // Each takes what the other mailed, round after round, until nobody has anything to send.
     for (let round = 0; round < 6; round++) {
@@ -262,8 +260,6 @@ describe('a device that only reads', () => {
     const log = await ownLog()
     const laptop = await keeper(first, log)
     const other = await keeper(phone, log)
-    await laptop.shared.heardReads(phone.id, ['sync'])
-    await other.shared.heardReads(first.id, ['sync'])
     for (let i = 1; i <= 300; i++) {
       await laptop.shared.write([{ kind: 'pet', friend: fakeSigner(`f${i}`).id, name: `n${i}` }])
       await laptop.clock.tick(SYNC_WAIT_MS)
@@ -295,8 +291,6 @@ describe('a device that only reads', () => {
     // The laptop is ahead, with the copy that loses; the phone holds the first 90 and the winner.
     await hand(laptop, phone.id, [...rest, ...higher])
     await hand(other, first.id, [...rest.slice(0, 89), ...lower])
-    await laptop.shared.heardReads(phone.id, ['sync'])
-    await other.shared.heardReads(first.id, ['sync'])
     await laptop.shared.write([{ kind: 'mute', friend, until: -1 }])
     expect(await exchange(laptop, other)).toBeLessThan(40)
     expect(other.shared.log().entries).toHaveLength(400)
@@ -305,12 +299,43 @@ describe('a device that only reads', () => {
   }, 60_000)
 })
 
+describe('a change made just before the tab closes', () => {
+  it('is still mailed after a reload inside the wait', async () => {
+    const log = await ownLog()
+    const store = createMemoryStore()
+    const closing = await keeper(first, log, () => true, store)
+    await closing.shared.write([{ kind: 'pet', friend, name: 'Mika' }])
+    await flush()
+    // Closed before the wait was over: nothing went.
+    expect(closing.sent).toEqual([])
+    const reopened = await keeper(first, log, () => true, store)
+    await reopened.clock.tick(SYNC_WAIT_MS)
+    await flush()
+    expect(readSyncBody(first.id, reopened.sent.at(-1)?.body)?.entries).toHaveLength(1)
+    // Handed to the outbox: owed no longer, so a third start sends nothing.
+    expect(await store.get('sync-owed')).toBeUndefined()
+    const third = await keeper(first, log, () => true, store)
+    await third.clock.tick(SYNC_WAIT_MS)
+    await flush()
+    expect(third.sent).toEqual([])
+  })
+
+  it('stays owed while no letter can be sealed', async () => {
+    const log = await ownLog()
+    const store = createMemoryStore()
+    const laptop = await keeper(first, log, () => false, store)
+    await laptop.shared.write([{ kind: 'pet', friend, name: 'Mika' }])
+    await laptop.clock.tick(SYNC_WAIT_MS)
+    await flush()
+    expect(await store.get('sync-owed')).toBe(true)
+  })
+})
+
 describe('a letter that can’t be sealed for now', () => {
   it('is sent once it can be, not marked as sent before', async () => {
     let sealable = false
     const log = await ownLog()
     const laptop = await keeper(first, log, () => sealable)
-    await laptop.shared.heardReads(phone.id, ['sync'])
     await laptop.shared.write([{ kind: 'pet', friend, name: 'Mika' }])
     await laptop.clock.tick(SYNC_WAIT_MS)
     await flush()
