@@ -1,11 +1,5 @@
-import {
-  fakeCrypto,
-  fakeSigner,
-  type Rekey,
-  replacesId,
-  type Signer,
-  signRekey,
-} from '@pigeon/core'
+import { type Rekey, replacesId, type Signer, signRekey } from '@pigeon/core'
+import { fakeCrypto, fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import {
   begin,

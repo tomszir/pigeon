@@ -43,13 +43,7 @@
       },
       "style": {
         "useImportType": "error",
-        "noNonNullAssertion": "error",
-        "noExcessiveLinesPerFile": {
-          "level": "error",
-          "options": {
-            "maxLines": 600
-          }
-        }
+        "noNonNullAssertion": "error"
       },
       "complexity": {
         "useLiteralKeys": "off"
@@ -69,115 +63,6 @@
   },
   "overrides": [
     {
-      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 1000
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": [
-        "apps/web/src/apps/messenger/add-friend/add-friend.tsx",
-        "packages/core/src/avatar/avatar.ts",
-        "packages/core/src/chat/pair-session.ts"
-      ],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 700
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/core/src/devices/device-log.ts", "packages/pigeonhtml/src/css.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 800
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/core/src/chat/pair-session.test.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 1100
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["apps/web/src/apps/messenger/service/invite-links.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 1200
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["apps/web/src/apps/messenger/service/service.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 2600
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["apps/web/src/apps/messenger/service/service.test.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noExcessiveLinesPerFile": {
-              "level": "error",
-              "options": {
-                "maxLines": 3900
-              }
-            }
-          }
-        }
-      }
-    },
-    {
       "includes": ["packages/*/src/index.ts"],
       "linter": {
         "rules": {
@@ -189,18 +74,63 @@
       }
     },
     {
+      "includes": ["packages/core/src/testing/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": [
-        "**",
+        "packages/**",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.spec.ts",
         "!**/testing/**",
         "!packages/*/src/index.ts"
       ],
-      "plugins": ["./biome-plugins/no-test-fakes.grit"]
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["solid-js", "solid-js/*"],
+                    "message": "packages/ stay framework-free; Solid is for apps/web/src/ui, shell and apps."
+                  },
+                  {
+                    "group": ["**/apps/**"],
+                    "message": "packages/ must not depend on apps/."
+                  },
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     },
     {
-      "includes": ["packages/**"],
+      "includes": [
+        "packages/**/*.test.ts",
+        "packages/**/*.test.tsx",
+        "packages/**/*.spec.ts",
+        "packages/**/testing/**",
+        "packages/*/src/index.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -224,7 +154,76 @@
       }
     },
     {
-      "includes": ["apps/web/src/platform/**"],
+      "includes": [
+        "apps/web/src/app/**",
+        "apps/lighthouse/src/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/testing/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/platform/**", "!**/*.test.ts", "!**/*.test.tsx", "!**/testing/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["solid-js", "solid-js/*"],
+                    "message": "platform/ wraps browser APIs and stays framework-free."
+                  },
+                  {
+                    "group": ["**/ui", "**/ui/**", "**/shell", "**/shell/**", "**/apps/**"],
+                    "message": "platform/ may import only packages/."
+                  },
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/platform/**/*.test.ts",
+        "apps/web/src/platform/**/*.test.tsx",
+        "apps/web/src/platform/**/testing/**"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -248,7 +247,46 @@
       }
     },
     {
-      "includes": ["apps/web/src/ui/**"],
+      "includes": ["apps/web/src/ui/**", "!**/*.test.ts", "!**/*.test.tsx", "!**/testing/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/platform",
+                      "**/platform/**",
+                      "**/shell",
+                      "**/shell/**",
+                      "**/apps/**"
+                    ],
+                    "message": "ui/ is the presentational kit: Solid and packages/ only."
+                  },
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/ui/**/*.test.ts",
+        "apps/web/src/ui/**/*.test.tsx",
+        "apps/web/src/ui/**/testing/**"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -274,7 +312,7 @@
       }
     },
     {
-      "includes": ["apps/web/src/shell/**", "!**/*.test.ts", "!**/*.test.tsx"],
+      "includes": ["apps/web/src/shell/**", "!**/*.test.ts", "!**/*.test.tsx", "!**/testing/**"],
       "linter": {
         "rules": {
           "style": {
@@ -295,6 +333,15 @@
                       "!**/platform/wake/wake.ts"
                     ],
                     "message": "shell/ takes platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json."
+                  },
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
                   }
                 ]
               }
@@ -360,6 +407,15 @@
                       "!**/platform/wake/wake.ts"
                     ],
                     "message": "apps/ take platform interfaces from app/, never an implementation. An interface file (clock.ts, files.ts, ...) is allowed by name in biome.json."
+                  },
+                  {
+                    "group": [
+                      "@pigeon/core/testing",
+                      "@pigeon/lighthouse/testing",
+                      "@pigeon/lighthouse/wait-traces",
+                      "@pigeon/lighthouse/wait-conformance"
+                    ],
+                    "message": "Test utilities stay in test files and testing/ folders."
                   }
                 ]
               }

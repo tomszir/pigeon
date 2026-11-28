@@ -1,4 +1,4 @@
-import { flush } from '@pigeon/core'
+import { flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { type Channel, createTabLock, type Locks } from './tab-lock.ts'
 

@@ -4,17 +4,19 @@
 // files.
 import {
   createLighthouseClient,
-  createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
+  type LighthouseAddress,
+  type LighthouseClient,
+} from '@pigeon/core'
+import {
+  createMemoryNetwork,
   fakeCrypto,
   fakePake,
   fakeSealCrypto,
   fakeSigner,
   flush,
-  type LighthouseAddress,
-  type LighthouseClient,
-} from '@pigeon/core'
+} from '@pigeon/core/testing'
 import {
   createLighthouse,
   createMemoryStore as createMailStore,

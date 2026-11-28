@@ -302,16 +302,6 @@ export {
 } from './recovery/recovery-code.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
-export { fakePake } from './testing/fake-pake.ts'
-export type { MemoryNetwork } from './testing/testing.ts'
-export {
-  createMemoryNetwork,
-  fakeCrypto,
-  fakeSealCrypto,
-  fakeSigner,
-  flush,
-  relayRoom,
-} from './testing/testing.ts'
 export type {
   ChannelBinding,
   ConnectionId,

@@ -1,4 +1,5 @@
-import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
+import { appendMessage, emptyLog } from '@pigeon/core'
+import { fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import type { MessageEntry, TranscriptEntry } from '../../../ui/transcript/entries.ts'
 import type { MessageRoute } from '../service/letters.ts'

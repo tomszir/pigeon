@@ -4,13 +4,11 @@ import {
   base32Encode,
   bindSealingKey,
   createLighthouseClient,
-  fakeCrypto,
-  fakeSealCrypto,
-  fakeSigner,
   type Letter,
   type LighthouseAddress,
   type LighthouseClient,
 } from '@pigeon/core'
+import { fakeCrypto, fakeSealCrypto, fakeSigner } from '@pigeon/core/testing'
 import { createLighthouse, createMemoryStore as createMailStore } from '@pigeon/lighthouse'
 import { describe, expect, it, vi } from 'vitest'
 import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'

@@ -1,4 +1,5 @@
-import { base32Encode, emptyDeviceLog, fakeSigner, type LighthouseAddress } from '@pigeon/core'
+import { base32Encode, emptyDeviceLog, type LighthouseAddress } from '@pigeon/core'
+import { fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { readSelfNews, selfNewsBody } from './self-mail.ts'
 

@@ -2,8 +2,6 @@ import {
   base32Encode,
   base64Encode,
   encodeRequest,
-  fakeCrypto,
-  fakeSigner,
   LIGHTHOUSE_PROTOCOL,
   type LighthouseReply,
   type LighthouseRequest,
@@ -11,6 +9,7 @@ import {
   mailBlobId,
   openReply,
 } from '@pigeon/core'
+import { fakeCrypto, fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { blobCost, DEFAULT_LIMITS } from '../limits/limits.ts'
 import { createMemoryStore } from '../store/memory-store.ts'

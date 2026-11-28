@@ -1,4 +1,5 @@
-import { type AvatarTraits, avatarFor, fakeCrypto, type PeerId } from '@pigeon/core'
+import { type AvatarTraits, avatarFor, type PeerId } from '@pigeon/core'
+import { fakeCrypto } from '@pigeon/core/testing'
 import { describe, expect, it, vi } from 'vitest'
 import type { Notice } from '../shell/shell/types.ts'
 import { avatarIcon } from '../ui/avatar/avatar.tsx'

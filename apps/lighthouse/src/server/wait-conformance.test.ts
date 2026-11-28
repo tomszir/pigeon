@@ -2,7 +2,7 @@
 // (verification/models/lighthouse-wait/model/conformance.ts): the Lighthouse, its SQLite store and
 // the connections the server keeps, driven by a clock, must send every connection what the
 // model's reference sends, in the same order, for every event.
-import { fakeCrypto, fakeSigner } from '@pigeon/core'
+import { fakeCrypto, fakeSigner } from '@pigeon/core/testing'
 import { createLighthouse, type Limits } from '@pigeon/lighthouse'
 import {
   createTranslator,

@@ -2,12 +2,11 @@ import {
   appendMessage,
   type ChatLog,
   emptyLog,
-  fakeCrypto,
-  fakeSigner,
   type Letter,
   type LogEntry,
   mergeEntries,
 } from '@pigeon/core'
+import { fakeCrypto, fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'
 import { createLetters, type LettersDeps } from './letters.ts'

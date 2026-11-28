@@ -2,7 +2,8 @@
 // keep friends in a shape this one can't read. Its friends are read one by one: one this Pigeon
 // can't read, or whose name is longer than a name may be, is set aside and counted, and the rest
 // come through, with only the fields this Pigeon knows.
-import { createMemoryNetwork, fakeSigner, flush, MAX_HANDLE_LENGTH } from '@pigeon/core'
+import { MAX_HANDLE_LENGTH } from '@pigeon/core'
+import { createMemoryNetwork, fakeSigner, flush } from '@pigeon/core/testing'
 import { describe, expect, it, vi } from 'vitest'
 import {
   fakeClock,

@@ -1,4 +1,5 @@
-import { appendMessage, emptyLog, fakeSigner } from '@pigeon/core'
+import { appendMessage, emptyLog } from '@pigeon/core'
+import { fakeSigner } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import type { FriendView } from '../service/messenger.ts'
 import { conversationFileName, conversationText, SAVED_LINE_WIDTH } from './live-conversation.tsx'

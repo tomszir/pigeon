@@ -1,7 +1,7 @@
 // A tab can close at any moment, between any two writes. A new pair secret's letters are in the
 // outbox before the secret is kept, so whatever moment it closes, the friend and every device of
 // yours end on the same secret, and hear that each holds it.
-import { createMemoryNetwork, flush } from '@pigeon/core'
+import { createMemoryNetwork, flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import type { Store } from '../../../platform/storage/storage.ts'
 import {

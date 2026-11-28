@@ -1,7 +1,6 @@
 import {
   base32Decode,
   base32Encode,
-  createMemoryNetwork,
   decodeDeviceLink,
   decodeInvite,
   decodeInviteLink,
@@ -10,10 +9,6 @@ import {
   encodePairSecret,
   encodeRequest,
   err,
-  fakeCrypto,
-  fakeSealCrypto,
-  fakeSigner,
-  flush,
   formatCode,
   formatLighthouseAddress,
   inviteCardClaim,
@@ -36,6 +31,13 @@ import {
   selfRoomsAt,
   startPairSession,
 } from '@pigeon/core'
+import {
+  createMemoryNetwork,
+  fakeCrypto,
+  fakeSealCrypto,
+  fakeSigner,
+  flush,
+} from '@pigeon/core/testing'
 import { describe, expect, it, vi } from 'vitest'
 
 // A device that rewrites who made its proposals, and when: set only while one runs.

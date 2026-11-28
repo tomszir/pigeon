@@ -3,14 +3,12 @@
 import {
   base32Encode,
   createLighthouseClient,
-  fakeCrypto,
-  fakeSigner,
-  flush,
   KEEPALIVE_MS,
   type LighthouseAddress,
   MAX_WAITING,
   type OpenSocket,
 } from '@pigeon/core'
+import { fakeCrypto, fakeSigner, flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { createMemoryStore } from '../store/memory-store.ts'
 import { createLighthouse } from './lighthouse.ts'

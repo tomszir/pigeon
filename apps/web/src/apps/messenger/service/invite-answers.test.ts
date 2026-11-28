@@ -10,9 +10,6 @@ import {
   type DeviceLog,
   deviceState,
   emptyDeviceLog,
-  fakeCrypto,
-  fakeSealCrypto,
-  fakeSigner,
   type InviteCard,
   type InviteLink,
   type Json,
@@ -23,6 +20,7 @@ import {
   recoverDeviceLog,
   setRecoveryKey,
 } from '@pigeon/core'
+import { fakeCrypto, fakeSealCrypto, fakeSigner } from '@pigeon/core/testing'
 import { createRoot } from 'solid-js'
 import { describe, expect, it } from 'vitest'
 import { createMemoryStore } from '../../../platform/storage/memory-storage.ts'

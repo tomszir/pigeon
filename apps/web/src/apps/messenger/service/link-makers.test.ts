@@ -5,13 +5,12 @@
 // it after its end. These are the ways a removed device could add someone as you, each refused,
 // and what is left: its own links, until each one's end, at most a week.
 import {
-  createMemoryNetwork,
   decodeInviteLink,
   encodeInviteLinkFragment,
-  flush,
   INVITE_LINK_CLOCK_SLACK,
   MAX_INVITE_LINK_LIFETIME,
 } from '@pigeon/core'
+import { createMemoryNetwork, flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import type { Clock } from '../../../platform/clock/clock.ts'
 import {

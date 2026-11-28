@@ -1,7 +1,7 @@
 // Hearing about mail at once, the whole way: two friends who never meet, both open, sharing only a
 // Lighthouse. A message from one reaches the other within seconds, through a wait, long before
 // the next scheduled look.
-import { createMemoryNetwork, flush } from '@pigeon/core'
+import { createMemoryNetwork, flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import { fakeClock, made, messenger, NOON, only, testLighthouse } from '../testing/messengers.ts'
 

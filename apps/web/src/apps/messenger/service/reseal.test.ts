@@ -1,16 +1,8 @@
 // A letter put again is sealed again to its recipient's devices as they are then: a device
 // linked since gets it, and one removed since doesn't. Here for your own devices, which hear of
 // each other's keys by mail; the mailbox's own tests cover a friend's.
-import {
-  base32Decode,
-  createMemoryNetwork,
-  fakeCrypto,
-  fakeSealCrypto,
-  flush,
-  mailTag,
-  openMail,
-  utcDate,
-} from '@pigeon/core'
+import { base32Decode, mailTag, openMail, utcDate } from '@pigeon/core'
+import { createMemoryNetwork, fakeCrypto, fakeSealCrypto, flush } from '@pigeon/core/testing'
 import { describe, expect, it } from 'vitest'
 import {
   away,
