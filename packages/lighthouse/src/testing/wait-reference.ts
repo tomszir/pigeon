@@ -5,8 +5,8 @@
 // and closes an idle connection on its timer; the Worker has no timers, and notices both when
 // something next wakes it, and loses what it keeps in memory whenever it sleeps.
 //
-// Every rule is a switch in `Rules`, all on in `RULES`; a planted defect turns one off. Nothing
-// here is taken from the implementation, which is checked against this by `conformance.ts`.
+// Every rule is a switch in `Rules`, all on in `RULES`. Nothing here imports the
+// implementation, which is checked against this reference by `./wait-conformance.ts`.
 
 export type Variant = 'node' | 'worker'
 

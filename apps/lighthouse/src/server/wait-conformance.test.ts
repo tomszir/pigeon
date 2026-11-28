@@ -1,24 +1,23 @@
-// The Node Lighthouse against the waiting model's conformance traces
-// (verification/models/lighthouse-wait/model/conformance.ts): the Lighthouse, its SQLite store and
-// the connections the server keeps, driven by a clock, must send every connection what the
-// model's reference sends, in the same order, for every event.
+// The Node Lighthouse against the wait conformance suite (`@pigeon/lighthouse/wait-conformance`):
+// the Lighthouse, its SQLite store, and the connections the server keeps, driven by a clock, must
+// send every connection what the reference sends, in the same order, for every event.
 import { fakeCrypto, fakeSigner } from '@pigeon/core/testing'
 import { createLighthouse, type Limits } from '@pigeon/lighthouse'
+import {
+  BIG_TRACE_LIMITS,
+  conform,
+  type Output,
+  type Subject,
+  TRACE_CONNS,
+  TRACE_LIMITS,
+  TRACE_TAGS,
+} from '@pigeon/lighthouse/wait-conformance'
 import {
   createTranslator,
   lighthouseLimitsFor,
   TRACE_LIGHTHOUSE_LIMITS,
 } from '@pigeon/lighthouse/wait-traces'
 import { describe, expect, it } from 'vitest'
-import {
-  BIG_TRACE_LIMITS,
-  conform,
-  type Subject,
-  TRACE_CONNS,
-  TRACE_LIMITS,
-  TRACE_TAGS,
-} from '../../../../verification/models/lighthouse-wait/model/conformance.ts'
-import type { Output } from '../../../../verification/models/lighthouse-wait/model/lighthouse.ts'
 import { createSqliteStore } from '../store/sqlite-store.ts'
 import { type Connection, createConnections } from './connections.ts'
 

@@ -6,20 +6,20 @@
 import { DatabaseSync } from 'node:sqlite'
 import type { Limits } from '@pigeon/lighthouse'
 import {
+  BIG_TRACE_LIMITS,
+  conform,
+  type Output,
+  type Subject,
+  TRACE_CONNS,
+  TRACE_LIMITS,
+  TRACE_TAGS,
+} from '@pigeon/lighthouse/wait-conformance'
+import {
   createTranslator,
   lighthouseLimitsFor,
   TRACE_LIGHTHOUSE_LIMITS,
 } from '@pigeon/lighthouse/wait-traces'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  BIG_TRACE_LIMITS,
-  conform,
-  type Subject,
-  TRACE_CONNS,
-  TRACE_LIMITS,
-  TRACE_TAGS,
-} from '../../../../verification/models/lighthouse-wait/model/conformance.ts'
-import type { Output } from '../../../../verification/models/lighthouse-wait/model/lighthouse.ts'
 import { createWorkerCrypto } from '../platform/worker-crypto.ts'
 import type { DurableObjectState, Env, HibernatingSocket } from '../platform/worker-types.ts'
 import { CLIENT_ADDRESS, LighthouseObject } from './lighthouse-object.ts'

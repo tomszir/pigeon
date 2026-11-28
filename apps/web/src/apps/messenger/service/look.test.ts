@@ -1,16 +1,9 @@
-// One look at one Lighthouse with more tags than one list takes, run through every case of the
-// waiting model's look (verification/models/lighthouse-wait/model/fetch.ts): every small store
-// over three tags in two lists, every way a sender can put while the look reads, and a Lighthouse
-// that stops answering a list or a get partway. The puts and failures happen inside the model's
-// Lighthouse, whatever the look does. The model's planted defects are caught by the same cases.
+// One look at one Lighthouse with more tags than one list takes, run through every case in
+// `./look-cases.ts`: every small store over three tags in two lists, every way a sender can put
+// while the look reads, and a Lighthouse that stops answering a list or a get partway.
 import { describe, expect, it } from 'vitest'
-import {
-  checkLooks,
-  FETCH_RULES,
-  type LookWith,
-  modelLook,
-} from '../../../../../../verification/models/lighthouse-wait/model/fetch.ts'
 import { readLighthouse } from './look.ts'
+import { checkLooks, FETCH_RULES, type LookWith, modelLook } from './look-cases.ts'
 
 /**
  * The look the mailbox makes, through the model's Lighthouse: it gets every blob listed under its

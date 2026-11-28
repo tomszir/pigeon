@@ -1,13 +1,7 @@
-// The test an implementation of waiting must pass: seeded random traces of events, run through
-// the reference in `lighthouse.ts` and through the implementation, which must send the same
-// things to each connection, in the same order, for every event, and keep a put's reply before
-// the wakes it causes. The traces are generated while the reference runs, so cursors name real
-// places in the store and frames go to connections that are open.
-//
-// An implementation takes part through a `Subject`, which turns each event into its own: the
-// model's tag and blob names into real ones, its seconds into a clock, its frames into requests on
-// a socket. It hands back what it sent, in the model's terms. Nothing here imports Node or the
-// implementation, so a package's tests can run it as they are.
+// Conformance traces for Lighthouse waiting: seeded random traces of events run through
+// the reference in `./wait-reference.ts` and through an implementation (`Subject`), which must
+// send the same outputs to each connection in the same order and keep a put's reply before its
+// wakes.
 import {
   type Body,
   type Event,
@@ -20,7 +14,9 @@ import {
   step,
   type Variant,
   type WaitLimits,
-} from './lighthouse.ts'
+} from './wait-reference.ts'
+
+export type { Output } from './wait-reference.ts'
 
 export interface Subject {
   /** Applies one event, and says what the Lighthouse sent because of it, in the order it went. */

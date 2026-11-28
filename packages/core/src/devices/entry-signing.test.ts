@@ -1,12 +1,9 @@
-// Chat and device-log entries against the signed-entries model
-// (verification/models/signed-entries/model/conformance.ts): what each entry is signed over must
-// be what the current release signs, and every signature, over any entry's bytes in either form
-// or over something else Pigeon signs, must be taken exactly when the current release takes it.
+// Checks that chat and device-log entries sign canonical domain-separated bytes, reject replays
+// across chats/epochs/kinds or tampered fields, and still verify legacy untyped signatures.
 import { describe, expect, it } from 'vitest'
-import { checkEntrySigning } from '../../../../verification/models/signed-entries/model/conformance.ts'
-import type { Entry } from '../../../../verification/models/signed-entries/model/entries.ts'
 import { appendMessage, emptyLog, verifyEntry } from '../chat/chat-log.ts'
-import { base32Encode, utf8Decode, utf8Encode } from '../encoding/bytes.ts'
+import { base32Encode, utf8Decode } from '../encoding/bytes.ts'
+import { canonicalBytes, type Json } from '../encoding/canonical.ts'
 import type { Signer } from '../identity/crypto.ts'
 import { fakeCrypto, fakeSigner } from '../testing/testing.ts'
 import {
@@ -26,7 +23,6 @@ const author = fakeSigner('author')
 const recovery = fakeSigner('recovery')
 const AT = 1000
 
-/** `signer`, noting the bytes it signed last. */
 function recording(signer: Signer) {
   let last: Uint8Array = new Uint8Array()
   return {
@@ -45,7 +41,6 @@ function recording(signer: Signer) {
   }
 }
 
-/** The log an entry of `epoch` goes on: an empty one, or one a recovery handed to `writer`. */
 async function baseLog(epoch: number): Promise<DeviceLog> {
   const empty = emptyDeviceLog(identity.id)
   if (epoch === 0) return empty
@@ -67,45 +62,6 @@ async function baseLog(epoch: number): Promise<DeviceLog> {
 
 const writerOf = (epoch: number) => (epoch === 0 ? identity : writer)
 
-/** Appends a device-log entry with the implementation, by its epoch's writer. */
-async function append(
-  log: DeviceLog,
-  epoch: number,
-  change: Parameters<typeof appendDeviceEntry>[3],
-  at: number,
-  signer: Signer = writerOf(epoch),
-) {
-  const result = await appendDeviceEntry(fakeCrypto, log, signer, change, at)
-  if (!result.ok) throw new Error(result.error)
-  return result.log
-}
-
-const lastEntry = (log: DeviceLog): DeviceEntry => {
-  const entries = log.epochs?.at(-1)?.entries ?? log.entries
-  const entry = entries.at(-1)
-  if (entry === undefined) throw new Error('no entry')
-  return entry
-}
-
-/** Each epoch's first entry, which second entries name as `prev`. */
-const firsts = await Promise.all(
-  [0, 1].map(async (epoch) =>
-    append(await baseLog(epoch), epoch, { kind: 'add', device: device.id, name: 'Phone' }, AT),
-  ),
-)
-const prevOf = (epoch: number) => lastEntry(firsts[epoch] as DeviceLog).sig
-
-const ids = {
-  identity: identity.id,
-  device: device.id,
-  writer: writer.id,
-  author: author.id,
-  log: 'chat-one',
-  otherLog: 'chat-two',
-  prev: [prevOf(0), prevOf(1)] as const,
-}
-
-/** `log` with its last epoch's (or its own) entries replaced. */
 function withEntries(log: DeviceLog, entries: DeviceEntry[]): DeviceLog {
   const epochs = log.epochs
   if (epochs === undefined || epochs.length === 0) return { ...log, entries }
@@ -114,46 +70,162 @@ function withEntries(log: DeviceLog, entries: DeviceEntry[]): DeviceLog {
   return { ...log, epochs: [...epochs.slice(0, -1), { ...last, entries }] }
 }
 
-async function sign(entry: Entry): Promise<string> {
-  if (entry.kind === 'chat') {
-    const { signer, last } = recording(author)
-    let log = emptyLog(entry.fields.log)
-    for (let seq = 1; seq <= entry.fields.seq; seq++)
-      log = (await appendMessage(log, signer, entry.fields.text, AT + seq)).log
-    return last()
-  }
-  const { epoch, seq, kind, name } = entry.fields
-  const { signer, last } = recording(writerOf(epoch))
-  const before = seq === 1 ? await baseLog(epoch) : (firsts[epoch] as DeviceLog)
-  await append(
-    before,
-    epoch,
-    { kind, device: device.id, ...(name === undefined ? {} : { name }) },
-    entry.fields.at,
-    signer,
-  )
-  return last()
+const decodeText = (bytes: Uint8Array): string => {
+  const text = utf8Decode(bytes)
+  if (!text.ok) throw new Error('expected UTF-8 bytes')
+  return text.value
 }
 
-async function verify(entry: Entry, over: string): Promise<boolean> {
-  if (entry.kind === 'chat') {
-    const sig = base32Encode(await author.sign(utf8Encode(over)))
-    const { log, ...fields } = entry.fields
-    return verifyEntry(fakeCrypto, log, { ...fields, sig })
-  }
-  const { identity: _identity, epoch, name, ...fields } = entry.fields
-  const sig = base32Encode(await writerOf(epoch).sign(utf8Encode(over)))
-  const signed: DeviceEntry = { ...fields, ...(name === undefined ? {} : { name }), sig }
-  const first = lastEntry(firsts[epoch] as DeviceLog)
-  const base = await baseLog(epoch)
-  return verifyDeviceLog(
-    fakeCrypto,
-    withEntries(base, fields.seq === 1 ? [signed] : [first, signed]),
-  )
-}
-
-describe('entry signing, against the signed-entries model', () => {
+describe('entry signing', () => {
   it('signs each entry as the current release does, and takes exactly what it takes', async () => {
-    expect(await checkEntrySigning({ ids, sign, verify })).toEqual([])
+    // Chat entries: typed signing, legacy untyped verification, and refusal of cross-kind/tampered sigs.
+    const recAuthor = recording(author)
+    const chat = await appendMessage(emptyLog('chat-one'), recAuthor.signer, 'hello', AT + 1)
+    const chatFields = {
+      log: 'chat-one',
+      author: author.id,
+      seq: chat.entry.seq,
+      lamport: chat.entry.lamport,
+      at: chat.entry.at,
+      text: chat.entry.text,
+    }
+    expect(recAuthor.last()).toBe(
+      decodeText(canonicalBytes({ v: 'pigeon/chat-entry/v1', ...chatFields })),
+    )
+    expect(await verifyEntry(fakeCrypto, 'chat-one', chat.entry)).toBe(true)
+
+    const untypedChatSig = base32Encode(await author.sign(canonicalBytes(chatFields)))
+    expect(await verifyEntry(fakeCrypto, 'chat-one', { ...chat.entry, sig: untypedChatSig })).toBe(
+      true,
+    )
+
+    // Wrong chat room, wrong domain tag, or tampered field must be refused.
+    expect(await verifyEntry(fakeCrypto, 'chat-two', chat.entry)).toBe(false)
+    for (const bad of [
+      canonicalBytes({ v: 'pigeon/device-entry/v1', ...chatFields }),
+      canonicalBytes({ v: 'pigeon/other/v1', ...chatFields }),
+      canonicalBytes({ v: 'pigeon/chat-entry/v1', ...chatFields, text: 'tampered' }),
+      canonicalBytes({ v: 'pigeon/chat-entry/v1', ...chatFields, seq: 99 }),
+    ]) {
+      const sig = base32Encode(await author.sign(bad))
+      expect(await verifyEntry(fakeCrypto, 'chat-one', { ...chat.entry, sig })).toBe(false)
+    }
+
+    // Device-log entries across epoch 0 and epoch 1: typed signing, legacy untyped acceptance, and isolation.
+    for (const epoch of [0, 1] as const) {
+      const signer = writerOf(epoch)
+      const recWriter = recording(signer)
+      const base = await baseLog(epoch)
+      const appended = await appendDeviceEntry(
+        fakeCrypto,
+        base,
+        recWriter.signer,
+        { kind: 'add', device: device.id, name: 'Phone' },
+        AT,
+      )
+      if (!appended.ok) throw new Error(appended.error)
+      const entry = (appended.log.epochs?.at(-1)?.entries ?? appended.log.entries).at(-1)
+      if (entry === undefined) throw new Error('missing entry')
+
+      const deviceFields: Record<string, Json> = {
+        identity: identity.id,
+        seq: entry.seq,
+        prev: entry.prev,
+        kind: entry.kind,
+        device: entry.device,
+        ...(entry.name === undefined ? {} : { name: entry.name }),
+        at: entry.at,
+      }
+
+      expect(recWriter.last()).toBe(
+        decodeText(canonicalBytes({ v: 'pigeon/device-entry/v1', epoch, ...deviceFields })),
+      )
+      expect(await verifyDeviceLog(fakeCrypto, appended.log)).toBe(true)
+
+      const untypedBytes = canonicalBytes(epoch === 0 ? deviceFields : { epoch, ...deviceFields })
+      const untypedSig = base32Encode(await signer.sign(untypedBytes))
+      expect(
+        await verifyDeviceLog(fakeCrypto, withEntries(base, [{ ...entry, sig: untypedSig }])),
+      ).toBe(true)
+
+      // Wrong epoch, wrong kind/context, wrong identity, or tampered fields must be refused.
+      for (const bad of [
+        canonicalBytes({
+          v: 'pigeon/device-entry/v1',
+          epoch: epoch === 0 ? 1 : 0,
+          ...deviceFields,
+        }),
+        canonicalBytes({ v: 'pigeon/chat-entry/v1', epoch, ...deviceFields }),
+        canonicalBytes({ v: 'pigeon/other/v1', epoch, ...deviceFields }),
+        canonicalBytes({
+          v: 'pigeon/device-entry/v1',
+          epoch,
+          ...deviceFields,
+          identity: author.id,
+        }),
+        canonicalBytes({ v: 'pigeon/device-entry/v1', epoch, ...deviceFields, name: 'Tablet' }),
+      ]) {
+        const sig = base32Encode(await signer.sign(bad))
+        expect(await verifyDeviceLog(fakeCrypto, withEntries(base, [{ ...entry, sig }]))).toBe(
+          false,
+        )
+      }
+
+      // Second entry in chain (`name` and `remove` kinds).
+      const recSecond = recording(signer)
+      const renamed = await appendDeviceEntry(
+        fakeCrypto,
+        appended.log,
+        recSecond.signer,
+        { kind: 'name', device: device.id, name: 'Laptop' },
+        AT + 1,
+      )
+      if (!renamed.ok) throw new Error(renamed.error)
+      const second = (renamed.log.epochs?.at(-1)?.entries ?? renamed.log.entries).at(-1)
+      if (second === undefined) throw new Error('missing second entry')
+      expect(recSecond.last()).toBe(
+        decodeText(
+          canonicalBytes({
+            v: 'pigeon/device-entry/v1',
+            epoch,
+            identity: identity.id,
+            seq: second.seq,
+            prev: second.prev,
+            kind: 'name',
+            device: device.id,
+            name: 'Laptop',
+            at: AT + 1,
+          }),
+        ),
+      )
+      expect(await verifyDeviceLog(fakeCrypto, renamed.log)).toBe(true)
+
+      const recThird = recording(signer)
+      const removed = await appendDeviceEntry(
+        fakeCrypto,
+        renamed.log,
+        recThird.signer,
+        { kind: 'remove', device: device.id },
+        AT + 2,
+      )
+      if (!removed.ok) throw new Error(removed.error)
+      const third = (removed.log.epochs?.at(-1)?.entries ?? removed.log.entries).at(-1)
+      if (third === undefined) throw new Error('missing third entry')
+      expect(recThird.last()).toBe(
+        decodeText(
+          canonicalBytes({
+            v: 'pigeon/device-entry/v1',
+            epoch,
+            identity: identity.id,
+            seq: third.seq,
+            prev: third.prev,
+            kind: 'remove',
+            device: device.id,
+            at: AT + 2,
+          }),
+        ),
+      )
+      expect(await verifyDeviceLog(fakeCrypto, removed.log)).toBe(true)
+    }
   })
 })

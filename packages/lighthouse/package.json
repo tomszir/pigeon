@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/store/store-contract.ts",
-    "./wait-traces": "./src/testing/wait-traces.ts"
+    "./wait-traces": "./src/testing/wait-traces.ts",
+    "./wait-conformance": "./src/testing/wait-conformance.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",

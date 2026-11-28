@@ -1,6 +1,5 @@
-// For the runners' tests: turns the waiting model's conformance traces
-// (verification/models/lighthouse-wait/model/conformance.ts) into real frames, and the frames a
-// Lighthouse sends back into the model's terms. Tag and blob names become 32-byte keys, a put's
+// Turns the wait conformance traces (`./wait-conformance.ts`) into real frames, and the frames a
+// Lighthouse sends back into trace outputs. Tag and blob names become 32-byte keys, a put's
 // blob the bytes of its name with one drop, ranges real addresses, and request numbers move up
 // by one, since each connection says hello first.
 import {
@@ -15,14 +14,9 @@ import {
   mailBlobId,
   utf8Encode,
 } from '@pigeon/core'
-import { TRACE_LIMITS } from '../../../../verification/models/lighthouse-wait/model/conformance.ts'
-import type {
-  Body,
-  Output,
-  Request,
-  WaitLimits,
-} from '../../../../verification/models/lighthouse-wait/model/lighthouse.ts'
 import { DEFAULT_LIMITS, type Limits } from '../limits/limits.ts'
+import { TRACE_LIMITS } from './wait-conformance.ts'
+import type { Body, Output, Request, WaitLimits } from './wait-reference.ts'
 
 const MANY = 1_000_000
 
