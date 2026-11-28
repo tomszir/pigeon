@@ -14,6 +14,7 @@ import { bindSealingKey, sealMail } from '../mail/mail.ts'
 import { sealEnvelope } from '../messages/envelope.ts'
 import { sealInviteCard } from '../pairing/mailed-invite.ts'
 import { signRekey } from '../pairing/rekey.ts'
+import { signEntry } from '../shared-log/entry.ts'
 import { fakeCrypto, fakeSealCrypto, fakeSigner } from '../testing/testing.ts'
 import type { Signer } from './crypto.ts'
 
@@ -82,6 +83,8 @@ describe('what Pigeon signs', () => {
     const phone = fakeSigner('phone').id
     const add = { kind: 'add', device: phone, name: 'Phone' } as const
     await appendDeviceEntry(fakeCrypto, emptyDeviceLog(rook.id), rook, add, 1)
+    as('your-data-entry')
+    await signEntry(rook, rook.id, 1, 1, { kind: 'setting', key: 'relay', value: true })
     as('recovery-key')
     const committed = await setRecoveryKey(emptyDeviceLog(rook.id), rook, key.id, 1)
     as('recover')
@@ -106,6 +109,7 @@ describe('what Pigeon signs', () => {
         'device-entry',
         'recovery-key',
         'recover',
+        'your-data-entry',
       ].sort(),
     )
     const unmarked = [...shapes].filter(([, shape]) => marker(shape) === undefined)

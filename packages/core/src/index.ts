@@ -31,6 +31,7 @@ export type {
   PairSessionOptions,
   Presence,
   ProfileChange,
+  SyncOptions,
 } from './chat/pair-session.ts'
 export { encodeInstance, INSTANCE_BYTES, startPairSession } from './chat/pair-session.ts'
 export type {
@@ -44,6 +45,7 @@ export type {
   KeptDevice,
   RecoverEntry,
   RecoveryKey,
+  Removal,
 } from './devices/device-log.ts'
 export {
   appendDeviceEntry,
@@ -57,6 +59,7 @@ export {
   MAX_KEPT_DEVICES,
   mergeDeviceLogs,
   recoverDeviceLog,
+  removalsOf,
   setRecoveryKey,
   speakerIdentity,
   verifyDeviceLog,
@@ -170,6 +173,7 @@ export type {
   HelloBinding,
   Speaker,
   Status,
+  SyncSummaryBody,
 } from './messages/envelope.ts'
 export {
   cleanHandle,
@@ -180,6 +184,7 @@ export {
   MAX_LIGHTHOUSES,
   MAX_MESSAGE_BYTES,
   MAX_PERSONAL_MESSAGE_LENGTH,
+  MAX_SYNC_BATCH,
   NONCE_BYTES,
   openEnvelope,
   sealEnvelope,
@@ -299,6 +304,48 @@ export {
 } from './recovery/recovery-code.ts'
 export type { Err, Ok, Result } from './result/result.ts'
 export { err, ok } from './result/result.ts'
+export {
+  appendShared,
+  blockOps,
+  heldFriendships,
+  removalAt,
+  settleOps,
+  stampFor,
+  unfriendOps,
+} from './shared-log/changes.ts'
+export type { SettingKey, SharedEntry, SharedKind, SharedOp } from './shared-log/entry.ts'
+export {
+  INCARNATION_BYTES,
+  isIncarnation,
+  MAX_SHARED_ENTRIES_PER_DEVICE,
+  MAX_SHARED_ENTRY_BYTES,
+  readOp,
+  SHARED_ENTRY_CONTEXT,
+  STAMP_CAP,
+} from './shared-log/entry.ts'
+export type { Letter as SyncLetter, PeerSync } from './shared-log/exchange.ts'
+export { heardFrom, newPeer, planLetter, SYNC_LETTER_BYTES } from './shared-log/exchange.ts'
+export type { FoldContext, Friendship, SharedView } from './shared-log/fold.ts'
+export { foldShared, friendshipsWith } from './shared-log/fold.ts'
+export type { SharedLog, SharedSummary } from './shared-log/log.ts'
+export {
+  batchShared,
+  behindShared,
+  emptySharedLog,
+  inTurn,
+  missingShared,
+  readSharedSummary,
+  summarizeShared,
+  takeSharedEntries,
+} from './shared-log/log.ts'
+export type { SyncBody } from './shared-log/sync.ts'
+export {
+  MAX_SYNC_ENTRIES,
+  readSyncBody,
+  SYNC_MAIL_KIND,
+  syncBody,
+  syncCounts,
+} from './shared-log/sync.ts'
 export type {
   ChannelBinding,
   ConnectionId,

@@ -12,6 +12,7 @@
 import { AVATAR_VERSION } from '../avatar/avatar.ts'
 import type { DeviceLog } from '../devices/device-log.ts'
 import { base32DecodeExact, base32Encode, bytesEqual, hexDecode } from '../encoding/bytes.ts'
+import type { Json } from '../encoding/canonical.ts'
 import type { Crypto, Signer } from '../identity/crypto.ts'
 import type { PeerId } from '../identity/identity.ts'
 import type { LighthouseAddress } from '../lighthouse/address.ts'
@@ -22,6 +23,7 @@ import {
   NONCE_BYTES,
   openEnvelope,
   type Status,
+  type SyncSummaryBody,
   sealEnvelope,
 } from '../messages/envelope.ts'
 import type { ChannelBinding, ConnectionId, Room, RoomName } from '../transport/transport.ts'
@@ -132,6 +134,11 @@ export interface PairSessionOptions {
   readonly profile?: (() => ProfileChange | undefined) | undefined
   /** Another of your devices said its name and personal message. */
   readonly onProfile?: ((change: ProfileChange) => void) | undefined
+  /**
+   * Your shared log, for your own devices only: its summary, sent after hello and on
+   * `announceSync`; what to send a device whose summary arrived; and entries that arrived.
+   */
+  readonly sync?: SyncOptions | undefined
   /** This device's sealing key, said in every hello, so mail for it can be sealed to it. */
   readonly sealing?: (() => SealingKey | undefined) | undefined
   /** Where to leave mail for this Pigeon, said in every hello. */
@@ -140,6 +147,19 @@ export interface PairSessionOptions {
   readonly instance?: string | undefined
   /** A hello signed with this device's own key came from another run: a copied profile. */
   readonly onTwin?: (() => void) | undefined
+}
+
+/** How a self room passes your shared log between your devices. */
+export interface SyncOptions {
+  readonly summary: () => Promise<SyncSummaryBody>
+  /** What `device` lacks, given its summary, in batches of at most `MAX_SYNC_BATCH`. */
+  readonly missing: (
+    device: PeerId,
+    summary: SyncSummaryBody,
+  ) => Promise<readonly (readonly Json[])[]>
+  readonly take: (device: PeerId, entries: readonly Json[]) => Promise<void>
+  /** Whether `device`, by its summary, holds something this one lacks: then it's sent ours. */
+  readonly behind: (device: PeerId, summary: SyncSummaryBody) => Promise<boolean>
 }
 
 /** A name and personal message, and when they were changed. */
@@ -166,6 +186,8 @@ export interface PairSession {
   goodbye(): void
   /** Tells the friend about a new handle or presence. */
   announce(): void
+  /** Tells your other devices here what your shared log holds now. */
+  announceSync(): void
   /** Tells the friend you've removed them; resolves once it's been sent to them. */
   unfriend(): Promise<void>
   /** Sends your device log again to everyone here, after it changed. */
@@ -323,9 +345,15 @@ export function startPairSession(options: PairSessionOptions): PairSession {
     sendTo(to, { type: 'nonce', nonce: base32Encode(nonce) })
   }
   /** A connection just proved who it is: catch it up. Nothing of this goes to one that hasn't. */
+  const sendSummary = (to: Link | 'all') => {
+    const sync = options.sync
+    if (sync !== undefined)
+      void sync.summary().then((summary) => sendTo(to, { type: 'sync-summary', summary }))
+  }
   const catchUp = (to: Link) => {
     sendTo(to, { type: 'presence', ...options.presence() })
     sendProfile(to)
+    sendSummary(to)
     sendTo(to, { type: 'log-sync', have: summarize(log) })
   }
   /**
@@ -442,6 +470,18 @@ export function startPairSession(options: PairSessionOptions): PairSession {
         message: body.message,
         changedAt: body.changedAt,
       }),
+    'sync-summary': (from, body) => {
+      const device = deviceOf.get(from)
+      if (device === undefined || options.sync === undefined) return
+      void options.sync.missing(device, body.summary).then((batches) => {
+        for (const entries of batches) sendTo(from, { type: 'sync-entries', entries })
+      })
+      void options.sync.behind(device, body.summary).then((behind) => behind && sendSummary(from))
+    },
+    'sync-entries': (from, body) => {
+      const device = deviceOf.get(from)
+      if (device !== undefined) void options.sync?.take(device, body.entries)
+    },
     typing: (_from, body) => options.onEvent({ type: 'typing', active: body.active }),
     buzz: () => options.onEvent({ type: 'buzz' }),
     unfriend: () => options.onEvent({ type: 'unfriended' }),
@@ -647,6 +687,7 @@ export function startPairSession(options: PairSessionOptions): PairSession {
       sendTo('all', { type: 'presence', ...options.presence() })
       sendProfile('all')
     },
+    announceSync: () => sendSummary('all'),
     async unfriend() {
       sendTo('all', { type: 'unfriend' })
       await queue

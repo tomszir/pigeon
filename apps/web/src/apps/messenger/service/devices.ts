@@ -172,7 +172,12 @@ export async function loadDevices(deps: DevicesDeps) {
      * Signs a recover with the recovery key onto this device, which already speaks for you,
      * keeping `keep`. False when the key isn't your current one.
      */
-    async recoverHere(key: Signer, keep: readonly KeptDevice[], next: PeerId): Promise<boolean> {
+    async recoverHere(
+      key: Signer,
+      keep: readonly KeptDevice[],
+      next: PeerId,
+      at = clock.now(),
+    ): Promise<boolean> {
       const state = ownState()
       if (isTailLog(own()) || state.recoveryKey !== key.id) return false
       const log = await recoverDeviceLog(
@@ -180,7 +185,7 @@ export async function loadDevices(deps: DevicesDeps) {
         own(),
         key,
         { epoch: state.epoch + 1, writer: signer.id, keep, next },
-        clock.now(),
+        at,
       )
       if (log === undefined) return false
       await setOwn(log)
@@ -235,14 +240,22 @@ export async function loadDevices(deps: DevicesDeps) {
         fingerprint: printOf(info.id),
       }))
     },
-    /** Signs a change to your device log. Only the first device can; false otherwise. */
-    async change(kind: DeviceEntryKind, device: PeerId, name?: string): Promise<boolean> {
+    /**
+     * Signs a change to your device log, at `at` (a removal is signed later than every entry of
+     * the removed device in your shared log). Only the first device can; false otherwise.
+     */
+    async change(
+      kind: DeviceEntryKind,
+      device: PeerId,
+      name?: string,
+      at = clock.now(),
+    ): Promise<boolean> {
       const result = await appendDeviceEntry(
         crypto,
         own(),
         signer,
         { kind, device, ...(name === undefined ? {} : { name }) },
-        clock.now(),
+        at,
       )
       if (!result.ok) return false
       await setOwn(result.log)

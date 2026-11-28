@@ -506,6 +506,8 @@ export async function appendDeviceEntry(
     current,
   )
   if (signer.id !== state.writer) return { ok: false, error: 'not-writer' }
+  // Every Pigeon refuses an entry whose time isn't a safe integer, so none is signed.
+  if (!Number.isSafeInteger(at) || at < 0) return { ok: false, error: 'not-allowed' }
   if (current.length >= MAX_DEVICE_ENTRIES) return { ok: false, error: 'full' }
   const unsigned: Unsigned = {
     seq: current.length + 1,
@@ -559,6 +561,7 @@ export async function recoverDeviceLog(
   },
   at: number,
 ): Promise<DeviceLog | undefined> {
+  if (!Number.isSafeInteger(at) || at < 0) return undefined
   const keep = change.keep.map(({ device, name }) => ({
     device,
     name: name.trim().slice(0, MAX_DEVICE_NAME_LENGTH) || 'Device',
@@ -694,6 +697,38 @@ export async function mergeDeviceLogs(
 export function everDevices(log: DeviceLog): ReadonlySet<PeerId> {
   const state = stateOf(log)
   return new Set([...state.active.keys(), ...state.removed])
+}
+
+/** When a device left the list, and who signed that: the epoch's writer, or the next recover's. */
+export type Removal = { readonly at: number; readonly by: PeerId }
+
+/**
+ * Every device once on the list and not on it now, with its removal as `removedAt` dates it (the
+ * latest, when several epochs ended it) and the device that signed that removal.
+ */
+export function removalsOf(log: DeviceLog): ReadonlyMap<PeerId, Removal> {
+  const epochs = epochsOf(log)
+  const { active } = stateOf(log)
+  const reads = epochs.map((epoch, i) => ({
+    state: readChain(recoveredState(epoch.recover), epoch.entries),
+    next: epochs[i + 1]?.recover,
+  }))
+  if (!isTail(log))
+    reads.unshift({
+      state: readChain(firstEpochState(log.identity), log.entries),
+      next: epochs[0]?.recover,
+    })
+  const out = new Map<PeerId, Removal>()
+  const ended = (id: PeerId, removal: Removal) => {
+    if (!active.has(id) && (out.get(id)?.at ?? Number.NEGATIVE_INFINITY) < removal.at)
+      out.set(id, removal)
+  }
+  for (const { state, next } of reads) {
+    for (const [id, at] of state.removedAt) ended(id, { at, by: state.writer })
+    for (const [id] of next === undefined ? [] : state.active)
+      ended(id, { at: next?.at ?? 0, by: next?.writer ?? '' })
+  }
+  return out
 }
 
 /** Whether a log is a tail, known from its first recover on only. */

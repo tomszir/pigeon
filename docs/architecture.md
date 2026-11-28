@@ -20,6 +20,12 @@ packages/
                   from the pair secret and the UTC day, and linking a new device
                   (link.ts).
       devices/    the signed device log that ties several devices to one identity.
+      shared-log/ your shared log: the signed entries of the changes made on each of
+                  your devices (friends added and ended, petnames, mutes, blocks,
+                  settings), merging them, summaries, the view they fold into, the
+                  `mail:sync` and self-room rules, and exchange.ts, which plans what each
+                  letter carries and to whom; testing/ holds its model-based test's
+                  world, steps and invariants.
       argon2id/   Argon2id, the interface to a memory-hard key derivation for
                   passphrases: bytes in, a 32-byte key out.
       pake/       Pake, the interface to a password-authenticated key exchange
@@ -121,6 +127,11 @@ apps/
                 service/stored.ts holds what the service keeps in storage: its keys, the
                 shape of each record and the checks on what is read back, importing nothing from
                 service.ts so the two never form a cycle;
+                service/recipients.ts says who a letter goes to (createRecipients): a friend's
+                devices on their list or your own others, their sealing keys and Lighthouses;
+                service/shared-log.ts keeps your shared log on this device (loadSharedLog): the
+                entries, what each of your other devices said it holds and whether it reads
+                `mail:sync`, the view, and the letters and self-room messages that pass it on;
                 service/devices.ts keeps your device log and friends', and says who
                 a device is. service/mailbox.ts is mail through Lighthouses: an outbox
                 put again until each device's receipt comes, and fetching from a

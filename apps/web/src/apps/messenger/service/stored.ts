@@ -141,6 +141,12 @@ export const KEYS = {
    * sees it, is acted on, even after a tab closed between keeping the log and acting.
    */
   removalsSeen: 'removalsSeen',
+  /** Your shared log: every entry this device holds, from each of your devices. */
+  sharedLog: 'shared-log',
+  /** What each of your other devices last said its shared log holds: its summary. */
+  sharedKnown: 'shared-known',
+  /** Your other devices that said they read `mail:sync`. */
+  syncReaders: 'sync-readers',
   /** What a friend's devices (or your own, under your own id) said about their mail. */
   mailBook: (id: PeerId) => `mail-book:${id}`,
   log: (id: PeerId) => `log:${id}`,

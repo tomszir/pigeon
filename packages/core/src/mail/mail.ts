@@ -38,6 +38,8 @@ export type MailKind =
   | 'pair'
   | 'link'
   | 'rekey'
+  /** Your shared log, between your own devices: sealed only to those that said they read it. */
+  | 'sync'
 const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'farewell',
   'self',
@@ -48,6 +50,7 @@ const KINDS: ReadonlySet<string> = new Set<MailKind>([
   'pair',
   'link',
   'rekey',
+  'sync',
 ])
 
 /** A device's sealing key, bound to it by its own signature. */

@@ -114,6 +114,13 @@ export type Body =
   /** You've removed this friend: their Pigeon stops talking to you and says so. */
   | { readonly type: 'unfriend' }
   | { readonly type: 'log-sync'; readonly have: LogSummary }
+  /**
+   * Between your own devices only: per device, the highest number of your shared log held and a
+   * digest of every entry held up to it, gaps included, so the other sends what this one lacks.
+   */
+  | { readonly type: 'sync-summary'; readonly summary: SyncSummaryBody }
+  /** Between your own devices only: shared-log entries, each checked on its own as it's taken. */
+  | { readonly type: 'sync-entries'; readonly entries: readonly Json[] }
   | { readonly type: 'log-entries'; readonly entries: readonly LogEntry[] }
   /**
    * Opening a live code (pairing/handshake.ts): which secret this side holds, `code` or `link`,
@@ -161,6 +168,17 @@ export type Body =
     }
 
 export type BodyType = Body['type']
+
+/** A shared-log summary as it travels: per device, a number and a digest. */
+export type SyncSummaryBody = Readonly<
+  Record<PeerId, { readonly n: number; readonly digest: string }>
+>
+
+/** Entries in one `sync-entries` message: each is at most 1 KB, so a batch fits an envelope. */
+export const MAX_SYNC_BATCH = 48
+
+const isPlainObject = (value: unknown): value is Fields =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** Who a device speaks for, when it isn't its identity's first device. */
 export interface Speaker {
@@ -250,6 +268,12 @@ const BODY_CHECKS: Readonly<Record<BodyType, (body: Fields) => boolean>> = {
   unfriend: () => true,
   'log-sync': (b) => isSummary(b['have']),
   'log-entries': (b) => Array.isArray(b['entries']) && b['entries'].every(isLogEntry),
+  'sync-summary': (b) => isPlainObject(b['summary']),
+  // Each entry is read on its own where it's taken, so one that doesn't hold never stops the rest.
+  'sync-entries': (b) =>
+    Array.isArray(b['entries']) &&
+    b['entries'].length <= MAX_SYNC_BATCH &&
+    b['entries'].every(isPlainObject),
   'pake-start': (b) =>
     (b['via'] === 'code' || b['via'] === 'link') && isString(MAX_PAKE_LENGTH)(b['pake']),
   'pake-reply': (b) => isString(MAX_PAKE_LENGTH)(b['pake']),
