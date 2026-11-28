@@ -3,24 +3,15 @@ test: apps/web src/apps/messenger/service/mail-waits.test.ts
 expect: waits at no Lighthouse a look read after it was taken off your list
 
 diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
-index 4968680..b760afd 100644
+index 5a75379..f5d179d 100644
 --- i/apps/web/src/apps/messenger/service/mail-waits.ts
 +++ w/apps/web/src/apps/messenger/service/mail-waits.ts
-@@ -143,7 +143,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+@@ -127,7 +127,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+   const fraction = () => (deps.random(1)[0] ?? 0) / 255
+   /** Whether `address` is on your list now, matched as `retain` matches: id, URL and pass. */
+   const listed = (address: LighthouseAddress) =>
+-    deps.lighthouses().some((other) => keyOf(other) === keyOf(address))
++    true
+   /** One cue at a time: a second `mail` while one is held back is the same cue. */
+   let holding = false
  
-   async function send(state: Waiting): Promise<void> {
-     const client = deps.client(state.address)
--    if (client === undefined || deps.closed() || !deps.on() || !deps.listed(state.address)) return
-+    if (client === undefined || deps.closed() || !deps.on()) return
-     const now = clock.now()
-     state.gen += 1
-     const gen = state.gen
-@@ -191,7 +191,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
- 
-   return {
-     looked(address, looked) {
--      if (deps.closed() || !deps.on() || !deps.listed(address)) return
-+      if (deps.closed() || !deps.on()) return
-       const key = keyOf(address)
-       const state: Waiting = waiting.get(key) ?? {
-         address,

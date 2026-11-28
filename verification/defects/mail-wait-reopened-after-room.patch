@@ -3,15 +3,15 @@ test: apps/web src/apps/messenger/service/mail-waits.test.ts
 expect: one closed for room until the next look
 
 diff --git i/apps/web/src/apps/messenger/service/mail-waits.ts w/apps/web/src/apps/messenger/service/mail-waits.ts
-index fa852ee..f31b6eb 100644
+index 5a75379..576a3dc 100644
 --- i/apps/web/src/apps/messenger/service/mail-waits.ts
 +++ w/apps/web/src/apps/messenger/service/mail-waits.ts
-@@ -116,7 +116,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
-       // Refused for its limits: this Pigeon looks on its schedule.
-       return
-     }
--    if (answer.error === 'room') {
-+    if (answer.error === 'room' && state.heldOff) {
-       state.heldOff = true
-       return
-     }
+@@ -193,7 +193,7 @@ export function createMailWaits(deps: MailWaitsDeps): MailWaits {
+         // Refused for its limits: this Pigeon looks on its schedule.
+         return
+       }
+-      if (answer.error === 'room') {
++      if (answer.error === 'room' && state.heldOff) {
+         state.heldOff = true
+         return
+       }

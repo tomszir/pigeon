@@ -1,0 +1,17 @@
+defect: a look's letters aren't counted as taken, so after each cue the next message is held back as if the look took nothing
+test: apps/web src/apps/messenger/service/hear-at-once.test.ts
+expect: brings a second message as quickly as the first
+
+diff --git i/apps/web/src/apps/messenger/service/service.ts w/apps/web/src/apps/messenger/service/service.ts
+index b0778b3..dd6a9b2 100644
+--- i/apps/web/src/apps/messenger/service/service.ts
++++ w/apps/web/src/apps/messenger/service/service.ts
+@@ -677,7 +677,7 @@ export async function createMessenger(deps: MessengerDeps) {
+     await inviteLinks?.catchUp().catch(() => undefined)
+     const all = [...sources, ...(inviteLinks?.sources() ?? [])]
+     const heard = await mailWaits.look((count) =>
+-      mailbox.fetch(lighthouses(), all, count.take(takeLetter), lookAt, count.answered),
++      mailbox.fetch(lighthouses(), all, takeLetter, lookAt, count.answered),
+     )
+     // Old secrets with no replacement under way yet, now that any proposal waiting for this
+     // device has been taken.
